@@ -84,6 +84,8 @@ internal class PlayerInteractiveOverlayFeatureInstaller(
         }
         adapted.mossExecutes.distinct().forEach { installResponse(it, false) }
         adapted.mossAsync.distinct().forEach { installResponse(it, true) }
+        // Kotlin 通道是**附加覆盖**，不计入上面的 primaryPaths / expected，免得改变既有的成功/部分判定。
+        val kotlinPaths = installKotlinMoss(environment, loader, cleaner, owners, adapted)
         val absentFamilies = VersionAdapter.PLAYER_INTERACTIVE_MOSS_FAMILIES.filter {
             KavaMemberLookup.classOrNull(loader, it.replyClassName) == null &&
                 KavaMemberLookup.classOrNull(loader, it.guideClassName) == null
@@ -109,9 +111,92 @@ internal class PlayerInteractiveOverlayFeatureInstaller(
         val complete = installed == expected && expected > 0
         environment.reportStatus(CHANNEL_STATUS, if (complete) "success" else "partial:$installed/$expected")
         environment.reportRuntimeEvidence(ID, FeatureRuntimeStage.ADAPTED)
-        environment.logInfo("player_interactive_installed", "[BIL] 互动层响应覆盖=$installed/$expected，注册点=$hooks，getter 仅作后备")
+        environment.logInfo("player_interactive_installed", "[BIL] 互动层响应覆盖=$installed/$expected，注册点=$hooks，Kotlin 通道=$kotlinPaths，getter 仅作后备")
         return FeatureInstallResult.Installed(hooks, complete)
     }
+    /**
+     * Kotlin 版 moss（`K*Moss`）通道：`dmView` 从 9.5.0 起、统一版 `viewProgress` 从 9.13.0 起，宿主里都有走 Kotlin
+     * 版的调用者（2026-10-01 dexq 对 9.10.0 / 9.13.0 / 9.14.0 核对），与 Java 通道并行。它们的响应是被混淆字段的数据类，
+     * 所以经 protobuf 线格式往返到同一 proto 的 Java 响应上，**原样复用 [PlayerInteractiveReplyCleaner]**，见
+     * [KotlinMossReplyBridge]。每个 Java 入口对应的 Kotlin 类/方法都按名字与形状判存，缺哪个跳过哪个；运行期异常放行原响应。
+     */
+    private fun installKotlinMoss(
+        environment: HookEnvironment,
+        loader: ClassLoader,
+        cleaner: PlayerInteractiveReplyCleaner,
+        owners: Map<String, String>,
+        points: VersionAdapter.PlayerInteractiveOverlayPoints
+    ): Int {
+        val members = KotlinMossBridgeMembers.resolve(loader)
+        if (members == null) {
+            environment.logInfo("player_interactive_kmoss_skip", "[BIL] 互动层 Kotlin 通道未安装: kotlinx.serialization 成员缺失")
+            return 0
+        }
+        if (!KotlinMossBridgeSelfTest.allows(environment, loader, members, "互动层")) return 0
+        val seen = hashSetOf<String>()
+        var installed = 0
+        (points.mossAsync + points.mossExecutes).distinct().forEach { point ->
+            val replyName = owners[point.className] ?: return@forEach
+            val kotlinName = KotlinMossBridgeMembers.kotlinMossClassName(point.className) ?: return@forEach
+            val rpc = KotlinMossBridgeMembers.rpcName(point.methodName)
+            if (!seen.add("$kotlinName#$rpc")) return@forEach
+            if (cleaner.responseIds(replyName).isEmpty()) return@forEach
+            // 装不上不能再静默：每个候选只在真的缺东西时记一条原因（有界：候选个数）。
+            fun skip(reason: String) = environment.logInfo(
+                "player_interactive_kmoss_skip_$rpc",
+                "[BIL] 互动层 Kotlin 通道跳过 ${kotlinName.substringAfterLast('.')}#$rpc: $reason"
+            )
+            val kotlinMoss = KavaMemberLookup.classOrNull(loader, kotlinName) ?: return@forEach skip("no-kotlin-class")
+            val replyClass = KavaMemberLookup.classOrNull(loader, replyName) ?: return@forEach skip("no-reply-class")
+            val codec = KotlinMossBridgeMembers.JavaReplyCodec.resolve(replyClass) ?: return@forEach skip("no-java-codec")
+            val entry = KotlinMossBridgeMembers.callbackEntry(kotlinMoss, rpc) ?: return@forEach skip("no-callback-entry")
+            val handlerClass = entry.parameterTypes[3]
+            val reported = java.util.concurrent.atomic.AtomicBoolean(false)
+            val called = java.util.concurrent.atomic.AtomicBoolean(false)
+            runCatching {
+                environment.registrar.exact(
+                    "player.interactive.kmoss.$kotlinName.$rpc",
+                    entry.declaringClass, entry.name, *entry.parameterTypes
+                ) {
+                    before {
+                        if (called.compareAndSet(false, true)) {
+                            environment.logInfo(
+                                "player_interactive_kmoss_call",
+                                "[BIL] 互动层 Kotlin 通道请求已进入 ${kotlinMoss.simpleName}#$rpc"
+                            )
+                        }
+                        val delegate = args.getOrNull(3) ?: return@before
+                        val bridge = members.bridgeFor(args.getOrNull(4), args.getOrNull(2), codec) ?: return@before
+                        val proxy = MossResponseHandlerProxy.wrapTransform(handlerClass, delegate) { reply ->
+                            if (reported.compareAndSet(false, true)) {
+                                environment.logInfo(
+                                    "player_interactive_kmoss_active",
+                                    "[BIL] 互动层 Kotlin 通道 ${kotlinMoss.simpleName}#$rpc 已收到响应并进入清理"
+                                )
+                            }
+                            environment.reportRuntimeEvidence(ID, FeatureRuntimeStage.OBSERVED)
+                            runCatching {
+                                bridge.transform(reply) { javaReply -> cleaner.cleanResponse(javaReply, environment) }
+                            }.getOrElse { throwable ->
+                                environment.reportRuntimeEvidence(ID, FeatureRuntimeStage.ERROR)
+                                environment.logError(
+                                    "player_interactive_kmoss_failed",
+                                    "[BIL] 互动层 Kotlin 通道清理失败，已放行原响应(${kotlinMoss.simpleName}#$rpc): $throwable"
+                                )
+                                reply
+                            }
+                        } ?: return@before
+                        args[3] = proxy
+                    }
+                }
+                installed++
+            }.onFailure {
+                environment.logError("player_interactive_kmoss_$rpc", "[BIL] 互动层 Kotlin 通道注册失败(${kotlinMoss.simpleName}#$rpc): $it")
+            }
+        }
+        return installed
+    }
+
     private fun missing(environment: HookEnvironment, reason: String): FeatureInstallResult.Skipped {
         environment.reportStatus(CHANNEL_STATUS, reason)
         return FeatureInstallResult.Skipped(reason)
