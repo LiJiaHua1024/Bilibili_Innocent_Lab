@@ -73,7 +73,7 @@ class RemoteHookConfigContractTest {
         assertTrue(RemoteHookConfigContract.decode(encoded - FeaturePreferences.PLAYER_DEFAULT_SPEED_PERCENT)
             is RemoteHookConfigDecodeResult.Invalid)
         assertEquals("jev-test-key", snapshot.values[RemoteHookConfigContract.KEY_SEMANTIC_JEV_API_KEY])
-        assertEquals(SettingsCatalog.specs.size + 3, snapshot.values.size)
+        assertEquals(SettingsCatalog.specs.size + 6, snapshot.values.size)
     }
 
     /** JEV API Key：随 hook_config 下发且受摘要保护，但不是目录项（不进备份），超长/非字符串按未配置处理。 */
@@ -203,5 +203,30 @@ class RemoteHookConfigContractTest {
             (decoded as RemoteHookConfigDecodeResult.Invalid).reason,
             decoded.reason.startsWith(reasonPrefix)
         )
+    }
+
+    /** 2–4 号判定来源的 Key 与 1 号同等对待：签名保护、不进目录、超长按未配置。 */
+    @Test
+    fun `extra semantic source keys are signed runtime credentials too`() {
+        assertEquals(4, RemoteHookConfigContract.SEMANTIC_API_KEYS.size)
+        assertEquals(RemoteHookConfigContract.KEY_SEMANTIC_JEV_API_KEY, RemoteHookConfigContract.semanticApiKey(1))
+        RemoteHookConfigContract.SEMANTIC_API_KEYS.drop(1).forEach { key ->
+            assertTrue(key in RemoteHookConfigContract.hookValueKeys)
+            assertTrue(SettingsCatalog.specs.none { it.storageKey == key })
+            assertEquals("", defaultValues()[key])
+            assertEquals("", RemoteHookConfigContract.resolveSourceValues(
+                mapOf(key to "x".repeat(RemoteHookConfigContract.MAX_SEMANTIC_JEV_API_KEY_LENGTH + 1)))[key])
+            val encoded = RemoteHookConfigContract.encode(
+                generation = 1L,
+                moduleVersionCode = BuildConfig.VERSION_CODE.toLong(),
+                deliveryEnabled = true,
+                noRootRevision = 0L,
+                decision = UserTermsDecision.ACCEPTED,
+                values = RemoteHookConfigContract.resolveSourceValues(mapOf(key to "secret"))
+            )
+            val decoded = RemoteHookConfigContract.decode(encoded)
+            assertEquals("secret", (decoded as RemoteHookConfigDecodeResult.Ready).snapshot.values[key])
+            assertTrue(RemoteHookConfigContract.decode(encoded + (key to "other")) is RemoteHookConfigDecodeResult.Invalid)
+        }
     }
 }

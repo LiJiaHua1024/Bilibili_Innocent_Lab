@@ -535,7 +535,7 @@ internal class DynamicPurifyFeatureInstaller(
             directory,
             "${System.currentTimeMillis()} batch thread=${Thread.currentThread().name} total=${report.total} " +
                 "hits=${report.cacheHits} requested=${report.requested} blocked=${report.blocked} " +
-                "ms=${report.elapsedMs} outcome=${report.outcome} :: $preview"
+                "ms=${report.elapsedMs} outcome=${report.outcome}${report.extras()} :: $preview"
         )
     }
 

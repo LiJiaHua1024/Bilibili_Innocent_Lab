@@ -11,6 +11,11 @@ import com.Bilibili_Innocent_Lab.xposedmodule.hook.feature.PlayerSpeedConfig
 import com.Bilibili_Innocent_Lab.xposedmodule.hook.feature.SemanticJudge
 import com.Bilibili_Innocent_Lab.xposedmodule.hook.feature.SemanticPresets
 import com.Bilibili_Innocent_Lab.xposedmodule.hook.feature.SemanticSensitivity
+import com.Bilibili_Innocent_Lab.xposedmodule.hook.feature.SemanticSettings
+import com.Bilibili_Innocent_Lab.xposedmodule.hook.feature.SemanticBackend
+import com.Bilibili_Innocent_Lab.xposedmodule.hook.feature.SemanticCustomRule
+import com.Bilibili_Innocent_Lab.xposedmodule.hook.feature.SemanticGuidance
+import com.Bilibili_Innocent_Lab.xposedmodule.hook.feature.SemanticRoute
 import com.Bilibili_Innocent_Lab.xposedmodule.hook.feature.SemanticSurface
 import com.Bilibili_Innocent_Lab.xposedmodule.settings.appearance.MaterialColorSpec
 import com.Bilibili_Innocent_Lab.xposedmodule.settings.appearance.MaterialColorSpecStore
@@ -25,7 +30,7 @@ import com.Bilibili_Innocent_Lab.xposedmodule.settings.appearance.ModalBackdropB
 internal object SettingsCatalog {
     const val PRODUCT_ID = "bilibili-innocent-lab.settings"
     const val SCOPE_ID = "core-user-settings"
-    const val CATALOG_VERSION = 32
+    const val CATALOG_VERSION = 36
     const val ID_PLAYER_DEFAULT_SPEED = "player.default_speed.percent"
     const val ID_PLAYER_LONG_PRESS_SPEED = "player.long_press_speed.percent"
     const val ID_FREE_COPY_COMMENT = "free_copy.comment.enabled"
@@ -55,6 +60,35 @@ internal object SettingsCatalog {
     const val ID_COMMENT_SEMANTIC_RULES = "comments.semantic_filter.rules"
     const val ID_VIDEO_SEMANTIC_FILTER = "video.semantic_filter.enabled"
     const val ID_VIDEO_SEMANTIC_RULES = "video.semantic_filter.rules"
+    const val ID_SEMANTIC_JEV_CACHE_DAYS = "compat.semantic_jev.cache_days"
+    const val ID_SEMANTIC_JEV_PROVIDER = "compat.semantic_jev.provider"
+    const val ID_SEMANTIC_JEV_MODEL = "compat.semantic_jev.model"
+    const val ID_SEMANTIC_JEV_TIMEOUT_MS = "compat.semantic_jev.timeout_ms"
+    const val ID_SEMANTIC_JEV_GUIDANCE = "compat.semantic_jev.guidance"
+    const val ID_SEMANTIC_SOURCES = "compat.semantic_source.2.provider"
+    const val ID_DYNAMIC_SEMANTIC_SOURCE = "dynamic.semantic_filter.source"
+    const val ID_DANMAKU_SEMANTIC_SOURCE = "player.danmaku.semantic_filter.source"
+    const val ID_COMMENT_SEMANTIC_SOURCE = "comments.semantic_filter.source"
+    const val ID_VIDEO_SEMANTIC_SOURCE = "video.semantic_filter.source"
+    const val ID_DYNAMIC_SEMANTIC_CUSTOM_RULES = "dynamic.semantic_filter.custom_rules"
+    const val ID_DANMAKU_SEMANTIC_CUSTOM_RULES = "player.danmaku.semantic_filter.custom_rules"
+    const val ID_COMMENT_SEMANTIC_CUSTOM_RULES = "comments.semantic_filter.custom_rules"
+    const val ID_VIDEO_SEMANTIC_CUSTOM_RULES = "video.semantic_filter.custom_rules"
+
+    /** 各过滤面的"判定来源 / 自定义类型"目录 id。 */
+    fun semanticRouteId(surface: SemanticSurface): String = when (surface) {
+        SemanticSurface.DYNAMIC -> ID_DYNAMIC_SEMANTIC_SOURCE
+        SemanticSurface.DANMAKU -> ID_DANMAKU_SEMANTIC_SOURCE
+        SemanticSurface.COMMENT -> ID_COMMENT_SEMANTIC_SOURCE
+        SemanticSurface.VIDEO -> ID_VIDEO_SEMANTIC_SOURCE
+    }
+
+    fun semanticCustomRulesId(surface: SemanticSurface): String = when (surface) {
+        SemanticSurface.DYNAMIC -> ID_DYNAMIC_SEMANTIC_CUSTOM_RULES
+        SemanticSurface.DANMAKU -> ID_DANMAKU_SEMANTIC_CUSTOM_RULES
+        SemanticSurface.COMMENT -> ID_COMMENT_SEMANTIC_CUSTOM_RULES
+        SemanticSurface.VIDEO -> ID_VIDEO_SEMANTIC_CUSTOM_RULES
+    }
 
     private fun bool(
         id: String,
@@ -158,6 +192,53 @@ internal object SettingsCatalog {
             default = SemanticSensitivity.DEFAULT.id, allowed = SemanticSensitivity.IDS, introducedCatalogVersion = 31),
         bool(ID_SEMANTIC_JEV_WAIT_FIRST_SCREEN, FeaturePreferences.SEMANTIC_JEV_WAIT_FIRST_SCREEN,
             R.string.semantic_jev_wait_first_screen, introducedCatalogVersion = 31),
+        integer(ID_SEMANTIC_JEV_CACHE_DAYS, FeaturePreferences.SEMANTIC_JEV_CACHE_DAYS, R.string.semantic_jev_cache_days,
+            default = SemanticSettings.DEFAULT_CACHE_DAYS,
+            range = SemanticSettings.MIN_CACHE_DAYS..SemanticSettings.MAX_CACHE_DAYS, introducedCatalogVersion = 33),
+        text(ID_SEMANTIC_JEV_PROVIDER, FeaturePreferences.SEMANTIC_JEV_PROVIDER, R.string.semantic_jev_provider,
+            default = SemanticBackend.JEV, allowed = SemanticBackend.IDS, introducedCatalogVersion = 34),
+        text(ID_SEMANTIC_JEV_MODEL, FeaturePreferences.SEMANTIC_JEV_MODEL, R.string.semantic_jev_model,
+            maxStringLength = SemanticBackend.MAX_MODEL_LENGTH, introducedCatalogVersion = 34),
+        // 0 = 自动（各面默认值）；非 0 时宿主侧再夹到 500–30000。
+        integer(ID_SEMANTIC_JEV_TIMEOUT_MS, FeaturePreferences.SEMANTIC_JEV_TIMEOUT_MS, R.string.semantic_jev_timeout,
+            default = 0, range = 0..SemanticSettings.MAX_TIMEOUT_MS, introducedCatalogVersion = 35),
+        // v36：多来源（2–4 号，Key 是运行时键不进备份）、判定口径、各面判定来源与自定义类型。
+        text(ID_SEMANTIC_JEV_GUIDANCE, FeaturePreferences.SEMANTIC_JEV_GUIDANCE, R.string.semantic_jev_guidance,
+            maxStringLength = SemanticGuidance.MAX_LENGTH, introducedCatalogVersion = 36),
+        text(ID_SEMANTIC_SOURCES, FeaturePreferences.SEMANTIC_SOURCE_2_PROVIDER, R.string.semantic_source_2_label,
+            default = SemanticBackend.JEV, allowed = SemanticBackend.IDS, introducedCatalogVersion = 36),
+        text("compat.semantic_source.2.endpoint", FeaturePreferences.SEMANTIC_SOURCE_2_ENDPOINT, R.string.semantic_source_2_label,
+            maxStringLength = SemanticJudge.MAX_ENDPOINT_LENGTH, introducedCatalogVersion = 36),
+        text("compat.semantic_source.2.model", FeaturePreferences.SEMANTIC_SOURCE_2_MODEL, R.string.semantic_source_2_label,
+            maxStringLength = SemanticBackend.MAX_MODEL_LENGTH, introducedCatalogVersion = 36),
+        text("compat.semantic_source.3.provider", FeaturePreferences.SEMANTIC_SOURCE_3_PROVIDER, R.string.semantic_source_3_label,
+            default = SemanticBackend.JEV, allowed = SemanticBackend.IDS, introducedCatalogVersion = 36),
+        text("compat.semantic_source.3.endpoint", FeaturePreferences.SEMANTIC_SOURCE_3_ENDPOINT, R.string.semantic_source_3_label,
+            maxStringLength = SemanticJudge.MAX_ENDPOINT_LENGTH, introducedCatalogVersion = 36),
+        text("compat.semantic_source.3.model", FeaturePreferences.SEMANTIC_SOURCE_3_MODEL, R.string.semantic_source_3_label,
+            maxStringLength = SemanticBackend.MAX_MODEL_LENGTH, introducedCatalogVersion = 36),
+        text("compat.semantic_source.4.provider", FeaturePreferences.SEMANTIC_SOURCE_4_PROVIDER, R.string.semantic_source_4_label,
+            default = SemanticBackend.JEV, allowed = SemanticBackend.IDS, introducedCatalogVersion = 36),
+        text("compat.semantic_source.4.endpoint", FeaturePreferences.SEMANTIC_SOURCE_4_ENDPOINT, R.string.semantic_source_4_label,
+            maxStringLength = SemanticJudge.MAX_ENDPOINT_LENGTH, introducedCatalogVersion = 36),
+        text("compat.semantic_source.4.model", FeaturePreferences.SEMANTIC_SOURCE_4_MODEL, R.string.semantic_source_4_label,
+            maxStringLength = SemanticBackend.MAX_MODEL_LENGTH, introducedCatalogVersion = 36),
+        text(ID_DYNAMIC_SEMANTIC_SOURCE, FeaturePreferences.DYNAMIC_SEMANTIC_FILTER_SOURCE, R.string.semantic_route_title,
+            default = SemanticRoute.AUTO, allowed = SemanticRoute.IDS, introducedCatalogVersion = 36),
+        text(ID_DANMAKU_SEMANTIC_SOURCE, FeaturePreferences.DANMAKU_SEMANTIC_FILTER_SOURCE, R.string.semantic_route_title,
+            default = SemanticRoute.AUTO, allowed = SemanticRoute.IDS, introducedCatalogVersion = 36),
+        text(ID_COMMENT_SEMANTIC_SOURCE, FeaturePreferences.COMMENT_SEMANTIC_FILTER_SOURCE, R.string.semantic_route_title,
+            default = SemanticRoute.AUTO, allowed = SemanticRoute.IDS, introducedCatalogVersion = 36),
+        text(ID_VIDEO_SEMANTIC_SOURCE, FeaturePreferences.VIDEO_SEMANTIC_FILTER_SOURCE, R.string.semantic_route_title,
+            default = SemanticRoute.AUTO, allowed = SemanticRoute.IDS, introducedCatalogVersion = 36),
+        text(ID_DYNAMIC_SEMANTIC_CUSTOM_RULES, FeaturePreferences.DYNAMIC_SEMANTIC_FILTER_CUSTOM_RULES, R.string.semantic_custom_rules_title,
+            maxStringLength = SemanticCustomRule.MAX_STORAGE_LENGTH, introducedCatalogVersion = 36),
+        text(ID_DANMAKU_SEMANTIC_CUSTOM_RULES, FeaturePreferences.DANMAKU_SEMANTIC_FILTER_CUSTOM_RULES, R.string.semantic_custom_rules_title,
+            maxStringLength = SemanticCustomRule.MAX_STORAGE_LENGTH, introducedCatalogVersion = 36),
+        text(ID_COMMENT_SEMANTIC_CUSTOM_RULES, FeaturePreferences.COMMENT_SEMANTIC_FILTER_CUSTOM_RULES, R.string.semantic_custom_rules_title,
+            maxStringLength = SemanticCustomRule.MAX_STORAGE_LENGTH, introducedCatalogVersion = 36),
+        text(ID_VIDEO_SEMANTIC_CUSTOM_RULES, FeaturePreferences.VIDEO_SEMANTIC_FILTER_CUSTOM_RULES, R.string.semantic_custom_rules_title,
+            maxStringLength = SemanticCustomRule.MAX_STORAGE_LENGTH, introducedCatalogVersion = 36),
         bool("ads.home_banner.hidden", HookEntry.PREF_BANNER_ENABLED, R.string.banner_ad_enable, default = true),
         bool("ads.merchandise.hidden", HookEntry.PREF_MERCH_ENABLED, R.string.merch_ad_enable, default = true),
 
@@ -745,7 +826,7 @@ internal object SettingsCatalog {
     val byStorageKey: Map<String, SettingSpec> = specs.associateBy(SettingSpec::storageKey)
 
     init {
-        check(specs.size == 162) { "Expected 162 catalog settings, found ${specs.size}" }
+        check(specs.size == 184) { "Expected 184 catalog settings, found ${specs.size}" }
         check(byId.size == specs.size) { "Duplicate logical setting id" }
         check(specs.map(SettingSpec::storageKey).distinct().size == specs.size) {
             "Duplicate settings storage key"

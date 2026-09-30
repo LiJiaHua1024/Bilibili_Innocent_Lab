@@ -18,9 +18,8 @@ internal object ExactRuleSetCodec {
         if (raw.isNullOrBlank()) return emptySet()
         return raw.split(separators)
             .asSequence()
-            .map(String::trim)
+            .map { TextNormalizer.forMatching(it).trim() }
             .filter(String::isNotEmpty)
-            .map(String::lowercase)
             .toCollection(LinkedHashSet())
     }
 
@@ -34,7 +33,7 @@ internal object ExactRuleSetCodec {
         if (entries.isEmpty()) return false
         for (raw in values) {
             if (raw.isNullOrBlank()) continue
-            if (raw.trim().lowercase() in entries) return true
+            if (TextNormalizer.forMatching(raw).trim() in entries) return true
         }
         return false
     }

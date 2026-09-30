@@ -64,6 +64,21 @@ internal object RemoteHookConfigContract {
     const val KEY_SEMANTIC_JEV_API_KEY = "semantic_jev_api_key"
     const val MAX_SEMANTIC_JEV_API_KEY_LENGTH = 512
 
+    /** 2–4 号判定来源的 Key；与 1 号同样是签名保护的运行时凭据，不进目录、备份与诊断。 */
+    const val KEY_SEMANTIC_SOURCE_2_API_KEY = "semantic_source_2_api_key"
+    const val KEY_SEMANTIC_SOURCE_3_API_KEY = "semantic_source_3_api_key"
+    const val KEY_SEMANTIC_SOURCE_4_API_KEY = "semantic_source_4_api_key"
+
+    /** 来源编号（1 起）→ Key 的键；按编号排好，签名与校验按这个顺序。 */
+    val SEMANTIC_API_KEYS: List<String> = listOf(
+        KEY_SEMANTIC_JEV_API_KEY,
+        KEY_SEMANTIC_SOURCE_2_API_KEY,
+        KEY_SEMANTIC_SOURCE_3_API_KEY,
+        KEY_SEMANTIC_SOURCE_4_API_KEY
+    )
+
+    fun semanticApiKey(index: Int): String = SEMANTIC_API_KEYS[index - 1]
+
     private val metadataKeys = setOf(
         KEY_READY,
         KEY_SCHEMA_VERSION,
@@ -76,11 +91,10 @@ internal object RemoteHookConfigContract {
         KEY_TERMS_DECISION,
         KEY_DIGEST
     )
-    private val runtimeKeys = setOf(
+    private val runtimeKeys = linkedSetOf(
         KEY_FREE_COPY_CONFIG_REVISION,
-        KEY_ADAPTER_RESET_TIMESTAMP,
-        KEY_SEMANTIC_JEV_API_KEY
-    )
+        KEY_ADAPTER_RESET_TIMESTAMP
+    ) + SEMANTIC_API_KEYS
     val hookValueKeys: Set<String> = SettingsCatalog.specs
         .mapTo(linkedSetOf()) { it.storageKey }
         .apply { addAll(runtimeKeys) }
@@ -113,11 +127,13 @@ internal object RemoteHookConfigContract {
                 KEY_ADAPTER_RESET_TIMESTAMP,
                 (raw[KEY_ADAPTER_RESET_TIMESTAMP] as? Long)?.coerceAtLeast(0L) ?: 0L
             )
-            put(
-                KEY_SEMANTIC_JEV_API_KEY,
-                (raw[KEY_SEMANTIC_JEV_API_KEY] as? String)?.trim()
-                    ?.takeIf { it.length <= MAX_SEMANTIC_JEV_API_KEY_LENGTH }.orEmpty()
-            )
+            SEMANTIC_API_KEYS.forEach { key ->
+                put(
+                    key,
+                    (raw[key] as? String)?.trim()
+                        ?.takeIf { it.length <= MAX_SEMANTIC_JEV_API_KEY_LENGTH }.orEmpty()
+                )
+            }
         }
 
     fun encode(
@@ -257,10 +273,11 @@ internal object RemoteHookConfigContract {
             ?: return "runtime-type:$KEY_ADAPTER_RESET_TIMESTAMP"
         if (freeCopyRevision < 0L) return "runtime-value:$KEY_FREE_COPY_CONFIG_REVISION"
         if (adapterResetTimestamp < 0L) return "runtime-value:$KEY_ADAPTER_RESET_TIMESTAMP"
-        val jevKey = values[KEY_SEMANTIC_JEV_API_KEY] as? String
-            ?: return "runtime-type:$KEY_SEMANTIC_JEV_API_KEY"
-        if (jevKey.length > MAX_SEMANTIC_JEV_API_KEY_LENGTH || jevKey != jevKey.trim()) {
-            return "runtime-value:$KEY_SEMANTIC_JEV_API_KEY"
+        SEMANTIC_API_KEYS.forEach { key ->
+            val apiKey = values[key] as? String ?: return "runtime-type:$key"
+            if (apiKey.length > MAX_SEMANTIC_JEV_API_KEY_LENGTH || apiKey != apiKey.trim()) {
+                return "runtime-value:$key"
+            }
         }
         return null
     }
@@ -304,7 +321,7 @@ internal object RemoteHookConfigContract {
                 }
                 output.writeLong(values.getValue(KEY_FREE_COPY_CONFIG_REVISION) as Long)
                 output.writeLong(values.getValue(KEY_ADAPTER_RESET_TIMESTAMP) as Long)
-                output.writeString(values.getValue(KEY_SEMANTIC_JEV_API_KEY) as String)
+                SEMANTIC_API_KEYS.forEach { key -> output.writeString(values.getValue(key) as String) }
             }
             bytes.toByteArray()
         }

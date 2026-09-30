@@ -263,6 +263,67 @@ internal object FeaturePreferences {
     /** JEV 灵敏度：low / medium / high。 */
     const val SEMANTIC_JEV_SENSITIVITY = "semantic_jev_sensitivity"
 
+    /** 判定后端：jev（结构化接口）/ openai（OpenAI 兼容聊天接口）/ cloudflare（Workers AI）。 */
+    const val SEMANTIC_JEV_PROVIDER = "semantic_jev_provider"
+
+    /** 模型名；JEV 留空为 jev-latest，OpenAI 兼容必填（如 deepseek-chat、glm-4-flash）。 */
+    const val SEMANTIC_JEV_MODEL = "semantic_jev_model"
+
+    /** 用户写的判定口径（空 = 默认）；防注入前缀与输出格式由模块固定，见 SemanticGuidance。 */
+    const val SEMANTIC_JEV_GUIDANCE = "semantic_jev_guidance"
+
+    /** 2–4 号判定来源：接口类型 / 地址 / 模型（Key 是运行时键，见 RemoteHookConfigContract）。1 号沿用 SEMANTIC_JEV_*。 */
+    const val SEMANTIC_SOURCE_2_PROVIDER = "semantic_source_2_provider"
+    const val SEMANTIC_SOURCE_2_ENDPOINT = "semantic_source_2_endpoint"
+    const val SEMANTIC_SOURCE_2_MODEL = "semantic_source_2_model"
+    const val SEMANTIC_SOURCE_3_PROVIDER = "semantic_source_3_provider"
+    const val SEMANTIC_SOURCE_3_ENDPOINT = "semantic_source_3_endpoint"
+    const val SEMANTIC_SOURCE_3_MODEL = "semantic_source_3_model"
+    const val SEMANTIC_SOURCE_4_PROVIDER = "semantic_source_4_provider"
+    const val SEMANTIC_SOURCE_4_ENDPOINT = "semantic_source_4_endpoint"
+    const val SEMANTIC_SOURCE_4_MODEL = "semantic_source_4_model"
+
+    /** 各过滤面的判定来源：auto（自动分流）或来源编号。 */
+    const val DYNAMIC_SEMANTIC_FILTER_SOURCE = "dynamic_semantic_filter_source"
+    const val DANMAKU_SEMANTIC_FILTER_SOURCE = "danmaku_semantic_filter_source"
+    const val COMMENT_SEMANTIC_FILTER_SOURCE = "comment_semantic_filter_source"
+    const val VIDEO_SEMANTIC_FILTER_SOURCE = "video_semantic_filter_source"
+
+    /** 各过滤面的自定义屏蔽类型（JSON 数组文本，见 SemanticCustomRule）。 */
+    const val DYNAMIC_SEMANTIC_FILTER_CUSTOM_RULES = "dynamic_semantic_filter_custom_rules"
+    const val DANMAKU_SEMANTIC_FILTER_CUSTOM_RULES = "danmaku_semantic_filter_custom_rules"
+    const val COMMENT_SEMANTIC_FILTER_CUSTOM_RULES = "comment_semantic_filter_custom_rules"
+    const val VIDEO_SEMANTIC_FILTER_CUSTOM_RULES = "video_semantic_filter_custom_rules"
+
+    /** 判定来源 n 的 (接口类型, 地址, 模型) 偏好键；1 号是最早的单来源键。 */
+    fun semanticSourceKeys(index: Int): Triple<String, String, String> = when (index) {
+        1 -> Triple(SEMANTIC_JEV_PROVIDER, SEMANTIC_JEV_ENDPOINT, SEMANTIC_JEV_MODEL)
+        2 -> Triple(SEMANTIC_SOURCE_2_PROVIDER, SEMANTIC_SOURCE_2_ENDPOINT, SEMANTIC_SOURCE_2_MODEL)
+        3 -> Triple(SEMANTIC_SOURCE_3_PROVIDER, SEMANTIC_SOURCE_3_ENDPOINT, SEMANTIC_SOURCE_3_MODEL)
+        4 -> Triple(SEMANTIC_SOURCE_4_PROVIDER, SEMANTIC_SOURCE_4_ENDPOINT, SEMANTIC_SOURCE_4_MODEL)
+        else -> throw IllegalArgumentException("semantic source $index")
+    }
+
+    fun semanticRouteKey(surface: SemanticSurface): String = when (surface) {
+        SemanticSurface.DYNAMIC -> DYNAMIC_SEMANTIC_FILTER_SOURCE
+        SemanticSurface.DANMAKU -> DANMAKU_SEMANTIC_FILTER_SOURCE
+        SemanticSurface.COMMENT -> COMMENT_SEMANTIC_FILTER_SOURCE
+        SemanticSurface.VIDEO -> VIDEO_SEMANTIC_FILTER_SOURCE
+    }
+
+    fun semanticCustomRulesKey(surface: SemanticSurface): String = when (surface) {
+        SemanticSurface.DYNAMIC -> DYNAMIC_SEMANTIC_FILTER_CUSTOM_RULES
+        SemanticSurface.DANMAKU -> DANMAKU_SEMANTIC_FILTER_CUSTOM_RULES
+        SemanticSurface.COMMENT -> COMMENT_SEMANTIC_FILTER_CUSTOM_RULES
+        SemanticSurface.VIDEO -> VIDEO_SEMANTIC_FILTER_CUSTOM_RULES
+    }
+
+    /** 等待判定的上限（毫秒）；0 = 自动（弹幕 3 s、其余 2.5 s），否则 500–30000。 */
+    const val SEMANTIC_JEV_TIMEOUT_MS = "semantic_jev_timeout_ms"
+
+    /** JEV 判定结果保存时长（天，1–90），内存与硬盘缓存共用。 */
+    const val SEMANTIC_JEV_CACHE_DAYS = "semantic_jev_cache_days"
+
     /** JEV 首屏是否等待判定；默认不等（首屏放行，下次加载生效）。 */
     const val SEMANTIC_JEV_WAIT_FIRST_SCREEN = "semantic_jev_wait_first_screen"
 

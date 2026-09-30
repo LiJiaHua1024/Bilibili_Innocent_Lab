@@ -25,7 +25,7 @@ internal data class AuthorRuleSet(
     /** 两项都读不到时返回 false：读取失败一律保守放行，绝不按"疑似"删除。 */
     fun matches(name: String?, mid: Long?): Boolean =
         (mid != null && mid in mids) ||
-            (name != null && name.trim().lowercase() in names)
+            (name != null && TextNormalizer.forMatching(name).trim() in names)
 
     companion object {
         val EMPTY = AuthorRuleSet(emptySet(), emptySet())

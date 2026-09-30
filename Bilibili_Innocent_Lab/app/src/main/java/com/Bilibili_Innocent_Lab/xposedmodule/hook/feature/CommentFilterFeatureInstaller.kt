@@ -319,6 +319,9 @@ internal class CommentFilterFeatureInstaller(
                             method.name, *method.parameterTypes) {
                             before {
                                 val delegate = args.getOrNull(1) ?: return@before
+                                // 模块自己发起的请求（回复拓扑翻页等）不判定：那不是用户正在看的评论列表，
+                                // 判了既额外计费，开"首屏等待"时还会拖慢拓扑面板。
+                                if (isModuleOwnedHandler(delegate)) return@before
                                 MossResponseHandlerProxy.wrap(handlerClass, delegate) { response -> observe(response) }
                                     ?.let { args[1] = it }
                             }
@@ -345,6 +348,13 @@ internal class CommentFilterFeatureInstaller(
         }
         environment.logInfo("comment_semantic_moss", "[BIL] 智能过滤评论：提前判定边界 $hooks 个")
     }
+
+    /** 回调是本模块创建的动态代理（`Proxy` 的调用处理器由模块类加载器加载）。 */
+    private fun isModuleOwnedHandler(handler: Any): Boolean = runCatching {
+        java.lang.reflect.Proxy.isProxyClass(handler.javaClass) &&
+            java.lang.reflect.Proxy.getInvocationHandler(handler).javaClass.classLoader ==
+            classOf<CommentFilterFeatureInstaller>().classLoader
+    }.getOrDefault(false)
 
     /** 一层反射：响应对象上所有返回 ReplyInfo 或 List<ReplyInfo> 的 getter，外加每条 ReplyInfo 的子回复。 */
     private fun collectReplyTexts(
@@ -386,7 +396,7 @@ internal class CommentFilterFeatureInstaller(
                 dir,
                 "${System.currentTimeMillis()} $source thread=${Thread.currentThread().name} total=${report.total} " +
                     "requested=${report.requested} blocked=${report.blocked} ms=${report.elapsedMs} " +
-                    "outcome=${report.outcome} :: $blocked"
+                    "outcome=${report.outcome}${report.extras()} :: $blocked"
             )
         }
     }

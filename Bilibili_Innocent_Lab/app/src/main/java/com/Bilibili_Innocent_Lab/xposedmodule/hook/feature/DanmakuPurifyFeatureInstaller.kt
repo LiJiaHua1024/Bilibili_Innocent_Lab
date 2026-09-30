@@ -327,7 +327,10 @@ internal class DanmakuPurifyFeatureInstaller(
         val getter = members.elemList?.elemsGetter ?: return null
         val list = base ?: invokeList(getter, reply)?.filterNotNull() ?: return null
         if (list.isEmpty()) return null
-        val texts = list.map { elem -> (runCatching { content.invoke(elem) }.getOrNull() as? String)?.trim().orEmpty() }
+        // 去重键与缓存键同一套归一化：`哈哈哈 `、`ＡＡＡ` 与 `哈哈哈`、`AAA` 只判一次。
+        val texts = list.map { elem ->
+            (runCatching { content.invoke(elem) }.getOrNull() as? String)?.let(TextNormalizer::forSemantic).orEmpty()
+        }
         val unique = LinkedHashSet<String>()
         for (text in texts) {
             if (unique.size >= SEMANTIC_MAX_UNIQUE) break
@@ -362,7 +365,7 @@ internal class DanmakuPurifyFeatureInstaller(
             directory,
             "${System.currentTimeMillis()} danmaku thread=${Thread.currentThread().name} unique=${report.total} " +
                 "requested=${report.requested} blocked=${report.blocked} ms=${report.elapsedMs} " +
-                "outcome=${report.outcome} :: $blocked"
+                "outcome=${report.outcome}${report.extras()} :: $blocked"
         )
     }
 
@@ -536,7 +539,7 @@ internal class DanmakuPurifyFeatureInstaller(
 
         /** 每个分段最多判定的不同文本数；超出部分只走规则。 */
         const val SEMANTIC_MAX_UNIQUE = 300
-        /** 弹幕短文本，一个请求可放更多题；分段级总预算。 */
+        /** 弹幕短文本，希望一个请求多放题；实际还受后端上限约束（JEV 32 题，被拒时自动对半拆分）。 */
         const val SEMANTIC_BATCH_SIZE = 100
         const val SEMANTIC_TIMEOUT_MS = 3_000
     }

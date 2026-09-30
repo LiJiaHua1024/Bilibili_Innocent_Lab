@@ -77,7 +77,10 @@ class LiquidControlStyleTest {
         // 同日强力模式改为二级勾选面板（AiStrongModeDialogs.kt），34 → 35。
         // 2026-09-29：新增 JEV 语义判定配置面板（SemanticJevDialogs.kt），35 → 36；
         // 同日新增各过滤面「屏蔽类型」勾选面板（同文件 showSemanticRulesDialog），36 → 37。
-        assertEquals(37, dialogs)
+        // 2026-09-30：多来源 / 判定来源 / 自定义类型的表单弹窗统一经 presentSemanticDialog 构建并展示，
+        // 它取代了原来的 JEV 面板函数，统计仍是 37（新增的弹窗都走这一个受检函数）。
+        // 同日新增 AI 语义判定各面板右上角 ⓘ 的说明子面板（showSemanticInfoDialog），37 → 38。
+        assertEquals(38, dialogs)
         // 「管理常用」改用定宽 presentSizedModalDialog（EXACTLY 行宽保证把手钉右缘）。
         assertTrue(SettingsUiSource.function("showSettingsFavoritesDialog").contains("presentSizedModalDialog(dialog, container, width, anchor)"))
         val presenter = SettingsUiSource.function("presentSizedModalDialog")

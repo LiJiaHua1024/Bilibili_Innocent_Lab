@@ -6068,6 +6068,16 @@ class MainActivity : SkinnedActivity() {
                         settingsDestinations.bind(SettingsCatalog.ID_SEMANTIC_JEV_ENDPOINT, this)
                         settingsDestinations.bind(SettingsCatalog.ID_SEMANTIC_JEV_SENSITIVITY, this)
                         settingsDestinations.bind(SettingsCatalog.ID_SEMANTIC_JEV_WAIT_FIRST_SCREEN, this)
+                        settingsDestinations.bind(SettingsCatalog.ID_SEMANTIC_JEV_CACHE_DAYS, this)
+                        settingsDestinations.bind(SettingsCatalog.ID_SEMANTIC_JEV_PROVIDER, this)
+                        settingsDestinations.bind(SettingsCatalog.ID_SEMANTIC_JEV_MODEL, this)
+                        settingsDestinations.bind(SettingsCatalog.ID_SEMANTIC_JEV_TIMEOUT_MS, this)
+                        settingsDestinations.bind(SettingsCatalog.ID_SEMANTIC_JEV_GUIDANCE, this)
+                        (2..4).forEach { index ->
+                            listOf("provider", "endpoint", "model").forEach { field ->
+                                settingsDestinations.bind("compat.semantic_source.$index.$field", this)
+                            }
+                        }
                         text = semanticJevEntryText()
                         textColor = colorResource(R.color.colorTextGray)
                         textSize = 15f
@@ -8310,6 +8320,7 @@ class MainActivity : SkinnedActivity() {
         }
         TextView(lparams = LayoutParams(widthMatchParent = true) { topMargin = 4.dp }) {
             settingsDestinations.bind(rulesSettingId, this)
+            settingsDestinations.bind(SettingsCatalog.semanticCustomRulesId(surface), this)
             text = semanticRulesEntryText(surface)
             textColor = colorResource(R.color.colorTextGray)
             textSize = 15f
@@ -8320,6 +8331,21 @@ class MainActivity : SkinnedActivity() {
             isFocusable = true
             setOnClickListener { view ->
                 showSemanticRulesDialog(surface, anchor = view) { text = semanticRulesEntryText(surface) }
+            }
+        }
+        // 判定来源：自动分流或固定某个来源（来源本身在 实验性功能 → 兼容 → AI 语义判定 里填）。
+        TextView(lparams = LayoutParams(widthMatchParent = true) { topMargin = 2.dp }) {
+            settingsDestinations.bind(SettingsCatalog.semanticRouteId(surface), this)
+            text = semanticRouteEntryText(surface)
+            textColor = colorResource(R.color.colorTextGray)
+            textSize = 15f
+            setLineSpacing(5f, 1f)
+            setPadding(12.dp, 10.dp, 12.dp, 10.dp)
+            background = selfRippleBackground(10f)
+            isClickable = true
+            isFocusable = true
+            setOnClickListener { view ->
+                showSemanticRouteDialog(surface, anchor = view) { text = semanticRouteEntryText(surface) }
             }
         }
     }

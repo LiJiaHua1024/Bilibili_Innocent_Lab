@@ -130,11 +130,11 @@ class SettingsCatalogTest {
     }
 
     @Test
-    fun `catalog is a unique allowlist with 162 settings`() {
-        assertEquals(162, SettingsCatalog.specs.size)
-        assertEquals(162, SettingsCatalog.specs.map { it.id }.distinct().size)
-        assertEquals(162, SettingsCatalog.specs.map { it.storageKey }.distinct().size)
-        assertEquals(159, SettingsCatalog.specs.count { it.restorePolicy == RestorePolicy.AUTOMATIC })
+    fun `catalog is a unique allowlist with 184 settings`() {
+        assertEquals(184, SettingsCatalog.specs.size)
+        assertEquals(184, SettingsCatalog.specs.map { it.id }.distinct().size)
+        assertEquals(184, SettingsCatalog.specs.map { it.storageKey }.distinct().size)
+        assertEquals(181, SettingsCatalog.specs.count { it.restorePolicy == RestorePolicy.AUTOMATIC })
         assertEquals(3, SettingsCatalog.specs.count { it.restorePolicy == RestorePolicy.MANUAL })
         assertTrue(SettingsCatalog.specs.all { it.accepts(it.defaultValue) })
         assertTrue(SettingsCatalog.specs.all { it.id.matches(Regex("[a-z0-9][a-z0-9._-]{0,127}")) })
@@ -365,7 +365,7 @@ class SettingsCatalogTest {
         val expected = requireNotNull(javaClass.classLoader?.getResourceAsStream("settings-backup/catalog-v13.txt"))
             .bufferedReader().useLines { it.filter(String::isNotBlank).toList() }
         assertEquals(expected, SettingsCatalog.specs.filter { it.introducedCatalogVersion <= 13 }.map { it.id }.sorted())
-        assertEquals(32, SettingsCatalog.CATALOG_VERSION)
+        assertEquals(36, SettingsCatalog.CATALOG_VERSION)
         val added = SettingsCatalog.specs.filter { it.introducedCatalogVersion == 13 }
         assertEquals(6, added.size)
         assertTrue(added.all { it.restorePolicy == RestorePolicy.AUTOMATIC && ImportEffect.RESTART_BILIBILI in it.effects })
@@ -597,11 +597,76 @@ class SettingsCatalogTest {
         assertTrue(added.values.all { it.restorePolicy == RestorePolicy.AUTOMATIC && ImportEffect.RESTART_BILIBILI in it.effects })
     }
 
+    /** 判定结果保存时长：1–90 天，默认 7；只影响宿主缓存，恢复时自动写回。 */
+    @Test
+    fun `catalog v33 adds the bounded semantic cache retention`() {
+        val expected = requireNotNull(
+            javaClass.classLoader?.getResourceAsStream("settings-backup/catalog-v33.txt")
+        ).bufferedReader().useLines { it.filter(String::isNotBlank).toList() }
+        assertEquals(expected, SettingsCatalog.specs.filter { it.introducedCatalogVersion <= 33 }.map { it.id }.sorted())
+        val spec = SettingsCatalog.specs.single { it.introducedCatalogVersion == 33 }
+        assertEquals(SettingsCatalog.ID_SEMANTIC_JEV_CACHE_DAYS, spec.id)
+        assertEquals(SettingValue.IntValue(7), spec.defaultValue)
+        assertEquals(1..90, spec.integerRange)
+        assertTrue(spec.accepts(SettingValue.IntValue(90)))
+        assertFalse(spec.accepts(SettingValue.IntValue(91)))
+        assertFalse(spec.accepts(SettingValue.IntValue(0)))
+        assertEquals(SettingValue.IntValue(90), spec.normalizeForBackup(SettingValue.IntValue(365)))
+    }
+
+    /** 判定后端可选（JEV / OpenAI 兼容）+ 模型名；默认 JEV、模型留空。 */
+    @Test
+    fun `catalog v34 adds the semantic backend and model`() {
+        val expected = requireNotNull(
+            javaClass.classLoader?.getResourceAsStream("settings-backup/catalog-v34.txt")
+        ).bufferedReader().useLines { it.filter(String::isNotBlank).toList() }
+        assertEquals(expected, SettingsCatalog.specs.filter { it.introducedCatalogVersion <= 34 }.map { it.id }.sorted())
+        val added = SettingsCatalog.specs.filter { it.introducedCatalogVersion == 34 }.associateBy { it.id }
+        val provider = added.getValue(SettingsCatalog.ID_SEMANTIC_JEV_PROVIDER)
+        assertEquals(SettingValue.Text("jev"), provider.defaultValue)
+        // v35 起新增 cloudflare（同一个键，取值集合扩大）。
+        assertEquals(setOf("jev", "openai", "cloudflare"), provider.allowedStrings)
+        assertEquals(SettingValue.Text(""), added.getValue(SettingsCatalog.ID_SEMANTIC_JEV_MODEL).defaultValue)
+        assertEquals(2, added.size)
+    }
+
+    /** 等待上限：0 = 自动，其余毫秒 ≤ 30000；只影响宿主，恢复时自动写回。 */
+    @Test
+    fun `catalog v35 adds the semantic wait limit`() {
+        val expected = requireNotNull(
+            javaClass.classLoader?.getResourceAsStream("settings-backup/catalog-v35.txt")
+        ).bufferedReader().useLines { it.filter(String::isNotBlank).toList() }
+        assertEquals(expected, SettingsCatalog.specs.filter { it.introducedCatalogVersion <= 35 }.map { it.id }.sorted())
+        val spec = SettingsCatalog.specs.single { it.introducedCatalogVersion == 35 }
+        assertEquals(SettingsCatalog.ID_SEMANTIC_JEV_TIMEOUT_MS, spec.id)
+        assertEquals(SettingValue.IntValue(0), spec.defaultValue)
+        assertEquals(0..30_000, spec.integerRange)
+        assertFalse(spec.accepts(SettingValue.IntValue(30_001)))
+    }
+
+    /** 多来源（2–4 号，Key 不在目录）、判定口径、各面判定来源与自定义类型；默认全空 / 自动分流。 */
+    @Test
+    fun `catalog v36 adds multi source routing guidance and custom types`() {
+        val expected = requireNotNull(
+            javaClass.classLoader?.getResourceAsStream("settings-backup/catalog-v36.txt")
+        ).bufferedReader().useLines { it.filter(String::isNotBlank).toList() }
+        assertEquals(expected, SettingsCatalog.specs.filter { it.introducedCatalogVersion <= 36 }.map { it.id }.sorted())
+        val added = SettingsCatalog.specs.filter { it.introducedCatalogVersion == 36 }.associateBy { it.id }
+        assertEquals(18, added.size)
+        assertTrue(added.values.all { it.type == SettingValueType.STRING && it.restorePolicy == RestorePolicy.AUTOMATIC })
+        assertTrue(added.keys.none { it.contains("api_key") }) // Key 不进目录与备份
+        val route = added.getValue(SettingsCatalog.ID_COMMENT_SEMANTIC_SOURCE)
+        assertEquals(SettingValue.Text("auto"), route.defaultValue)
+        assertEquals(setOf("auto", "1", "2", "3", "4"), route.allowedStrings)
+        assertEquals(SettingValue.Text("jev"), added.getValue("compat.semantic_source.3.provider").defaultValue)
+        assertFalse(added.getValue(SettingsCatalog.ID_SEMANTIC_JEV_GUIDANCE).accepts(SettingValue.Text("x".repeat(1_001))))
+    }
+
     @Test
     fun `catalog types and manual roaming boundary are explicit`() {
         assertEquals(120, SettingsCatalog.specs.count { it.type == SettingValueType.BOOLEAN })
-        assertEquals(11, SettingsCatalog.specs.count { it.type == SettingValueType.INTEGER })
-        assertEquals(31, SettingsCatalog.specs.count { it.type == SettingValueType.STRING })
+        assertEquals(13, SettingsCatalog.specs.count { it.type == SettingValueType.INTEGER })
+        assertEquals(51, SettingsCatalog.specs.count { it.type == SettingValueType.STRING })
 
         val roaming = requireNotNull(SettingsCatalog.byId["compat.roaming.enabled"])
         assertEquals(RestorePolicy.MANUAL, roaming.restorePolicy)

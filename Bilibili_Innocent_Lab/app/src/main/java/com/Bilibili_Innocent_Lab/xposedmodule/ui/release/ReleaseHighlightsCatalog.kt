@@ -1,10 +1,19 @@
 package com.Bilibili_Innocent_Lab.xposedmodule.ui.release
 
 import com.Bilibili_Innocent_Lab.xposedmodule.R
+import com.Bilibili_Innocent_Lab.xposedmodule.hook.feature.SemanticSurface
 import com.Bilibili_Innocent_Lab.xposedmodule.settings.backup.SettingsCatalog
 
 internal enum class HighlightKind { NEW, IMPROVED, FIXED }
-internal data class HighlightDestination(val settingId: String, val homeFilterOption: Boolean = false)
+/**
+ * [alsoCovers]：同一项功能附带的其它设置（例如 2–4 号来源的类型/地址/模型、四个过滤面各自的判定来源），
+ * 显式逐个列出算作"已审阅"，不必每个都占一条亮点（总数有 64 条上限）。只用于覆盖审阅，不参与跳转。
+ */
+internal data class HighlightDestination(
+    val settingId: String,
+    val homeFilterOption: Boolean = false,
+    val alsoCovers: Set<String> = emptySet()
+)
 internal data class ReleaseHighlight(
     val id: String, val kind: HighlightKind, val descriptionRes: Int,
     val destination: HighlightDestination? = null, val standaloneTitleRes: Int? = null
@@ -180,7 +189,35 @@ internal object ReleaseHighlightsCatalog {
             HighlightDestination(SettingsCatalog.ID_COMMENT_SEMANTIC_RULES)),
         ReleaseHighlight("video-semantic-rules", HighlightKind.NEW,
             R.string.highlights_semantic_rules,
-            HighlightDestination(SettingsCatalog.ID_VIDEO_SEMANTIC_RULES))
+            HighlightDestination(SettingsCatalog.ID_VIDEO_SEMANTIC_RULES)),
+        ReleaseHighlight("semantic-jev-cache-days", HighlightKind.NEW,
+            R.string.highlights_semantic_cache,
+            HighlightDestination(SettingsCatalog.ID_SEMANTIC_JEV_CACHE_DAYS)),
+        ReleaseHighlight("semantic-provider", HighlightKind.NEW,
+            R.string.highlights_semantic_provider,
+            HighlightDestination(SettingsCatalog.ID_SEMANTIC_JEV_PROVIDER)),
+        ReleaseHighlight("semantic-model", HighlightKind.NEW,
+            R.string.highlights_semantic_provider,
+            HighlightDestination(SettingsCatalog.ID_SEMANTIC_JEV_MODEL)),
+        ReleaseHighlight("semantic-timeout", HighlightKind.NEW,
+            R.string.highlights_semantic_timeout,
+            HighlightDestination(SettingsCatalog.ID_SEMANTIC_JEV_TIMEOUT_MS)),
+        ReleaseHighlight("semantic-multi-source", HighlightKind.NEW,
+            R.string.highlights_semantic_multi_source,
+            HighlightDestination(SettingsCatalog.ID_SEMANTIC_SOURCES, alsoCovers = (2..4).flatMap { index ->
+                listOf("provider", "endpoint", "model").map { "compat.semantic_source.$index.$it" }
+            }.toSet())),
+        ReleaseHighlight("semantic-comment-route", HighlightKind.NEW,
+            R.string.highlights_semantic_multi_source,
+            HighlightDestination(SettingsCatalog.ID_COMMENT_SEMANTIC_SOURCE,
+                alsoCovers = SemanticSurface.entries.map(SettingsCatalog::semanticRouteId).toSet())),
+        ReleaseHighlight("semantic-guidance", HighlightKind.NEW,
+            R.string.highlights_semantic_custom,
+            HighlightDestination(SettingsCatalog.ID_SEMANTIC_JEV_GUIDANCE)),
+        ReleaseHighlight("semantic-comment-custom", HighlightKind.NEW,
+            R.string.highlights_semantic_custom,
+            HighlightDestination(SettingsCatalog.ID_COMMENT_SEMANTIC_CUSTOM_RULES,
+                alsoCovers = SemanticSurface.entries.map(SettingsCatalog::semanticCustomRulesId).toSet()))
     )))
     val currentRevision: Int get() = batches.maxOf { it.revision }
     val destinations get() = batches.sortedByDescending { it.revision }.flatMap { it.entries }

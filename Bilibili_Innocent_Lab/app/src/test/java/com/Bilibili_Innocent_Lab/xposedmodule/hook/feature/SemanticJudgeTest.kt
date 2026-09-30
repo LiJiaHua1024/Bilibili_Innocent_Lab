@@ -72,7 +72,8 @@ class SemanticJudgeTest {
         assertEquals(0.57f, scores[0], 1e-6f)
         assertEquals(1f, scores[1], 0f)
         assertEquals(0f, scores[2], 0f)
-        assertTrue(scores[3].isNaN() && scores[4].isNaN())
+        assertEquals(0.9f, scores[3], 1e-6f) // 兼容服务回 noul 也能读（题型回退）
+        assertTrue(scores[4].isNaN())
         assertNull(JevRequestCodec.decodeBlockScores("{\"detail\":\"x\"}", 1))
     }
 
@@ -169,7 +170,7 @@ class SemanticJudgeTest {
         val judge = judge { body, _, budget ->
             val count = questionCount(body)
             sizes += count
-            assertEquals(SemanticJudge.DEFAULT_TIMEOUT_MS, budget)
+            assertEquals(SemanticJudge.MIN_REQUEST_TIMEOUT_MS, budget) // 网络超时与等待上限分开
             200 to answers(*DoubleArray(count) { 0.1 })
         }
         val texts = List(SemanticJudge.MAX_BATCH * 3) { "动态$it" } + "  "
@@ -220,14 +221,14 @@ class SemanticJudgeTest {
         assertNull(settings(key = "x".repeat(SemanticJudge.MAX_API_KEY_LENGTH + 1)))
         assertNull(settings(endpoint = "relay.example.com"))
 
-        val defaults = settings()!!.judge(rules)!!
+        val defaults = settings()!!.judge(SemanticSurface.DYNAMIC, rules)!!
         assertEquals(SemanticJudge.ENDPOINT, defaults.endpoint)
         assertEquals(SemanticSensitivity.DEFAULT.blockThreshold, defaults.blockThreshold, 0f)
         assertFalse(defaults.waitFirstScreen)
         // 一个类型都没勾选：该过滤面不建判定器。
-        assertNull(settings()!!.judge(emptyList()))
+        assertNull(settings()!!.judge(SemanticSurface.DYNAMIC, emptyList()))
 
-        val tuned = settings(endpoint = "https://relay.example.com/", sensitivity = "high", wait = true)!!.judge(rules)!!
+        val tuned = settings(endpoint = "https://relay.example.com/", sensitivity = "high", wait = true)!!.judge(SemanticSurface.DYNAMIC, rules)!!
         assertEquals("https://relay.example.com/v1/systemone", tuned.endpoint)
         assertEquals(SemanticSensitivity.HIGH.blockThreshold, tuned.blockThreshold, 0f)
         assertTrue(tuned.waitFirstScreen)
@@ -243,7 +244,8 @@ class SemanticJudgeTest {
             200 to answers(*DoubleArray(count) { 0.0 })
         })
         judge.evaluate(List(150) { "弹幕$it" }, SemanticMode.WAIT)
-        assertEquals(listOf(50, SemanticJudge.MAX_BATCH_LIMIT), sizes.sorted())
+        // 调用方要 1000，JEV 后端上限 32 题（2026-09-30 实测中转上限）。
+        assertEquals(listOf(22, 32, 32, 32, 32), sizes.sorted())
     }
 
     @Test

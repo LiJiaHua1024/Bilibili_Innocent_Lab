@@ -117,19 +117,21 @@ internal object VideoPlayCountReader {
         val multiplier = when {
             text.endsWith("亿") || text.endsWith("億") -> {
                 text = text.dropLast(1)
-                100_000_000.0
+                100_000_000L
             }
             text.endsWith("万") || text.endsWith("萬") -> {
                 text = text.dropLast(1)
-                10_000.0
+                10_000L
             }
-            else -> 1.0
+            else -> 1L
         }
         if (text.isEmpty()) return null
-        val number = text.toDoubleOrNull() ?: return null
-        if (number <= 0.0 || !number.isFinite()) return null
-        val scaled = number * multiplier
-        if (scaled > Long.MAX_VALUE.toDouble()) return null
+        // 十进制精确计算：双精度乘法再截断会把 "1.13万" 算成 11299（两位小数 × 万/亿里有 10832 种），
+        // 在"最低播放量"边界上误删。
+        val number = runCatching { java.math.BigDecimal(text) }.getOrNull() ?: return null
+        if (number.signum() <= 0) return null
+        val scaled = number.multiply(java.math.BigDecimal.valueOf(multiplier))
+        if (scaled > java.math.BigDecimal.valueOf(Long.MAX_VALUE)) return null
         return scaled.toLong().takeIf { it > 0L }
     }
 

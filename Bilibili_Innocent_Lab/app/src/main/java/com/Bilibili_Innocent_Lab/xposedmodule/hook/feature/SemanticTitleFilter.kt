@@ -53,7 +53,7 @@ internal class SemanticTitleFilter(
             dir,
             "${System.currentTimeMillis()} $source thread=${Thread.currentThread().name} total=${report.total} " +
                 "requested=${report.requested} blocked=${report.blocked} ms=${report.elapsedMs} " +
-                "outcome=${report.outcome} :: $blocked"
+                "outcome=${report.outcome}${report.extras()} :: $blocked"
         )
     }
 }

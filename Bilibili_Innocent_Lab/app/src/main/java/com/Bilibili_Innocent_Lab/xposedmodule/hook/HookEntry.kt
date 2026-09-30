@@ -52,8 +52,14 @@ import com.Bilibili_Innocent_Lab.xposedmodule.hook.feature.DynamicPurifyFeatureI
 import com.Bilibili_Innocent_Lab.xposedmodule.hook.feature.DynamicTabsFeatureInstaller
 import com.Bilibili_Innocent_Lab.xposedmodule.hook.feature.SemanticJudge
 import com.Bilibili_Innocent_Lab.xposedmodule.hook.feature.SemanticSettings
+import com.Bilibili_Innocent_Lab.xposedmodule.hook.feature.SemanticDiskCleanup
 import com.Bilibili_Innocent_Lab.xposedmodule.hook.feature.SemanticSurface
 import com.Bilibili_Innocent_Lab.xposedmodule.hook.feature.SemanticPresets
+import com.Bilibili_Innocent_Lab.xposedmodule.hook.feature.SemanticSource
+import com.Bilibili_Innocent_Lab.xposedmodule.hook.feature.SemanticRoute
+import com.Bilibili_Innocent_Lab.xposedmodule.hook.feature.SemanticRule
+import com.Bilibili_Innocent_Lab.xposedmodule.hook.feature.SemanticCustomRule
+import com.Bilibili_Innocent_Lab.xposedmodule.hook.feature.SemanticBackend
 import com.Bilibili_Innocent_Lab.xposedmodule.hook.feature.DetailAppPromotionFeatureInstaller
 import com.Bilibili_Innocent_Lab.xposedmodule.hook.feature.ExternalBrowserFeatureInstaller
 import com.Bilibili_Innocent_Lab.xposedmodule.hook.feature.FeatureInstallCoordinator
@@ -2654,12 +2660,37 @@ class HookEntry : XposedModule() {
             // 局部遮蔽把功能安装链统一约束在只读配置接口上。
             val prefs: HookConfigSource = hookConfig
             // JEV 语义判定的共享配置（实验性功能 → 兼容）；Key 为空或地址非法时为 null，任何过滤面都不建判定器。
-            val semanticSettings = SemanticSettings.from(
+            // 硬盘缓存根目录要等宿主 Context 就绪后补上（见 attachedContext 处）。
+            var semanticSettings = SemanticSettings.from(
                 apiKey = prefs.getString(RemoteHookConfigContract.KEY_SEMANTIC_JEV_API_KEY, "").orEmpty(),
                 endpoint = prefs.getString(FeaturePreferences.SEMANTIC_JEV_ENDPOINT, "").orEmpty(),
                 sensitivity = prefs.getString(FeaturePreferences.SEMANTIC_JEV_SENSITIVITY, "").orEmpty(),
-                waitFirstScreen = prefs.getBoolean(FeaturePreferences.SEMANTIC_JEV_WAIT_FIRST_SCREEN, false)
+                waitFirstScreen = prefs.getBoolean(FeaturePreferences.SEMANTIC_JEV_WAIT_FIRST_SCREEN, false),
+                cacheDays = prefs.getInt(FeaturePreferences.SEMANTIC_JEV_CACHE_DAYS, SemanticSettings.DEFAULT_CACHE_DAYS),
+                provider = prefs.getString(FeaturePreferences.SEMANTIC_JEV_PROVIDER, "jev"),
+                model = prefs.getString(FeaturePreferences.SEMANTIC_JEV_MODEL, ""),
+                timeoutMs = prefs.getInt(FeaturePreferences.SEMANTIC_JEV_TIMEOUT_MS, 0),
+                extraSources = (2..SemanticSource.MAX_SOURCES).mapNotNull { index ->
+                    val (providerKey, endpointKey, modelKey) = FeaturePreferences.semanticSourceKeys(index)
+                    SemanticSource.from(
+                        index = index,
+                        apiKey = prefs.getString(RemoteHookConfigContract.semanticApiKey(index), "").orEmpty(),
+                        endpoint = prefs.getString(endpointKey, "").orEmpty(),
+                        provider = prefs.getString(providerKey, SemanticBackend.JEV).orEmpty(),
+                        model = prefs.getString(modelKey, "").orEmpty()
+                    )
+                },
+                guidance = prefs.getString(FeaturePreferences.SEMANTIC_JEV_GUIDANCE, "").orEmpty()
             )
+            semanticSettings?.let { SemanticJudge.configureConcurrency(it.sources.size) }
+            /** 某个过滤面勾选的预设 + 启用的自定义类型。 */
+            fun semanticRules(rulesKey: String, surface: SemanticSurface): List<SemanticRule> =
+                SemanticPresets.selected(surface, prefs.getString(rulesKey, SemanticPresets.defaultSelection(surface)).orEmpty()) +
+                    SemanticCustomRule.parse(prefs.getString(FeaturePreferences.semanticCustomRulesKey(surface), "").orEmpty())
+                        .filter { it.enabled }.map { it.toRule() }
+            /** 某个过滤面在本次启动是否启用（开关开、Key 有效、至少勾了一类）。 */
+            fun semanticActive(enabledKey: String, rulesKey: String, surface: SemanticSurface): Boolean =
+                semanticSettings != null && prefs.getBoolean(enabledKey, false) && semanticRules(rulesKey, surface).isNotEmpty()
             /** 某个过滤面的判定器：开关关、Key 无效或一个类型都没勾选时为 null。 */
             fun semanticJudge(
                 enabledKey: String,
@@ -2668,9 +2699,15 @@ class HookEntry : XposedModule() {
                 batchSize: Int = SemanticJudge.MAX_BATCH,
                 timeoutMs: Int = SemanticJudge.DEFAULT_TIMEOUT_MS
             ): SemanticJudge? {
-                if (semanticSettings == null || !prefs.getBoolean(enabledKey, false)) return null
-                val raw = prefs.getString(rulesKey, SemanticPresets.defaultSelection(surface))
-                return semanticSettings.judge(SemanticPresets.selected(surface, raw), batchSize, timeoutMs)
+                val settings = semanticSettings ?: return null
+                if (!prefs.getBoolean(enabledKey, false)) return null
+                return settings.judge(
+                    surface,
+                    semanticRules(rulesKey, surface),
+                    batchSize,
+                    timeoutMs,
+                    route = prefs.getString(FeaturePreferences.semanticRouteKey(surface), SemanticRoute.AUTO)
+                )
             }
             val versionAdapterResetTimestamp = hookConfig.getLong(
                 RemoteHookConfigContract.KEY_ADAPTER_RESET_TIMESTAMP,
@@ -2810,6 +2847,29 @@ class HookEntry : XposedModule() {
 
             // 已授权安装链所需的宿主 Context；只在当前调用栈使用，不进入长期缓存。
             val attachedContext = authorizationContext.applicationContext ?: authorizationContext
+            // 判定结果硬盘缓存：宿主私有 files/bil_semantic/<面>.bin。启动时先在后台删掉未启用面的文件，
+            // 保证"关闭 → 重启"后磁盘上没有任何残留判定。
+            val semanticStoreRoot = runCatching { attachedContext.filesDir }.getOrNull()
+            if (semanticStoreRoot != null) {
+                semanticSettings = semanticSettings?.copy(storeRoot = semanticStoreRoot)
+                val active = buildSet {
+                    if (semanticActive(FeaturePreferences.DYNAMIC_SEMANTIC_FILTER_ENABLED,
+                            FeaturePreferences.DYNAMIC_SEMANTIC_FILTER_RULES, SemanticSurface.DYNAMIC)) add(SemanticSurface.DYNAMIC)
+                    if (semanticActive(FeaturePreferences.DANMAKU_SEMANTIC_FILTER_ENABLED,
+                            FeaturePreferences.DANMAKU_SEMANTIC_FILTER_RULES, SemanticSurface.DANMAKU)) add(SemanticSurface.DANMAKU)
+                    if (semanticActive(FeaturePreferences.COMMENT_SEMANTIC_FILTER_ENABLED,
+                            FeaturePreferences.COMMENT_SEMANTIC_FILTER_RULES, SemanticSurface.COMMENT)) add(SemanticSurface.COMMENT)
+                    if (semanticActive(FeaturePreferences.VIDEO_SEMANTIC_FILTER_ENABLED,
+                            FeaturePreferences.VIDEO_SEMANTIC_FILTER_RULES, SemanticSurface.VIDEO)) add(SemanticSurface.VIDEO)
+                }
+                SemanticJudge.submitBackground(Runnable {
+                    com.Bilibili_Innocent_Lab.xposedmodule.runtime.HostThreadGuard.run("semantic_disk_cleanup") {
+                        SemanticDiskCleanup.run(semanticStoreRoot, active)
+                        // 已探明的请求写法 / 分批上限：读回来，避免每次重启都重新试错。
+                        if (active.isNotEmpty()) SemanticJudge.attachLearnedStore(semanticStoreRoot)
+                    }
+                })
+            }
             // 首页推荐与相关推荐共用同一个判定器：规则相同，同一标题在两处只判一次。
             val videoSemanticJudge = semanticJudge(
                 FeaturePreferences.VIDEO_SEMANTIC_FILTER_ENABLED,
