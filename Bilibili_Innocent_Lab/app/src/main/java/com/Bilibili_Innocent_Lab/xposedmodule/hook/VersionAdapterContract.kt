@@ -36,7 +36,8 @@ internal object VersionAdapterContract {
      * 首页封面文案走运行期 Class 缓存，不进适配 JSON。
      */
     /** 62 → 63（2026-09-23）：9.13.0(9130300) 更新/默认画质 owner 搬迁；JSON 形状不变。 */
-    const val RULE_VERSION = 63
+    /** 63 → 64（2026-09-30）：9.14.0(9140200) 更新/默认画质 owner 再次搬迁（Dr1.c / ut1.h）；JSON 形状不变。 */
+    const val RULE_VERSION = 64
 
     /**
      * 51 → 52（2026-09-11，9.11.0(9110400) 适配）：

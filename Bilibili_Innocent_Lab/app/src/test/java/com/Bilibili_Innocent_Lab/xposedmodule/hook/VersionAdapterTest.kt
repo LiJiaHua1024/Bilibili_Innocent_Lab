@@ -1005,17 +1005,32 @@ class VersionAdapterTest {
     fun `prefers latest verified update implementation`() {
         val point = VersionAdapter.locateBlockUpdate(requireNotNull(javaClass.classLoader))
 
-        // 9.13.0：ar1.c 是网络入口，同签名 ar1.a 是包装层，不能误选。
-        assertEquals("ar1.c", point?.className)
+        // 9.14.0：Dr1.c 是网络入口，同签名 Dr1.a 是包装层，不能误选。
+        assertEquals("Dr1.c", point?.className)
+        assertNotEquals("Dr1.a", point?.className)
         assertEquals("a", point?.methodName)
         assertEquals(listOf("android.content.Context"), point?.paramClassNames)
+    }
+
+    @Test
+    fun `914 owners missing still select 913 network and quality implementations`() {
+        val loader = object : ClassLoader(requireNotNull(javaClass.classLoader)) {
+            override fun loadClass(name: String, resolve: Boolean): Class<*> {
+                if (name == "Dr1.c" || name == "ut1.h") throw ClassNotFoundException(name)
+                return super.loadClass(name, resolve)
+            }
+        }
+        assertEquals("ar1.c", VersionAdapter.locateBlockUpdate(loader)?.className)
+        assertEquals("Rs1.j", VersionAdapter.locateDefaultVideoQuality(loader)?.defaultQualityMethod?.className)
     }
 
     @Test
     fun `new owners missing still select 912 network and quality implementations`() {
         val loader = object : ClassLoader(requireNotNull(javaClass.classLoader)) {
             override fun loadClass(name: String, resolve: Boolean): Class<*> {
-                if (name == "ar1.c" || name == "Rs1.j") throw ClassNotFoundException(name)
+                if (name == "Dr1.c" || name == "ut1.h" || name == "ar1.c" || name == "Rs1.j") {
+                    throw ClassNotFoundException(name)
+                }
                 return super.loadClass(name, resolve)
             }
         }
@@ -1028,7 +1043,7 @@ class VersionAdapterTest {
         val parent = requireNotNull(javaClass.classLoader)
         val previousLoader = object : ClassLoader(parent) {
             override fun loadClass(name: String, resolve: Boolean): Class<*> {
-                if (name == "ar1.c" || name == "gr1.c") throw ClassNotFoundException(name)
+                if (name == "Dr1.c" || name == "ar1.c" || name == "gr1.c") throw ClassNotFoundException(name)
                 return super.loadClass(name, resolve)
             }
         }
@@ -1056,7 +1071,7 @@ class VersionAdapterTest {
         val parent = requireNotNull(javaClass.classLoader)
         val loader = object : ClassLoader(parent) {
             override fun loadClass(name: String, resolve: Boolean): Class<*> {
-                if (name == "ar1.c" || name == "gr1.c" || name == "qq1.c" || name == "mq1.c") {
+                if (name == "Dr1.c" || name == "ar1.c" || name == "gr1.c" || name == "qq1.c" || name == "mq1.c") {
                     throw ClassNotFoundException(name)
                 }
                 return super.loadClass(name, resolve)
@@ -1065,6 +1080,7 @@ class VersionAdapterTest {
 
         val point = VersionAdapter.locateBlockUpdate(loader)
 
+        assertNotEquals("Dr1.a", point?.className)
         assertNotEquals("ar1.a", point?.className)
         assertNotEquals("gr1.a", point?.className)
         assertNotEquals("qq1.a", point?.className)
@@ -1077,7 +1093,9 @@ class VersionAdapterTest {
         val parent = requireNotNull(javaClass.classLoader)
         val legacyLoader = object : ClassLoader(parent) {
             override fun loadClass(name: String, resolve: Boolean): Class<*> {
-                if (name == "ar1.c" || name == "gr1.c" || name == "qq1.c" || name == "mq1.c" || name == "Ip1.c") {
+                if (name == "Dr1.c" || name == "ar1.c" || name == "gr1.c" || name == "qq1.c" ||
+                    name == "mq1.c" || name == "Ip1.c"
+                ) {
                     throw ClassNotFoundException(name)
                 }
                 return super.loadClass(name, resolve)
@@ -1414,8 +1432,8 @@ class VersionAdapterTest {
         val points = VersionAdapter.locateDefaultVideoQuality(requireNotNull(javaClass.classLoader))
         val point = points?.defaultQualityMethod
 
-        // 9.13.0：实现搬到 Rs1.j，旧版残留入口不能抢占它。
-        assertEquals("Rs1.j", point?.className)
+        // 9.14.0：实现搬到 ut1.h，旧版残留入口（Rs1.j 等）不能抢占它。
+        assertEquals("ut1.h", point?.className)
         assertEquals("a", point?.methodName)
         assertEquals(emptyList<String>(), point?.paramClassNames)
         assertEquals(
@@ -1429,7 +1447,7 @@ class VersionAdapterTest {
         val parent = requireNotNull(javaClass.classLoader)
         val previousLoader = object : ClassLoader(parent) {
             override fun loadClass(name: String, resolve: Boolean): Class<*> {
-                if (name == "Rs1.j" || name == "Xs1.j") throw ClassNotFoundException(name)
+                if (name == "ut1.h" || name == "Rs1.j" || name == "Xs1.j") throw ClassNotFoundException(name)
                 return super.loadClass(name, resolve)
             }
         }
@@ -1447,7 +1465,9 @@ class VersionAdapterTest {
         val parent = requireNotNull(javaClass.classLoader)
         val previousLoader = object : ClassLoader(parent) {
             override fun loadClass(name: String, resolve: Boolean): Class<*> {
-                if (name == "Rs1.j" || name == "Xs1.j" || name == "is1.h") throw ClassNotFoundException(name)
+                if (name == "ut1.h" || name == "Rs1.j" || name == "Xs1.j" || name == "is1.h") {
+                    throw ClassNotFoundException(name)
+                }
                 return super.loadClass(name, resolve)
             }
         }
@@ -1465,7 +1485,7 @@ class VersionAdapterTest {
         val parent = requireNotNull(javaClass.classLoader)
         val legacyOnlyLoader = object : ClassLoader(parent) {
             override fun loadClass(name: String, resolve: Boolean): Class<*> {
-                if (name in setOf("Rs1.j", "Xs1.j", "is1.h", "es1.i", "Ar1.l", "Jq1.l", "gh6.h")) {
+                if (name in setOf("ut1.h", "Rs1.j", "Xs1.j", "is1.h", "es1.i", "Ar1.l", "Jq1.l", "gh6.h")) {
                     throw ClassNotFoundException(name)
                 }
                 return super.loadClass(name, resolve)

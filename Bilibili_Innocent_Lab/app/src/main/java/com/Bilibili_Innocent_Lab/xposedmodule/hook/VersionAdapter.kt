@@ -2320,6 +2320,13 @@ object VersionAdapter {
     private const val DYNAMIC_MEDIATOR_TAB_CLASS =
         "com.bilibili.bplus.followinglist.home.mediator.MediatorTabLayout"
     private val BLOCK_UPDATE_OWNER_CANDIDATES = listOf(
+        // 9.14.0(9140200)：更新链搬到 Dr1.*。Dr1.c#a(Context) 的方法体常量
+        // 'Do sync http request.' / 'fawkes.update.info.supplier' /
+        // 'Nothing to update, clean caches.' 的偏移（0000 / 0002 / 00ed）与 9.13.0 的
+        // ar1.c 逐字节位置相同，是网络边界；同签名的 Dr1.a 是缓存/回退包装层，
+        // 沿用"包装层不进候选"的纪律。30 个不同 SHA 的宿主样本里，没有一个旧宿主
+        // 满足 Dr1.c 的新入口签名（碰撞矩阵 Temp/host-compat/intake-9.14.0-9140200）。
+        "Dr1.c",
         // 9.13.0(9130300)：ar1.c 执行 FORCE_NETWORK 请求并写 UpdateApk 缓存；
         // 同签名的 ar1.a 只是缓存/回退包装层，不作为网络 Hook 边界。
         "ar1.c",
@@ -2560,6 +2567,11 @@ object VersionAdapter {
         "tv.danmaku.p9138bili.p9228ui.main2.widget.TabHost"
     )
     private val PLAYER_DEFAULT_QUALITY_CLASS_CANDIDATES = listOf(
+        // 9.14.0(9140200)：实现搬到 ut1.h#a()I。方法体同时含 'quality settings:'
+        // （偏移 0x25）与 ' defaultQuality:32 isLogin:'（0x27），与 9.13.0 的 Rs1.j 位置相同；
+        // 全类只有这一个 static a()I，owner 内唯一性天然成立。同版本里
+        // PlayerSettingHelper#getSettingsQuality 也带偏好键但只读偏好，仍是反例，不选。
+        "ut1.h",
         // 9.13.0(9130300)：Rs1.j#a()I 读取画质偏好、应用登录/能力限制，
         // 并记录 quality settings；不是只读偏好的 getSettingsQuality。
         "Rs1.j",
