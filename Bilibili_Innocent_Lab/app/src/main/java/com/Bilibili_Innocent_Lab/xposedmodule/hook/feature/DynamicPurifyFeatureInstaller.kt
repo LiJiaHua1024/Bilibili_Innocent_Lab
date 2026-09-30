@@ -82,6 +82,9 @@ internal class DynamicPurifyFeatureInstaller(
         AuthorRuleSet.EMPTY
     }
 
+    /** 只用于新通道观测的日志：Java 通道是否见过响应（两条通道是否并存）。 */
+    private val javaPathObserved = java.util.concurrent.atomic.AtomicBoolean(false)
+
     private val anyRequested: Boolean
         get() = keywords.isNotEmpty() || authorRules.isNotEmpty() || removePromotion ||
             removeLockedChargeOnly || hideTopicList || removeLiveUpEntries || hideFrequentVisits ||
@@ -203,6 +206,19 @@ internal class DynamicPurifyFeatureInstaller(
         }
 
         environment.reportRuntimeEvidence(ID, FeatureRuntimeStage.ADAPTED)
+        // 9.14.0 新增 Compose 动态列表，走 Kotlin KDynamicMoss。优先直接在它的响应上复用同一套过滤
+        // （经 protobuf 线格式往返到 Java 响应）；装不上时退回"只观测并留证据"，不再静默失效。
+        val kotlinFilter = installKotlinMoss(environment, loader, feeds, itemMembers, plan)
+        if (kotlinFilter > 0) {
+            environment.logInfo("dynamic_kmoss_filter", "[BIL] 已接入动态页新通道 KDynamicMoss 过滤，entries=$kotlinFilter")
+        } else {
+            val kotlinWatch = KotlinDynamicMossWatch.install(environment, loader, capabilityIds + ID) {
+                javaPathObserved.get()
+            }
+            if (kotlinWatch > 0) {
+                environment.logInfo("dynamic_kmoss_watch", "[BIL] 已观测动态页新通道 KDynamicMoss，entries=$kotlinWatch")
+            }
+        }
         val status = if (installed == expected) "success" else "partial:$installed/$expected"
         environment.reportStatus(CHANNEL_STATUS, status)
         if (status == "success") {
@@ -278,6 +294,91 @@ internal class DynamicPurifyFeatureInstaller(
         false
     }
 
+    /**
+     * 9.14.0 起动态页新列表的数据通道 `KDynamicMoss`：响应是 Kotlin 序列化数据类（字段被混淆），
+     * 这里不解析它，而是经 protobuf 线格式往返到同一 proto 的 Java 响应上，**原样复用 [purify]**，
+     * 见 [KotlinMossReplyBridge]。Kotlin 版所有请求（suspend / 回调）汇入同一个回调形态泛型入口，
+     * 每个页签挂一处即可。任何一步装不上都返回 0，调用方退回观测措施；运行期任何异常都放行原响应。
+     */
+    private fun installKotlinMoss(
+        environment: HookEnvironment,
+        loader: ClassLoader,
+        feeds: List<FeedMembers>,
+        itemMembers: ItemMembers?,
+        plan: DynamicPurifyPolicy.Plan
+    ): Int {
+        val kotlinMoss = KavaMemberLookup.classOrNull(loader, KotlinDynamicMossWatch.K_MOSS_CLASS) ?: return 0
+        val members = KotlinMossBridgeMembers.resolve(loader)
+        if (members == null) {
+            environment.logInfo("dynamic_kmoss_filter_skip", "[BIL] 动态页新通道过滤未安装: kotlinx.serialization 成员缺失")
+            return 0
+        }
+        if (!KotlinMossBridgeSelfTest.allows(environment, loader, members, "动态页")) return 0
+        var installed = 0
+        FEED_METHODS.forEach { spec ->
+            // 装不上不能再静默：每个页签只在缺东西时记一条原因（有界：页签个数）。
+            fun skip(reason: String) = environment.logInfo(
+                "dynamic_kmoss_filter_skip_${spec.asyncName}",
+                "[BIL] 动态页新通道过滤跳过 ${spec.asyncName}: $reason"
+            )
+            val feed = feeds.firstOrNull { it.replyClass.name == spec.replyClassName } ?: return@forEach skip("no-java-feed")
+            val codec = KotlinMossBridgeMembers.JavaReplyCodec.resolve(feed.replyClass) ?: return@forEach skip("no-java-codec")
+            val entry = KotlinMossBridgeMembers.callbackEntry(kotlinMoss, spec.asyncName) ?: return@forEach skip("no-callback-entry")
+            val handlerClass = entry.parameterTypes[3]
+            val reported = java.util.concurrent.atomic.AtomicBoolean(false)
+            val called = java.util.concurrent.atomic.AtomicBoolean(false)
+            runCatching {
+                environment.registrar.exact(
+                    "dynamic.purify.kmoss.${spec.asyncName}",
+                    entry.declaringClass,
+                    entry.name,
+                    *entry.parameterTypes
+                ) {
+                    before {
+                        if (called.compareAndSet(false, true)) {
+                            environment.logInfo(
+                                "dynamic_kmoss_call",
+                                "[BIL] 动态页新通道请求已进入 KDynamicMoss#${entry.name}"
+                            )
+                        }
+                        val delegate = args.getOrNull(3) ?: return@before
+                        val bridge = members.bridgeFor(args.getOrNull(4), args.getOrNull(2), codec)
+                            ?: return@before
+                        val proxy = MossResponseHandlerProxy.wrapTransform(handlerClass, delegate) { reply ->
+                            if (reported.compareAndSet(false, true)) {
+                                environment.logInfo(
+                                    "dynamic_kmoss_active",
+                                    "[BIL] 动态页新通道 KDynamicMoss#${entry.name} 已收到响应并进入过滤" +
+                                        "（javaPathObserved=${javaPathObserved.get()}）"
+                                )
+                            }
+                            runCatching {
+                                bridge.transform(reply) { javaReply ->
+                                    purify(environment, javaReply, feed, itemMembers, plan)
+                                }
+                            }.getOrElse { throwable ->
+                                environment.reportRuntimeEvidence(ID, FeatureRuntimeStage.ERROR)
+                                environment.logError(
+                                    "dynamic_kmoss_filter_failed",
+                                    "[BIL] 动态页新通道过滤失败，已放行原响应(${entry.name}): $throwable"
+                                )
+                                reply
+                            }
+                        } ?: return@before
+                        args[3] = proxy
+                    }
+                }
+                installed += 1
+            }.onFailure { throwable ->
+                environment.logError(
+                    "dynamic_kmoss_filter_${spec.asyncName}",
+                    "[BIL] 动态页新通道过滤注册失败(${spec.asyncName}): $throwable"
+                )
+            }
+        }
+        return installed
+    }
+
     /** 两条链路共用；未改原响应，成功时返回副本；处理已净化副本时保持幂等。 */
     private fun purify(
         environment: HookEnvironment,
@@ -290,6 +391,7 @@ internal class DynamicPurifyFeatureInstaller(
         // 字段未设置时宿主拿到的是进程级单例，改它会污染整个进程。
         if (feed.defaultReply != null && reply === feed.defaultReply) return reply
         environment.reportRuntimeEvidence(ID, FeatureRuntimeStage.OBSERVED)
+        javaPathObserved.set(true)
         var removingWhole = false
         return runCatching {
             val items = purifyItems(reply, feed, itemMembers, plan)
