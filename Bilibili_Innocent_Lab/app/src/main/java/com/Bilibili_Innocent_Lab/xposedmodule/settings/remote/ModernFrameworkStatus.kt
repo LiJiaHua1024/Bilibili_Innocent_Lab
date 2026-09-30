@@ -30,6 +30,33 @@ internal fun isLspatchFrameworkName(frameworkName: String): Boolean =
 internal val ModernFrameworkStatus.isLspatch: Boolean
     get() = isLspatchFrameworkName(name)
 
+/**
+ * NPatch 的公开服务名是 "NPatch"（v1.0.8 诊断页实测）。与 [frameworkManagerTargets] 保持同一
+ * 口径：按包含匹配，因为 NPatch 各版本可能带后缀。
+ */
+internal fun isNpatchFrameworkName(frameworkName: String): Boolean =
+    frameworkName.contains("npatch", ignoreCase = true)
+
+/**
+ * 框架能否 Hook 系统进程（`PROP_CAP_SYSTEM`）。这是 libxposed 服务契约里"框架自己声明"的能力位，
+ * 只有真 Root 框架具备，无 Root 的 NPatch / LSPatch 不具备——不依赖框架名字，NPatch 改名后仍成立。
+ *
+ * @return null 表示属性读取失败、结论未知；调用方应按"未知不否决"处理，保持原行为。
+ */
+internal fun frameworkHasSystemCapability(properties: Long?): Boolean? =
+    properties?.let { it and XposedService.PROP_CAP_SYSTEM != 0L }
+
+/**
+ * 是不是"真 Root 框架"：Modern 服务可写（[capable]）**且**不是 NPatch **且**没有被自己的能力位否决。
+ *
+ * `capable` 只说明服务能写偏好，NPatch v1.0.8 起同样为真，所以不能等同于"有 Root"。名字只是第一道
+ * （已实测的 "NPatch"），能力位是第二道（改名也拦得住）；两道都按"否决 Root"方向叠加，
+ * 属性未知时不额外否决，因此只会让判定更接近事实，不会把已确认的 Root 框架误判成无 Root。
+ */
+internal fun isRootFramework(capable: Boolean, frameworkName: String, properties: Long?): Boolean =
+    capable && !isNpatchFrameworkName(frameworkName) &&
+        frameworkHasSystemCapability(properties) != false
+
 /** 可选版本信息读取失败不否决已确认的 API/Remote 能力；任何失败都不逸出服务回调。 */
 internal fun readModernFrameworkStatus(
     readApiVersion: () -> Int,

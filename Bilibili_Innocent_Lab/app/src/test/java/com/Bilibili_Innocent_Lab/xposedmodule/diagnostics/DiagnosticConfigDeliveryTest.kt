@@ -51,6 +51,37 @@ class DiagnosticConfigDeliveryTest {
     }
 
     @Test
+    fun `NPatch selection never compares the host admission with the bypassed standard publisher`() {
+        // 2026-09-30 TB320FC：NPatch 已选中、宿主 admission 存在但对不上标准发布权威，
+        // 旧实现得出 HOST_OLDER（“宿主仍使用代次 X，模块已提交代次 0”），实际投递是通的。
+        val npatchSelected = published().copy(
+            noRootDesiredEnabled = true,
+            hostAdmissionPresent = true,
+            hostAdmissionCurrent = false,
+            remotePublishState = DiagnosticRemotePublishState.FAILED,
+            remoteGeneration = 0L
+        )
+        assertEquals(DiagnosticConfigDelivery.NOT_APPLICABLE, configDelivery(npatchSelected))
+        // 未选 NPatch 的既有语义不变：admission 对不上仍是 HOST_OLDER。
+        assertEquals(
+            DiagnosticConfigDelivery.HOST_OLDER,
+            configDelivery(npatchSelected.copy(noRootDesiredEnabled = false))
+        )
+        // 兼容模式直连另有自己的判据，不被 NPatch 选中遮住。
+        assertEquals(
+            DiagnosticConfigDelivery.DIRECT_STALE,
+            configDelivery(
+                npatchSelected.copy(
+                    hostConfigSource = "module_direct",
+                    hostRuntimeReceiptAvailable = true,
+                    hostQueryState = DiagnosticHostQueryState.READY,
+                    hostConfigState = DiagnosticHostConfigState.ACCEPTED
+                )
+            )
+        )
+    }
+
+    @Test
     fun `NPatch remains an independent publication path`() {
         assertEquals(DiagnosticConfigDelivery.NOT_APPLICABLE, configDelivery(published().copy(
             activationState = DiagnosticActivationState.ACTIVE_NPATCH

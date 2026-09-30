@@ -28,6 +28,9 @@ internal fun configDelivery(input: ModuleDiagnosticInputs): DiagnosticConfigDeli
         input.hostAdmissionCurrent -> DiagnosticConfigDelivery.DIRECT_MATCHED
         else -> DiagnosticConfigDelivery.DIRECT_STALE
     }
+    // NPatch 选中时标准发布被短路，宿主 admission 身份与“标准发布权威”永远对不上；
+    // 拿它比较只会得出“宿主仍使用旧代次、模块已提交代次 0”的假警报。NPatch 的投递看 NO_ROOT。
+    input.standardPublisherBypassed -> DiagnosticConfigDelivery.NOT_APPLICABLE
     input.hostAdmissionPresent && !input.hostAdmissionCurrent -> DiagnosticConfigDelivery.HOST_OLDER
     input.activationState == DiagnosticActivationState.ACTIVE_NPATCH ->
         DiagnosticConfigDelivery.NOT_APPLICABLE

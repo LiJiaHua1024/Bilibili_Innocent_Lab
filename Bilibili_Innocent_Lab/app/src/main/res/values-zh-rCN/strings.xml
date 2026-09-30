@@ -1090,4 +1090,5 @@
     <string name="semantic_rule_video_repost_desc">未授权搬运、盗录、简单二改</string>
     <string name="highlights_semantic_more_surfaces">智能过滤扩展到弹幕、评论和推荐视频，各有独立开关，共用同一份 JEV 配置。</string>
     <string name="highlights_semantic_rules">每个智能过滤新增「屏蔽类型」勾选面板，类型更细，精确决定隐藏什么。</string>
+    <string name="diagnostics_remote_npatch_selected">已选择 NPatch 通道：标准发布按设计不启用，配置投递状态见「NPatch 通道」一项。</string>
 </resources>

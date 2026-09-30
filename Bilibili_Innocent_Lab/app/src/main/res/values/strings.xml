@@ -1090,4 +1090,5 @@
     <string name="semantic_rule_video_repost_desc">Reuploads, recordings or trivial re-edits</string>
     <string name="highlights_semantic_more_surfaces">Smart filtering now also covers danmaku, comments and recommended videos, each with its own switch and the shared JEV setup.</string>
     <string name="highlights_semantic_rules">Each smart filter now has a "Types to hide" checklist with finer categories, so you choose exactly what gets hidden.</string>
+    <string name="diagnostics_remote_npatch_selected">NPatch channel selected: the standard publisher is bypassed by design. Config delivery is reported under the NPatch channel item.</string>
 </resources>

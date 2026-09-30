@@ -1,6 +1,7 @@
 package com.Bilibili_Innocent_Lab.xposedmodule.diagnostics
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -60,6 +61,41 @@ class ModuleHealthEvaluatorTest {
         assertEquals(
             DiagnosticSeverity.ATTENTION,
             snapshot.item(DiagnosticItemId.REMOTE_CONFIG).severity
+        )
+    }
+
+    @Test
+    fun `bypassed standard publisher is informational once NPatch is selected`() {
+        // 选中 NPatch 时 RemoteHookConfigStore 故意返回 "NPatch selected"（FAILED/publish_failed）；
+        // 那是设计内状态，不该把整份诊断染成“需要留意”。
+        val selected = ModuleHealthEvaluator.evaluate(
+            inputs(
+                activationState = DiagnosticActivationState.ACTIVE_NPATCH,
+                frameworkConnected = true,
+                frameworkCapable = true,
+                remotePublishState = DiagnosticRemotePublishState.FAILED,
+                remoteFailureCode = "publish_failed",
+                noRootDesiredEnabled = true,
+                noRootState = DiagnosticNoRootState.ACTIVE
+            )
+        )
+        assertEquals(DiagnosticSeverity.INFO, selected.item(DiagnosticItemId.REMOTE_CONFIG).severity)
+        assertEquals(DiagnosticSeverity.OK, selected.overallSeverity)
+
+        // 未选 NPatch 时同样的 FAILED 仍是 ATTENTION（上一条用例已钉住整体结果）。
+        val notSelected = ModuleHealthEvaluator.evaluate(
+            inputs(
+                activationState = DiagnosticActivationState.ACTIVE_LSPOSED,
+                frameworkConnected = true,
+                frameworkCapable = true,
+                remotePublishState = DiagnosticRemotePublishState.FAILED,
+                remoteFailureCode = "publish_failed",
+                noRootDesiredEnabled = false
+            )
+        )
+        assertEquals(
+            DiagnosticSeverity.ATTENTION,
+            notSelected.item(DiagnosticItemId.REMOTE_CONFIG).severity
         )
     }
 
@@ -157,6 +193,30 @@ class ModuleHealthEvaluatorTest {
 
     private fun ModuleDiagnosticSnapshot.item(id: DiagnosticItemId): DiagnosticItem =
         requireNotNull(items.firstOrNull { it.id == id })
+    @Test
+    fun `bypassed-publisher predicate covers exactly the states the bypass leaves idle`() {
+        val expectedIdle = setOf(
+            DiagnosticRemotePublishState.FAILED,
+            DiagnosticRemotePublishState.WAITING_FOR_SERVICE,
+            DiagnosticRemotePublishState.NOT_INITIALIZED
+        )
+        DiagnosticRemotePublishState.entries.forEach { state ->
+            assertEquals(
+                "selected state=$state",
+                state in expectedIdle,
+                inputs(noRootDesiredEnabled = true, remotePublishState = state)
+                    .isIdleUnderStandardPublisherBypass()
+            )
+            // 没选 NPatch：任何状态都不是"旁路空闲"，FAILED 仍是真故障。
+            assertFalse(
+                "not selected state=$state",
+                inputs(noRootDesiredEnabled = false, remotePublishState = state)
+                    .isIdleUnderStandardPublisherBypass()
+            )
+        }
+        assertTrue(inputs(noRootDesiredEnabled = true).standardPublisherBypassed)
+        assertFalse(inputs(noRootDesiredEnabled = false).standardPublisherBypassed)
+    }
 }
 
 internal fun inputs(

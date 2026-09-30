@@ -20,6 +20,7 @@ import java.util.concurrent.atomic.AtomicReference
 internal object NoRootSupportController {
     private const val DEFAULT_RESTART_FLUSH_TIMEOUT_MS = 4_000L
     private const val FLIGHT_WATCHDOG_TIMEOUT_MS = 7_000L
+    private const val SETTINGS_SYNC_DEBOUNCE_MS = 1_000L
 
     enum class FlushResult {
         SUCCESS,
@@ -46,6 +47,23 @@ internal object NoRootSupportController {
         NoRootSyncFlightRegistry.Token,
         ScheduledFuture<*>
         >()
+    /**
+     * 独立线程：[synchronize] 的头一段要读写 AtomicFile，不能占用 7 秒看门狗那条线程，
+     * 否则慢盘会顺延看门狗触发。1 秒足够合并一次批量导入/连拨开关，又不至于让用户
+     * 改完立刻切去宿主时落后于 onPause 同步太多（两者撞车会被单飞合并）。
+     */
+    private val settingsSyncDebouncer by lazy(LazyThreadSafetyMode.SYNCHRONIZED) {
+        TrailingDebouncer(
+            ScheduledThreadPoolExecutor(1) { runnable ->
+                Thread(runnable, "BIL-NPatch-SettingsSync").apply { isDaemon = true }
+            }.apply {
+                setRemoveOnCancelPolicy(true)
+                executeExistingDelayedTasksAfterShutdownPolicy = false
+            },
+            SETTINGS_SYNC_DEBOUNCE_MS
+        )
+    }
+
     private val watchdogExecutor by lazy(LazyThreadSafetyMode.SYNCHRONIZED) {
         ScheduledThreadPoolExecutor(
             1
@@ -54,6 +72,33 @@ internal object NoRootSupportController {
         }.apply {
             setRemoveOnCancelPolicy(true)
             executeExistingDelayedTasksAfterShutdownPolicy = false
+        }
+    }
+
+    /**
+     * 设置一改就（去抖后）同步 NPatch 快照。
+     *
+     * NPatch 选中时标准发布器被故意短路（`RemoteHookConfigStore`：`NPatch selected`），它的
+     * 设置变更监听因此不再产生任何发布；而生命周期同步只发生在设置页 onResume/onPause。
+     * 模块停在前台（分屏/悬浮窗并排宿主、或开着设置页直接去看宿主）时，改动就一直不进
+     * NPatch Remote Store（2026-09-30 TB320FC 实测：前台停留后偏好已变、快照 revision 不动）。
+     *
+     * 只补触发，不改同步本身：仍走 [beginSynchronization] + [synchronize]，单飞、迟到回调
+     * 与熔断的既有约束都不变；与 onPause 同步撞车时由 [NoRootSyncFlightRegistry] 合并。
+     * 未选免 Root 时只读一次内存里的布尔就返回，监听线程上不做 I/O。
+     */
+    fun requestSyncAfterSettingsChange(context: Context, bridge: SharedPreferences) {
+        val appContext = context.applicationContext ?: context
+        if (!NoRootSupportStore.isDesiredEnabled(appContext)) return
+        settingsSyncDebouncer.request {
+            runCatching {
+                // 与 onPause 的 `userTermsDecision.isAuthorized` 同口径：条款未授权不发布。
+                if (!UserTermsConsentStore.readStateOrInitialize(appContext).decision.isAuthorized) {
+                    return@runCatching
+                }
+                val generation = beginSynchronization(appContext) ?: return@runCatching
+                synchronize(appContext, bridge, generation)
+            }
         }
     }
 

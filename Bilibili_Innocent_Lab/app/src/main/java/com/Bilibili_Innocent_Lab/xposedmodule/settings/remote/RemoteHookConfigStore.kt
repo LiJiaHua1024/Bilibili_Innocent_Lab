@@ -134,6 +134,10 @@ internal object RemoteHookConfigStore {
                     if (key == null || key !in observedKeys) return@OnSharedPreferenceChangeListener
                     intentEpoch.incrementAndGet()
                     requestPublish(appContext)
+                    // NPatch 选中时上面的标准发布会被 publishSnapshot 短路，设置变更就没人发布了；
+                    // 交给 NPatch 通道去抖同步。未选免 Root 时是一次内存布尔读取即返回。
+                    com.Bilibili_Innocent_Lab.xposedmodule.runtime.noroot.NoRootSupportController
+                        .requestSyncAfterSettingsChange(appContext, source)
                 }
                 source.registerOnSharedPreferenceChangeListener(listener)
                 observedPreferences = source

@@ -2,6 +2,7 @@ package com.Bilibili_Innocent_Lab.xposedmodule.runtime.noroot
 
 import com.Bilibili_Innocent_Lab.xposedmodule.runtime.HostConfigState
 import com.Bilibili_Innocent_Lab.xposedmodule.runtime.HostInstallChainState
+import com.Bilibili_Innocent_Lab.xposedmodule.settings.remote.isRootFramework
 
 internal enum class NoRootDisplayState {
     UNSUPPORTED_OS,
@@ -92,6 +93,35 @@ internal object NoRootSupportState {
                 NoRootDisplayState.CONNECTION_TIMEOUT
             NoRootSupportStore.SyncState.ERROR -> NoRootDisplayState.ERROR
         }
+    }
+
+    /**
+     * 重启确认框是否走免 Root 的“手动重启”分支（先落盘再打开应用详情）。
+     *
+     * 这条判据原本是 `YukiHookAPI.Status.isXposedModuleActive`——真 Root 框架已把模块自身注入。
+     * API 102 重构（06ebc29）把它换成了 `capable`（Modern 服务可写），语义漂移：NPatch v1.0.8
+     * 起也向模块下发 Modern 服务，`capable` 对它同样为真，于是无 Root 的 NPatch 用户拿到 Root 版
+     * 重启——`su` 不存在、点了无效，还跳过了 [NoRootSupportController.flushBeforeRestart] 落盘
+     * （2026-09-30 TB320FC 真机复现）。所以“真 Root 框架”要在 `capable` 之上排除 NPatch——
+     * 先按名字，再按框架自己声明的 `PROP_CAP_SYSTEM` 能力位（见 [isRootFramework]，NPatch 改名
+     * 也拦得住；属性读取失败时不额外否决）。
+     *
+     * 只在"免 Root 开关已打开、或正待关闭重启"时才会走免 Root 分支：没开开关的 LSPatch /
+     * NPatch 用户 `desiredEnabled=false`，行为不变。带陈旧免 Root 标记的 LSPosed Root 用户
+     * 名字与能力位都判为 Root 框架，仍走 Root 重启，与重构前一致。
+     */
+    fun useNoRootRestartFlow(
+        standardCapable: Boolean,
+        frameworkName: String,
+        desiredEnabled: Boolean,
+        displayState: NoRootDisplayState,
+        /** 框架属性位；null = 读取失败/未知，保持只看名字的原判据。 */
+        frameworkProperties: Long? = null
+    ): Boolean {
+        if (isRootFramework(standardCapable, frameworkName, frameworkProperties)) return false
+        if (desiredEnabled) return true
+        return displayState == NoRootDisplayState.DISABLE_RESTART_REQUIRED ||
+            displayState == NoRootDisplayState.DISABLE_RESTART_REQUIRED_ACTIVE
     }
 
     fun activationDecision(

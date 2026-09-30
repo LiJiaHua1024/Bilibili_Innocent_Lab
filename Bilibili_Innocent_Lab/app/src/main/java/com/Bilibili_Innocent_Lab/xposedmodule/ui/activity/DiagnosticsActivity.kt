@@ -55,6 +55,7 @@ import com.Bilibili_Innocent_Lab.xposedmodule.R
 import com.Bilibili_Innocent_Lab.xposedmodule.diagnostics.DiagnosticActivationState
 import com.Bilibili_Innocent_Lab.xposedmodule.diagnostics.DiagnosticConfigDelivery
 import com.Bilibili_Innocent_Lab.xposedmodule.diagnostics.configDelivery
+import com.Bilibili_Innocent_Lab.xposedmodule.diagnostics.isIdleUnderStandardPublisherBypass
 import com.Bilibili_Innocent_Lab.xposedmodule.diagnostics.DiagnosticEvidence
 import com.Bilibili_Innocent_Lab.xposedmodule.diagnostics.DiagnosticFeatureInstallState
 import com.Bilibili_Innocent_Lab.xposedmodule.diagnostics.DiagnosticHostFeature
@@ -1024,6 +1025,9 @@ class DiagnosticsActivity : SkinnedActivity(),
             }
             DiagnosticItemId.REMOTE_CONFIG -> {
                 val base = when {
+                    // 选中 NPatch 后标准发布器永远不会发布，不该再说“失败”或“等待服务后发布”。
+                    input.isIdleUnderStandardPublisherBypass() ->
+                        getString(R.string.diagnostics_remote_npatch_selected)
                     input.remotePublishPending &&
                         input.remotePublishState != DiagnosticRemotePublishState.FAILED ->
                         getString(R.string.diagnostics_remote_publishing)

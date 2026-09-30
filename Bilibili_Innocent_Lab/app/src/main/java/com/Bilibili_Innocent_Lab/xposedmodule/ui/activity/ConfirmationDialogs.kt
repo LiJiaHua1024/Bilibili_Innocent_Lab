@@ -20,8 +20,8 @@ import com.Bilibili_Innocent_Lab.xposedmodule.R
 import com.Bilibili_Innocent_Lab.xposedmodule.hook.HookEntry
 import com.Bilibili_Innocent_Lab.xposedmodule.hook.VersionAdapter
 import com.Bilibili_Innocent_Lab.xposedmodule.runtime.ShellCommandRunner
-import com.Bilibili_Innocent_Lab.xposedmodule.runtime.noroot.NoRootDisplayState
 import com.Bilibili_Innocent_Lab.xposedmodule.runtime.noroot.NoRootSupportController
+import com.Bilibili_Innocent_Lab.xposedmodule.runtime.noroot.NoRootSupportState
 import com.Bilibili_Innocent_Lab.xposedmodule.runtime.noroot.NoRootSupportStore
 import com.Bilibili_Innocent_Lab.xposedmodule.settings.prefs
 import com.Bilibili_Innocent_Lab.xposedmodule.settings.remote.RemoteHookConfigStore
@@ -522,14 +522,16 @@ private fun MainActivity.flushNoRootSupportBeforeOpeningDetails() {
     }
 }
 
+/** 判据见 [NoRootSupportState.useNoRootRestartFlow]：`capable` 不再等于“有 Root”。 */
 private fun MainActivity.shouldUseNoRootRestartFlow(): Boolean {
-    if (RemoteHookConfigStore.status().capable) return false
-    if (NoRootSupportStore.isDesiredEnabled(applicationContext)) return true
-    return when (currentNoRootDisplayState()) {
-        NoRootDisplayState.DISABLE_RESTART_REQUIRED,
-        NoRootDisplayState.DISABLE_RESTART_REQUIRED_ACTIVE -> true
-        else -> false
-    }
+    val framework = RemoteHookConfigStore.status()
+    return NoRootSupportState.useNoRootRestartFlow(
+        standardCapable = framework.capable,
+        frameworkName = framework.name,
+        desiredEnabled = NoRootSupportStore.isDesiredEnabled(applicationContext),
+        displayState = currentNoRootDisplayState(),
+        frameworkProperties = framework.properties
+    )
 }
 
 /**

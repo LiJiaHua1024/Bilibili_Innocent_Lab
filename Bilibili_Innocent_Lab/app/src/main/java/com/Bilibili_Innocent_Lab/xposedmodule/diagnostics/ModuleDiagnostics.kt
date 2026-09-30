@@ -176,6 +176,28 @@ internal data class ModuleDiagnosticInputs(
     val remoteConnectionId: Long = 0L
 )
 
+/**
+ * 用户选中了 NPatch（免 Root）通道。`RemoteHookConfigStore.publishSnapshot` 在同一判据
+ * （`NoRootSupportStore.isDesiredEnabled`）下以 "NPatch selected" 故意短路标准发布，所以标准发布器的
+ * 状态、宿主 admission 代次对比在此期间都不代表故障。诊断里所有"因选了 NPatch 而降级"的判断
+ * 都必须经过这一个入口，免得发布器的短路条件改了、诊断这边某一处没跟着改。
+ */
+internal val ModuleDiagnosticInputs.standardPublisherBypassed: Boolean
+    get() = noRootDesiredEnabled
+
+/**
+ * 标准发布器旁路期间"永远不会推进"的状态：既不是故障也不是"等待服务后发布"。
+ * `READY` 是选中前的历史提交，照常显示；`PUBLISHING` 是进行中的真实发布，也照常显示。
+ */
+internal fun ModuleDiagnosticInputs.isIdleUnderStandardPublisherBypass(): Boolean =
+    standardPublisherBypassed && remotePublishState in BYPASSED_IDLE_PUBLISH_STATES
+
+private val BYPASSED_IDLE_PUBLISH_STATES = setOf(
+    DiagnosticRemotePublishState.FAILED,
+    DiagnosticRemotePublishState.WAITING_FOR_SERVICE,
+    DiagnosticRemotePublishState.NOT_INITIALIZED
+)
+
 internal data class DiagnosticItem(
     val id: DiagnosticItemId,
     val severity: DiagnosticSeverity,
@@ -321,6 +343,9 @@ internal object ModuleHealthEvaluator {
     }
 
     private fun remoteSeverity(inputs: ModuleDiagnosticInputs): DiagnosticSeverity = when {
+        // 选中 NPatch 时标准发布器被故意短路，此时的 FAILED 是设计内状态而不是故障；
+        // 配置投递另由 NO_ROOT 一项判断。
+        inputs.isIdleUnderStandardPublisherBypass() -> DiagnosticSeverity.INFO
         inputs.remotePublishState == DiagnosticRemotePublishState.FAILED &&
             inputs.frameworkConnected -> DiagnosticSeverity.ATTENTION
         inputs.remotePublishState == DiagnosticRemotePublishState.PUBLISHING ||

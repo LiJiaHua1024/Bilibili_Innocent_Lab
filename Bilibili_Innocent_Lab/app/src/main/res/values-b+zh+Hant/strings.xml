@@ -1090,4 +1090,5 @@
     <string name="semantic_rule_video_repost_desc">未授權搬運、盜錄、簡單二改</string>
     <string name="highlights_semantic_more_surfaces">智慧過濾擴展到彈幕、評論與推薦影片，各有獨立開關，共用同一份 JEV 設定。</string>
     <string name="highlights_semantic_rules">每個智慧過濾新增「封鎖類型」勾選面板，類型更細，精確決定隱藏什麼。</string>
+    <string name="diagnostics_remote_npatch_selected">已選擇 NPatch 通道：標準發佈依設計不啟用，設定投遞狀態見「NPatch 通道」一項。</string>
 </resources>
