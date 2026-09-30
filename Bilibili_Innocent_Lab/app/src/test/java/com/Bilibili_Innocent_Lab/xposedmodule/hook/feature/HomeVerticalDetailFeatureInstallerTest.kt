@@ -188,6 +188,126 @@ class HomeVerticalDetailFeatureInstallerTest {
         )
     }
 
+    /**
+     * issue #9：开启"竖屏视频进入普通详情页"后，在普通详情页里点播放器右下角"竖屏"，页面会闪回
+     * 当前视频的详情页而进不了竖屏。
+     *
+     * 根因（9.13.0 / 9.14.0 反汇编）：那颗按钮经 `StoryEntranceService` 用
+     * `RouteRequest(bilibili://story/{aid}).requestCode(1101)` 启动 Story，被启动边界当成首页卡片点击
+     * 又改写成"再开一个详情页"。两种启动形态（共享 / 不共享播放器）的 extras 都带
+     * `from_spmid = united.player-video-detail.0.0`，所以判据只认来源埋点。
+     */
+    @Test
+    fun `lets the detail page vertical switch button reach the story page`() {
+        val detailSpmid = "united.player-video-detail.0.0"
+        // 详情页发起的 Story 启动带 avid/cid extra；身份与 cid 都齐全，旧实现会照改写。
+        val fromDetailPage = HomeVerticalActivityLaunchSnapshot(
+            dataUri = "bilibili://story/123456789",
+            componentPackage = "tv.danmaku.bili",
+            avid = "123456789",
+            preloadCid = 987654321L,
+            fromSpmid = detailSpmid
+        )
+        HomeVerticalDetailBackend.entries.forEach { backend ->
+            assertEquals(
+                backend.name,
+                HomeVerticalLaunchSkip.DETAIL_PAGE_VERTICAL_SWITCH,
+                skipOf(fromDetailPage, backend)
+            )
+            assertNull(backend.name, planOf(fromDetailPage, backend))
+        }
+        // story_translucent 与无 cid 的形态同样是详情页来源，同样放行（不能因缺 cid 反而走到别的原因）。
+        assertEquals(
+            HomeVerticalLaunchSkip.DETAIL_PAGE_VERTICAL_SWITCH,
+            skipOf(
+                fromDetailPage.copy(dataUri = "bilibili://story_translucent/123456789", preloadCid = null),
+                HomeVerticalDetailBackend.UNITED
+            )
+        )
+        // 内联了 35 KB DASH manifest 的超长 URI 也是先判来源、后判长度。
+        assertEquals(
+            HomeVerticalLaunchSkip.DETAIL_PAGE_VERTICAL_SWITCH,
+            skipOf(
+                fromDetailPage.copy(dataUri = "bilibili://story/123456789?player_preload=" + "x".repeat(300_000)),
+                HomeVerticalDetailBackend.UNITED
+            )
+        )
+    }
+
+    /** 放行只针对详情页播放器这一个来源；首页卡片、搜索、动态等入口的替换一律不受影响。 */
+    @Test
+    fun `keeps replacing story launches from every other origin`() {
+        val base = HomeVerticalActivityLaunchSnapshot(
+            dataUri = "bilibili://story/123456789",
+            componentPackage = "tv.danmaku.bili",
+            aid = "123456789",
+            preloadCid = 987654321L
+        )
+        listOf(
+            null,
+            "",
+            "main.homepage-gateway.0.0",
+            "main.homepage-gateway.card.click",
+            "united.relate-recommend.0.0",
+            "search.search-result.0.0",
+            "dynamic.homepage.0.0",
+            // 同一命名空间下的事件名（宿主埋点里有几百条）不是"竖屏按钮"，不能被放行。
+            "united.player-video-detail.banner.0.click",
+            "united.player-video-detail.caching.button.click",
+            "united.player-video-detail.0.0.pv",
+            "united.player-video-detail",
+            "xunited.player-video-detail.0.0",
+            "UNITED.PLAYER-VIDEO-DETAIL.0.0"
+        ).forEach { origin ->
+            assertTrue(
+                "origin=$origin",
+                planOf(base.copy(fromSpmid = origin), HomeVerticalDetailBackend.UNITED)
+                    is HomeVerticalActivityLaunchPlan.United
+            )
+            assertTrue(
+                "origin=$origin",
+                planOf(base.copy(fromSpmid = origin), HomeVerticalDetailBackend.LEGACY)
+                    is HomeVerticalActivityLaunchPlan.Legacy
+            )
+        }
+    }
+
+    @Test
+    fun `detail page origin predicate is an exact match not a prefix`() {
+        assertTrue(HomeVerticalDetailRoutePolicy.isDetailPageVerticalSwitch("united.player-video-detail.0.0"))
+        assertFalse(HomeVerticalDetailRoutePolicy.isDetailPageVerticalSwitch(null))
+        assertFalse(HomeVerticalDetailRoutePolicy.isDetailPageVerticalSwitch(""))
+        assertFalse(HomeVerticalDetailRoutePolicy.isDetailPageVerticalSwitch("united.player-video-detail"))
+        assertFalse(HomeVerticalDetailRoutePolicy.isDetailPageVerticalSwitch("united.player-video-detail.0.0.pv"))
+        assertFalse(HomeVerticalDetailRoutePolicy.isDetailPageVerticalSwitch("united.player-video-detail.banner.0.click"))
+        assertFalse(HomeVerticalDetailRoutePolicy.isDetailPageVerticalSwitch("main.homepage-gateway.0.0"))
+    }
+
+    // ---- 后端可用性：8.84.0 里 VideoDetailsActivity 只是空壳（只有 attachBaseContext，无 onCreate）----
+
+    @Suppress("unused")
+    private open class DeclaresOnCreate {
+        open fun onCreate(savedInstanceState: android.os.Bundle?) = Unit
+    }
+
+    @Suppress("unused")
+    private class InheritsOnCreate : DeclaresOnCreate()
+
+    @Suppress("unused")
+    private class OnlyAttachBaseContext {
+        fun attachBaseContext(base: android.content.Context?) = Unit
+    }
+
+    @Test
+    fun `legacy backend needs its own onCreate while united does not`() {
+        assertTrue(HomeVerticalDetailBackend.LEGACY.requiresOnCreate)
+        assertFalse(HomeVerticalDetailBackend.UNITED.requiresOnCreate)
+        assertTrue(HomeVerticalDetailFeatureInstaller.declaresOnCreate(DeclaresOnCreate::class.java))
+        // 空壳（8.84.0 的 VideoDetailsActivity 形状）与"只继承、不声明"都不算能承载详情页。
+        assertFalse(HomeVerticalDetailFeatureInstaller.declaresOnCreate(OnlyAttachBaseContext::class.java))
+        assertFalse(HomeVerticalDetailFeatureInstaller.declaresOnCreate(InheritsOnCreate::class.java))
+    }
+
     /** 宿主同时注册了 story_translucent；它与 story 的身份契约一致，不应整条放行。 */
     @Test
     fun `handles story translucent on both backends`() {

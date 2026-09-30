@@ -67,8 +67,39 @@ internal object HomeVerticalDetailRoutePolicy {
      * 病态输入。
      */
     private const val MAX_ROUTE_LENGTH = 262_144
+
+    /**
+     * 普通详情页播放器的页面级 spmid。
+     *
+     * 2026-09-30 对 9.13.0 / 9.14.0 反汇编实证：详情页右下角"竖屏"按钮（GeminiPlayerFullStoryWidget
+     * → `StoryEntranceService`）用 `RouteRequest(bilibili://story/{aid}).requestCode(1101)` 启动 Story，
+     * **两种形态（共享播放器 / 不共享播放器）的 extras 里都带 `from_spmid = united.player-video-detail.0.0`**。
+     * 8.84.0 / 8.91.0 / 9.5.0 / 9.10.0 / 9.13.0 / 9.14.0 六个样本里，把它写进 Story 启动 extras 的
+     * 都是 `StoryEntranceService`（8.x 是其 `o/t` 方法，9.x 是 `story/a`、`story/b` 两个 lambda）；
+     * 其余引用者是广告上报的 `IReportExtraHandler.put`，不启动页面。
+     *
+     * 注意这是按**来源**放行，不是按"按钮"：同一个 `StoryEntranceService` 还承载"横屏/自动进 Story"
+     * 与"返回 Story"两条宿主自发路径，它们也带这个值。前者由 PlayConfig 的两个自动 Story 开关抑制
+     * （见 [HomeVerticalDetailFeatureInstaller]，注意 9.13+ 必须挂 `KPlayConfig`），不靠这里兜底。
+     *
+     * **必须精确相等，不能用前缀**：`united.player-video-detail.` 是宿主埋点事件的命名空间，下面有几百条
+     * （`banner.0.click`、`caching.button.click`、`bp.button.click`……），前缀匹配会把这些事件名下发起的
+     * 其它启动也一并放行，等于给"替换成普通详情页"开了个洞。
+     */
+    private const val DETAIL_PLAYER_SPMID = "united.player-video-detail.0.0"
     private val BV_PATTERN = Regex("BV[0-9A-Za-z]{6,30}", RegexOption.IGNORE_CASE)
     private val AID_PATTERN = Regex("(?:av)?[0-9]{1,19}", RegexOption.IGNORE_CASE)
+
+    /**
+     * 这次 Story 启动是不是用户在**普通详情页里主动点了"竖屏"**发起的。
+     *
+     * 是就必须放行：用户明确要进竖屏，宿主随后会把当前播放器交给 Story 页；再把它改回"打开普通
+     * 详情页"，就是 issue #9 的"闪回当前视频详情页、进不了竖屏"。判据只认来源埋点，不认 URI 形态
+     * ——首页卡片、搜索、动态等入口的 from_spmid 都不是详情页播放器的，替换逻辑不受影响。
+     */
+    fun isDetailPageVerticalSwitch(fromSpmid: String?): Boolean =
+        fromSpmid == DETAIL_PLAYER_SPMID
+
     /**
      * 在宿主统一路由边界将具有明确视频身份的 Story 路由规范化为普通详情路由。
      * 无 aid/BV 的 Story 根页、身份冲突或非哔哩哔哩路由均 fail-open。
@@ -103,6 +134,10 @@ internal object HomeVerticalDetailRoutePolicy {
         val original = snapshot.dataUri ?: return skip(HomeVerticalLaunchSkip.NO_DATA_URI)
         // story 与 story_translucent 都是宿主注册的竖屏路由；两者只有根不同，身份契约一致。
         val storyRoot = storyRootFor(original) ?: return skip(HomeVerticalLaunchSkip.NOT_STORY_ROUTE)
+        // 先于长度/身份判断：来源明确时无需解析 35 KB 的 player_preload，也不该有任何改写。
+        if (isDetailPageVerticalSwitch(snapshot.fromSpmid)) {
+            return skip(HomeVerticalLaunchSkip.DETAIL_PAGE_VERTICAL_SWITCH)
+        }
         // 长度拒绝必须落在这里而不是入口门禁：门禁静默，这里才有原因可上报。
         if (original.length > MAX_ROUTE_LENGTH) {
             return skip(HomeVerticalLaunchSkip.ROUTE_TOO_LONG)
@@ -421,9 +456,19 @@ internal data class HomeVerticalIntentRouteSnapshot(
     val bvid: String? = null
 )
 
-internal enum class HomeVerticalDetailBackend(val activityClassName: String) {
-    UNITED("com.bilibili.ship.theseus.detail.UnitedBizDetailsActivity"),
-    LEGACY("com.bilibili.video.videodetail.VideoDetailsActivity")
+/**
+ * @param requiresOnCreate 后端 Activity 必须**自己声明** `onCreate` 才算真能承载详情页。
+ * LEGACY 需要：2026-09-30 对本地 8.84.0–9.14.0 全部宿主核对，`VideoDetailsActivity` 只在 8.84.0 里
+ * 还有类，且只是空壳（只有 `attachBaseContext`，继承 `BaseToolbarActivity`，没有 `onCreate`、
+ * 没有播放器），8.86.0 起类都不存在。仅凭"类存在"就选它，会把 United 放行的 Story 启动
+ * （BV-only、缺 cid）改成打开一个空白页面。
+ */
+internal enum class HomeVerticalDetailBackend(
+    val activityClassName: String,
+    val requiresOnCreate: Boolean
+) {
+    UNITED("com.bilibili.ship.theseus.detail.UnitedBizDetailsActivity", requiresOnCreate = false),
+    LEGACY("com.bilibili.video.videodetail.VideoDetailsActivity", requiresOnCreate = true)
 }
 
 internal data class HomeVerticalActivityLaunchSnapshot(
@@ -434,7 +479,9 @@ internal data class HomeVerticalActivityLaunchSnapshot(
     val avid: String? = null,
     val bvid: String? = null,
     /** 已由调用方按多来源解析出的 cid；策略层不关心它来自 URI 查询还是 Intent extra。 */
-    val preloadCid: Long? = null
+    val preloadCid: Long? = null,
+    /** 启动来源埋点（Intent extra `from_spmid`，缺失时取 URI 查询）；只用于识别详情页主动切竖屏。 */
+    val fromSpmid: String? = null
 )
 
 /**
@@ -453,7 +500,10 @@ internal enum class HomeVerticalLaunchSkip {
     MALFORMED_INTENT_IDENTITY,
     IDENTITY_CONFLICT,
     BV_ONLY_UNITED,
-    MISSING_PRELOAD_CID
+    MISSING_PRELOAD_CID,
+
+    /** 用户在普通详情页里主动点"竖屏"，宿主要进 Story——这是预期放行，不是失败。 */
+    DETAIL_PAGE_VERTICAL_SWITCH
 }
 
 internal sealed interface HomeVerticalActivityLaunchOutcome {
