@@ -234,6 +234,16 @@ internal class HookPointRegistry(
         return owner
     }
 
+    /**
+     * 缓存里的参数类型名（`Class.getName()` 形式）→ 类；JVM 基本类型按名字直接映射，其余在宿主类加载器里找。
+     * 任一个找不到就返回 null（调用方不要拿半截签名去解析方法）。
+     */
+    fun resolveParameterClasses(names: List<String>): Array<Class<*>>? {
+        val resolved = ArrayList<Class<*>>(names.size)
+        for (name in names) resolved += resolveParameterClass(name) ?: return null
+        return resolved.toTypedArray()
+    }
+
     private fun resolveParameterClass(name: String): Class<*>? = when (name) {
         "boolean" -> classOf<Boolean>()
         "byte" -> classOf<Byte>()

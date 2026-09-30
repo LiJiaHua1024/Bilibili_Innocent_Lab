@@ -3890,23 +3890,13 @@ class HookEntry : XposedModule() {
                         // 的实例候选方法。static h(al.J) 只是 9.8.0 样式工具方法，必须排除；
                         // d/e 等真实绑定分支都挂，运行期哪个触发就生效（afterHook 幂等）。
                         val registered = java.util.HashSet<String>()
-                        val cacheParams = if (highPoint?.paramClassNames != null) {
-                            highPoint.paramClassNames.map {
-                                when (it) {
-                                    "long" -> classOf<Long>()
-                                    "boolean" -> classOf<Boolean>()
-                                    else -> KavaMemberLookup.classOrNull(biliClassLoader, it)
-                                        ?: throw ClassNotFoundException(it)
-                                }
-                            }.toTypedArray()
-                        } else {
-                            arrayOf(
-                                KavaMemberLookup.classOrNull(biliClassLoader, "Pj.J")
-                                    ?: throw ClassNotFoundException("Pj.J"),
-                                classOf<Boolean>()
-                            )
-                        }
+                        // 缓存签名只是"优先"路径：参数类型解析失败（旧代码只认 long/boolean，
+                        // 缓存里出现 int 就抛 ClassNotFoundException 并连带跳过下面的补充注册，
+                        // 2026-09-30 压测日志每次启动都有）只记一条日志，补充注册照常进行。
                         runCatching {
+                            val cachedNames = highPoint?.paramClassNames ?: listOf("Pj.J", "boolean")
+                            val cacheParams = hookPointRegistry.resolveParameterClasses(cachedNames)
+                                ?: throw ClassNotFoundException(cachedNames.joinToString(","))
                             val method = hookPointRegistry.resolveExact(
                                 "free-copy:comment-high:cached",
                                 handlerClass,

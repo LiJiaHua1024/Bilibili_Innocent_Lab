@@ -141,4 +141,20 @@ class HookPointRegistryTest {
             diagnostics["fixture.exception.missing"]?.state
         )
     }
+
+    /** 2026-09-30：自由复制缓存签名含 int，旧映射只认 long/boolean，整段注册被跳过。 */
+    @Test
+    fun `cached parameter names resolve every primitive and fail as a whole`() {
+        val primitives = listOf("boolean", "byte", "char", "short", "int", "long", "float", "double")
+        val resolved = requireNotNull(registry.resolveParameterClasses(primitives))
+        assertEquals(primitives, resolved.map { it.name })
+        assertTrue(resolved.all { it.isPrimitive })
+        assertEquals(String::class.java, registry.resolveParameterClasses(listOf("java.lang.String"))!!.single())
+        assertEquals(0, registry.resolveParameterClasses(emptyList())!!.size)
+        // 任一个找不到就整体为 null，不拿半截签名去找方法。
+        assertNull(registry.resolveParameterClasses(listOf("int", "does.not.Exist")))
+        // 用缓存名解析出的类能精确命中 int 参数的方法。
+        val params = requireNotNull(registry.resolveParameterClasses(listOf("int")))
+        assertNotNull(registry.resolveExact("fixture:exact-int", Fixture::class.java, "exact", *params))
+    }
 }
