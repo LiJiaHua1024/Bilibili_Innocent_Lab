@@ -2246,6 +2246,11 @@ object VersionAdapter {
 
     private val COMMENT_HIGH_CANDIDATES = listOf(
         "com.bilibili.app.comment3.ui.nextholderexp3.handle.CommentNextExperiment3ContentRichTextHandler",
+        // nextholder 管线（9.13.0 实测生效族）：DeviceDecision 开关
+        // `comment.next_appearance` 命中时 adapter.a.onCreateViewHolder 选 il.* 族；
+        // 绑定方法 b(Zk.Q)/c(Zk.Q)，字段 h 存 CommentItem——与 exp3 结构同构，
+        // 特征定位可覆盖。
+        "com.bilibili.app.comment3.ui.nextholder.handle.CommentNextContentRichTextHandler",
         // 8.63.0 及同类早期版本：非混淆 handler（绑定方法 G(CommentItem, jv.u, v0, r, int)，
         // 字段 h 存 CommentItem——特征定位自动覆盖，候选仅提供类名入口）
         "com.bilibili.app.comment3.ui.holder.handle.CommentContentRichTextHandler"

@@ -189,6 +189,31 @@ class HookEntry : XposedModule() {
         const val CLASS_COMMENT_HANDLER_V2 = "com.bilibili.app.comment3.ui.nextholderexp3.handle.CommentNextExperiment3ContentRichTextHandler"
         const val METHOD_COMMENT_BIND_V2 = "b"
 
+        /** nextholder 管线（非 exp3）的正文 handler：`b(Zk.Q)/c(Zk.Q)` 绑定，
+         * 字段 h 存 CommentItem、binding.a 是正文容器根。 */
+        const val CLASS_COMMENT_HANDLER_NEXT =
+            "com.bilibili.app.comment3.ui.nextholder.handle.CommentNextContentRichTextHandler"
+
+        /** 8.63.0 及同类早期版本：非混淆 handler（holder.J 管线）。 */
+        const val CLASS_COMMENT_HANDLER_LEGACY =
+            "com.bilibili.app.comment3.ui.holder.handle.CommentContentRichTextHandler"
+
+        /**
+         * 9.x 评论正文三级管线并存（9.13.0 `comment3.ui.adapter.a.onCreateViewHolder`
+         * 实解确认）：DeviceDecision `comment.next_appearance_experiment_3` 命中 →
+         * kl.*(exp3)，`comment.next_appearance` 命中 → il.*(nextholder)，
+         * 否则 → holder.J(legacy)。
+         * 实际生效族由宿主实验下发决定、同版本不同用户不同路，只挂单类会漏挂其余
+         * 管线（9.13.0 实测命中 nextholder，官方长按监听无人接管弹官方面板）。
+         * 因此所有存在的 handler 类全挂共享 bindHook：afterHook 幂等，未启用族的
+         * hook 常驻不触发，实验组回切/共存时无需重启即可接管。
+         */
+        private val COMMENT_HIGH_HANDLER_CLASSES = listOf(
+            CLASS_COMMENT_HANDLER_V2,
+            CLASS_COMMENT_HANDLER_NEXT,
+            CLASS_COMMENT_HANDLER_LEGACY
+        )
+
         /** ModernHookParam 内保存本次同步绑定快照的私有 key。 */
         private const val COMMENT_BIND_SNAPSHOT_KEY =
             "Bilibili_Innocent_Lab.free_copy.comment_binding_snapshot"
@@ -655,6 +680,11 @@ class HookEntry : XposedModule() {
         @Volatile
         private var commentSecondaryMessageId = View.NO_ID
 
+        /** nextholder / 旧 holder / phoenix 评论正文 id（exp3 用 primary/secondary_message，
+         * 其余管线用 comment_message，9.13.0 布局实解确认）。 */
+        @Volatile
+        private var commentNextMessageId = View.NO_ID
+
         /**
          * 一个 DOWN 会依次经过评论根、按钮容器和最深子 View。命中 more_button 后用
          * downTime 标记整次手势为宿主直通，避免其子 View 又重新建立评论长按会话。
@@ -703,8 +733,16 @@ class HookEntry : XposedModule() {
                 }.getOrDefault(0)
                 commentSecondaryMessageId = secondaryId
             }
+            var nextId = commentNextMessageId
+            if (nextId == View.NO_ID) {
+                nextId = runCatching {
+                    view.resources.getIdentifier("comment_message", "id", TARGET_PACKAGE)
+                }.getOrDefault(0)
+                commentNextMessageId = nextId
+            }
             return (primaryId > 0 && view.id == primaryId) ||
-                (secondaryId > 0 && view.id == secondaryId)
+                (secondaryId > 0 && view.id == secondaryId) ||
+                (nextId > 0 && view.id == nextId)
         }
 
         private fun clearCommentTouchSession(resetHandled: Boolean = true) {
@@ -3861,24 +3899,24 @@ class HookEntry : XposedModule() {
                         )
                     }
                 }
-                // 高版本（9.x）：CommentNextExperiment3ContentRichTextHandler.b（绑定方法，
-                // 持有 CommentItem i + ViewBinding Pj.J），从 CommentItem.f().a 拿 raw。
-                // 8.63.0 漂移：handler 类名变为 comment3.ui.holder.handle.CommentContentRichTextHandler
-                //（绑定方法 G(CommentItem, jv.u, v0, r, int)，字段 h 存 CommentItem）——适配
-                // 缓存自动定位（sv=6 新特征），缓存缺失时入口按「任一候选类存在」判定。
-                // 注意：9.0.0 更新后 b 增加 b(long,boolean) 重载（探测方法），必须按
-                // Method 精确注册 b(Pj.J, boolean)，不能只按名称命中第一个重载。
-                // 双路径并行注册（t0 与 V2 都挂，不互斥）：9.x 的 t0 是残留旧类（o0 已
-                // 不用于评论绑定）、部分版本 V2 类存在但不用于绑定——运行期哪个方法实际
-                // 触发就生效（afterHook 幂等），彻底避免「类存在但方法漂移/残留」的
-                // 版本判定陷阱。
-                val highHandlerExists = classExists(CLASS_COMMENT_HANDLER_V2, biliClassLoader)
-                    || classExists("com.bilibili.app.comment3.ui.holder.handle.CommentContentRichTextHandler", biliClassLoader)
+                // 高版本（9.x）：三级 handler 管线并存（见 COMMENT_HIGH_HANDLER_CLASSES
+                // 注释），全部由同一个 bindHook 接管。适配缓存（commentHigh）的精确
+                // 签名只对命中类走快路径；其余存在的类走「含 ViewBinding 参数」特征
+                // 扫描补挂（nextholder 的 b(Zk.Q)/c(Zk.Q)、legacy 的 G(...) 都满足）。
+                // 注意：9.0.0 更新后 exp3 的 b 增加 b(long,boolean) 重载（探测方法），
+                // 精确注册必须带参数签名，不能只按名称命中第一个重载。
+                // 双路径并行注册（t0 与高版 handler 都挂，不互斥）：9.x 的 t0 是残留旧类
+                // （o0 已不用于评论绑定）——运行期哪个方法实际触发就生效（afterHook
+                // 幂等），彻底避免「类存在但方法漂移/残留」的版本判定陷阱。
+                val highPoint = adaptResult?.commentHigh
+                val highClassNames = java.util.LinkedHashSet<String>()
+                highPoint?.className?.let(highClassNames::add)
+                COMMENT_HIGH_HANDLER_CLASSES.forEach(highClassNames::add)
+                val highHandlerExists = highClassNames.any { classExists(it, biliClassLoader) }
                 if (highHandlerExists) {
+                    for (highCls in highClassNames) {
                     // 类名/方法名/参数签名优先取版本适配缓存（自动定位漂移签名），
-                    // 缓存缺失回退内置 b(Pj.J, boolean) 精确签名
-                    val highPoint = adaptResult?.commentHigh
-                    val highCls = highPoint?.className ?: CLASS_COMMENT_HANDLER_V2
+                    // 仅适配命中的类走缓存签名；其余类跳过缓存直接特征扫描。
                     val highMethod = highPoint?.methodName ?: METHOD_COMMENT_BIND_V2
                     runCatching {
                         val handlerClass = KavaMemberLookup.classOrNull(biliClassLoader, highCls)
@@ -3958,14 +3996,18 @@ class HookEntry : XposedModule() {
                                 )
                             }
                         }
-                        // 注册列表：缓存方法签名优先；再遍历补充所有「含 ViewBinding 参数」
-                        // 的实例候选方法。static h(al.J) 只是 9.8.0 样式工具方法，必须排除；
-                        // d/e 等真实绑定分支都挂，运行期哪个触发就生效（afterHook 幂等）。
+                        // 注册列表：缓存方法签名优先（仅适配命中类）；再遍历补充所有
+                        // 「含 ViewBinding 参数」的实例候选方法。static h(al.J) 只是
+                        // 9.8.0 样式工具方法，必须排除；b/c/d/e/G 等真实绑定分支都挂，
+                        // 运行期哪个触发就生效（afterHook 幂等）。
                         val registered = java.util.HashSet<String>()
                         // 缓存签名只是"优先"路径：参数类型解析失败（旧代码只认 long/boolean，
                         // 缓存里出现 int 就抛 ClassNotFoundException 并连带跳过下面的补充注册，
                         // 2026-09-30 压测日志每次启动都有）只记一条日志，补充注册照常进行。
-                        runCatching {
+                        val useCachedSignature =
+                            highCls == highPoint?.className ||
+                                (highPoint == null && highCls == CLASS_COMMENT_HANDLER_V2)
+                        if (useCachedSignature) runCatching {
                             val cachedNames = highPoint?.paramClassNames ?: listOf("Pj.J", "boolean")
                             val cacheParams = hookPointRegistry.resolveParameterClasses(cachedNames)
                                 ?: throw ClassNotFoundException(cachedNames.joinToString(","))
@@ -3979,7 +4021,7 @@ class HookEntry : XposedModule() {
                             registered.add("$highMethod${cacheParams.joinToString(",") { it.name }}")
                             commentFreeCopyBindingVerified.set(true)
                         }.onFailure { t ->
-                            logError("free_copy_v2_err", "[BIL] 9.x 评论 hook 注册失败(缓存签名): $t")
+                            logError("free_copy_v2_err:$highCls", "[BIL] 9.x 评论 hook 注册失败(缓存签名): $t")
                         }
                         // 补充注册：遍历所有含 ViewBinding 参数的方法（与缓存方法去重）。
                         // 参数上限 5（8.63.0 的 G 有 5 参）——含 ViewBinding 参数的方法
@@ -4005,9 +4047,25 @@ class HookEntry : XposedModule() {
                                 commentFreeCopyBindingVerified.set(true)
                             }
                         }
-                        logInfo("free_copy_ok_v2", "[BIL] 自由复制 hook 已注册（9.x ${registered.joinToString(", ") { it }}）")
+                        if (registered.isEmpty()) {
+                            // 类存在但一个绑定方法都没挂上：不能算成功，否则该管线
+                            // 静默失效（9.13.0 nextholder 漏挂的同类事故）。
+                            logError(
+                                "free_copy_v2_err:$highCls",
+                                "[BIL] 9.x 评论 handler 无可用绑定方法: $highCls"
+                            )
+                        } else {
+                            logInfo(
+                                "free_copy_ok_v2:$highCls",
+                                "[BIL] 自由复制 hook 已注册（9.x $highCls ${registered.joinToString(", ") { it }}）"
+                            )
+                        }
                     }.onFailure { t ->
-                        logError("free_copy_v2_err", "[BIL] 9.x 评论 hook 注册失败: $t")
+                        // 单个类缺失/解析失败不影响其余管线继续注册。
+                        if (classExists(highCls, biliClassLoader)) {
+                            logError("free_copy_v2_err:$highCls", "[BIL] 9.x 评论 hook 注册失败 $highCls: $t")
+                        }
+                    }
                     }
                     freeCopyOk = true
                 }
