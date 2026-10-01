@@ -87,7 +87,7 @@ internal class SearchPurifyFeatureInstaller(
                 itemListGetter.name
             ) {
                 after {
-                    if (hasThrowable) return@after
+                    if (hasThrowable || KotlinMossChannel.isRaw()) return@after
                     val source = result as? List<*> ?: return@after
                     if (source.isEmpty()) return@after
                     environment.reportRuntimeEvidence(ID, FeatureRuntimeStage.OBSERVED)
@@ -113,6 +113,8 @@ internal class SearchPurifyFeatureInstaller(
             0
         }
         if (installed == 0) return missing(environment, "registration-failed")
+        // 9.12.0 起新版搜索（kntr.app.search）走 Kotlin KSearchMoss.searchAll，Java getter 碰不到；兜底通道不计入覆盖单位。
+        installKotlinChannel(environment, loader, responseClass, itemListGetter, members, plan)
         val commercialComplete = resolved?.commercial?.hasCm != null && resolved.commercial.hasSpecial != null
         if (removeCommercial) environment.reportCapabilityCoverage("search_commercial_removed", plan.removeCommercial, installed, if (commercialComplete) 1 else 2)
         if (keywords.isNotEmpty()) environment.reportCapabilityCoverage("search_keyword_filter_enabled", plan.keywords.isNotEmpty(), installed, 1)
@@ -151,6 +153,45 @@ internal class SearchPurifyFeatureInstaller(
             )
         }
         return FeatureInstallResult.Installed(total, complete = total == expected)
+    }
+
+    /**
+     * 新版搜索的 Kotlin 通道：经 [KotlinMossChannel] 往返到同一 proto 的 Java `SearchAllResponse`，
+     * 用与 getter 层相同的判据删卡片，再以 builder 的 `clearItem` / `addAllItem` 重建。
+     */
+    private fun installKotlinChannel(
+        environment: HookEnvironment,
+        loader: ClassLoader,
+        responseClass: Class<*>,
+        itemListGetter: Method,
+        members: Members,
+        plan: Plan
+    ) {
+        val builder = ProtobufBuilderPlan.resolve(responseClass) ?: return
+        val clearItem = builder.method("clearItem") ?: return
+        val addAllItem = builder.method("addAllItem", classOf<Iterable<*>>()) ?: return
+        val bridge = KotlinMossChannel.prepare(environment, loader, "搜索结果过滤", KMOSS_LOG_KEY) ?: return
+        val installed = KotlinMossChannel.install(
+            environment, loader, bridge,
+            javaMossClassName = SEARCH_MOSS_CLASS,
+            rpc = "searchAll",
+            javaReplyClass = responseClass,
+            hookId = "search.purify.kmoss.searchAll",
+            what = "搜索结果过滤",
+            logKey = KMOSS_LOG_KEY
+        ) transform@{ javaReply ->
+            val source = KotlinMossChannel.raw { itemListGetter.invoke(javaReply) as? List<*> }
+            if (source.isNullOrEmpty()) return@transform javaReply
+            environment.reportRuntimeEvidence(ID, FeatureRuntimeStage.OBSERVED)
+            val filtered = ProtobufListRetention.filterOrSame(source) { item -> shouldRemove(item, members, plan) }
+            if (filtered === source) return@transform javaReply
+            environment.reportRuntimeEvidence(ID, FeatureRuntimeStage.APPLIED, source.size - filtered.size)
+            builder.edit(javaReply) { target ->
+                clearItem.invoke(target)
+                addAllItem.invoke(target, filtered)
+            }
+        }
+        environment.logInfo("search_purify_kmoss", "[BIL] 搜索结果过滤：Kotlin 新通道${if (installed) "已接入" else "未接入"}")
     }
 
     private fun shouldRemove(item: Any, members: Members, plan: Plan): Boolean {
@@ -273,6 +314,8 @@ internal class SearchPurifyFeatureInstaller(
         private const val CHANNEL_STATUS = "search_purify_status"
         private const val MAX_KEYWORDS = 64
         private const val SEARCH_PACKAGE = "com.bapis.bilibili.polymer.app.search.v1"
+        private const val SEARCH_MOSS_CLASS = "$SEARCH_PACKAGE.SearchMoss"
+        private const val KMOSS_LOG_KEY = "search_purify_kmoss"
         private const val SEARCH_ALL_RESPONSE_CLASS = "$SEARCH_PACKAGE.SearchAllResponse"
         private const val SEARCH_ITEM_CLASS = "$SEARCH_PACKAGE.Item"
     }

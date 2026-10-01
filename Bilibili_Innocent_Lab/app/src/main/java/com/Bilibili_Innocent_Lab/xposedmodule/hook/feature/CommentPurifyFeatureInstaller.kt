@@ -66,6 +66,7 @@ internal class CommentPurifyFeatureInstaller(
                 runCatching {
                     environment.registrar.adapted("comment.purify.urls.$index", point) {
                         after {
+                            if (KotlinMossChannel.isRaw()) return@after
                             val source = result as? Map<*, *> ?: return@after
                             environment.reportRuntimeEvidence("comments_search_links_removed", FeatureRuntimeStage.OBSERVED)
                             val filtered = withoutSearchUrls(source) { value ->
@@ -105,6 +106,7 @@ internal class CommentPurifyFeatureInstaller(
                 runCatching {
                     environment.registrar.adapted("comment.purify.url_schema.$index", point) {
                         after {
+                            if (KotlinMossChannel.isRaw()) return@after
                             val current = result as? String ?: return@after
                             environment.reportRuntimeEvidence("comments_search_links_removed", FeatureRuntimeStage.OBSERVED)
                             if (isSearchJumpUri(current)) {
@@ -166,6 +168,7 @@ internal class CommentPurifyFeatureInstaller(
                         point.contentGetter
                     ) {
                         after {
+                            if (KotlinMossChannel.isRaw()) return@after
                             environment.reportRuntimeEvidence("comments_empty_guide_removed", FeatureRuntimeStage.OBSERVED)
                             if (result !== defaultInstance) {
                                 result = defaultInstance
@@ -424,6 +427,9 @@ internal class CommentPurifyFeatureInstaller(
             )
         }
 
+        // KMP 评论页走 Kotlin KReplyMoss：协议层子项在那条通道上再做一遍；兜底通道不计入覆盖单位，
+        // Java 边界一个都装不上时也照装。
+        installKotlinChannel(environment)
         if (installedCount == 0) return missing(environment, "registration-failed")
         environment.reportRuntimeEvidence(ID, FeatureRuntimeStage.ADAPTED)
         val status = if (missingGroups.isEmpty() && installedCount == expectedCount) {
@@ -486,6 +492,63 @@ internal class CommentPurifyFeatureInstaller(
         return shouldBlockQuickReply(isReply, position)
     }
 
+    /**
+     * Kotlin 新通道（KMP 评论页的 `KReplyMoss.mainList/detailList/dialogList`）：见 [CommentKotlinPurifier]。
+     * 搜索跳转开着时，`mainList` 的请求也往返一次，在 `extra` 里声明 `disable_underline=true`（第 0 道防线）。
+     */
+    private fun installKotlinChannel(environment: HookEnvironment) {
+        if (!removeSearchLinks && !removeEmptyGuide && !removeQoe && !removeOperations) return
+        val loader = environment.classLoader ?: return
+        val replyInfoClass = KavaMemberLookup.classOrNull(loader, "$REPLY_PACKAGE.ReplyInfo") ?: return
+        val members = KotlinMossChannel.prepare(environment, loader, "评论净化", KMOSS_LOG_KEY) ?: return
+        val payloads = buildMap {
+            if (removeQoe) put("Qoe", "comments_qoe_removed")
+            if (removeOperations) {
+                put("Operation", "comments_operations_removed")
+                put("OperationV2", "comments_operations_removed")
+            }
+        }
+        val purifier = CommentKotlinPurifier(
+            replyInfoClass,
+            isSearchUrl = if (removeSearchLinks) ::isSearchUrlValue else null,
+            clearEmptyPage = removeEmptyGuide,
+            payloads = payloads
+        ) { capability, stage, count -> environment.reportRuntimeEvidence(capability, stage, count) }
+        val mainListReq = KavaMemberLookup.classOrNull(loader, "$REPLY_PACKAGE.MainListReq")
+        val requestPlan = mainListReq?.takeIf { removeSearchLinks }?.let(ProtobufBuilderPlan::resolve)
+        val getExtra = mainListReq?.let { KavaMemberLookup.methodOrNull(it, "getExtra") }
+            ?.takeIf { it.returnType == classOf<String>() }
+        val setExtra = requestPlan?.method("setExtra", classOf<String>())
+        val requestTransform: ((Any) -> Any)? =
+            if (requestPlan != null && getExtra != null && setExtra != null) {
+                fun(request: Any): Any {
+                    val extra = KotlinMossChannel.raw { getExtra.invoke(request) as? String }
+                    val updated = CommentKotlinPurifier.withDisableUnderline(extra) ?: return request
+                    return requestPlan.edit(request) { builder -> setExtra.invoke(builder, updated) }
+                }
+            } else {
+                null
+            }
+        var hooks = 0
+        KMOSS_RPCS.forEach { (rpc, replyName) ->
+            val replyClass = KavaMemberLookup.classOrNull(loader, "$REPLY_PACKAGE.$replyName") ?: return@forEach
+            val rewriteRequest = rpc == "mainList" && requestTransform != null
+            val installed = KotlinMossChannel.install(
+                environment, loader, members,
+                javaMossClassName = "$REPLY_PACKAGE.ReplyMoss",
+                rpc = rpc,
+                javaReplyClass = replyClass,
+                hookId = "comment.purify.kmoss.$rpc",
+                what = "评论净化",
+                logKey = KMOSS_LOG_KEY,
+                javaRequestClass = mainListReq?.takeIf { rewriteRequest },
+                transformRequest = requestTransform?.takeIf { rewriteRequest }
+            ) { javaReply -> purifier.purify(javaReply) }
+            if (installed) hooks += 1
+        }
+        environment.logInfo("comment_purify_kmoss", "[BIL] 评论净化：Kotlin 新通道 $hooks 个")
+    }
+
     /** 成对替换 protobuf 的 has/get 公开读取结果；默认实例只在安装期解析一次。 */
     private fun installAbsentPayload(
         environment: HookEnvironment,
@@ -515,6 +578,7 @@ internal class CommentPurifyFeatureInstaller(
                 point.presenceGetter
             ) {
                 after {
+                    if (KotlinMossChannel.isRaw()) return@after
                     environment.reportRuntimeEvidence(ID, FeatureRuntimeStage.OBSERVED)
                     if (result != false) {
                         result = false
@@ -535,6 +599,7 @@ internal class CommentPurifyFeatureInstaller(
                 point.contentGetter
             ) {
                 after {
+                    if (KotlinMossChannel.isRaw()) return@after
                     environment.reportRuntimeEvidence(ID, FeatureRuntimeStage.OBSERVED)
                     if (result !== defaultInstance) {
                         result = defaultInstance
@@ -627,6 +692,14 @@ internal class CommentPurifyFeatureInstaller(
 
         /** 宿主自己的启动参数键；同上，31 版零缺失。值按 `toBooleanStrictOrNull` 解析。 */
         internal const val SEARCH_WORD_DISABLED_KEY = "search_word_disabled"
+        private const val REPLY_PACKAGE = "com.bapis.bilibili.main.community.reply.v1"
+        private const val KMOSS_LOG_KEY = "comment_purify_kmoss"
+        /** Kotlin 新通道：RPC → 同一 proto 的 Java 响应类简单名（与 `ReplyMoss` 同包）。 */
+        private val KMOSS_RPCS = listOf(
+            "mainList" to "MainListReply",
+            "detailList" to "DetailListReply",
+            "dialogList" to "DialogListReply"
+        )
 
         /**
          * 一次会话里最多记几条"服务端到底还发不发"的观测。

@@ -122,6 +122,8 @@ internal class CommentFilterFeatureInstaller(
             runCatching {
                 environment.registrar.adapted("comment.filter.list.$index", point) {
                     after {
+                        // Kotlin 新通道读原始列表时不过滤，见 [KotlinMossChannel.raw]。
+                        if (KotlinMossChannel.isRaw()) return@after
                         val source = result as? List<*> ?: return@after
                         if (source.isEmpty()) return@after
                         environment.reportRuntimeEvidence(ID, FeatureRuntimeStage.OBSERVED)
@@ -160,6 +162,7 @@ internal class CommentFilterFeatureInstaller(
                 runCatching {
                     environment.registrar.adapted("comment.filter.top.$index", point) {
                         after {
+                            if (KotlinMossChannel.isRaw()) return@after
                             val reply = result ?: return@after
                             environment.reportRuntimeEvidence(ID, FeatureRuntimeStage.OBSERVED)
                             // 单条置顶：绕过列表 memo（每次都是新包装，缓存它只会挤掉真正的列表条目）。
@@ -184,6 +187,8 @@ internal class CommentFilterFeatureInstaller(
                 }
             }
         }
+        // KMP 评论页走 Kotlin KReplyMoss：兜底通道，不计入覆盖单位；Java getter 一个都装不上时也照装。
+        installKotlinChannel(environment, accessors, plan)
         if (installed == 0) return missing(environment, "registration-failed")
         // 提前判定层是加速通道，不计入覆盖单位：装不上时仍按"下次加载生效"工作。
         if (plan.semanticEnabled) installMossPrefetch(environment, accessors)
@@ -347,6 +352,78 @@ internal class CommentFilterFeatureInstaller(
             }
         }
         environment.logInfo("comment_semantic_moss", "[BIL] 智能过滤评论：提前判定边界 $hooks 个")
+    }
+
+    /**
+     * KMP 评论页（`kntr.common.comment.page`，9.14.0 的 `PresetListPageRepo` / `PresetDetailPageRepo`）
+     * 直接调 `KReplyMoss.mainList/detailList`，拿到的是 Kotlin 数据类，上面的 Java getter 过滤碰不到。
+     * 这里经 [KotlinMossChannel] 往返到 Java `MainListReply` 等，用 [ProtobufReplyTreeRewriter] 删评论
+     * （主楼、子回复预览、置顶位），判据与 getter 层完全相同；智能过滤在回调里按"首屏等待"设置判定。
+     */
+    private fun installKotlinChannel(environment: HookEnvironment, accessors: Accessors, plan: JudgementPlan) {
+        val replyInfoClass = accessors.content?.declaringClass ?: return
+        val loader = replyInfoClass.classLoader ?: return
+        val packageName = replyInfoClass.name.substringBeforeLast('.')
+        val members = KotlinMossChannel.prepare(environment, loader, "评论过滤", KMOSS_LOG_KEY) ?: return
+        val rewriter = ProtobufReplyTreeRewriter(replyInfoClass) { replies -> kotlinDecide(environment, replies, accessors, plan) }
+        val readers = ConcurrentHashMap<Class<*>, List<Method>>()
+        var hooks = 0
+        KMOSS_RPCS.forEach { (rpc, replyName) ->
+            val replyClass = KavaMemberLookup.classOrNull(loader, "$packageName.$replyName") ?: return@forEach
+            val installed = KotlinMossChannel.install(
+                environment, loader, members,
+                javaMossClassName = "$packageName.ReplyMoss",
+                rpc = rpc,
+                javaReplyClass = replyClass,
+                hookId = "comment.filter.kmoss.$rpc",
+                what = "评论过滤",
+                logKey = KMOSS_LOG_KEY
+            ) { javaReply ->
+                prewarmSemantic(javaReply, replyInfoClass, accessors, plan, readers)
+                rewriter.rewrite(javaReply).message
+            }
+            if (installed) hooks += 1
+        }
+        environment.logInfo("comment_filter_kmoss", "[BIL] 评论过滤：Kotlin 新通道 $hooks 个")
+    }
+
+    /**
+     * 整份响应的正文一次性送判（与 Java 链路的提前判定层同一批口径），回调在后台线程且开了"首屏等待"时在这里等；
+     * 之后 [kotlinDecide] 按层只查缓存，不会每层各发一次阻塞请求。
+     */
+    private fun prewarmSemantic(
+        javaReply: Any,
+        replyInfoClass: Class<*>,
+        accessors: Accessors,
+        plan: JudgementPlan,
+        readers: ConcurrentHashMap<Class<*>, List<Method>>
+    ) {
+        val judge = semanticJudge?.takeIf { plan.semanticEnabled } ?: return
+        val texts = KotlinMossChannel.raw { collectReplyTexts(javaReply, replyInfoClass, accessors, readers) }
+        if (texts.isEmpty()) return
+        val mode = if (judge.waitFirstScreen && !isMainThread()) SemanticMode.WAIT else SemanticMode.PREFETCH
+        judge.evaluate(texts, mode, onReport = reportTo("comment-kmoss"))
+    }
+
+    /** 同一层的一批评论 → 要删的那些（按引用）。在 moss 回调里，可能是后台线程。 */
+    private fun kotlinDecide(
+        environment: HookEnvironment,
+        replies: List<Any>,
+        accessors: Accessors,
+        plan: JudgementPlan
+    ): Set<Any> {
+        environment.reportRuntimeEvidence(ID, FeatureRuntimeStage.OBSERVED)
+        val judge = semanticJudge?.takeIf { plan.semanticEnabled }
+        // 整份响应已在 [prewarmSemantic] 里判过，这里只取缓存结论（未命中投后台，不阻塞）。
+        val semantic = judge?.evaluate(replies.map { reply -> messageOf(reply, accessors) }, SemanticMode.PREFETCH)
+        val drop = java.util.Collections.newSetFromMap(java.util.IdentityHashMap<Any, Boolean>())
+        replies.forEachIndexed { index, reply ->
+            if (semantic?.getOrNull(index) == SemanticVerdict.BLOCK ||
+                shouldRemove(readSignals(reply, accessors, plan), plan)
+            ) drop += reply
+        }
+        if (drop.isNotEmpty()) environment.reportRuntimeEvidence(ID, FeatureRuntimeStage.APPLIED, drop.size)
+        return drop
     }
 
     /** 回调是本模块创建的动态代理（`Proxy` 的调用处理器由模块类加载器加载）。 */
@@ -568,6 +645,13 @@ internal class CommentFilterFeatureInstaller(
         private const val MOSS_HANDLER_CLASS = "com.bilibili.lib.moss.api.MossResponseHandler"
         /** 评论列表 RPC：主楼、楼中楼、对话。只观察，不改写响应。 */
         private val PREFETCH_RPCS = listOf("mainList", "detailList", "dialogList")
+        /** Kotlin 新通道：RPC → 同一 proto 的 Java 响应类简单名（与 `ReplyMoss` 同包）。 */
+        private val KMOSS_RPCS = listOf(
+            "mainList" to "MainListReply",
+            "detailList" to "DetailListReply",
+            "dialogList" to "DialogListReply"
+        )
+        private const val KMOSS_LOG_KEY = "comment_filter_kmoss"
         /** 单次响应最多提取的不同正文数（主楼约 20 条 + 子回复预览）。 */
         private const val MOSS_MAX_TEXTS = 80
 
