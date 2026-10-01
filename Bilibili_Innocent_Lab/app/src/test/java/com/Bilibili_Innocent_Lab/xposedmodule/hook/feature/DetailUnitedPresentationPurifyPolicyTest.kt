@@ -10,14 +10,15 @@ import org.junit.Test
 
 class DetailUnitedPresentationPurifyPolicyTest {
 
-    @Test fun `special tag mapper candidates stay bounded to audited host classes`() {
-        assertEquals(
-            listOf(
-                "com.bilibili.ship.theseus.united.page.intro.module.tags.f",
-                "com.bilibili.ship.theseus.united.page.intro.module.tags.j"
-            ),
-            DetailUnitedPresentationPurifyPolicy.specialTagMapperClasses
-        )
+    @Test fun `special tag mapper candidates stay bounded to the tags package alphabet`() {
+        val candidates = DetailUnitedPresentationPurifyPolicy.specialTagMapperClasses
+        val pkg = "com.bilibili.ship.theseus.united.page.intro.module.tags."
+        // 已核对的 f、j 优先，其后是有界字母表；9.11.0(9110400) 与 9.14.0 的 `i` 由字母表覆盖。
+        assertEquals(listOf(pkg + "f", pkg + "j"), candidates.take(2))
+        assertEquals(26, candidates.size)
+        assertEquals(candidates.distinct(), candidates)
+        assertTrue(candidates.all { it.startsWith(pkg) && it.removePrefix(pkg).length == 1 })
+        assertTrue(pkg + "i" in candidates)
     }
 
     @Test fun `hot badge source requires the exact search from parameter`() {

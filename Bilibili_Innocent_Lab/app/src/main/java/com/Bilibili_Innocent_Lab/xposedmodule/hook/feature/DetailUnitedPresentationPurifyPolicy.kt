@@ -36,15 +36,27 @@ internal object DetailUnitedPresentationPurifyPolicy {
      *   或返回 TagsData 形状的方法，不能拿它当锚点。
      *
      * 因此代价被限制在"向前脆弱"：将来宿主只把 `j` 改名成别的字母，
-     * 这一层就静默降级。可以接受的原因是**主路径已经不依赖它**——
+     * 这一层就静默降级。
+     *
+     * **2026-10-01 补记**：这一刻已经发生过两次——9.11.0(9110400) 与 9.14.0 映射搬到 `tags.i`，
+     * 两份写死的名单都没跟上（9.14.0 真机回执 `MISSING_HOST_STRUCTURE`）。改为
+     * "已核对的 f、j 优先 + 包内 `'a'..'z'` 字母表"，判定仍完全交给 [resolve] 的结构过滤
+     * （static、唯一参数 SpecialTag、返回值能被清理器识别，全部候选里**恰好一个**才装）。
+     * 31 个本地宿主离线核对：包内满足 `static X(SpecialTag)` 的方法每版 0 或 1 个
+     * （8.84–8.96 `f#c`、9.10/9.11.0200/9.12/9.13 `j#a`、9.11.0400/9.14 `i#a`），不会因字母表变成多命中。
+     * 纯 ClassLoader 查找，无 DEX 扫描，不违反回调路径的约束。
+     *
+     * 可以接受的原因是**主路径已经不依赖它**——
      * [DetailUnitedModulePurifyPolicy.TOPIC_TAGS] 按 `ModuleType.SPECIALTAG`
      * 在协议层整模块删除，24 版全部可用且不含任何混淆名。
      * 这一层只是在协议层被绕过时多兜一道（有测试钉住这个主次关系）。
      */
-    val specialTagMapperClasses = listOf(
-        "com.bilibili.ship.theseus.united.page.intro.module.tags.f",
-        "com.bilibili.ship.theseus.united.page.intro.module.tags.j"
-    )
+    private const val SPECIAL_TAG_MAPPER_PACKAGE = "com.bilibili.ship.theseus.united.page.intro.module.tags"
+
+    val specialTagMapperClasses: List<String> =
+        (listOf("f", "j") + ('a'..'z').map(Char::toString))
+            .distinct()
+            .map { "$SPECIAL_TAG_MAPPER_PACKAGE.$it" }
     const val SPECIAL_TAG_CLASS = "com.bapis.bilibili.app.viewunite.common.SpecialTag"
 
     private const val SEARCH_SCHEME = "bilibili"

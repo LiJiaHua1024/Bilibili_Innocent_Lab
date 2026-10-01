@@ -1,6 +1,9 @@
 package com.Bilibili_Innocent_Lab.xposedmodule.hook.feature
 
 import com.Bilibili_Innocent_Lab.xposedmodule.runtime.KavaMemberLookup
+import com.highcapable.kavaref.extension.classOf
+import com.highcapable.kavaref.extension.isAbstract
+import com.highcapable.kavaref.extension.isStatic
 import java.lang.reflect.Method
 import java.lang.reflect.Modifier
 
@@ -35,7 +38,7 @@ internal object PlayerEndPageRecommendLocator {
         }.singleOrNull()
         val plan = ProtobufBuilderPlan.resolve(reply)
         val clear = plan?.method("clearRelates")
-        val mergedList = service?.let(::postMergeList)
+        val mergedList = service?.let { postMergeList(it) ?: packageMerger(it) }
         return Access(reply,
             if (moss != null && request != null) exact(moss, "executeViewEndPage", reply, request) else null,
             if (moss != null && request != null && handler?.isInterface == true)
@@ -61,6 +64,29 @@ internal object PlayerEndPageRecommendLocator {
         }
         return candidates.firstOrNull { it.parameterTypes.contentEquals(arrayOf(List::class.java)) }
             ?: candidates.singleOrNull()
+    }
+
+    /**
+     * 9.12.0 起 service 不再有 `(List) -> List` 合并入口：详情页卡片与结束页卡片的合并搬到同包混淆类
+     * （9.12–9.14 均为 `relatedrecommand.d#a(List, List) -> List`），由 `selectedRelatedCardsFlow`
+     * 调用、产出结束页 UI 的卡片列表。不挂它时，协议层清掉结束页卡片后详情页卡片仍会被合并进来
+     * （9.14.0 真机回执 `partial:4/5`）。
+     *
+     * 同包 `'a'..'z'` 字母表 + 精确形状（非 static、`(List, List) -> List`）+ 全包唯一；纯 ClassLoader 查找。
+     * 31 个本地宿主离线核对：9.12.0–9.14.0 恰好一个，9.11.0 及更早为 0（那时走 service 自己的入口）。
+     */
+    private fun packageMerger(service: Class<*>): Method? {
+        val pkg = service.name.substringBeforeLast('.', "").ifEmpty { return null }
+        val listType = classOf<List<*>>()
+        return ('a'..'z').mapNotNull { KavaMemberLookup.classOrNull(service.classLoader, "$pkg.$it") }
+            .flatMap { owner ->
+                KavaMemberLookup.declaredMethods(owner, makeAccessible = true) {
+                    it.returnType == listType &&
+                        it.parameterTypes.contentEquals(arrayOf(listType, listType)) &&
+                        !it.isStatic && !it.isAbstract && !it.isBridge && !it.isSynthetic
+                }
+            }
+            .singleOrNull()
     }
 
     private fun exact(owner: Class<*>, name: String, returns: Class<*>, vararg params: Class<*>): Method? =

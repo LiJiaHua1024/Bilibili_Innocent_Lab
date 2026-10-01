@@ -104,6 +104,20 @@ class PlayerEndPageRecommendTest {
         assertTrue(filtered.isEmpty())
         assertEquals(listOf(FeatureRuntimeStage.OBSERVED,FeatureRuntimeStage.APPLIED),events)
     }
+    @Test fun `912 plus merger in the service package is the merged list unit`() {
+        // 9.12.0+：service 只剩 d()/e(String)，合并搬到同包混淆类 d#a(List, List)。
+        val access=PlayerEndPageRecommendLocator.resolve(Reply::class.java,null,null,null,
+            endpagefixture.UGCEndPageRelatedRecommendService::class.java)
+        assertEquals("endpagefixture.d",access.mergedList!!.declaringClass.name)
+        assertEquals("a",access.mergedList!!.name)
+        val registrar=PlayerPortTestRegistrar();val events=mutableListOf<FeatureRuntimeStage>()
+        PlayerEndPageRecommendFeatureInstaller(true){access}.install(environment(registrar,events))
+        events.clear()
+        val merged=listOf("detail-card","end-card")
+        val filtered=registrar.invoke("$id.merged-list",endpagefixture.d(),arrayOf(listOf("detail-card"),listOf("end-card"))) { merged } as List<*>
+        assertTrue(filtered.isEmpty())
+        assertEquals(listOf(FeatureRuntimeStage.OBSERVED,FeatureRuntimeStage.APPLIED),events)
+    }
     @Test fun `old rendered service output is treated as the merged list coverage unit`() {
         val access=PlayerEndPageRecommendLocator.resolve(Reply::class.java,null,null,null,RenderService::class.java)
         assertEquals("render",access.mergedList!!.name)
