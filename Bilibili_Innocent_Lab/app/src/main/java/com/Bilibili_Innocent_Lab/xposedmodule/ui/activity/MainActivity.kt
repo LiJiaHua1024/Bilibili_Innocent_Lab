@@ -99,6 +99,7 @@ import com.Bilibili_Innocent_Lab.xposedmodule.hook.RoamingCompatHook
 import com.Bilibili_Innocent_Lab.xposedmodule.hook.feature.DetailModulePurifyPolicy
 import com.Bilibili_Innocent_Lab.xposedmodule.hook.feature.ComponentLibraryPoolMatcher
 import com.Bilibili_Innocent_Lab.xposedmodule.hook.feature.FeaturePreferences
+import com.Bilibili_Innocent_Lab.xposedmodule.hook.feature.StoryActionIcon
 import com.Bilibili_Innocent_Lab.xposedmodule.hook.feature.SemanticSurface
 import com.Bilibili_Innocent_Lab.xposedmodule.hook.feature.CommentFilterFeatureInstaller
 import com.Bilibili_Innocent_Lab.xposedmodule.hook.feature.DanmakuPurifyPolicy
@@ -459,6 +460,7 @@ class MainActivity : SkinnedActivity() {
     internal var portraitContentFilterSummaryView: NativeTextView? = null
     internal var videoRelateFilterSummaryView: NativeTextView? = null
     internal var detailModuleFilterSummaryView: NativeTextView? = null
+    internal var storyActionIconsSummaryView: NativeTextView? = null
     /** 设置备份入口及标题：用于跨 Activity 容器形变的来源坐标。 */
     private var settingsBackupEntryView: View? = null
     private var settingsBackupEntryTitleView: NativeTextView? = null
@@ -8030,6 +8032,59 @@ class MainActivity : SkinnedActivity() {
             text = stringResource(R.string.story_purify_tip)
             textColor = colorResource(R.color.colorTextDark)
             textSize = 12f
+        }
+        LinearLayout(
+            lparams = LayoutParams(widthMatchParent = true) {
+                topMargin = 14.dp
+                bottomMargin = 8.dp
+            },
+            init = {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+                background = selfRippleBackground(10f)
+                updatePadding(horizontal = 4.dp, vertical = 9.dp)
+                isClickable = true
+                isFocusable = true
+                contentDescription = stringResource(R.string.story_action_icons_title)
+                setOnClickListener { showStoryActionIconsDialog(anchor = it) }
+            }
+        ) {
+            LinearLayout(
+                lparams = LayoutParams { weight = 1f },
+                init = { orientation = LinearLayout.VERTICAL }
+            ) {
+                TextView(lparams = LayoutParams(widthMatchParent = true)) {
+                    text = stringResource(R.string.story_action_icons_title)
+                    textColor = colorResource(R.color.colorTextGray)
+                    textSize = 15f
+                }
+                TextView(
+                    lparams = LayoutParams(widthMatchParent = true) {
+                        topMargin = 4.dp
+                    }
+                ) {
+                    storyActionIconsSummaryView = this
+                    alpha = 0.68f
+                    text = storyActionIconsSummary()
+                    textColor = colorResource(R.color.colorTextDark)
+                    textSize = 12f
+                }
+                // 供设置项搜索命中子项：只做索引，不显示。
+                TextView(lparams = LayoutParams(widthMatchParent = true)) {
+                    visibility = View.GONE
+                    text = StoryActionIcon.entries.joinToString(separator = " ") {
+                        stringResource(storyActionIconLabel(it))
+                    }
+                    textColor = colorResource(R.color.colorTextDark)
+                    textSize = 12f
+                }
+            }
+            ImageView(lparams = LayoutParams(18.dp, 18.dp)) {
+                setImageResource(R.drawable.ic_chevron_down)
+                rotation = -90f
+                alpha = 0.8f
+                imageTintList = stateColorResource(R.color.colorTextGray)
+            }
         }
         LinearLayout(
             lparams = LayoutParams(widthMatchParent = true) {
