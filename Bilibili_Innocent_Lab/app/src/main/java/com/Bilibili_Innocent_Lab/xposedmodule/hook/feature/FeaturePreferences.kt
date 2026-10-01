@@ -165,6 +165,13 @@ internal object FeaturePreferences {
     const val REMOVE_STORY_TV = "remove_story_tv"
     const val REMOVE_STORY_VARIETY = "remove_story_variety"
     const val REMOVE_STORY_MUSIC = "remove_story_music"
+    /** Story 竖屏流右侧互动图标，每个图标单独开关，见 StoryActionIcon。 */
+    const val HIDE_STORY_ACTION_LIKE = "hide_story_action_like"
+    const val HIDE_STORY_ACTION_COMMENT = "hide_story_action_comment"
+    const val HIDE_STORY_ACTION_COIN = "hide_story_action_coin"
+    const val HIDE_STORY_ACTION_FAVORITE = "hide_story_action_favorite"
+    const val HIDE_STORY_ACTION_SHARE = "hide_story_action_share"
+    const val HIDE_STORY_ACTION_DANMAKU_TOGGLE = "hide_story_action_danmaku_toggle"
     const val BOTTOM_BAR_HIDDEN_RULES = "bottom_bar_hidden_rules"
 
     /** 勾选面板写入的选择器；与同名 *_HIDDEN_RULES 手填规则取并集，互不覆盖。 */

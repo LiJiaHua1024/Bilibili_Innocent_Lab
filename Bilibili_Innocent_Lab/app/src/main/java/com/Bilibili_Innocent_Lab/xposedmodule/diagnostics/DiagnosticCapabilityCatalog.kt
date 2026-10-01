@@ -20,7 +20,7 @@ internal object DiagnosticCapabilityCatalog {
      * 客户端是按 "比我已知的版本更新" 做增量的，
      * VERSION 涨了却没有任何条目标在新版本上，增量就是空集（有测试钉住）。
      */
-    const val VERSION = 16
+    const val VERSION = 17
     val definitions = listOf(
         DiagnosticCapabilityDefinition("search_home_recommend_hidden", "search_home_recommend_hidden", R.string.hide_search_home_recommend, setOf("search.home_recommend.hidden"), introducedCatalogVersion = 4),
         DiagnosticCapabilityDefinition("player_interactive_legacy_follow", "player_interactive_overlay", R.string.diag_cap_player_interactive_legacy_follow, setOf("player.interactive_overlays.hidden"), "legacy/guide/clearAttention"),
@@ -114,6 +114,12 @@ internal object DiagnosticCapabilityCatalog {
         DiagnosticCapabilityDefinition("story_tv_removed", "story_purify", R.string.remove_story_tv, setOf("story.tv.removed")),
         DiagnosticCapabilityDefinition("story_variety_removed", "story_purify", R.string.remove_story_variety, setOf("story.variety.removed")),
         DiagnosticCapabilityDefinition("story_music_removed", "story_purify", R.string.remove_story_music, setOf("story.music.removed")),
+        DiagnosticCapabilityDefinition("story_action_like_hidden", "story_action_icons", R.string.hide_story_action_like, setOf("story.action.like.hidden"), introducedCatalogVersion = 17),
+        DiagnosticCapabilityDefinition("story_action_comment_hidden", "story_action_icons", R.string.hide_story_action_comment, setOf("story.action.comment.hidden"), introducedCatalogVersion = 17),
+        DiagnosticCapabilityDefinition("story_action_coin_hidden", "story_action_icons", R.string.hide_story_action_coin, setOf("story.action.coin.hidden"), introducedCatalogVersion = 17),
+        DiagnosticCapabilityDefinition("story_action_favorite_hidden", "story_action_icons", R.string.hide_story_action_favorite, setOf("story.action.favorite.hidden"), introducedCatalogVersion = 17),
+        DiagnosticCapabilityDefinition("story_action_share_hidden", "story_action_icons", R.string.hide_story_action_share, setOf("story.action.share.hidden"), introducedCatalogVersion = 17),
+        DiagnosticCapabilityDefinition("story_action_danmaku_toggle_hidden", "story_action_icons", R.string.hide_story_action_danmaku_toggle, setOf("story.action.danmaku_toggle.hidden"), introducedCatalogVersion = 17),
         DiagnosticCapabilityDefinition("bottom_bar", "bottom_bar", R.string.custom_bottom_bar_hide, setOf("navigation.bottom_bar.hidden_rules", "navigation.bottom_bar.hidden_selectors")),
         DiagnosticCapabilityDefinition("player_default_quality", "player_default_quality", R.string.player_default_quality, setOf("player.default_quality.qn")),
         DiagnosticCapabilityDefinition("teenagers_mode_prompt", "teenagers_mode_prompt", R.string.block_teenagers_mode_prompt, setOf("prompt.teenagers_mode.blocked")),

@@ -58,6 +58,8 @@ internal object DiagnosticFeatureRegistry {
         DiagnosticFeatureDescriptor("home_component_filter", DiagnosticFeatureCategory.HOME_AND_DYNAMIC),
         DiagnosticFeatureDescriptor("bottom_bar", DiagnosticFeatureCategory.HOME_AND_DYNAMIC),
         DiagnosticFeatureDescriptor("story_purify", DiagnosticFeatureCategory.HOME_AND_DYNAMIC),
+        DiagnosticFeatureDescriptor("story_action_icons", DiagnosticFeatureCategory.HOME_AND_DYNAMIC,
+            runtimeEvidenceExpected = true),
         DiagnosticFeatureDescriptor("dynamic_tabs_purify", DiagnosticFeatureCategory.HOME_AND_DYNAMIC),
         DiagnosticFeatureDescriptor(
             "dynamic_purify",

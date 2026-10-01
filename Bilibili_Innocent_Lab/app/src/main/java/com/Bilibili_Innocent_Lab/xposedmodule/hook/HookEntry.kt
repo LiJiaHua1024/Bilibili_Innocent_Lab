@@ -101,6 +101,8 @@ import com.Bilibili_Innocent_Lab.xposedmodule.hook.feature.SearchPurifyFeatureIn
 import com.Bilibili_Innocent_Lab.xposedmodule.hook.feature.SearchHomeRecommendFeatureInstaller
 import com.Bilibili_Innocent_Lab.xposedmodule.hook.feature.SharePurifyFeatureInstaller
 import com.Bilibili_Innocent_Lab.xposedmodule.hook.feature.StoryPurifyFeatureInstaller
+import com.Bilibili_Innocent_Lab.xposedmodule.hook.feature.StoryActionIcon
+import com.Bilibili_Innocent_Lab.xposedmodule.hook.feature.StoryActionIconsFeatureInstaller
 import com.Bilibili_Innocent_Lab.xposedmodule.hook.feature.SplashAdFeatureInstaller
 import com.Bilibili_Innocent_Lab.xposedmodule.hook.feature.SplashAutoNightFeatureInstaller
 import com.Bilibili_Innocent_Lab.xposedmodule.hook.feature.SystemMediaNotificationFeatureInstaller
@@ -3334,6 +3336,16 @@ class HookEntry : XposedModule() {
                             false
                         ),
                         points = hostAdaptResult?.storyFeed
+                    )
+                )
+            )
+
+            featureInstallCoordinator.installAll(
+                listOf(
+                    StoryActionIconsFeatureInstaller(
+                        hidden = StoryActionIcon.entries.filterTo(linkedSetOf()) { icon ->
+                            prefs.getBoolean(icon.preferenceKey, false)
+                        }
                     )
                 )
             )

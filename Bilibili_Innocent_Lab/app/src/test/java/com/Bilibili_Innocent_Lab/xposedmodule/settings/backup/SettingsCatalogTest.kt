@@ -130,11 +130,11 @@ class SettingsCatalogTest {
     }
 
     @Test
-    fun `catalog is a unique allowlist with 184 settings`() {
-        assertEquals(184, SettingsCatalog.specs.size)
-        assertEquals(184, SettingsCatalog.specs.map { it.id }.distinct().size)
-        assertEquals(184, SettingsCatalog.specs.map { it.storageKey }.distinct().size)
-        assertEquals(181, SettingsCatalog.specs.count { it.restorePolicy == RestorePolicy.AUTOMATIC })
+    fun `catalog is a unique allowlist with 190 settings`() {
+        assertEquals(190, SettingsCatalog.specs.size)
+        assertEquals(190, SettingsCatalog.specs.map { it.id }.distinct().size)
+        assertEquals(190, SettingsCatalog.specs.map { it.storageKey }.distinct().size)
+        assertEquals(187, SettingsCatalog.specs.count { it.restorePolicy == RestorePolicy.AUTOMATIC })
         assertEquals(3, SettingsCatalog.specs.count { it.restorePolicy == RestorePolicy.MANUAL })
         assertTrue(SettingsCatalog.specs.all { it.accepts(it.defaultValue) })
         assertTrue(SettingsCatalog.specs.all { it.id.matches(Regex("[a-z0-9][a-z0-9._-]{0,127}")) })
@@ -365,7 +365,7 @@ class SettingsCatalogTest {
         val expected = requireNotNull(javaClass.classLoader?.getResourceAsStream("settings-backup/catalog-v13.txt"))
             .bufferedReader().useLines { it.filter(String::isNotBlank).toList() }
         assertEquals(expected, SettingsCatalog.specs.filter { it.introducedCatalogVersion <= 13 }.map { it.id }.sorted())
-        assertEquals(36, SettingsCatalog.CATALOG_VERSION)
+        assertEquals(37, SettingsCatalog.CATALOG_VERSION)
         val added = SettingsCatalog.specs.filter { it.introducedCatalogVersion == 13 }
         assertEquals(6, added.size)
         assertTrue(added.all { it.restorePolicy == RestorePolicy.AUTOMATIC && ImportEffect.RESTART_BILIBILI in it.effects })
@@ -664,7 +664,7 @@ class SettingsCatalogTest {
 
     @Test
     fun `catalog types and manual roaming boundary are explicit`() {
-        assertEquals(120, SettingsCatalog.specs.count { it.type == SettingValueType.BOOLEAN })
+        assertEquals(126, SettingsCatalog.specs.count { it.type == SettingValueType.BOOLEAN })
         assertEquals(13, SettingsCatalog.specs.count { it.type == SettingValueType.INTEGER })
         assertEquals(51, SettingsCatalog.specs.count { it.type == SettingValueType.STRING })
 
@@ -772,6 +772,24 @@ class SettingsCatalogTest {
         assertEquals(
             SettingValue.Text(HookEntry.LOG_LEVEL_COMPLETE),
             logLevel.normalizeForBackup(SettingValue.Text("legacy-verbose"))
+        )
+    }
+
+    @Test
+    fun `catalog v37 adds six default off story action icon switches`() {
+        val expected = requireNotNull(
+            javaClass.classLoader?.getResourceAsStream("settings-backup/catalog-v37.txt")
+        ).bufferedReader().useLines { it.filter(String::isNotBlank).toList() }
+        assertEquals(expected, SettingsCatalog.specs.filter { it.introducedCatalogVersion <= 37 }.map { it.id }.sorted())
+        val added = SettingsCatalog.specs.filter { it.introducedCatalogVersion == 37 }
+        assertEquals(6, added.size)
+        assertTrue(added.all {
+            it.type == SettingValueType.BOOLEAN && it.defaultValue == SettingValue.Bool(false) &&
+                it.restorePolicy == RestorePolicy.AUTOMATIC && ImportEffect.RESTART_BILIBILI in it.effects
+        })
+        assertEquals(
+            com.Bilibili_Innocent_Lab.xposedmodule.hook.feature.StoryActionIcon.preferenceKeys.toSet(),
+            added.map { it.storageKey }.toSet()
         )
     }
 }

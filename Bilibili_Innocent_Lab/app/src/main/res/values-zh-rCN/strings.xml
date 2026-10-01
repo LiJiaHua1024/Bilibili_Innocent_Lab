@@ -1182,4 +1182,20 @@
     <string name="semantic_jev_timeout_help">等判定最多等多久，超时就先按规则显示。留空：弹幕 3 秒、其它 2.5 秒。可填 0.5～30；对话模型较慢，可设 5～10 秒。超时的请求仍会在后台跑完，下次生效。</string>
     <string name="semantic_jev_timeout_invalid">请输入 0.5～30 之间的秒数，或留空</string>
     <string name="semantic_jev_summary_timeout"> · 等待 %1$s 秒</string>
+    <string name="story_action_icons_title">竖屏页互动图标</string>
+    <string name="story_action_icons_description">隐藏竖屏流右侧的点赞、评论、投币、收藏、分享与弹幕开关。视频与图文竖屏都生效，点赞与评论在横屏模式下也一并隐藏。</string>
+    <string name="story_action_icons_summary_none">未隐藏</string>
+    <string name="story_action_icons_summary_selected">已隐藏 %1$d / %2$d 项</string>
+    <string name="story_action_icons_save">隐藏 %1$d 项</string>
+    <string name="story_action_icons_applied">已保存，重启哔哩哔哩后生效</string>
+    <string name="story_action_icons_save_failed">保存失败</string>
+    <string name="story_action_icons_select_all">全选</string>
+    <string name="story_action_icons_clear">清空</string>
+    <string name="hide_story_action_like">隐藏点赞图标</string>
+    <string name="hide_story_action_comment">隐藏评论图标</string>
+    <string name="hide_story_action_coin">隐藏投币图标</string>
+    <string name="hide_story_action_favorite">隐藏收藏图标</string>
+    <string name="hide_story_action_share">隐藏分享图标</string>
+    <string name="hide_story_action_danmaku_toggle">隐藏弹幕开关</string>
+    <string name="highlights_story_action_icons">竖屏流：右侧点赞、评论、投币、收藏、分享与弹幕开关可以逐个隐藏。</string>
 </resources>

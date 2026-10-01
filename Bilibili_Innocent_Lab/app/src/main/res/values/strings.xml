@@ -1182,4 +1182,20 @@
     <string name="semantic_jev_timeout_help">How long to wait for a verdict before showing content by the rules. Empty: 3 s for danmaku, 2.5 s elsewhere. 0.5 to 30 s; slow chat models may need 5 to 10 s. Requests past the limit still finish in the background and take effect next time.</string>
     <string name="semantic_jev_timeout_invalid">Enter a number of seconds from 0.5 to 30, or leave it empty</string>
     <string name="semantic_jev_summary_timeout"> · wait %1$s s</string>
+    <string name="story_action_icons_title">Portrait-feed action icons</string>
+    <string name="story_action_icons_description">Hide the like, comment, coin, favorite, share and danmaku toggle icons on the right of the portrait feed. Applies to both the video and image cards, and like/comment also in landscape mode.</string>
+    <string name="story_action_icons_summary_none">None hidden</string>
+    <string name="story_action_icons_summary_selected">Hidden: %1$d / %2$d</string>
+    <string name="story_action_icons_save">Hide %1$d</string>
+    <string name="story_action_icons_applied">Saved. Restart Bilibili to apply.</string>
+    <string name="story_action_icons_save_failed">Could not save the selection</string>
+    <string name="story_action_icons_select_all">Select all</string>
+    <string name="story_action_icons_clear">Clear</string>
+    <string name="hide_story_action_like">Hide the like icon</string>
+    <string name="hide_story_action_comment">Hide the comment icon</string>
+    <string name="hide_story_action_coin">Hide the coin icon</string>
+    <string name="hide_story_action_favorite">Hide the favorite icon</string>
+    <string name="hide_story_action_share">Hide the share icon</string>
+    <string name="hide_story_action_danmaku_toggle">Hide the danmaku toggle</string>
+    <string name="highlights_story_action_icons">Portrait feed: hide the like, comment, coin, favorite, share and danmaku toggle icons one by one.</string>
 </resources>

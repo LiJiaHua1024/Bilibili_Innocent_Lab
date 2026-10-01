@@ -1182,4 +1182,20 @@
     <string name="semantic_jev_timeout_help">等判定最多等多久，逾時就先按規則顯示。留空：彈幕 3 秒、其他 2.5 秒。可填 0.5～30；對話模型較慢，可設 5～10 秒。逾時的請求仍會在背景跑完，下次生效。</string>
     <string name="semantic_jev_timeout_invalid">請輸入 0.5～30 之間的秒數，或留空</string>
     <string name="semantic_jev_summary_timeout"> · 等待 %1$s 秒</string>
+    <string name="story_action_icons_title">直向頁互動圖示</string>
+    <string name="story_action_icons_description">隱藏直向影片右側的按讚、留言、投幣、收藏、分享與彈幕開關。影片與圖文直向都生效，按讚與留言在橫向模式下也一併隱藏。</string>
+    <string name="story_action_icons_summary_none">未隱藏</string>
+    <string name="story_action_icons_summary_selected">已隱藏 %1$d / %2$d 項</string>
+    <string name="story_action_icons_save">隱藏 %1$d 項</string>
+    <string name="story_action_icons_applied">已儲存，重新啟動嗶哩嗶哩後生效</string>
+    <string name="story_action_icons_save_failed">儲存失敗</string>
+    <string name="story_action_icons_select_all">全選</string>
+    <string name="story_action_icons_clear">清空</string>
+    <string name="hide_story_action_like">隱藏按讚圖示</string>
+    <string name="hide_story_action_comment">隱藏留言圖示</string>
+    <string name="hide_story_action_coin">隱藏投幣圖示</string>
+    <string name="hide_story_action_favorite">隱藏收藏圖示</string>
+    <string name="hide_story_action_share">隱藏分享圖示</string>
+    <string name="hide_story_action_danmaku_toggle">隱藏彈幕開關</string>
+    <string name="highlights_story_action_icons">直向影片：右側按讚、留言、投幣、收藏、分享與彈幕開關可以逐個隱藏。</string>
 </resources>

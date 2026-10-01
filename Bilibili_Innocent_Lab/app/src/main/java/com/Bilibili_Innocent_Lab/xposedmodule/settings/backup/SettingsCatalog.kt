@@ -30,7 +30,7 @@ import com.Bilibili_Innocent_Lab.xposedmodule.settings.appearance.ModalBackdropB
 internal object SettingsCatalog {
     const val PRODUCT_ID = "bilibili-innocent-lab.settings"
     const val SCOPE_ID = "core-user-settings"
-    const val CATALOG_VERSION = 36
+    const val CATALOG_VERSION = 37
     const val ID_PLAYER_DEFAULT_SPEED = "player.default_speed.percent"
     const val ID_PLAYER_LONG_PRESS_SPEED = "player.long_press_speed.percent"
     const val ID_FREE_COPY_COMMENT = "free_copy.comment.enabled"
@@ -568,6 +568,19 @@ internal object SettingsCatalog {
         bool("story.tv.removed", FeaturePreferences.REMOVE_STORY_TV, R.string.remove_story_tv),
         bool("story.variety.removed", FeaturePreferences.REMOVE_STORY_VARIETY, R.string.remove_story_variety),
         bool("story.music.removed", FeaturePreferences.REMOVE_STORY_MUSIC, R.string.remove_story_music),
+        // v37：Story 竖屏流右侧互动图标，每个图标单独开关。
+        bool("story.action.like.hidden", FeaturePreferences.HIDE_STORY_ACTION_LIKE, R.string.hide_story_action_like,
+            introducedCatalogVersion = 37),
+        bool("story.action.comment.hidden", FeaturePreferences.HIDE_STORY_ACTION_COMMENT, R.string.hide_story_action_comment,
+            introducedCatalogVersion = 37),
+        bool("story.action.coin.hidden", FeaturePreferences.HIDE_STORY_ACTION_COIN, R.string.hide_story_action_coin,
+            introducedCatalogVersion = 37),
+        bool("story.action.favorite.hidden", FeaturePreferences.HIDE_STORY_ACTION_FAVORITE, R.string.hide_story_action_favorite,
+            introducedCatalogVersion = 37),
+        bool("story.action.share.hidden", FeaturePreferences.HIDE_STORY_ACTION_SHARE, R.string.hide_story_action_share,
+            introducedCatalogVersion = 37),
+        bool("story.action.danmaku_toggle.hidden", FeaturePreferences.HIDE_STORY_ACTION_DANMAKU_TOGGLE, R.string.hide_story_action_danmaku_toggle,
+            introducedCatalogVersion = 37),
 
         text("navigation.bottom_bar.hidden_rules", FeaturePreferences.BOTTOM_BAR_HIDDEN_RULES, R.string.custom_bottom_bar_hide),
         text(
@@ -826,7 +839,7 @@ internal object SettingsCatalog {
     val byStorageKey: Map<String, SettingSpec> = specs.associateBy(SettingSpec::storageKey)
 
     init {
-        check(specs.size == 184) { "Expected 184 catalog settings, found ${specs.size}" }
+        check(specs.size == 190) { "Expected 190 catalog settings, found ${specs.size}" }
         check(byId.size == specs.size) { "Duplicate logical setting id" }
         check(specs.map(SettingSpec::storageKey).distinct().size == specs.size) {
             "Duplicate settings storage key"

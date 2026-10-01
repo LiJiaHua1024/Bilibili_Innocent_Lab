@@ -1275,6 +1275,7 @@ class DiagnosticsActivity : SkinnedActivity(),
             "home_component_filter" -> R.string.custom_home_component_hide
             "bottom_bar" -> R.string.custom_bottom_bar_hide
             "story_purify" -> R.string.story_purify_settings
+            "story_action_icons" -> R.string.story_action_icons_title
             "dynamic_tabs_purify" -> R.string.dynamic_page_settings
             "dynamic_purify" -> R.string.diagnostics_host_feature_dynamic_feed
             "search_purify" -> R.string.diagnostics_host_feature_search
