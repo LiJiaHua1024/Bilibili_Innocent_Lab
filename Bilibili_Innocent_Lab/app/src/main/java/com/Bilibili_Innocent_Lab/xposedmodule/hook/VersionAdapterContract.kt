@@ -37,7 +37,12 @@ internal object VersionAdapterContract {
      */
     /** 62 → 63（2026-09-23）：9.13.0(9130300) 更新/默认画质 owner 搬迁；JSON 形状不变。 */
     /** 63 → 64（2026-09-30）：9.14.0(9140200) 更新/默认画质 owner 再次搬迁（Dr1.c / ut1.h）；JSON 形状不变。 */
-    const val RULE_VERSION = 64
+    /**
+     * 64 → 65（2026-10-01）：DexKit 兜底改成"签名 + 方法体常量"。更新检查原查询自 8.97.0 起每版都
+     * 命中网络边界与包装层两个 owner、恒报歧义；默认画质新增兜底，且只命中稳定包装层
+     * `PlayerSettingHelper` 时也会查。JSON 形状不变。
+     */
+    const val RULE_VERSION = 65
 
     /**
      * 51 → 52（2026-09-11，9.11.0(9110400) 适配）：

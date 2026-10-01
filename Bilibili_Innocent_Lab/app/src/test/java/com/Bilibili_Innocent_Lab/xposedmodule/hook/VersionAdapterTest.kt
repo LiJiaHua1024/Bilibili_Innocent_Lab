@@ -122,6 +122,42 @@ class VersionAdapterTest {
         assertEquals(cached.hostFingerprint, merged?.hostFingerprint)
     }
 
+    @Test
+    fun `dex assisted quality implementation wins over the live legacy wrapper`() {
+        val helper = VersionAdapter.PlayerQualityPoints(
+            VersionAdapter.HookPoint("com.bilibili.playerbizcommon.utils.PlayerSettingHelper", "getDefaultQuality")
+        )
+        val implementation = VersionAdapter.PlayerQualityPoints(VersionAdapter.HookPoint("Zz9.q", "a"))
+        val newest = VersionAdapter.PlayerQualityPoints(VersionAdapter.HookPoint("ut1.h", "a"))
+        val cached = result().copy(playerQuality = implementation)
+
+        // 模块落后宿主：实时候选表只落到稳定包装层，后台 DexKit 找到的实现优先。
+        assertEquals(
+            implementation,
+            VersionAdapter.mergeRuntimeWithCached(cached.copy(playerQuality = helper), cached)?.playerQuality
+        )
+        // 实时定位到真实实现时仍以实时为准。
+        assertEquals(
+            newest,
+            VersionAdapter.mergeRuntimeWithCached(cached.copy(playerQuality = newest), cached)?.playerQuality
+        )
+        // 8.84.0–8.87.0：包装层本身就是实现，缓存同样是它，不换。
+        val legacyCached = cached.copy(playerQuality = helper)
+        assertEquals(
+            helper,
+            VersionAdapter.mergeRuntimeWithCached(legacyCached, legacyCached)?.playerQuality
+        )
+    }
+
+    @Test
+    fun `dex assisted quality method skips the candidate table`() {
+        val assisted = Class.forName("gh6.h").getDeclaredMethod("c")
+        val point = VersionAdapter.locateDefaultVideoQuality(requireNotNull(javaClass.classLoader), assisted)
+            ?.defaultQualityMethod
+        assertEquals("gh6.h", point?.className)
+        assertEquals("c", point?.methodName)
+    }
+
     private fun result(): VersionAdapter.AdaptResult = VersionAdapter.AdaptResult(
         biliVersionCode = 9090300,
         ts = 1234L,

@@ -11,7 +11,17 @@ internal data class DexAssistRequest(
 
 /** 只有结构特征足够强、且能在运行时二次验真的点才能加入该目录。 */
 internal enum class DexAssistQuery {
+    /** 检查更新的网络边界：签名 `(Context) -> BiliUpgradeInfo` + 方法体日志常量。 */
     BLOCK_UPDATE,
+
+    /**
+     * 播放器默认画质实现：`()I` + 方法体日志常量 `quality settings:`。
+     *
+     * 2026-09-03 曾因"只有 `()I`，特征太弱"不入目录；加上方法体常量后在 31 个本地宿主上逐版唯一，
+     * 满足入目录条件。它和更新检查是 9.11.0 起**每次换版都要人工补候选**的仅有两个点，
+     * 模块落后宿主时全靠这一层。
+     */
+    PLAYER_DEFAULT_QUALITY,
 
     /**
      * 回复脉络的 `ReplyInfo -> CommentItem` 映射入口。
@@ -34,13 +44,44 @@ internal sealed interface DexAssistResult {
         QUERY_FAILED,
         /** 代码归档数量超出预期；属于 split 布局异常，与命中歧义是两回事。 */
         TOO_MANY_ARCHIVES,
-        TOO_MANY_MATCHES
+        TOO_MANY_MATCHES,
+        /** 上次针对同一宿主的查询没有完成（多半是进程在查询中被杀），见 [DexAssistAttemptGuard]。 */
+        PREVIOUS_ATTEMPT_UNFINISHED
     }
 }
 
 /** DexKit 被限制在此接口后方，VersionAdapter 与 Hook 注册层不直接持有桥对象。 */
 internal fun interface DexAssistEngine {
     fun resolve(request: DexAssistRequest): DexAssistResult
+
+    /**
+     * 一轮适配里需要的全部查询一次做完。默认逐个 [resolve]；DexKit 实现会让每个代码归档只建一次桥——
+     * 宿主 30 多个 DEX，每建一次桥都要整份解析一遍（2026-10-01 真机 9.14.0 每次约 5 s）。
+     */
+    fun resolveAll(
+        queries: Set<DexAssistQuery>,
+        codePaths: List<String>,
+        classLoader: ClassLoader
+    ): Map<DexAssistQuery, DexAssistResult> =
+        queries.associateWith { resolve(DexAssistRequest(it, codePaths, classLoader)) }
+}
+
+/**
+ * 一次适配内共享的 DEX 查询：第一次取结果时，把本轮登记的查询合并成一趟。
+ * 没登记过的查询单独补查（不应出现，只为兜住调用方漏登记）。
+ */
+internal class DexAssistSession(
+    private val engine: DexAssistEngine,
+    private val codePaths: List<String>,
+    private val classLoader: ClassLoader,
+    private val planned: Set<DexAssistQuery>
+) {
+    private val results: Map<DexAssistQuery, DexAssistResult> by lazy {
+        if (planned.isEmpty()) emptyMap() else engine.resolveAll(planned, codePaths, classLoader)
+    }
+
+    fun result(query: DexAssistQuery): DexAssistResult =
+        results[query] ?: engine.resolve(DexAssistRequest(query, codePaths, classLoader))
 }
 
 /**
