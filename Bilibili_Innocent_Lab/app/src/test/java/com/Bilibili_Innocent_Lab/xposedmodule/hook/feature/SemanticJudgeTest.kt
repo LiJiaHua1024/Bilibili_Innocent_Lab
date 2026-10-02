@@ -206,7 +206,8 @@ class SemanticJudgeTest {
         val judge = judge(background = { it.run(); true }) { body, _, _ ->
             calls += 1
             asked = questionCount(body)
-            200 to answers(*DoubleArray(asked) { 0.95 })
+            // 第一批判屏蔽、第二批判保留，这样两条路径的结论能区分开。
+            200 to answers(*DoubleArray(asked) { if (calls == 1) 0.95 else 0.1 })
         }
 
         // 同一条广告文案出现两次：只判一次，两条拿到同一个结论——不能第一张删、第二张留。
