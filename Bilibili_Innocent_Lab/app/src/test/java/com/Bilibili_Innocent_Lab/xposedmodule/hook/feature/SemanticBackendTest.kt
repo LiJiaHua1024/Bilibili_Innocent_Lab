@@ -44,12 +44,32 @@ class SemanticBackendTest {
     }
 
     @Test
-    fun `endpoints carrying a query or fragment are rejected instead of mis-pathed`() {
-        // 路径片段是往整串地址上拼接的：带 query 时会拼成 …/v1?key=abc/chat/completions，
-        // 仍是合法 URL、不会被别处拦下，却每次都请求错路径。宁可当成填错。
-        assertNull(OpenAiCompatibleBackend("m").resolveEndpoint("https://relay.example.com/v1?key=abc"))
-        assertNull(OpenAiCompatibleBackend("m").resolveEndpoint("https://relay.example.com/v1#frag"))
-        assertNull(JevBackend().resolveEndpoint("https://relay.example.com/v1?key=abc"))
+    fun `a query or fragment survives when a path segment is appended`() {
+        // 直接把片段拼到整串末尾会把 ?api-version=… 变成路径的一部分，请求打到一个不存在的路径上。
+        // 片段必须插到 query 之前并原样保留它。
+        assertEquals(
+            "https://relay.example.com/v1/chat/completions?api-version=preview",
+            OpenAiCompatibleBackend("m").resolveEndpoint("https://relay.example.com/v1?api-version=preview")
+        )
+        assertEquals(
+            "https://relay.example.com/v1/chat/completions?frag",
+            OpenAiCompatibleBackend("m").resolveEndpoint("https://relay.example.com?frag")
+        )
+        assertEquals(
+            "https://relay.example.com/v1/chat/completions#frag",
+            OpenAiCompatibleBackend("m").resolveEndpoint("https://relay.example.com/v1#frag")
+        )
+        assertEquals(
+            "https://relay.example.com/v1/systemone?key=abc",
+            JevBackend().resolveEndpoint("https://relay.example.com/v1?key=abc")
+        )
+        // 已经写全判定端点的地址原样使用（Azure OpenAI 那种带 api-version 的），不能被拒。
+        val complete = "https://my-resource.openai.azure.com/openai/v1/chat/completions?api-version=preview"
+        assertEquals(complete, OpenAiCompatibleBackend("m").resolveEndpoint(complete))
+        assertEquals(
+            "https://relay.example.com/v1/systemone?key=abc",
+            JevBackend().resolveEndpoint("https://relay.example.com/v1/systemone?key=abc")
+        )
         assertEquals("https://relay.example.com/v1/chat/completions",
             OpenAiCompatibleBackend("m").resolveEndpoint("https://relay.example.com/v1"))
     }
@@ -666,8 +686,12 @@ class SemanticBackendTest {
     @Test
     fun `a source that rejects everything cannot burn the whole request budget`() {
         var requests = 0
+        // 时钟必须一路往前走：否则第一个叶子耗尽变体阶梯后的冷却会把后续 fetchFrom 全部挡在
+        // 门外（返回 "cooldown"、一个请求都不发），预算这条线根本轮不到绑定，测试就成了摆设。
+        var now = 0L
         val judge = SemanticJudge("k", rules, backend = OpenAiCompatibleBackend("m"), batchSize = 20,
-            background = { it.run(); true }, transport = { _, _, _ ->
+            background = { it.run(); true }, clock = { now += 60_000; now },
+            transport = { _, _, _ ->
                 requests += 1
                 400 to "{\"error\":{\"message\":\"nope\"}}"
             })
@@ -679,6 +703,9 @@ class SemanticBackendTest {
         )
         // 拆分树的每个叶子都要把变体阶梯爬一遍，没有上界就是几十次请求。
         assertTrue("requests=$requests", requests <= 24)
+        // 预算确实被用满（MAX_REQUESTS_PER_CHUNK = 24），否则说明这条线压根没生效，
+        // 上面的断言只是碰巧成立。
+        assertEquals(24, requests)
     }
 
     @Test
