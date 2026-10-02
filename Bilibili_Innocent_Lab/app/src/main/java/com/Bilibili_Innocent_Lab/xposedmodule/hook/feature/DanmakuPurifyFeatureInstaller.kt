@@ -55,7 +55,7 @@ internal class DanmakuPurifyFeatureInstaller(
     override val capabilityIds: List<String> get() = buildList {
         if (minimumWeight != null) add("player_danmaku_weight_filter_enabled")
         if (removeVipColorful) add("player_danmaku_vip_colorful_removed")
-        if (semanticJudge != null) add("player_danmaku_semantic_filter_enabled")
+        if (semanticJudge != null) add(CAPABILITY_SEMANTIC)
     }
 
     private val minimumWeight = if (weightFilterEnabled) {
@@ -66,6 +66,9 @@ internal class DanmakuPurifyFeatureInstaller(
 
     /** 权重字段整段缺失只值得记一次；这是进程级一次性诊断，不随分片增长。 */
     private val weightUnavailableLogged = AtomicBoolean(false)
+
+    /** 主线程回调导致语义过滤恒定不删时，每进程只留一条证据（有界，避免刷屏）。 */
+    private val semanticColdStartReported = AtomicBoolean(false)
 
     override fun install(environment: HookEnvironment): FeatureInstallResult {
         if (minimumWeight == null && !removeVipColorful && semanticJudge == null) {
@@ -174,7 +177,7 @@ internal class DanmakuPurifyFeatureInstaller(
             "player_danmaku_vip_colorful_removed", usableColorful, installed, sharedExpected
         )
         if (semanticJudge != null) environment.reportCapabilityCoverage(
-            "player_danmaku_semantic_filter_enabled", usableSemantic, installed, sharedExpected
+            CAPABILITY_SEMANTIC, usableSemantic, installed, sharedExpected
         )
         expected = sharedExpected
 
@@ -249,7 +252,7 @@ internal class DanmakuPurifyFeatureInstaller(
             // 删了渐变样式定义，就必须同时把引用它的弹幕改回普通色：弹幕分段整包交给原生引擎
             // （libchronos）解析，不能留"条目引用一个已不存在的样式"这种半截数据。
             val recolored = neutralizeVipColorful(reply, members, weighted) ?: weighted
-            val elems = semanticFilter(reply, members, recolored) ?: recolored
+            val elems = semanticFilter(environment, reply, members, recolored) ?: recolored
             if (elems == null && colorful == null) return@runCatching reply
             val updated = members.builder.edit(reply) { builder ->
                 if (elems != null) {
@@ -321,7 +324,12 @@ internal class DanmakuPurifyFeatureInstaller(
      * @param base 前面判据处理后的列表；null 表示未改，按原始列表处理。
      * @return 需要写回的新列表；没有移除时返回 null。
      */
-    private fun semanticFilter(reply: Any, members: ReplyMembers, base: List<Any>?): List<Any>? {
+    private fun semanticFilter(
+        environment: HookEnvironment,
+        reply: Any,
+        members: ReplyMembers,
+        base: List<Any>?
+    ): List<Any>? {
         val judge = semanticJudge ?: return null
         val content = members.content ?: return null
         val getter = members.elemList?.elemsGetter ?: return null
@@ -347,7 +355,24 @@ internal class DanmakuPurifyFeatureInstaller(
         )
         val blocked = HashSet<String>()
         candidates.forEachIndexed { index, text -> if (verdicts[index] == SemanticVerdict.BLOCK) blocked += text }
-        if (blocked.isEmpty()) return null
+        if (blocked.isEmpty()) {
+            // 主线程回调时只能查缓存，未命中的条目全是 UNKNOWN，于是这里恒定不删。不留证据的话，
+            // 诊断里这一项仍是 success，用户只会看到"开关打开但弹幕一条没少"。
+            //
+            // 判据是"一条都没判出来"而不是"没删到东西"：缓存是热的时候结论会是 KEEP/BLOCK，
+            // 这个分段本来就不该拦，**不能**因此报运行期错误。
+            if (mode == SemanticMode.CACHE_ONLY && verdicts.all { it == SemanticVerdict.UNKNOWN } &&
+                semanticColdStartReported.compareAndSet(false, true)
+            ) {
+                environment.reportRuntimeEvidence(CAPABILITY_SEMANTIC, FeatureRuntimeStage.ERROR)
+                environment.logError(
+                    "danmaku_purify_semantic_main_thread",
+                    "[BIL] 智能过滤弹幕：弹幕分段在主线程回调，本进程只能查缓存、未命中即不删；" +
+                        "该通道上的弹幕不会被语义过滤隐藏"
+                )
+            }
+            return null
+        }
         val retained = ArrayList<Any>(list.size)
         list.forEachIndexed { index, elem -> if (texts[index] !in blocked) retained += elem }
         return retained.takeIf { it.size != list.size }
@@ -518,6 +543,7 @@ internal class DanmakuPurifyFeatureInstaller(
 
     companion object {
         const val ID = "danmaku_purify"
+        const val CAPABILITY_SEMANTIC = "player_danmaku_semantic_filter_enabled"
         private const val TARGET_PACKAGE = "tv.danmaku.bili"
         private const val CHANNEL_STATUS = "danmaku_purify_status"
         private const val DM_MOSS_CLASS = "com.bapis.bilibili.community.service.dm.v1.DMMoss"
