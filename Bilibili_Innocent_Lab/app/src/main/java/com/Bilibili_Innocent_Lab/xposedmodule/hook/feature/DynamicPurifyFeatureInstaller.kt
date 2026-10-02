@@ -208,13 +208,15 @@ internal class DynamicPurifyFeatureInstaller(
         environment.reportRuntimeEvidence(ID, FeatureRuntimeStage.ADAPTED)
         // 9.14.0 新增 Compose 动态列表，走 Kotlin KDynamicMoss。优先直接在它的响应上复用同一套过滤
         // （经 protobuf 线格式往返到 Java 响应）；装不上时退回"只观测并留证据"，不再静默失效。
-        val kotlinFilter = installKotlinMoss(environment, loader, feeds, itemMembers, plan)
-        if (kotlinFilter > 0) {
-            environment.logInfo("dynamic_kmoss_filter", "[BIL] 已接入动态页新通道 KDynamicMoss 过滤，entries=$kotlinFilter")
+        val covered = installKotlinMoss(environment, loader, feeds, itemMembers, plan)
+        // 只接上一部分页签时，剩下的入口仍要观测：否则没覆盖上的那条通道一条错误证据都不会有，
+        // 而 status 只按 Java 通道算，照样报 success——正是这里要消灭的静默失效。
+        if (covered.size == FEED_METHODS.size) {
+            environment.logInfo("dynamic_kmoss_filter", "[BIL] 已接入动态页新通道 KDynamicMoss 过滤，entries=${covered.size}")
         } else {
-            val kotlinWatch = KotlinDynamicMossWatch.install(environment, loader, capabilityIds + ID) {
-                javaPathObserved.get()
-            }
+            val kotlinWatch = KotlinDynamicMossWatch.install(
+                environment, loader, capabilityIds + ID, { javaPathObserved.get() }, covered
+            )
             if (kotlinWatch > 0) {
                 environment.logInfo("dynamic_kmoss_watch", "[BIL] 已观测动态页新通道 KDynamicMoss，entries=$kotlinWatch")
             }
@@ -300,21 +302,22 @@ internal class DynamicPurifyFeatureInstaller(
      * 见 [KotlinMossReplyBridge]。Kotlin 版所有请求（suspend / 回调）汇入同一个回调形态泛型入口，
      * 每个页签挂一处即可。任何一步装不上都返回 0，调用方退回观测措施；运行期任何异常都放行原响应。
      */
+    /** @return 已经接住过滤的入口名（[KotlinDynamicMossWatch] 据此只观测没接上的那些）。 */
     private fun installKotlinMoss(
         environment: HookEnvironment,
         loader: ClassLoader,
         feeds: List<FeedMembers>,
         itemMembers: ItemMembers?,
         plan: DynamicPurifyPolicy.Plan
-    ): Int {
-        val kotlinMoss = KavaMemberLookup.classOrNull(loader, KotlinDynamicMossWatch.K_MOSS_CLASS) ?: return 0
+    ): Set<String> {
+        val kotlinMoss = KavaMemberLookup.classOrNull(loader, KotlinDynamicMossWatch.K_MOSS_CLASS) ?: return emptySet()
         val members = KotlinMossBridgeMembers.resolve(loader)
         if (members == null) {
             environment.logInfo("dynamic_kmoss_filter_skip", "[BIL] 动态页新通道过滤未安装: kotlinx.serialization 成员缺失")
-            return 0
+            return emptySet()
         }
-        if (!KotlinMossBridgeSelfTest.allows(environment, loader, members, "动态页")) return 0
-        var installed = 0
+        if (!KotlinMossBridgeSelfTest.allows(environment, loader, members, "动态页")) return emptySet()
+        val installed = mutableSetOf<String>()
         FEED_METHODS.forEach { spec ->
             // 装不上不能再静默：每个页签只在缺东西时记一条原因（有界：页签个数）。
             fun skip(reason: String) = environment.logInfo(
@@ -368,7 +371,7 @@ internal class DynamicPurifyFeatureInstaller(
                         args[3] = proxy
                     }
                 }
-                installed += 1
+                installed += spec.asyncName
             }.onFailure { throwable ->
                 environment.logError(
                     "dynamic_kmoss_filter_${spec.asyncName}",
