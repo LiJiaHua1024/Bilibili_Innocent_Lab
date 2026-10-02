@@ -579,7 +579,7 @@ internal class SemanticJudge(
     /** 一个待发分批：文本与它们在调用方列表里的位置一一对应（同一 key 只出现一次）。 */
     private class Chunk(val texts: List<String>, val keys: List<String>)
 
-    /** 一个分批（含它的拆分与补发）能发出的请求上界；见 [fetchFrom] 的 budget 参数。 */
+    /** 一个分批对某一个来源（含它的拆分与补发）能发出的请求上界；见 [fetchFrom] 的 budget 参数。 */
     private class RequestBudget(val limit: Int = MAX_REQUESTS_PER_CHUNK) {
         var spent = 0
     }
@@ -1002,11 +1002,10 @@ internal class SemanticJudge(
         fun done(outcome: String, scores: FloatArray = FloatArray(texts.size) { Float.NaN }) =
             ChunkResult(scores, outcome, usage, sortedSetOf(backend.variantName(variant)), sortedSetOf(source.index))
         while (true) {
-            // 预算用尽：不再发。剩下的条目按未判出放行（fail-open），来源照常冷却。
-            if (budget.spent >= budget.limit) {
-                slot.penalize(FAILURE_COOLDOWN_MS, clock())
-                return done("budget")
-            }
+            // 预算用尽：不再发，剩下的条目按未判出放行（fail-open）。
+            // 这里**不能**冷却来源：一次请求都没发出去，来源没做错任何事。冷却只会把刚刚成功
+            // 应答、刚 recover() 过的来源按 15→30→…→300s 一路禁掉，害得所有过滤面一起变 UNKNOWN。
+            if (budget.spent >= budget.limit) return done("budget")
             budget.spent += 1
             val sentAt = clock()
             val body = backend.encode(clipped, rules, variant, guidanceText, source.endpoint)
@@ -1206,9 +1205,12 @@ internal class SemanticJudge(
         /** 被拒时对半拆分的下限：不大于它就不再拆，改试下一个请求变体。 */
         const val MIN_SPLIT = 4
         /**
-         * 一个分批（含拆分与补发）能发出的请求上界。正常情况一次到位；只有"大小被拒"才会用到拆分，
-         * 那种情况下二十来次足够走完整棵拆分树。真正的用处是兜住"完全不被接受的服务"：那时每个叶子
-         * 都要把变体阶梯整条爬一遍，没有上界就会在来源冷却生效之前把配额烧掉。
+         * 一个分批**对某一个来源**（含它的拆分与补发）能发出的请求上界。正常情况一次到位；只有
+         * "大小被拒"才会用到拆分，那种情况下二十来次足够走完整棵拆分树。真正的用处是兜住
+         * "完全不被接受的服务"：那时每个叶子都要把变体阶梯整条爬一遍，没有上界就会在来源冷却
+         * 生效之前把配额烧掉。
+         *
+         * 故障转移是每个来源一份预算：否则一个坏来源会把预算吃光，健康的那个再也轮不上。
          */
         private const val MAX_REQUESTS_PER_CHUNK = 24
         private val AUTH_FAILURES = setOf(401, 402, 403)
