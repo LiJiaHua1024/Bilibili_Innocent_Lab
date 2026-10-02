@@ -44,6 +44,37 @@ class SemanticBackendTest {
     }
 
     @Test
+    fun `a query or fragment survives when a path segment is appended`() {
+        // 直接把片段拼到整串末尾会把 ?api-version=… 变成路径的一部分，请求打到一个不存在的路径上。
+        // 片段必须插到 query 之前并原样保留它。
+        assertEquals(
+            "https://relay.example.com/v1/chat/completions?api-version=preview",
+            OpenAiCompatibleBackend("m").resolveEndpoint("https://relay.example.com/v1?api-version=preview")
+        )
+        assertEquals(
+            "https://relay.example.com/v1/chat/completions?frag",
+            OpenAiCompatibleBackend("m").resolveEndpoint("https://relay.example.com?frag")
+        )
+        assertEquals(
+            "https://relay.example.com/v1/chat/completions#frag",
+            OpenAiCompatibleBackend("m").resolveEndpoint("https://relay.example.com/v1#frag")
+        )
+        assertEquals(
+            "https://relay.example.com/v1/systemone?key=abc",
+            JevBackend().resolveEndpoint("https://relay.example.com/v1?key=abc")
+        )
+        // 已经写全判定端点的地址原样使用（Azure OpenAI 那种带 api-version 的），不能被拒。
+        val complete = "https://my-resource.openai.azure.com/openai/v1/chat/completions?api-version=preview"
+        assertEquals(complete, OpenAiCompatibleBackend("m").resolveEndpoint(complete))
+        assertEquals(
+            "https://relay.example.com/v1/systemone?key=abc",
+            JevBackend().resolveEndpoint("https://relay.example.com/v1/systemone?key=abc")
+        )
+        assertEquals("https://relay.example.com/v1/chat/completions",
+            OpenAiCompatibleBackend("m").resolveEndpoint("https://relay.example.com/v1"))
+    }
+
+    @Test
     fun `backend selection needs a model for openai compatible`() {
         assertNull(SemanticBackend.of("openai", "  "))
         assertEquals("deepseek-chat", SemanticBackend.of("openai", " deepseek-chat ")!!.model)
