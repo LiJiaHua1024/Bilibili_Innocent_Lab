@@ -356,9 +356,14 @@ internal class DanmakuPurifyFeatureInstaller(
         val blocked = HashSet<String>()
         candidates.forEachIndexed { index, text -> if (verdicts[index] == SemanticVerdict.BLOCK) blocked += text }
         if (blocked.isEmpty()) {
-            // 主线程回调时只能查缓存：未命中全是 UNKNOWN，这里恒定不删。不留证据的话，
+            // 主线程回调时只能查缓存，未命中的条目全是 UNKNOWN，于是这里恒定不删。不留证据的话，
             // 诊断里这一项仍是 success，用户只会看到"开关打开但弹幕一条没少"。
-            if (mode == SemanticMode.CACHE_ONLY && semanticColdStartReported.compareAndSet(false, true)) {
+            //
+            // 判据是"一条都没判出来"而不是"没删到东西"：缓存是热的时候结论会是 KEEP/BLOCK，
+            // 这个分段本来就不该拦，**不能**因此报运行期错误。
+            if (mode == SemanticMode.CACHE_ONLY && verdicts.all { it == SemanticVerdict.UNKNOWN } &&
+                semanticColdStartReported.compareAndSet(false, true)
+            ) {
                 environment.reportRuntimeEvidence(CAPABILITY_SEMANTIC, FeatureRuntimeStage.ERROR)
                 environment.logError(
                     "danmaku_purify_semantic_main_thread",
