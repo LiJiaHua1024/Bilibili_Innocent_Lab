@@ -1556,11 +1556,11 @@ internal object JevRequestCodec {
      * - `choice`：优先 `probabilities.block`；没有分布时按 `choice` 退化为 1/0；
      * - `noul`：`noul` 本身就是"是"的概率；
      * - `score`：优先最高级（屏蔽）的概率，否则 `score / (级数 - 1)`。
-     * 缺项、类型不认识、数值越界为 NaN（UNKNOWN）；整体结构不对返回 null。
+     * 缺项、类型不认识、数值越界为 NaN（UNKNOWN）；整体结构不对、或一条都没判出时返回 null。
      */
     fun decodeBlockScores(payload: String, count: Int): FloatArray? {
         val answers = runCatching { JSONObject(payload).getJSONObject("answers") }.getOrNull() ?: return null
-        return FloatArray(count) { index ->
+        val scores = FloatArray(count) { index ->
             val answer = answers.optJSONObject("item_$index") ?: return@FloatArray Float.NaN
             val value = when (answer.optString("type")) {
                 "choice" -> {
@@ -1578,6 +1578,9 @@ internal object JevRequestCodec {
             }
             if (!value.isNaN() && value in 0.0..1.0) value.toFloat() else Float.NaN
         }
+        // 外壳认得出、却一条都没判出（题型全不认识、概率全是百分比……）与"结构不对"同义：返回 null
+        // 让判定器换写法并冷却这个来源。不返回的话，阶梯走完后会被当成成功，判定静默失效。
+        return if (count > 0 && scores.all { it.isNaN() }) null else scores
     }
 
     /** 两级 score：最高级的概率就是屏蔽概率；没有分布时用加权值按级数归一。 */
