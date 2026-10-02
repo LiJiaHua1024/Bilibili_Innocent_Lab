@@ -52,4 +52,21 @@ class KotlinDynamicMossWatchTest {
     fun `class name is the unobfuscated host name`() {
         assertEquals("com.bapis.bilibili.app.dynamic.v2.KDynamicMoss", KotlinDynamicMossWatch.K_MOSS_CLASS)
     }
+
+    @Test
+    fun `only entries the kotlin filter did not take are watched`() {
+        val entries = FakeKotlinMoss::class.java.declaredMethods.toList()
+        // 一个都没接上：两个入口都要观测。
+        assertEquals(
+            setOf("dynAll", "dynVideo"),
+            KotlinDynamicMossWatch.selectUncovered(entries, emptySet()).map { it.name }.toSet()
+        )
+        // 只接上 dynAll：dynVideo 仍必须被观测，否则它不产生任何错误证据而状态照报 success。
+        assertEquals(
+            setOf("dynVideo"),
+            KotlinDynamicMossWatch.selectUncovered(entries, setOf("dynAll")).map { it.name }.toSet()
+        )
+        // 全接上：没有要观测的入口。
+        assertTrue(KotlinDynamicMossWatch.selectUncovered(entries, setOf("dynAll", "dynVideo")).isEmpty())
+    }
 }

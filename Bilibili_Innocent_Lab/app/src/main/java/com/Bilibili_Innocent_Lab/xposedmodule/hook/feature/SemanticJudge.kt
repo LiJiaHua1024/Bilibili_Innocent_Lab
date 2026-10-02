@@ -576,8 +576,13 @@ internal class SemanticJudge(
         if (!accepted) flushScheduled.set(false)
     }
 
-    /** 一个待发分批：文本、摘要键、以及它们在调用方列表里的位置（合并的预取批次没有位置）。 */
-    private class Chunk(val texts: List<String>, val keys: List<String>, val indices: List<Int>)
+    /** 一个待发分批：文本与它们在调用方列表里的位置一一对应（同一 key 只出现一次）。 */
+    private class Chunk(val texts: List<String>, val keys: List<String>)
+
+    /** 一个分批对某一个来源（含它的拆分与补发）能发出的请求上界；见 [fetchFrom] 的 budget 参数。 */
+    private class RequestBudget(val limit: Int = MAX_REQUESTS_PER_CHUNK) {
+        var spent = 0
+    }
 
     private class PendingItem(val text: String, val key: String)
 
@@ -617,14 +622,21 @@ internal class SemanticJudge(
             return scores.map(::verdictOf)
         }
         // 同一文本已有请求在途（另一条路径正在判）时不重复计费；本次对它按 UNKNOWN 处理。
-        val claimed = missing.filter { inFlight.add(keys[it]!!) }
-        if (claimed.isEmpty()) return scores.map(::verdictOf)
+        // 按 key 分组而不是逐条 claim：同一列表里出现两段相同文本（同一条广告文案、两条一样的评论）时，
+        // 逐条 claim 会让第二条被自己的第一条挡掉、留在 UNKNOWN，于是同一条内容第一张删第二张留。
+        val positionsByKey = LinkedHashMap<String, MutableList<Int>>()
+        missing.forEach { index ->
+            positionsByKey.getOrPut(keys[index]!!) { ArrayList(1) } += index
+        }
+        val claimedKeys = positionsByKey.keys.filter { inFlight.add(it) }
+        if (claimedKeys.isEmpty()) return scores.map(::verdictOf)
         if (mode == SemanticMode.PREFETCH) {
-            enqueuePrefetch(claimed.map { PendingItem(texts[it], keys[it]!!) }, onReport)
+            enqueuePrefetch(claimedKeys.map { key -> PendingItem(texts[positionsByKey.getValue(key)[0]], key) }, onReport)
             return scores.map(::verdictOf)
         }
-        val chunks = claimed.chunked(chunkLimit()).map { chunk ->
-            Chunk(chunk.map { texts[it] }, chunk.map { keys[it]!! }, chunk)
+        val chunks = claimedKeys.chunked(chunkLimit()).map { chunk ->
+            // 每个 key 只占一个位置（代表它的那一条），其余同 key 的位置在下面按 key 回填。
+            Chunk(chunk.map { texts[positionsByKey.getValue(it)[0]] }, chunk)
         }
         val tasks = dispatch(chunks, mode, null, now)
         val deadline = now + timeoutMs
@@ -636,7 +648,10 @@ internal class SemanticJudge(
         }
         chunks.forEachIndexed { chunkIndex, chunk ->
             val result = results[chunkIndex] ?: return@forEachIndexed
-            chunk.indices.forEachIndexed { position, index -> scores[index] = result.scores.getOrElse(position) { Float.NaN } }
+            chunk.keys.forEachIndexed { position, key ->
+                val score = result.scores.getOrElse(position) { Float.NaN }
+                positionsByKey.getValue(key).forEach { scores[it] = score }
+            }
         }
         onReport?.let { report(chunks, results, keys.count { it != null } - missing.size, now, it) }
         return scores.map(::verdictOf)
@@ -667,7 +682,7 @@ internal class SemanticJudge(
             reporter = pendingReport
         }
         if (ready.isNotEmpty()) {
-            dispatch(ready.map { chunk -> Chunk(chunk.map { it.text }, chunk.map { it.key }, emptyList()) },
+            dispatch(ready.map { chunk -> Chunk(chunk.map { it.text }, chunk.map { it.key }) },
                 SemanticMode.PREFETCH, reporter, clock())
         }
         if (arm && !runCatching { scheduler(COALESCE_MS, Runnable { flushPending() }) }.getOrDefault(false)) {
@@ -687,7 +702,7 @@ internal class SemanticJudge(
         }
         if (items.isEmpty()) return
         HostThreadGuard.run("semantic_prefetch_flush") {
-            dispatch(items.chunked(chunkLimit()).map { chunk -> Chunk(chunk.map { it.text }, chunk.map { it.key }, emptyList()) },
+            dispatch(items.chunked(chunkLimit()).map { chunk -> Chunk(chunk.map { it.text }, chunk.map { it.key }) },
                 SemanticMode.PREFETCH, reporter, clock())
         }
     }
@@ -717,9 +732,15 @@ internal class SemanticJudge(
                 override fun done() {
                     if (mode != SemanticMode.PREFETCH || onReport == null || pending.decrementAndGet() != 0) return
                     HostThreadGuard.run("semantic_prefetch_report") {
+                        // 报告不另占线程也不阻塞等待，所以兄弟分批多半还在跑：这些记成 "pending"，
+                        // 不能当成 null——那会被汇总成 "deadline"，把一次正常的预取报成超时。
                         report(chunks, tasks.mapIndexed { index, t ->
-                            if (t.isCancelled) ChunkResult.failed("rejected", chunks[index].texts.size)
-                            else runCatching { t.get(0, TimeUnit.MILLISECONDS) }.getOrNull()
+                            val size = chunks[index].texts.size
+                            when {
+                                t.isCancelled -> ChunkResult.failed("rejected", size)
+                                !t.isDone -> ChunkResult.failed("pending", size)
+                                else -> runCatching { t.get() }.getOrNull() ?: ChunkResult.failed("pending", size)
+                            }
                         }, 0, started, onReport)
                     }
                 }
@@ -961,8 +982,14 @@ internal class SemanticJudge(
         texts: List<String>,
         keys: List<String>,
         rejectedVariant: Int = -1,
-        /** 这次请求成功后，是否允许把漏答的条目补发一次（补发本身不再补发）。 */
-        refill: Boolean = true
+        /** 一次请求成功后，是否允许把漏答的条目补发一次（补发本身不再补发）。 */
+        refill: Boolean = true,
+        /**
+         * 这个分批的请求预算。被拒的批会**先对半拆分再换写法**：拆分树的内部节点各发一次，每个叶子又要把
+         * 变体阶梯整条爬一遍。一个完全不被接受的服务上，一个 20 条分批会展开成几十次请求，而
+         * `slot.penalize` 要到叶子走完才触发，冷凝来不及。共享一份预算把上界钉死。
+         */
+        budget: RequestBudget = RequestBudget()
     ): ChunkResult {
         if (!slot.available(clock())) return ChunkResult.failed("cooldown", texts.size)
         val source = slot.source
@@ -975,6 +1002,11 @@ internal class SemanticJudge(
         fun done(outcome: String, scores: FloatArray = FloatArray(texts.size) { Float.NaN }) =
             ChunkResult(scores, outcome, usage, sortedSetOf(backend.variantName(variant)), sortedSetOf(source.index))
         while (true) {
+            // 预算用尽：不再发，剩下的条目按未判出放行（fail-open）。
+            // 这里**不能**冷却来源：一次请求都没发出去，来源没做错任何事。冷却只会把刚刚成功
+            // 应答、刚 recover() 过的来源按 15→30→…→300s 一路禁掉，害得所有过滤面一起变 UNKNOWN。
+            if (budget.spent >= budget.limit) return done("budget")
+            budget.spent += 1
             val sentAt = clock()
             val body = backend.encode(clipped, rules, variant, guidanceText, source.endpoint)
             val response = runCatching {
@@ -995,8 +1027,10 @@ internal class SemanticJudge(
             val unsupported = backend.shouldFallback(status) || (status in 200..299 && (decoded == null || empty))
             if (unsupported && texts.size > MIN_SPLIT) {
                 val mid = texts.size / 2
-                val first = fetchFrom(slot, texts.subList(0, mid), keys.subList(0, mid), rejectedVariant = variant, refill = refill)
-                val second = fetchFrom(slot, texts.subList(mid, texts.size), keys.subList(mid, keys.size), rejectedVariant = variant, refill = refill)
+                val first = fetchFrom(slot, texts.subList(0, mid), keys.subList(0, mid),
+                    rejectedVariant = variant, refill = refill, budget = budget)
+                val second = fetchFrom(slot, texts.subList(mid, texts.size), keys.subList(mid, keys.size),
+                    rejectedVariant = variant, refill = refill, budget = budget)
                 return ChunkResult.merge(first, second, usage)
             }
             if (unsupported) {
@@ -1035,7 +1069,7 @@ internal class SemanticJudge(
             decoded.forEachIndexed { index, score -> if (!score.isNaN()) cache.put(keys[index], score, now) }
             maybeFlush()
             if (!refill) return done("ok", decoded)
-            return refillMissing(slot, texts, keys, decoded, done("ok", decoded))
+            return refillMissing(slot, texts, keys, decoded, done("ok", decoded), budget)
         }
     }
 
@@ -1050,11 +1084,12 @@ internal class SemanticJudge(
         texts: List<String>,
         keys: List<String>,
         decoded: FloatArray,
-        result: ChunkResult
+        result: ChunkResult,
+        budget: RequestBudget
     ): ChunkResult {
         val missing = decoded.indices.filter { decoded[it].isNaN() }
         if (missing.size < REFILL_MIN_MISSING || missing.size < texts.size * REFILL_MIN_FRACTION) return result
-        val again = fetchFrom(slot, missing.map { texts[it] }, missing.map { keys[it] }, refill = false)
+        val again = fetchFrom(slot, missing.map { texts[it] }, missing.map { keys[it] }, refill = false, budget = budget)
         val scores = decoded.copyOf()
         var filled = 0
         missing.forEachIndexed { position, index ->
@@ -1169,6 +1204,15 @@ internal class SemanticJudge(
 
         /** 被拒时对半拆分的下限：不大于它就不再拆，改试下一个请求变体。 */
         const val MIN_SPLIT = 4
+        /**
+         * 一个分批**对某一个来源**（含它的拆分与补发）能发出的请求上界。正常情况一次到位；只有
+         * "大小被拒"才会用到拆分，那种情况下二十来次足够走完整棵拆分树。真正的用处是兜住
+         * "完全不被接受的服务"：那时每个叶子都要把变体阶梯整条爬一遍，没有上界就会在来源冷却
+         * 生效之前把配额烧掉。
+         *
+         * 故障转移是每个来源一份预算：否则一个坏来源会把预算吃光，健康的那个再也轮不上。
+         */
+        private const val MAX_REQUESTS_PER_CHUNK = 24
         private val AUTH_FAILURES = setOf(401, 402, 403)
         private const val HEX = "0123456789abcdef"
 
@@ -1556,11 +1600,11 @@ internal object JevRequestCodec {
      * - `choice`：优先 `probabilities.block`；没有分布时按 `choice` 退化为 1/0；
      * - `noul`：`noul` 本身就是"是"的概率；
      * - `score`：优先最高级（屏蔽）的概率，否则 `score / (级数 - 1)`。
-     * 缺项、类型不认识、数值越界为 NaN（UNKNOWN）；整体结构不对返回 null。
+     * 缺项、类型不认识、数值越界为 NaN（UNKNOWN）；整体结构不对、或一条都没判出时返回 null。
      */
     fun decodeBlockScores(payload: String, count: Int): FloatArray? {
         val answers = runCatching { JSONObject(payload).getJSONObject("answers") }.getOrNull() ?: return null
-        return FloatArray(count) { index ->
+        val scores = FloatArray(count) { index ->
             val answer = answers.optJSONObject("item_$index") ?: return@FloatArray Float.NaN
             val value = when (answer.optString("type")) {
                 "choice" -> {
@@ -1578,6 +1622,9 @@ internal object JevRequestCodec {
             }
             if (!value.isNaN() && value in 0.0..1.0) value.toFloat() else Float.NaN
         }
+        // 外壳认得出、却一条都没判出（题型全不认识、概率全是百分比……）与"结构不对"同义：返回 null
+        // 让判定器换写法并冷却这个来源。不返回的话，阶梯走完后会被当成成功，判定静默失效。
+        return if (count > 0 && scores.all { it.isNaN() }) null else scores
     }
 
     /** 两级 score：最高级的概率就是屏蔽概率；没有分布时用加权值按级数归一。 */

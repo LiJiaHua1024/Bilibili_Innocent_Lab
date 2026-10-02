@@ -44,6 +44,37 @@ class SemanticBackendTest {
     }
 
     @Test
+    fun `a query or fragment survives when a path segment is appended`() {
+        // 直接把片段拼到整串末尾会把 ?api-version=… 变成路径的一部分，请求打到一个不存在的路径上。
+        // 片段必须插到 query 之前并原样保留它。
+        assertEquals(
+            "https://relay.example.com/v1/chat/completions?api-version=preview",
+            OpenAiCompatibleBackend("m").resolveEndpoint("https://relay.example.com/v1?api-version=preview")
+        )
+        assertEquals(
+            "https://relay.example.com/v1/chat/completions?frag",
+            OpenAiCompatibleBackend("m").resolveEndpoint("https://relay.example.com?frag")
+        )
+        assertEquals(
+            "https://relay.example.com/v1/chat/completions#frag",
+            OpenAiCompatibleBackend("m").resolveEndpoint("https://relay.example.com/v1#frag")
+        )
+        assertEquals(
+            "https://relay.example.com/v1/systemone?key=abc",
+            JevBackend().resolveEndpoint("https://relay.example.com/v1?key=abc")
+        )
+        // 已经写全判定端点的地址原样使用（Azure OpenAI 那种带 api-version 的），不能被拒。
+        val complete = "https://my-resource.openai.azure.com/openai/v1/chat/completions?api-version=preview"
+        assertEquals(complete, OpenAiCompatibleBackend("m").resolveEndpoint(complete))
+        assertEquals(
+            "https://relay.example.com/v1/systemone?key=abc",
+            JevBackend().resolveEndpoint("https://relay.example.com/v1/systemone?key=abc")
+        )
+        assertEquals("https://relay.example.com/v1/chat/completions",
+            OpenAiCompatibleBackend("m").resolveEndpoint("https://relay.example.com/v1"))
+    }
+
+    @Test
     fun `backend selection needs a model for openai compatible`() {
         assertNull(SemanticBackend.of("openai", "  "))
         assertEquals("deepseek-chat", SemanticBackend.of("openai", " deepseek-chat ")!!.model)
@@ -150,6 +181,25 @@ class SemanticBackendTest {
 
     private fun typeOf(body: ByteArray): String =
         JSONObject(String(body)).getJSONObject("questions").getJSONObject("item_0").getString("type")
+
+    @Test
+    fun `envelope parses but nothing scores counts as a structural failure`() {
+        // 外壳认得出、却一条都没判出，与"结构不对"同义：必须返回 null，否则阶梯走完后会被当成成功，
+        // 判定静默失效而连通性测试仍显示通过。
+        assertNull(OpenAiCompatibleBackend("m").decode(chat("{\"results\":[{\"i\":0,\"p\":85}]}"), 2))
+        assertNull(OpenAiCompatibleBackend("m").decode(chat("{\"results\":[{\"p\":0.9}]}"), 2))
+        assertNull(OpenAiCompatibleBackend("m").decode(chat("{\"results\":[{\"i\":0,\"p\":null}]}"), 2))
+        assertNull(
+            JevRequestCodec.decodeBlockScores(
+                jevAnswers(JSONObject().put("type", "mystery").put("value", 0.5)), 1
+            )
+        )
+        // 只判出一半仍按"部分缺失"处理，不算结构失败。
+        val partial = OpenAiCompatibleBackend("m")
+            .decode(chat("{\"results\":[{\"i\":0,\"p\":0.9}]}"), 2)!!
+        assertEquals(0.9f, partial[0], 1e-6f)
+        assertTrue(partial[1].isNaN())
+    }
 
     @Test
     fun `jev question formats follow the official criteria shapes`() {
@@ -631,6 +681,31 @@ class SemanticBackendTest {
             })
         assertEquals(listOf(SemanticVerdict.KEEP), judge.evaluate(listOf("一"), SemanticMode.WAIT))
         return seen
+    }
+
+    @Test
+    fun `a source that rejects everything cannot burn the whole request budget`() {
+        var requests = 0
+        // 时钟必须一路往前走：否则第一个叶子耗尽变体阶梯后的冷却会把后续 fetchFrom 全部挡在
+        // 门外（返回 "cooldown"、一个请求都不发），预算这条线根本轮不到绑定，测试就成了摆设。
+        var now = 0L
+        val judge = SemanticJudge("k", rules, backend = OpenAiCompatibleBackend("m"), batchSize = 20,
+            background = { it.run(); true }, clock = { now += 60_000; now },
+            transport = { _, _, _ ->
+                requests += 1
+                400 to "{\"error\":{\"message\":\"nope\"}}"
+            })
+
+        // 全部按未判出放行（fail-open），一次都不删。
+        assertEquals(
+            List(20) { SemanticVerdict.UNKNOWN },
+            judge.evaluate(List(20) { "评论$it" }, SemanticMode.WAIT)
+        )
+        // 拆分树的每个叶子都要把变体阶梯爬一遍，没有上界就是几十次请求。
+        assertTrue("requests=$requests", requests <= 24)
+        // 预算确实被用满（MAX_REQUESTS_PER_CHUNK = 24），否则说明这条线压根没生效，
+        // 上面的断言只是碰巧成立。
+        assertEquals(24, requests)
     }
 
     @Test

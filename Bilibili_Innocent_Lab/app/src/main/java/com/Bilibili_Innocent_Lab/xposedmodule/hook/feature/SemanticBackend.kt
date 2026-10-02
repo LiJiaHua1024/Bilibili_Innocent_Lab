@@ -50,7 +50,7 @@ internal interface SemanticBackend {
         endpoint: String = ""
     ): ByteArray
 
-    /** 整体结构不对返回 null；单条缺失或越界为 NaN。 */
+    /** 整体结构不对、或外壳认得出却一条都没判出时返回 null；单条缺失或越界为 NaN。 */
     fun decode(payload: String, count: Int): FloatArray?
 
     /**
@@ -88,6 +88,19 @@ internal interface SemanticBackend {
             val url = runCatching { URL(value) }.getOrNull() ?: return null
             if (url.protocol !in setOf("https", "http") || url.host.isNullOrBlank()) return null
             return value to url
+        }
+
+        /**
+         * 往地址尾部追加一段路径，**插到 query / fragment 之前**并原样保留它们。
+         *
+         * 直接把片段拼到整串末尾会把 `?api-version=…` 变成路径的一部分，请求打到一个不存在的路径上。
+         * 已经写全判定端点的地址（Azure OpenAI 那种带 `?api-version=` 的）根本不会走到这里，
+         * 所以 query 必须接受、不能一棍子拒掉。
+         */
+        internal fun withPathSegment(base: String, segment: String): String {
+            val cut = base.indexOfFirst { it == '?' || it == '#' }
+            if (cut < 0) return "$base/$segment"
+            return base.substring(0, cut).trimEnd('/') + "/" + segment + base.substring(cut)
         }
     }
 }
@@ -140,10 +153,10 @@ internal class JevBackend(override val model: String = DEFAULT_MODEL) : Semantic
             // OpenRouter 的判定模型走 Decisions API；用户常填 /api/v1（聊天接口的地址），会 404。
             host == "openrouter.ai" -> OPENROUTER_DECISIONS
             host == "api.edenai.run" -> EDENAI_DECISIONS
-            path.isEmpty() -> "$value/v1/systemone"
+            path.isEmpty() -> SemanticBackend.withPathSegment(value, "v1/systemone")
             // 阿里百炼给的 base_url 是 …/compatible-mode/v1；其余中转也常只给到 /v1。
-            path.endsWith("/v1") -> "$value/systemone"
-            path.endsWith("/compatible-mode") -> "$value/v1/systemone"
+            path.endsWith("/v1") -> SemanticBackend.withPathSegment(value, "systemone")
+            path.endsWith("/compatible-mode") -> SemanticBackend.withPathSegment(value, "v1/systemone")
             else -> value
         }
     }
@@ -199,11 +212,7 @@ internal data class JevRequestVariant(val format: JevQuestionFormat, val textSta
 internal enum class JevQuestionFormat(val wire: String) {
     CHOICE("choice"),
     NOUL("noul"),
-    SCORE("score");
-
-    companion object {
-        fun of(variant: Int): JevQuestionFormat = entries[variant.coerceIn(0, entries.lastIndex)]
-    }
+    SCORE("score")
 }
 
 /**
@@ -226,10 +235,10 @@ internal open class OpenAiCompatibleBackend(override val model: String) : Semant
         if (raw.isBlank()) return DEFAULT_ENDPOINT
         val (value, url) = SemanticBackend.parseUrl(raw) ?: return null
         return when {
-            url.path.isNullOrEmpty() -> "$value/v1/chat/completions"
+            url.path.isNullOrEmpty() -> SemanticBackend.withPathSegment(value, "v1/chat/completions")
             url.path.endsWith("/chat/completions") -> value
             // 智谱 /api/paas/v4、百炼 /compatible-mode/v1、DeepSeek /v1 等 base_url 形式：补上 /chat/completions。
-            else -> "$value/chat/completions"
+            else -> SemanticBackend.withPathSegment(value, "chat/completions")
         }
     }
 
@@ -296,7 +305,9 @@ internal open class OpenAiCompatibleBackend(override val model: String) : Semant
         }
         // 回答因长度上限被截断且有条目缺分：当成"这种写法不行"，由判定器换下一级（带思考的级别不设上限）。
         if (AiChatCompat.truncated(payload) && scores.any { it.isNaN() }) return null
-        return scores
+        // 外壳认得出、却一条都没判出（模型回百分比、缺 i、p 为 null……）与"结构不对"同义：返回 null，
+        // 让判定器换写法并冷却这个来源。不返回的话，阶梯走完后会被当成成功，判定静默失效。
+        return if (count > 0 && scores.all { it.isNaN() }) null else scores
     }
 
     companion object {

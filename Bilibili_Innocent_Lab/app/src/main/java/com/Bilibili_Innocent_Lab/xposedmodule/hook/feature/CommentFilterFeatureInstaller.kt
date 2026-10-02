@@ -361,15 +361,20 @@ internal class CommentFilterFeatureInstaller(
      * （主楼、子回复预览、置顶位），判据与 getter 层完全相同；智能过滤在回调里按"首屏等待"设置判定。
      */
     private fun installKotlinChannel(environment: HookEnvironment, accessors: Accessors, plan: JudgementPlan) {
-        val replyInfoClass = accessors.content?.declaringClass ?: return
-        val loader = replyInfoClass.classLoader ?: return
+        // 装不上要留下原因，否则末尾那句"N 个"读起来像"不适用"，而不是"类没找到"（有界：四条）。
+        fun skip(reason: String) {
+            environment.logInfo("comment_filter_kmoss_skip", "[BIL] 评论过滤新通道未接入: $reason")
+        }
+        val replyInfoClass = accessors.content?.declaringClass ?: return skip("no-reply-info")
+        val loader = replyInfoClass.classLoader ?: return skip("no-class-loader")
         val packageName = replyInfoClass.name.substringBeforeLast('.')
-        val members = KotlinMossChannel.prepare(environment, loader, "评论过滤", KMOSS_LOG_KEY) ?: return
+        val members = KotlinMossChannel.prepare(environment, loader, "评论过滤", KMOSS_LOG_KEY) ?: return skip("no-bridge")
         val rewriter = ProtobufReplyTreeRewriter(replyInfoClass) { replies -> kotlinDecide(environment, replies, accessors, plan) }
         val readers = ConcurrentHashMap<Class<*>, List<Method>>()
         var hooks = 0
         KMOSS_RPCS.forEach { (rpc, replyName) ->
-            val replyClass = KavaMemberLookup.classOrNull(loader, "$packageName.$replyName") ?: return@forEach
+            val replyClass = KavaMemberLookup.classOrNull(loader, "$packageName.$replyName")
+                ?: return@forEach skip("no-reply-class:$rpc")
             val installed = KotlinMossChannel.install(
                 environment, loader, members,
                 javaMossClassName = "$packageName.ReplyMoss",

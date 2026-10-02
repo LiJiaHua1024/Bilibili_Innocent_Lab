@@ -36,19 +36,27 @@ internal object KotlinDynamicMossWatch {
             method.parameterCount == 2
 
     /**
+     * 挑出真正要观测的入口：形态合法，且**没有**被 Kotlin 通道过滤接住。
+     * 只接上一部分页签时，剩下那条通道仍必须留下证据，否则它会安静地不过滤而状态还是 success。
+     */
+    internal fun selectUncovered(entries: List<Method>, coveredNames: Set<String>): List<Method> =
+        entries.filter(::isWatchedEntry).filterNot { it.name in coveredNames }.distinctBy(Method::toGenericString)
+
+    /**
      * @param evidenceIds 要打运行期错误标记的能力/功能 id（调用方传"用户已启用的动态能力 + 功能本身"）。
      * @param javaPathObserved Java 通道此前是否已见过响应，仅写进日志。
+     * @param coveredNames 已经被 Kotlin 通道过滤接住的名字，不再观测——只盯真正没覆盖上的入口。
      * @return 成功注册的观测点个数。
      */
     fun install(
         environment: HookEnvironment,
         loader: ClassLoader,
         evidenceIds: List<String>,
-        javaPathObserved: () -> Boolean
+        javaPathObserved: () -> Boolean,
+        coveredNames: Set<String> = emptySet()
     ): Int {
         val mossClass = KavaMemberLookup.classOrNull(loader, K_MOSS_CLASS) ?: return 0
-        val entries = KavaMemberLookup.declaredMethods(mossClass, makeAccessible = true, predicate = ::isWatchedEntry)
-            .distinctBy(Method::toGenericString)
+        val entries = selectUncovered(KavaMemberLookup.declaredMethods(mossClass, makeAccessible = true), coveredNames)
         val reported = ConcurrentHashMap.newKeySet<String>()
         var installed = 0
         entries.forEachIndexed { index, method ->
