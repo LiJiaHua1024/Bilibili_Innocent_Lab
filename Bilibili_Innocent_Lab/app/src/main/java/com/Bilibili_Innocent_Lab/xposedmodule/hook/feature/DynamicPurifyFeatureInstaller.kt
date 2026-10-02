@@ -300,9 +300,10 @@ internal class DynamicPurifyFeatureInstaller(
      * 9.14.0 起动态页新列表的数据通道 `KDynamicMoss`：响应是 Kotlin 序列化数据类（字段被混淆），
      * 这里不解析它，而是经 protobuf 线格式往返到同一 proto 的 Java 响应上，**原样复用 [purify]**，
      * 见 [KotlinMossReplyBridge]。Kotlin 版所有请求（suspend / 回调）汇入同一个回调形态泛型入口，
-     * 每个页签挂一处即可。任何一步装不上都返回 0，调用方退回观测措施；运行期任何异常都放行原响应。
+     * 每个页签挂一处即可。任何一步装不上都不进这个集合，调用方据此退回观测措施；运行期任何异常都放行原响应。
+     *
+     * @return 已经接住过滤的入口名（[KotlinDynamicMossWatch] 据此只观测没接上的那些）。
      */
-    /** @return 已经接住过滤的入口名（[KotlinDynamicMossWatch] 据此只观测没接上的那些）。 */
     private fun installKotlinMoss(
         environment: HookEnvironment,
         loader: ClassLoader,
@@ -489,7 +490,7 @@ internal class DynamicPurifyFeatureInstaller(
         }
     }
 
-/**
+    /**
      * 语义判定，三种路径：
      * - 主线程：只查缓存（绝不联网）。
      * - 首屏等待（`waitFirstScreen`）：在当前后台线程（Moss 回调）同步联网，带超时与冷却。
