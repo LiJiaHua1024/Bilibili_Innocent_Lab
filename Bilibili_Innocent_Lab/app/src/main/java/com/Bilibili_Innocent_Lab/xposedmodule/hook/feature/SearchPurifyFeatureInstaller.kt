@@ -167,10 +167,14 @@ internal class SearchPurifyFeatureInstaller(
         members: Members,
         plan: Plan
     ) {
-        val builder = ProtobufBuilderPlan.resolve(responseClass) ?: return
-        val clearItem = builder.method("clearItem") ?: return
-        val addAllItem = builder.method("addAllItem", classOf<Iterable<*>>()) ?: return
-        val bridge = KotlinMossChannel.prepare(environment, loader, "搜索结果过滤", KMOSS_LOG_KEY) ?: return
+        // 装不上要留下原因，否则诊断输出与"压根没尝试接入"完全无法区分（有界：三条）。
+        fun skip(reason: String) {
+            environment.logInfo("search_purify_kmoss_skip", "[BIL] 搜索结果过滤新通道未接入: $reason")
+        }
+        val builder = ProtobufBuilderPlan.resolve(responseClass) ?: return skip("no-response-builder")
+        val clearItem = builder.method("clearItem") ?: return skip("no-clear-item")
+        val addAllItem = builder.method("addAllItem", classOf<Iterable<*>>()) ?: return skip("no-add-all-item")
+        val bridge = KotlinMossChannel.prepare(environment, loader, "搜索结果过滤", KMOSS_LOG_KEY) ?: return skip("no-bridge")
         val installed = KotlinMossChannel.install(
             environment, loader, bridge,
             javaMossClassName = SEARCH_MOSS_CLASS,
