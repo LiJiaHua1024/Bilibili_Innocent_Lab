@@ -44,6 +44,17 @@ class SemanticBackendTest {
     }
 
     @Test
+    fun `endpoints carrying a query or fragment are rejected instead of mis-pathed`() {
+        // 路径片段是往整串地址上拼接的：带 query 时会拼成 …/v1?key=abc/chat/completions，
+        // 仍是合法 URL、不会被别处拦下，却每次都请求错路径。宁可当成填错。
+        assertNull(OpenAiCompatibleBackend("m").resolveEndpoint("https://relay.example.com/v1?key=abc"))
+        assertNull(OpenAiCompatibleBackend("m").resolveEndpoint("https://relay.example.com/v1#frag"))
+        assertNull(JevBackend().resolveEndpoint("https://relay.example.com/v1?key=abc"))
+        assertEquals("https://relay.example.com/v1/chat/completions",
+            OpenAiCompatibleBackend("m").resolveEndpoint("https://relay.example.com/v1"))
+    }
+
+    @Test
     fun `backend selection needs a model for openai compatible`() {
         assertNull(SemanticBackend.of("openai", "  "))
         assertEquals("deepseek-chat", SemanticBackend.of("openai", " deepseek-chat ")!!.model)

@@ -81,12 +81,20 @@ internal interface SemanticBackend {
             }
         }
 
-        /** 只接受 http(s) 且有主机名的地址；去掉末尾斜杠。 */
+        /**
+         * 只接受 http(s) 且有主机名的地址；去掉末尾斜杠。
+         *
+         * 带 query 或 fragment 的一律拒绝：[resolveEndpoint] 是往整串地址上**拼接**路径片段的，
+         * `https://relay.example.com/v1?key=abc` 会被拼成 `…/v1?key=abc/chat/completions`——仍是合法
+         * URL，不会被任何地方拦下，却每次都请求错路径。与其让用户对着一个永久 404 猜 Key 失效，
+         * 不如在这里当作填错。
+         */
         internal fun parseUrl(raw: String): Pair<String, URL>? {
             val value = raw.trim().trimEnd('/')
             if (value.isEmpty() || value.length > SemanticJudge.MAX_ENDPOINT_LENGTH) return null
             val url = runCatching { URL(value) }.getOrNull() ?: return null
             if (url.protocol !in setOf("https", "http") || url.host.isNullOrBlank()) return null
+            if (!url.query.isNullOrEmpty() || !url.ref.isNullOrEmpty()) return null
             return value to url
         }
     }
