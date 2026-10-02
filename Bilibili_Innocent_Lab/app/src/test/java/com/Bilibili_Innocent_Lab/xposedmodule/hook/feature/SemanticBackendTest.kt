@@ -152,6 +152,25 @@ class SemanticBackendTest {
         JSONObject(String(body)).getJSONObject("questions").getJSONObject("item_0").getString("type")
 
     @Test
+    fun `envelope parses but nothing scores counts as a structural failure`() {
+        // 外壳认得出、却一条都没判出，与"结构不对"同义：必须返回 null，否则阶梯走完后会被当成成功，
+        // 判定静默失效而连通性测试仍显示通过。
+        assertNull(OpenAiCompatibleBackend("m").decode(chat("{\"results\":[{\"i\":0,\"p\":85}]}"), 2))
+        assertNull(OpenAiCompatibleBackend("m").decode(chat("{\"results\":[{\"p\":0.9}]}"), 2))
+        assertNull(OpenAiCompatibleBackend("m").decode(chat("{\"results\":[{\"i\":0,\"p\":null}]}"), 2))
+        assertNull(
+            JevRequestCodec.decodeBlockScores(
+                jevAnswers(JSONObject().put("type", "mystery").put("value", 0.5)), 1
+            )
+        )
+        // 只判出一半仍按"部分缺失"处理，不算结构失败。
+        val partial = OpenAiCompatibleBackend("m")
+            .decode(chat("{\"results\":[{\"i\":0,\"p\":0.9}]}"), 2)!!
+        assertEquals(0.9f, partial[0], 1e-6f)
+        assertTrue(partial[1].isNaN())
+    }
+
+    @Test
     fun `jev question formats follow the official criteria shapes`() {
         fun question(format: JevQuestionFormat) = JSONObject(String(JevRequestCodec.encode(listOf("a"), rules, format = format)))
             .getJSONObject("questions").getJSONObject("item_0")

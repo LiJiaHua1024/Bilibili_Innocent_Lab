@@ -50,7 +50,7 @@ internal interface SemanticBackend {
         endpoint: String = ""
     ): ByteArray
 
-    /** 整体结构不对返回 null；单条缺失或越界为 NaN。 */
+    /** 整体结构不对、或外壳认得出却一条都没判出时返回 null；单条缺失或越界为 NaN。 */
     fun decode(payload: String, count: Int): FloatArray?
 
     /**
@@ -296,7 +296,9 @@ internal open class OpenAiCompatibleBackend(override val model: String) : Semant
         }
         // 回答因长度上限被截断且有条目缺分：当成"这种写法不行"，由判定器换下一级（带思考的级别不设上限）。
         if (AiChatCompat.truncated(payload) && scores.any { it.isNaN() }) return null
-        return scores
+        // 外壳认得出、却一条都没判出（模型回百分比、缺 i、p 为 null……）与"结构不对"同义：返回 null，
+        // 让判定器换写法并冷却这个来源。不返回的话，阶梯走完后会被当成成功，判定静默失效。
+        return if (count > 0 && scores.all { it.isNaN() }) null else scores
     }
 
     companion object {
