@@ -664,6 +664,24 @@ class SemanticBackendTest {
     }
 
     @Test
+    fun `a source that rejects everything cannot burn the whole request budget`() {
+        var requests = 0
+        val judge = SemanticJudge("k", rules, backend = OpenAiCompatibleBackend("m"), batchSize = 20,
+            background = { it.run(); true }, transport = { _, _, _ ->
+                requests += 1
+                400 to "{\"error\":{\"message\":\"nope\"}}"
+            })
+
+        // 全部按未判出放行（fail-open），一次都不删。
+        assertEquals(
+            List(20) { SemanticVerdict.UNKNOWN },
+            judge.evaluate(List(20) { "评论$it" }, SemanticMode.WAIT)
+        )
+        // 拆分树的每个叶子都要把变体阶梯爬一遍，没有上界就是几十次请求。
+        assertTrue("requests=$requests", requests <= 24)
+    }
+
+    @Test
     fun `a model that cannot turn thinking off runs at its lowest supported effort`() {
         // 2026-09-30 真机：基元律动转发的 GLM-5.3-FlashX 只认 reasoning_effort = low / high / max。
         val seen = ladderRun("https://tokenrhythm.studio/v1/chat/completions") { json ->

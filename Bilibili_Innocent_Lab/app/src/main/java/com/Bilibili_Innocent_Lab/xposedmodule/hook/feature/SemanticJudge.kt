@@ -579,6 +579,11 @@ internal class SemanticJudge(
     /** 一个待发分批：文本与它们在调用方列表里的位置一一对应（同一 key 只出现一次）。 */
     private class Chunk(val texts: List<String>, val keys: List<String>)
 
+    /** 一个分批（含它的拆分与补发）能发出的请求上界；见 [fetchFrom] 的 budget 参数。 */
+    private class RequestBudget(val limit: Int = MAX_REQUESTS_PER_CHUNK) {
+        var spent = 0
+    }
+
     private class PendingItem(val text: String, val key: String)
 
     /** 当前分批上限：调用方设定、后端上限、以及对这个服务探明的上限（被拒后对半拆分学到的）。 */
@@ -971,8 +976,14 @@ internal class SemanticJudge(
         texts: List<String>,
         keys: List<String>,
         rejectedVariant: Int = -1,
-        /** 这次请求成功后，是否允许把漏答的条目补发一次（补发本身不再补发）。 */
-        refill: Boolean = true
+        /** 一次请求成功后，是否允许把漏答的条目补发一次（补发本身不再补发）。 */
+        refill: Boolean = true,
+        /**
+         * 这个分批的请求预算。被拒的批会**先对半拆分再换写法**：拆分树的内部节点各发一次，每个叶子又要把
+         * 变体阶梯整条爬一遍。一个完全不被接受的服务上，一个 20 条分批会展开成几十次请求，而
+         * `slot.penalize` 要到叶子走完才触发，冷凝来不及。共享一份预算把上界钉死。
+         */
+        budget: RequestBudget = RequestBudget()
     ): ChunkResult {
         if (!slot.available(clock())) return ChunkResult.failed("cooldown", texts.size)
         val source = slot.source
@@ -985,6 +996,12 @@ internal class SemanticJudge(
         fun done(outcome: String, scores: FloatArray = FloatArray(texts.size) { Float.NaN }) =
             ChunkResult(scores, outcome, usage, sortedSetOf(backend.variantName(variant)), sortedSetOf(source.index))
         while (true) {
+            // 预算用尽：不再发。剩下的条目按未判出放行（fail-open），来源照常冷却。
+            if (budget.spent >= budget.limit) {
+                slot.penalize(FAILURE_COOLDOWN_MS, clock())
+                return done("budget")
+            }
+            budget.spent += 1
             val sentAt = clock()
             val body = backend.encode(clipped, rules, variant, guidanceText, source.endpoint)
             val response = runCatching {
@@ -1005,8 +1022,10 @@ internal class SemanticJudge(
             val unsupported = backend.shouldFallback(status) || (status in 200..299 && (decoded == null || empty))
             if (unsupported && texts.size > MIN_SPLIT) {
                 val mid = texts.size / 2
-                val first = fetchFrom(slot, texts.subList(0, mid), keys.subList(0, mid), rejectedVariant = variant, refill = refill)
-                val second = fetchFrom(slot, texts.subList(mid, texts.size), keys.subList(mid, keys.size), rejectedVariant = variant, refill = refill)
+                val first = fetchFrom(slot, texts.subList(0, mid), keys.subList(0, mid),
+                    rejectedVariant = variant, refill = refill, budget = budget)
+                val second = fetchFrom(slot, texts.subList(mid, texts.size), keys.subList(mid, keys.size),
+                    rejectedVariant = variant, refill = refill, budget = budget)
                 return ChunkResult.merge(first, second, usage)
             }
             if (unsupported) {
@@ -1045,7 +1064,7 @@ internal class SemanticJudge(
             decoded.forEachIndexed { index, score -> if (!score.isNaN()) cache.put(keys[index], score, now) }
             maybeFlush()
             if (!refill) return done("ok", decoded)
-            return refillMissing(slot, texts, keys, decoded, done("ok", decoded))
+            return refillMissing(slot, texts, keys, decoded, done("ok", decoded), budget)
         }
     }
 
@@ -1060,11 +1079,12 @@ internal class SemanticJudge(
         texts: List<String>,
         keys: List<String>,
         decoded: FloatArray,
-        result: ChunkResult
+        result: ChunkResult,
+        budget: RequestBudget
     ): ChunkResult {
         val missing = decoded.indices.filter { decoded[it].isNaN() }
         if (missing.size < REFILL_MIN_MISSING || missing.size < texts.size * REFILL_MIN_FRACTION) return result
-        val again = fetchFrom(slot, missing.map { texts[it] }, missing.map { keys[it] }, refill = false)
+        val again = fetchFrom(slot, missing.map { texts[it] }, missing.map { keys[it] }, refill = false, budget = budget)
         val scores = decoded.copyOf()
         var filled = 0
         missing.forEachIndexed { position, index ->
@@ -1179,6 +1199,12 @@ internal class SemanticJudge(
 
         /** 被拒时对半拆分的下限：不大于它就不再拆，改试下一个请求变体。 */
         const val MIN_SPLIT = 4
+        /**
+         * 一个分批（含拆分与补发）能发出的请求上界。正常情况一次到位；只有"大小被拒"才会用到拆分，
+         * 那种情况下二十来次足够走完整棵拆分树。真正的用处是兜住"完全不被接受的服务"：那时每个叶子
+         * 都要把变体阶梯整条爬一遍，没有上界就会在来源冷却生效之前把配额烧掉。
+         */
+        private const val MAX_REQUESTS_PER_CHUNK = 24
         private val AUTH_FAILURES = setOf(401, 402, 403)
         private const val HEX = "0123456789abcdef"
 
