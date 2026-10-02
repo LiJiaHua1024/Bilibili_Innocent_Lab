@@ -517,11 +517,13 @@ internal class CommentPurifyFeatureInstaller(
             replyInfoClass,
             isSearchUrl = if (removeSearchLinks) ::isSearchUrlValue else null,
             clearEmptyPage = removeEmptyGuide,
-            payloads = payloads
-        ) { capability, stage, count -> environment.reportRuntimeEvidence(capability, stage, count) } { reason ->
+            payloads = payloads,
+            evidence = { capability, stage, count -> environment.reportRuntimeEvidence(capability, stage, count) },
             // 每个类只解析一次，所以这里天然有界；形状解析不出来时净化是空转，必须留痕。
-            environment.logInfo("comment_purify_kmoss_shape", "[BIL] 评论净化新通道：读不到 $reason，对应子项不生效")
-        }
+            logSkip = { reason ->
+                environment.logInfo("comment_purify_kmoss_shape", "[BIL] 评论净化新通道：读不到 $reason，对应子项不生效")
+            }
+        )
         val mainListReq = KavaMemberLookup.classOrNull(loader, "$REPLY_PACKAGE.MainListReq")
         // 请求侧那道防线读不到也要说一声，否则"搜索跳转已关"看上去是生效了的。
         if (mainListReq == null && removeSearchLinks) skip("no-main-list-request")
