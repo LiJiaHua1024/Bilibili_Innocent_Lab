@@ -732,9 +732,15 @@ internal class SemanticJudge(
                 override fun done() {
                     if (mode != SemanticMode.PREFETCH || onReport == null || pending.decrementAndGet() != 0) return
                     HostThreadGuard.run("semantic_prefetch_report") {
+                        // 报告不另占线程也不阻塞等待，所以兄弟分批多半还在跑：这些记成 "pending"，
+                        // 不能当成 null——那会被汇总成 "deadline"，把一次正常的预取报成超时。
                         report(chunks, tasks.mapIndexed { index, t ->
-                            if (t.isCancelled) ChunkResult.failed("rejected", chunks[index].texts.size)
-                            else runCatching { t.get(0, TimeUnit.MILLISECONDS) }.getOrNull()
+                            val size = chunks[index].texts.size
+                            when {
+                                t.isCancelled -> ChunkResult.failed("rejected", size)
+                                !t.isDone -> ChunkResult.failed("pending", size)
+                                else -> runCatching { t.get() }.getOrNull() ?: ChunkResult.failed("pending", size)
+                            }
                         }, 0, started, onReport)
                     }
                 }
