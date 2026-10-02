@@ -489,14 +489,27 @@ internal class DynamicPurifyFeatureInstaller(
         }
     }
 
-    /**
+/**
      * 语义判定，三种路径：
      * - 主线程：只查缓存（绝不联网）。
      * - 首屏等待（`waitFirstScreen`）：在当前后台线程（Moss 回调）同步联网，带超时与冷却。
      * - 首屏放行（默认）：先用缓存结果放行，未命中投递到模块后台线程判定，结果进缓存，下次加载生效。
      * 任何失败都是 UNKNOWN（规则照常，fail-open）。
+     *
+     * 结果按列表 memo：列表 getter 在滚动与绑定时会被反复调用，没有 memo 就会每调一次把整页
+     * 动态的正文重新反射一遍再拼一遍。
      */
     private fun semanticVerdicts(items: List<*>, members: ItemMembers): IdentityHashMap<Any, SemanticVerdict>? {
+        val judge = semanticJudge ?: return null
+        return semanticMemo.getOrCompute(items) { computeSemanticVerdicts(items, members) }
+    }
+
+    private val semanticMemo = SemanticListMemo()
+
+    private fun computeSemanticVerdicts(
+        items: List<*>,
+        members: ItemMembers
+    ): IdentityHashMap<Any, SemanticVerdict>? {
         val judge = semanticJudge ?: return null
         val present = items.filterNotNull()
         val texts = present.map { semanticText(it, members) }
