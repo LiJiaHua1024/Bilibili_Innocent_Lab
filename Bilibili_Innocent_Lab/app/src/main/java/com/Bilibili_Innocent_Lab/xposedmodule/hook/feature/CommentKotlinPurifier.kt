@@ -30,6 +30,8 @@ internal class CommentKotlinPurifier(
     private val clearEmptyPage: Boolean,
     /** `MainListReply` 上要清的可选字段名（如 `Qoe`、`Operation`）→ 对应的能力 id。 */
     private val payloads: Map<String, String>,
+    /** 形状解析不出来时留一条有界日志（单测不传）。必须排在 [evidence] 之前：Kotlin 的尾随 lambda 绑定到最后一个参数。 */
+    private val logSkip: (reason: String) -> Unit = {},
     private val evidence: (capability: String, stage: FeatureRuntimeStage, count: Int) -> Unit
 ) {
     private val replyLinks = ConcurrentHashMap<Class<*>, Any>()
@@ -105,6 +107,9 @@ internal class CommentKotlinPurifier(
         replyLinks[type]?.let { return it as? Links }
         val resolved = runCatching { resolveLinks(type) }.getOrNull()
         replyLinks[type] = resolved ?: NONE
+        // 否定结论会被缓存到进程结束：不留痕迹的话，一次瞬时的反射失败（或宿主换了形状）会让这一层
+        // 永远静默空转，而安装器照样报"新通道 3 个"。
+        if (resolved == null) logSkip("links-shape:${type.simpleName}")
         return resolved
     }
 
@@ -140,16 +145,30 @@ internal class CommentKotlinPurifier(
         topShapes[type]?.let { return it as? TopShape }
         val resolved = runCatching { resolveTop(type) }.getOrNull()
         topShapes[type] = resolved ?: NONE
+        // 只开着"摘搜索跳转"时，顶层形状根本用不上（摘链接走 rewriter），解析不出形状是正常的，
+        // 报出来会是一条假警报。只在顶层确实有事要做时才留痕。
+        if (resolved == null && (payloads.isNotEmpty() || clearEmptyPage)) {
+            logSkip("top-shape:${type.simpleName}")
+        }
         return resolved
     }
 
     private fun resolveTop(type: Class<*>): TopShape? {
         val plan = ProtobufBuilderPlan.resolve(type) ?: return null
-        val fields = payloads.mapNotNull { (name, capability) ->
-            val has = noArg(type, "has$name")?.takeIf { it.returnType == classOf<Boolean>() } ?: return@mapNotNull null
-            val clear = plan.method("clear$name") ?: return@mapNotNull null
-            PayloadField(capability, has, clear)
-        }
+        // 缺失字段先收集、不立即上报：整体解析不出来时由 topShapeOf 报一次 top-shape
+        // （有单测钉死"整体失败只报一次"）；只有形状成立但个别字段被丢的部分解析，
+        // mapNotNull 时代才是真正的静默黑洞，这里逐字段留痕（每类只解析一次，天然有界）。
+        val missing = ArrayList<String>()
+        val fields = payloads.map { (name, capability) ->
+            val has = noArg(type, "has$name")?.takeIf { it.returnType == classOf<Boolean>() }
+            val clear = plan.method("clear$name")
+            if (has == null || clear == null) {
+                missing += name
+                null
+            } else {
+                PayloadField(capability, has, clear)
+            }
+        }.filterNotNull()
         val subject = if (!clearEmptyPage) null else run {
             val has = noArg(type, "hasSubjectControl")?.takeIf { it.returnType == classOf<Boolean>() } ?: return@run null
             val getter = noArg(type, "getSubjectControl")?.takeIf { !it.returnType.isPrimitive } ?: return@run null
@@ -161,6 +180,7 @@ internal class CommentKotlinPurifier(
             SubjectPath(has, getter, set, hasEmpty, controlPlan, clearEmpty)
         }
         if (fields.isEmpty() && subject == null) return null
+        missing.forEach { logSkip("top-payload:${type.simpleName}#$it") }
         return TopShape(plan, fields, subject)
     }
 
