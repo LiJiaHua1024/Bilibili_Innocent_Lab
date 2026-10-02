@@ -207,11 +207,7 @@ internal data class JevRequestVariant(val format: JevQuestionFormat, val textSta
 internal enum class JevQuestionFormat(val wire: String) {
     CHOICE("choice"),
     NOUL("noul"),
-    SCORE("score");
-
-    companion object {
-        fun of(variant: Int): JevQuestionFormat = entries[variant.coerceIn(0, entries.lastIndex)]
-    }
+    SCORE("score")
 }
 
 /**
