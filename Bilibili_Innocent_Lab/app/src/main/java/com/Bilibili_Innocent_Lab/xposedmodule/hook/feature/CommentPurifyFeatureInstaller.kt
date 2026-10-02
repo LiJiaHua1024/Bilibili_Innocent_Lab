@@ -498,9 +498,14 @@ internal class CommentPurifyFeatureInstaller(
      */
     private fun installKotlinChannel(environment: HookEnvironment) {
         if (!removeSearchLinks && !removeEmptyGuide && !removeQoe && !removeOperations) return
-        val loader = environment.classLoader ?: return
-        val replyInfoClass = KavaMemberLookup.classOrNull(loader, "$REPLY_PACKAGE.ReplyInfo") ?: return
-        val members = KotlinMossChannel.prepare(environment, loader, "评论净化", KMOSS_LOG_KEY) ?: return
+        // 装不上要留下原因（有界：四条）；否则末尾那句"N 个"读起来像"不适用"，而不是"类没找到"。
+        fun skip(reason: String) {
+            environment.logInfo("comment_purify_kmoss_skip", "[BIL] 评论净化新通道未接入: $reason")
+        }
+        val loader = environment.classLoader ?: return skip("no-class-loader")
+        val replyInfoClass = KavaMemberLookup.classOrNull(loader, "$REPLY_PACKAGE.ReplyInfo")
+            ?: return skip("no-reply-info")
+        val members = KotlinMossChannel.prepare(environment, loader, "评论净化", KMOSS_LOG_KEY) ?: return skip("no-bridge")
         val payloads = buildMap {
             if (removeQoe) put("Qoe", "comments_qoe_removed")
             if (removeOperations) {
@@ -515,6 +520,8 @@ internal class CommentPurifyFeatureInstaller(
             payloads = payloads
         ) { capability, stage, count -> environment.reportRuntimeEvidence(capability, stage, count) }
         val mainListReq = KavaMemberLookup.classOrNull(loader, "$REPLY_PACKAGE.MainListReq")
+        // 请求侧那道防线读不到也要说一声，否则"搜索跳转已关"看上去是生效了的。
+        if (mainListReq == null && removeSearchLinks) skip("no-main-list-request")
         val requestPlan = mainListReq?.takeIf { removeSearchLinks }?.let(ProtobufBuilderPlan::resolve)
         val getExtra = mainListReq?.let { KavaMemberLookup.methodOrNull(it, "getExtra") }
             ?.takeIf { it.returnType == classOf<String>() }
@@ -531,7 +538,8 @@ internal class CommentPurifyFeatureInstaller(
             }
         var hooks = 0
         KMOSS_RPCS.forEach { (rpc, replyName) ->
-            val replyClass = KavaMemberLookup.classOrNull(loader, "$REPLY_PACKAGE.$replyName") ?: return@forEach
+            val replyClass = KavaMemberLookup.classOrNull(loader, "$REPLY_PACKAGE.$replyName")
+                ?: return@forEach skip("no-reply-class:$rpc")
             val rewriteRequest = rpc == "mainList" && requestTransform != null
             val installed = KotlinMossChannel.install(
                 environment, loader, members,
