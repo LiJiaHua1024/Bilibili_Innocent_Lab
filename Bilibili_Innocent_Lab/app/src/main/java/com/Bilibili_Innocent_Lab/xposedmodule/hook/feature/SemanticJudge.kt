@@ -576,8 +576,8 @@ internal class SemanticJudge(
         if (!accepted) flushScheduled.set(false)
     }
 
-    /** 一个待发分批：文本、摘要键、以及它们在调用方列表里的位置（合并的预取批次没有位置）。 */
-    private class Chunk(val texts: List<String>, val keys: List<String>, val indices: List<Int>)
+    /** 一个待发分批：文本与它们在调用方列表里的位置一一对应（同一 key 只出现一次）。 */
+    private class Chunk(val texts: List<String>, val keys: List<String>)
 
     private class PendingItem(val text: String, val key: String)
 
@@ -617,14 +617,21 @@ internal class SemanticJudge(
             return scores.map(::verdictOf)
         }
         // 同一文本已有请求在途（另一条路径正在判）时不重复计费；本次对它按 UNKNOWN 处理。
-        val claimed = missing.filter { inFlight.add(keys[it]!!) }
-        if (claimed.isEmpty()) return scores.map(::verdictOf)
+        // 按 key 分组而不是逐条 claim：同一列表里出现两段相同文本（同一条广告文案、两条一样的评论）时，
+        // 逐条 claim 会让第二条被自己的第一条挡掉、留在 UNKNOWN，于是同一条内容第一张删第二张留。
+        val positionsByKey = LinkedHashMap<String, MutableList<Int>>()
+        missing.forEach { index ->
+            positionsByKey.getOrPut(keys[index]!!) { ArrayList(1) } += index
+        }
+        val claimedKeys = positionsByKey.keys.filter { inFlight.add(it) }
+        if (claimedKeys.isEmpty()) return scores.map(::verdictOf)
         if (mode == SemanticMode.PREFETCH) {
-            enqueuePrefetch(claimed.map { PendingItem(texts[it], keys[it]!!) }, onReport)
+            enqueuePrefetch(claimedKeys.map { key -> PendingItem(texts[positionsByKey.getValue(key)[0]], key) }, onReport)
             return scores.map(::verdictOf)
         }
-        val chunks = claimed.chunked(chunkLimit()).map { chunk ->
-            Chunk(chunk.map { texts[it] }, chunk.map { keys[it]!! }, chunk)
+        val chunks = claimedKeys.chunked(chunkLimit()).map { chunk ->
+            // 每个 key 只占一个位置（代表它的那一条），其余同 key 的位置在下面按 key 回填。
+            Chunk(chunk.map { texts[positionsByKey.getValue(it)[0]] }, chunk)
         }
         val tasks = dispatch(chunks, mode, null, now)
         val deadline = now + timeoutMs
@@ -636,7 +643,10 @@ internal class SemanticJudge(
         }
         chunks.forEachIndexed { chunkIndex, chunk ->
             val result = results[chunkIndex] ?: return@forEachIndexed
-            chunk.indices.forEachIndexed { position, index -> scores[index] = result.scores.getOrElse(position) { Float.NaN } }
+            chunk.keys.forEachIndexed { position, key ->
+                val score = result.scores.getOrElse(position) { Float.NaN }
+                positionsByKey.getValue(key).forEach { scores[it] = score }
+            }
         }
         onReport?.let { report(chunks, results, keys.count { it != null } - missing.size, now, it) }
         return scores.map(::verdictOf)
@@ -667,7 +677,7 @@ internal class SemanticJudge(
             reporter = pendingReport
         }
         if (ready.isNotEmpty()) {
-            dispatch(ready.map { chunk -> Chunk(chunk.map { it.text }, chunk.map { it.key }, emptyList()) },
+            dispatch(ready.map { chunk -> Chunk(chunk.map { it.text }, chunk.map { it.key }) },
                 SemanticMode.PREFETCH, reporter, clock())
         }
         if (arm && !runCatching { scheduler(COALESCE_MS, Runnable { flushPending() }) }.getOrDefault(false)) {
@@ -687,7 +697,7 @@ internal class SemanticJudge(
         }
         if (items.isEmpty()) return
         HostThreadGuard.run("semantic_prefetch_flush") {
-            dispatch(items.chunked(chunkLimit()).map { chunk -> Chunk(chunk.map { it.text }, chunk.map { it.key }, emptyList()) },
+            dispatch(items.chunked(chunkLimit()).map { chunk -> Chunk(chunk.map { it.text }, chunk.map { it.key }) },
                 SemanticMode.PREFETCH, reporter, clock())
         }
     }

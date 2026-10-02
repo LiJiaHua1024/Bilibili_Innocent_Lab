@@ -116,8 +116,8 @@ class SemanticJudgeTest {
         val queued = mutableListOf<Runnable>()
         val judge = judge(background = { queued += it; true }) { _, _, _ -> calls += 1; 200 to answers(0.99) }
 
-        // 首屏放行：先 UNKNOWN，在途时再次加载不重复投递。
-        assertEquals(listOf(unknown), judge.evaluate(listOf("抽奖", "抽奖", " "), SemanticMode.PREFETCH).take(1))
+        // 首屏放行：先 UNKNOWN，在途时再次加载不重复投递。空白条目恒为 UNKNOWN。
+        assertEquals(listOf(unknown, unknown, unknown), judge.evaluate(listOf("抽奖", "抽奖", " "), SemanticMode.PREFETCH))
         judge.evaluate(listOf("抽奖"), SemanticMode.PREFETCH)
         assertEquals(1, queued.size)
 
@@ -197,6 +197,31 @@ class SemanticJudgeTest {
         // 迟到的结果写进缓存，下次加载命中。
         queued.single().run()
         assertEquals(listOf(block), judge.evaluate(listOf("抽奖"), SemanticMode.CACHE_ONLY))
+    }
+
+    @Test
+    fun `repeated texts inside one batch share a single verdict`() {
+        var calls = 0
+        var asked = 0
+        val judge = judge(background = { it.run(); true }) { body, _, _ ->
+            calls += 1
+            asked = questionCount(body)
+            // 第一批判屏蔽、第二批判保留，这样两条路径的结论能区分开。
+            200 to answers(*DoubleArray(asked) { if (calls == 1) 0.95 else 0.1 })
+        }
+
+        // 同一条广告文案出现两次：只判一次，两条拿到同一个结论——不能第一张删、第二张留。
+        assertEquals(listOf(block, block), judge.evaluate(listOf("抽奖", "抽奖"), SemanticMode.WAIT))
+        assertEquals(1, calls)
+        assertEquals(1, asked)
+
+        // 混在空白与不同文本里也一样，空白恒为 UNKNOWN；"抽奖" 这次命中缓存，只有 "日常" 要发一次。
+        assertEquals(
+            listOf(block, keep, block, unknown),
+            judge.evaluate(listOf("抽奖", "日常", "抽奖", " "), SemanticMode.WAIT)
+        )
+        assertEquals(2, calls)
+        assertEquals(1, asked)
     }
 
     @Test
