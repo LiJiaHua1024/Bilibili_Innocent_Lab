@@ -145,7 +145,11 @@ internal class CommentKotlinPurifier(
         topShapes[type]?.let { return it as? TopShape }
         val resolved = runCatching { resolveTop(type) }.getOrNull()
         topShapes[type] = resolved ?: NONE
-        if (resolved == null) logSkip("top-shape:${type.simpleName}")
+        // 只开着"摘搜索跳转"时，顶层形状根本用不上（摘链接走 rewriter），解析不出形状是正常的，
+        // 报出来会是一条假警报。只在顶层确实有事要做时才留痕。
+        if (resolved == null && (payloads.isNotEmpty() || clearEmptyPage)) {
+            logSkip("top-shape:${type.simpleName}")
+        }
         return resolved
     }
 

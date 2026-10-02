@@ -31,23 +31,31 @@ class CommentKotlinPurifierTest {
     private fun content(vararg urls: Pair<String, Any>) = Content(linkedMapOf(*urls))
 
     @Test
-    fun `an unresolvable shape is reported once instead of silently doing nothing`() {
+    fun `an unresolvable shape is reported once, and only when the top level needs it`() {
         val skipped = mutableListOf<String>()
-        // 没有 payload 字段时顶层形状解析不出来：净化必须原样返回，但要有痕迹。
-        val purifier = CommentKotlinPurifier(
-            MainListReply::class.java,
-            isSearchUrl = null,
-            clearEmptyPage = false,
-            payloads = emptyMap(),
-            logSkip = { reason -> skipped += reason }
-        ) { _, _, _ -> }
+        fun build(payloads: Map<String, String>, links: ((Any?) -> Boolean)? = null) =
+            CommentKotlinPurifier(
+                MainListReply::class.java,
+                isSearchUrl = links,
+                clearEmptyPage = false,
+                payloads = payloads,
+                logSkip = { reason -> skipped += reason }
+            ) { _, _, _ -> }
 
         val message = MainListReply(listOf(ReplyInfo(content())), false, false, null)
-        assertSame(message, purifier.purify(message))
-        // 每个类只解析一次，所以重复调用不会重复报。
-        purifier.purify(message)
+
+        // 顶层确实有事要做（要清 Qoe），却读不到字段：净化空转，必须留痕，且每个类只报一次。
+        val topLevel = build(mapOf("NoSuchField" to "comments_qoe_removed"))
+        assertSame(message, topLevel.purify(message))
+        topLevel.purify(message)
         assertEquals(1, skipped.size)
         assertTrue(skipped.single().startsWith("top-shape:"))
+
+        // 只开着"摘搜索跳转"时，顶层形状用不上（摘链接走 rewriter）：解析不出来是正常的，
+        // 不能报成"读不到"，否则是一条假警报。
+        skipped.clear()
+        build(emptyMap(), links = { it == search }).purify(message)
+        assertTrue("skipped=$skipped", skipped.isEmpty())
     }
 
     @Test
