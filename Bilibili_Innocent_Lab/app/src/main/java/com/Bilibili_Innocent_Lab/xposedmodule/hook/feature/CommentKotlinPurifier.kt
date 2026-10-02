@@ -30,9 +30,9 @@ internal class CommentKotlinPurifier(
     private val clearEmptyPage: Boolean,
     /** `MainListReply` 上要清的可选字段名（如 `Qoe`、`Operation`）→ 对应的能力 id。 */
     private val payloads: Map<String, String>,
-    private val evidence: (capability: String, stage: FeatureRuntimeStage, count: Int) -> Unit,
-    /** 形状解析不出来时留一条有界日志（单测不传）。 */
-    private val logSkip: (reason: String) -> Unit = {}
+    /** 形状解析不出来时留一条有界日志（单测不传）。必须排在 [evidence] 之前：Kotlin 的尾随 lambda 绑定到最后一个参数。 */
+    private val logSkip: (reason: String) -> Unit = {},
+    private val evidence: (capability: String, stage: FeatureRuntimeStage, count: Int) -> Unit
 ) {
     private val replyLinks = ConcurrentHashMap<Class<*>, Any>()
     private val topShapes = ConcurrentHashMap<Class<*>, Any>()

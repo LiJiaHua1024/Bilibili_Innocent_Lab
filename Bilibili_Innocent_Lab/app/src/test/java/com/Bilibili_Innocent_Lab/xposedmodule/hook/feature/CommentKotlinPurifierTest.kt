@@ -38,8 +38,9 @@ class CommentKotlinPurifierTest {
             MainListReply::class.java,
             isSearchUrl = null,
             clearEmptyPage = false,
-            payloads = emptyMap()
-        ) { _, _, _ -> } { reason -> skipped += reason }
+            payloads = emptyMap(),
+            logSkip = { reason -> skipped += reason }
+        ) { _, _, _ -> }
 
         val message = MainListReply(listOf(ReplyInfo(content())), false, false, null)
         assertSame(message, purifier.purify(message))
