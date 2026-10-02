@@ -31,6 +31,25 @@ class CommentKotlinPurifierTest {
     private fun content(vararg urls: Pair<String, Any>) = Content(linkedMapOf(*urls))
 
     @Test
+    fun `an unresolvable shape is reported once instead of silently doing nothing`() {
+        val skipped = mutableListOf<String>()
+        // 没有 payload 字段时顶层形状解析不出来：净化必须原样返回，但要有痕迹。
+        val purifier = CommentKotlinPurifier(
+            MainListReply::class.java,
+            isSearchUrl = null,
+            clearEmptyPage = false,
+            payloads = emptyMap()
+        ) { _, _, _ -> } { reason -> skipped += reason }
+
+        val message = MainListReply(listOf(ReplyInfo(content())), false, false, null)
+        assertSame(message, purifier.purify(message))
+        // 每个类只解析一次，所以重复调用不会重复报。
+        purifier.purify(message)
+        assertEquals(1, skipped.size)
+        assertTrue(skipped.single().startsWith("top-shape:"))
+    }
+
+    @Test
     fun `search links are stripped from replies and sub replies only`() {
         val child = ReplyInfo(content("词" to search))
         val reply = ReplyInfo(content("关键词" to search, "视频" to "bilibili://video/1"), child)

@@ -30,7 +30,9 @@ internal class CommentKotlinPurifier(
     private val clearEmptyPage: Boolean,
     /** `MainListReply` 上要清的可选字段名（如 `Qoe`、`Operation`）→ 对应的能力 id。 */
     private val payloads: Map<String, String>,
-    private val evidence: (capability: String, stage: FeatureRuntimeStage, count: Int) -> Unit
+    private val evidence: (capability: String, stage: FeatureRuntimeStage, count: Int) -> Unit,
+    /** 形状解析不出来时留一条有界日志（单测不传）。 */
+    private val logSkip: (reason: String) -> Unit = {}
 ) {
     private val replyLinks = ConcurrentHashMap<Class<*>, Any>()
     private val topShapes = ConcurrentHashMap<Class<*>, Any>()
@@ -105,6 +107,9 @@ internal class CommentKotlinPurifier(
         replyLinks[type]?.let { return it as? Links }
         val resolved = runCatching { resolveLinks(type) }.getOrNull()
         replyLinks[type] = resolved ?: NONE
+        // 否定结论会被缓存到进程结束：不留痕迹的话，一次瞬时的反射失败（或宿主换了形状）会让这一层
+        // 永远静默空转，而安装器照样报"新通道 3 个"。
+        if (resolved == null) logSkip("links-shape:${type.simpleName}")
         return resolved
     }
 
@@ -140,6 +145,7 @@ internal class CommentKotlinPurifier(
         topShapes[type]?.let { return it as? TopShape }
         val resolved = runCatching { resolveTop(type) }.getOrNull()
         topShapes[type] = resolved ?: NONE
+        if (resolved == null) logSkip("top-shape:${type.simpleName}")
         return resolved
     }
 
