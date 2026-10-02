@@ -636,7 +636,7 @@ internal class SemanticJudge(
         }
         val chunks = claimedKeys.chunked(chunkLimit()).map { chunk ->
             // 每个 key 只占一个位置（代表它的那一条），其余同 key 的位置在下面按 key 回填。
-            Chunk(chunk.map { texts[positionsByKey.getValue(it)[0]] }, chunk, chunk.map { positionsByKey.getValue(it)[0] })
+            Chunk(chunk.map { texts[positionsByKey.getValue(it)[0]] }, chunk)
         }
         val tasks = dispatch(chunks, mode, null, now)
         val deadline = now + timeoutMs
