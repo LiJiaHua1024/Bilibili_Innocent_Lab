@@ -12,6 +12,7 @@ import java.util.concurrent.ConcurrentHashMap
  *
  * 模式：主线程只查缓存并投后台（绝不同步联网）；后台线程且开了"首屏等待"时同步等结果；
  * 否则投后台，下次加载生效。标题读不到的卡片为 UNKNOWN，按原有规则处理。
+ * 单条入口（[verdictOf]）是例外，恒不阻塞——理由见那里。
  */
 internal class SemanticTitleFilter(
     private val judge: SemanticJudge?,
@@ -29,15 +30,25 @@ internal class SemanticTitleFilter(
 
     /** 单条判定（组件工厂逐条回调）：每次都是新包装，绕过列表 memo，避免挤掉真正的列表条目。 */
     fun verdictOf(item: Any, titleOf: (Any) -> String?): SemanticVerdict =
-        compute(listOf(item), titleOf)?.get(item) ?: SemanticVerdict.UNKNOWN
+        compute(listOf(item), titleOf, block = false)?.get(item) ?: SemanticVerdict.UNKNOWN
 
-    private fun compute(items: List<*>, titleOf: (Any) -> String?): IdentityHashMap<Any, SemanticVerdict>? {
+    /**
+     * @param block 是否允许同步等判定。列表路径按设置决定；单条路径恒为 false——
+     * 组件工厂是**逐条**回调的，一次只判一条，既合不进批、也没法预取：开着头屏等待时每张卡片都要
+     * 串行阻塞一次网络往返，一屏二十张就是几十秒的卡顿（等待池只有 4 线程 12 队列，再多直接被拒）。
+     * 改为只查缓存 + 投后台：标题此前经列表路径判过就直接命中，没判过的下次进页面生效。
+     */
+    private fun compute(
+        items: List<*>,
+        titleOf: (Any) -> String?,
+        block: Boolean = true
+    ): IdentityHashMap<Any, SemanticVerdict>? {
         val judge = judge ?: return null
         val present = items.filterNotNull()
         if (present.isEmpty()) return null
         val titles = present.map { item -> runCatching { titleOf(item) }.getOrNull()?.trim().orEmpty() }
         if (titles.all(String::isEmpty)) return null
-        val mode = if (judge.waitFirstScreen && !isMainThread()) SemanticMode.WAIT else SemanticMode.PREFETCH
+        val mode = if (block && judge.waitFirstScreen && !isMainThread()) SemanticMode.WAIT else SemanticMode.PREFETCH
         val verdicts = judge.evaluate(titles, mode, onReport = logDir?.let { dir ->
             { report, batch, result -> log(dir, report, batch, result) }
         })

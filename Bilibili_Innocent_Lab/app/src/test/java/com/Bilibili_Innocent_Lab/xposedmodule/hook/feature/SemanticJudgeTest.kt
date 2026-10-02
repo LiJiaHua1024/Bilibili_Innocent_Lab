@@ -346,6 +346,21 @@ class SemanticJudgeTest {
         assertEquals(5, computes)
     }
 
+    @Test
+    fun `single card judgement never blocks the caller`() {
+        var calls = 0
+        val judge = SemanticJudge("k", rules, waitFirstScreen = true,
+            transport = { _, _, _ -> calls += 1; 200 to answers(0.99) },
+            background = { it.run(); true }, clock = { 0L })
+        val filter = SemanticTitleFilter(judge, null, { false }, "test")
+
+        // 组件工厂逐条回调，一次只判一条：等下去就是每张卡片一次串行网络往返。
+        assertEquals(unknown, filter.verdictOf("card-a") { it as String })
+        // 列表路径照旧按设置在后台线程上当场等结果。
+        assertEquals(listOf(block), filter.verdicts(listOf("card-b")) { it as String }?.values?.toList())
+        assertEquals(2, calls)
+    }
+
     /** 测试桩：自带 getTitle 的卡片（view.v1.Relate 形态）。 */
     class DirectCard(private val title: String = "直接标题") {
         fun getTitle(): String = title
