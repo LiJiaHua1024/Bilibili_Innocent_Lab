@@ -307,7 +307,10 @@ internal class CommentFilterFeatureInstaller(
         val handlerClass = KavaMemberLookup.classOrNull(loader, MOSS_HANDLER_CLASS)
         val readers = ConcurrentHashMap<Class<*>, List<Method>>()
         fun observe(response: Any) {
-            val texts = collectReplyTexts(response, replyInfoClass, accessors, readers)
+            // 收正文必须走原始读取：这里的列表 getter 正是本安装器挂钩的那些，嵌套调用
+            // 会让 after 回调抢先以 PREFETCH 认领全部 key，observe 自己的 WAIT 拿到空
+            // claimedKeys 直接返回全 UNKNOWN，"首屏等待"永远空转。与 prewarmSemantic 同口径。
+            val texts = KotlinMossChannel.raw { collectReplyTexts(response, replyInfoClass, accessors, readers) }
             if (texts.isEmpty()) return
             val mode = if (judge.waitFirstScreen && !isMainThread()) SemanticMode.WAIT else SemanticMode.PREFETCH
             judge.evaluate(texts, mode, onReport = reportTo("comment-moss"))
