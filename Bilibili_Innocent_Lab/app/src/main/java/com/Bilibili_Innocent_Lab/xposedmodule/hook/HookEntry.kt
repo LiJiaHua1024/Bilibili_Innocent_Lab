@@ -1865,7 +1865,8 @@ class HookEntry : XposedModule() {
                 // 防超出顶部：上移后仍超出则贴顶（贴顶后若 bubbleH 超过可用区——
                 // maxLines=12 限高下几乎不可达——顶部优先，底部让位）
                 if (bubbleY < dp(8)) bubbleY = dp(8).toFloat()
-                logError("fc_loc", "[BIL] 气泡定位: anchor=${anchor.javaClass.simpleName} visible=$anchorVisible loc=(${loc[0]},${loc[1]}) h=${anchor.height} → bubble=(${bubbleX.toInt()},${bubbleY.toInt()}) h=$bubbleH safe=$safeBottom")
+                // 定位成功是正常路径，只在完整档留痕；error 通道精简档也输出，会稀释真实错误。
+                logInfo("fc_loc", "[BIL] 气泡定位: anchor=${anchor.javaClass.simpleName} visible=$anchorVisible loc=(${loc[0]},${loc[1]}) h=${anchor.height} → bubble=(${bubbleX.toInt()},${bubbleY.toInt()}) h=$bubbleH safe=$safeBottom")
 
                 // 全屏透明容器（接收点击外部关闭 + 承载气泡绝对定位）
                 val fullscreen = android.widget.FrameLayout(act).apply {
