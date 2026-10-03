@@ -173,7 +173,9 @@ internal class HomeTopBarFeatureInstaller(
         }
 
         // View 和协议层相互独立；同步/异步响应都清理文案，任一缺失必须报告 partial。
-        var searchProtocolReady = true
+        // 初值必须是"开关开启时不就绪"：SearchMoss 解析不出来时 if 块整段跳过，
+        // 若初值为 true，协议层静默缺席却一路 success，partial:search-protocol 永远出不来。
+        var searchProtocolReady = !hideSearchDefaultWord
         val searchMoss = if (hideSearchDefaultWord) environment.classLoader?.let {
             KavaMemberLookup.classOrNull(it, SEARCH_MOSS_CLASS)
         } else null
