@@ -60,8 +60,12 @@ internal class CommentSectionFeatureInstaller(
             }
         }
         if (installed == 0) return missing(environment, "registration-failed")
-        environment.reportStatus(CHANNEL_STATUS, "success")
-        return FeatureInstallResult.Installed(installed)
+        // 适配出的每个构造器都是本宿主确实存在的落点：解析或注册失败必须让
+        // complete 掉成 false，否则部分宿主路径静默漏挂却显示"已就绪"。
+        val expected = adapted.listConstructors.size
+        val complete = installed == expected
+        environment.reportStatus(CHANNEL_STATUS, if (complete) "success" else "partial:$installed/$expected")
+        return FeatureInstallResult.Installed(installed, complete = complete)
     }
 
     private fun isCommentTab(item: Any, tagGetter: Method): Boolean {
