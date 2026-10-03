@@ -19,8 +19,16 @@ import android.widget.TextView as NativeTextView
 /**
  * 「获取 access_key」授权前的风险二次确认；只有点了确认按钮才写入授权。
  * 已授权时直接返回（关闭授权不需要确认）。[onAuthorized] 在确认并写入之后回调（强力模式面板据此勾上本项）。
+ *
+ * [cover] 传父面板的可见表面矩形（见 [MainActivity.modalSurfaceBounds]）时按子面板呈现：
+ * 父面板留在下面不被硬关。强力模式面板从这里发起授权时必须传，否则共用底座会把父面板
+ * dismiss 掉，回调里的勾选写进一个已销毁的窗口，本项第一次勾选必然失效。
  */
-internal fun MainActivity.showBiliAccessKeyConfirmDialog(anchor: View? = null, onAuthorized: (() -> Unit)? = null) {
+internal fun MainActivity.showBiliAccessKeyConfirmDialog(
+    anchor: View? = null,
+    cover: SettingsBackupMotionRect? = null,
+    onAuthorized: (() -> Unit)? = null
+) {
     if (biliAccessKeyAuthorized) return
     val density = resources.displayMetrics.density
     val dialog = Dialog(this).also { installDialogElasticInteraction(it) }
@@ -54,7 +62,7 @@ internal fun MainActivity.showBiliAccessKeyConfirmDialog(anchor: View? = null, o
         }
     }, NativeLinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply { marginStart = (8 * density).toInt() })
     container.addView(buttons)
-    presentModalDialog(dialog, container, anchor)
+    presentModalDialog(dialog, container, anchor, coverBounds = cover)
 }
 
 /**
