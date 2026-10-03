@@ -133,6 +133,13 @@ internal class DetailViewRuleHider(
 
     private val collapsed = ItemCollapseBook()
 
+    /**
+     * 内层（非 item 根）被本安装器设成 GONE 的控件账。[collapsed] 只记 item 根；
+     * 这些内层控件走的是纯可见性路径，RecyclerView 复用视图时同一对象会被拿去
+     * 承载别的内容，没有这本账就永远停在 GONE。键随宿主视图回收自然清理。
+     */
+    private val manuallyHidden = WeakHashMap<View, Boolean>()
+
     @Volatile private var ids: Map<String, Int>? = null
     @Volatile private var active: List<DetailViewPurifyPolicy.Rule> = emptyList()
 
@@ -193,17 +200,45 @@ internal class DetailViewRuleHider(
         val view = child as? View ?: return
         val table = ids ?: return
         var keepCollapsed = false
+        val hiddenNow = ArrayList<View>()
         active.forEach { rule ->
-            if (applyRule(rule, view, table)) keepCollapsed = true
+            if (applyRule(rule, view, table, hiddenNow)) keepCollapsed = true
         }
+        restoreManuallyHidden(view, hiddenNow)
         if (!keepCollapsed) restore(view)
+    }
+
+    /**
+     * 内层 GONE 的还原不走 [collapsed]（那只记 item 根）：凡挂在本子项下、且本轮
+     * 没有再次隐藏的已记账控件，一律还原成 VISIBLE 并摘账。规则仍命中但目标已是
+     * GONE 的（上一轮由本规则设的）已在 [keptHidden] 里，不会被误还原。
+     */
+    private fun restoreManuallyHidden(root: View, keptHidden: Collection<View>) {
+        val entries = manuallyHidden.entries.iterator()
+        while (entries.hasNext()) {
+            val target = entries.next().key
+            if (target in keptHidden) continue
+            if (!(target === root || target.isDescendantOf(root))) continue
+            if (target.visibility == View.GONE) target.visibility = View.VISIBLE
+            entries.remove()
+        }
+    }
+
+    private fun View.isDescendantOf(ancestor: View): Boolean {
+        var parent = parent
+        while (parent != null) {
+            if (parent === ancestor) return true
+            parent = (parent as? View)?.parent
+        }
+        return false
     }
 
     /** @return 这一项的 item 根是否应保持折叠（决定回收复用时要不要还原）。 */
     private fun applyRule(
         rule: DetailViewPurifyPolicy.Rule,
         child: View,
-        table: Map<String, Int>
+        table: Map<String, Int>,
+        innerHidden: MutableCollection<View>
     ): Boolean {
         // 最便宜的前置判据先走：有 itemIdName 的一次 int 比较；没有的先用 NO_ID 挡。
         val itemId = rule.itemIdName?.let { table[it] }
@@ -225,9 +260,14 @@ internal class DetailViewRuleHider(
                 // 光 GONE 不收缩那一格，要连尺寸一起归零；见 Rule.hidesItemRoot。
                 collapsed.collapse(ViewItemBox(target))
             } else if (target.visibility != View.GONE) {
+                manuallyHidden[target] = true
                 target.visibility = View.GONE
+                innerHidden += target
                 true
             } else {
+                // 规则仍命中且目标已是 GONE（可能上一轮由本规则设的）：也要报给扫除，
+                // 否则会被当成"本轮未隐藏"而在回收复用时误还原成 VISIBLE。
+                if (manuallyHidden.containsKey(target)) innerHidden += target
                 false
             }
             if (hidden) {
