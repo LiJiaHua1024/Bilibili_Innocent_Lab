@@ -14,7 +14,8 @@ import androidx.core.graphics.createBitmap
 
 /**
  * 实时截图的**反馈抑制**：模块自己画出的玻璃（及其周围 effect padding）在截图里一律换成干净的
- * 稳定底图，下一帧的光学输入永远不含上一帧的光学输出——否则文字与玻璃会被递归折射成残影。
+ * 背景底图（呈现位图，不是模糊过的光学副本），下一帧的光学输入永远不含上一帧的光学输出——
+ * 否则文字与玻璃会被递归折射成残影。
  *
  * 遮罩在**发起截图那一刻**按当帧已绘制的足迹构建（[buildSuppressionMask]），回调里只负责应用
  * （[sanitizeRealtimeCapture]）：PixelCopy 读的是最近一次已合成的帧，回调时再取位置会与截图内容
@@ -40,12 +41,15 @@ internal class LiquidFeedbackSuppressor(private val paddingPx: Float) {
     val mask = Path()
 
     /**
-     * 预缩放到截图尺寸的稳定底图，供反馈抑制按 1:1 填充。
+     * 预缩放到截图尺寸的背景底图，供反馈抑制按 1:1 填充。
      *
-     * 抑制原本用 0.25 倍的稳定底图逐帧**双线性放大**填进截图（1440p 上是 360×800 → 671×1490，
+     * 抑制原本用稳定底图逐帧**双线性放大**填进截图（0.25 倍采样时是 360×800 → 671×1490，
      * 约 2.9 倍面积），这是主线程上的软件光栅化，夹在 GPU→CPU 回读与纹理上传之间。预缩放一次后
      * 逐帧只剩 1:1 的 alpha 混合，输出内容不变（同一双线性滤波、同一源，只是重采样从每帧一次变成
      * 尺寸变化时一次）。代价是一张截图尺寸的位图（1,000,000 px 约 3.81 MiB），内存压力下释放。
+     *
+     * 源必须是**呈现位图**（[LiquidBackdropSource.drawSuppressionBackdrop]）：替换区就是静止态
+     * 玻璃内部采到的主要内容，用模糊副本会把静止态读成"一停下来就变磨砂"。
      */
     private var suppressionUnderlay: Bitmap? = null
     private var suppressionUnderlayShader: BitmapShader? = null
@@ -76,8 +80,8 @@ internal class LiquidFeedbackSuppressor(private val paddingPx: Float) {
             val bitmap = createBitmap(width, height, Bitmap.Config.ARGB_8888)
             val scaleCanvas = Canvas(bitmap)
             scaleBounds.set(0, 0, width, height)
-            // 这一次放大与原逐帧填充使用同一滤波与同一源，输出内容一致。
-            stableBackdrop.drawOpticalBackdrop(scaleCanvas, scaleBounds, 255)
+            // 这一次重采样与逐帧兜底填充同源同滤波，输出内容一致。
+            stableBackdrop.drawSuppressionBackdrop(scaleCanvas, scaleBounds, 255)
             bitmap.prepareToDraw()
             val shader = BitmapShader(bitmap, Shader.TileMode.CLAMP, Shader.TileMode.CLAMP)
             suppressionUnderlay = bitmap
@@ -182,8 +186,8 @@ internal class LiquidFeedbackSuppressor(private val paddingPx: Float) {
                 suppressionPaint.alpha = LiquidRealtimeCapturePolicy.BASE_SUPPRESSION_ALPHA
                 canvas.drawPath(requestMask, suppressionPaint)
             } else {
-                // 预缩放位图分配失败时回退到原路径，抑制强度与几何完全一致。
-                stableBackdrop.drawRootMasked(
+                // 预缩放位图分配失败时回退到逐帧路径填充，内容与几何完全一致。
+                stableBackdrop.drawSuppressionBackdropMasked(
                     canvas,
                     requestMask,
                     captureBounds,

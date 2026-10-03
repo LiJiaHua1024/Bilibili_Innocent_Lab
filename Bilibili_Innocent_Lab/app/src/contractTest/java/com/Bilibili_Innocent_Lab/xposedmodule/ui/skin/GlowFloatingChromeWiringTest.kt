@@ -65,7 +65,7 @@ class GlowFloatingChromeWiringTest {
         assertTrue(source.contains("BitmapShader(bitmap, Shader.TileMode.CLAMP, Shader.TileMode.CLAMP)"))
         assertFalse(presentation.contains("opticalBitmap"))
         assertFalse(presentation.contains("bitmapShader.setLocalMatrix"))
-        assertFalse(presentation.contains("maskShader"))
+        assertFalse(presentation.contains("opticalRegionShader"))
         assertTrue(presentation.contains("PorterDuff.Mode.DST_IN"))
     }
 

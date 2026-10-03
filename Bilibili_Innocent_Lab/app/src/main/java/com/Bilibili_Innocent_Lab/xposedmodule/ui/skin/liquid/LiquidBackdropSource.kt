@@ -32,38 +32,66 @@ internal class LiquidBackdropSource private constructor(
     val isRealtime: Boolean,
     fullWidth: Int,
     fullHeight: Int,
-    private val opticalBitmap: Bitmap = bitmap
+    private val opticalBitmap: Bitmap = bitmap,
+    crispRefraction: Boolean = false
 ) : AutoCloseable {
     var fullWidth: Int = fullWidth
         private set
     var fullHeight: Int = fullHeight
         private set
 
-    // Root presentation and optical sampling share coordinates, not necessarily the same pixels.
-    // The static custom source has one prefiltered copy; realtime buffers are never CPU-blurred.
-    val bitmapShader = BitmapShader(opticalBitmap, Shader.TileMode.CLAMP, Shader.TileMode.CLAMP)
+    /**
+     * 折射输入。呈现与光学采样共用坐标、不共用像素，这里决定后端 `content` 吃哪一张。
+     *
+     * 默认吃 [opticalBitmap]（自定义图的那份是 20dp 模糊过的 0.25x 采样），也就是标清档的
+     * 磨砂观感。`crispRefraction`（实时档，由 [fromCustomBitmap] 按效果档传入）改吃 [bitmap]
+     * 呈现位图：实时档玻璃折射的本来就是清晰截屏，"没有实时截屏可用"的那几段（起播、位移
+     * 抑制、采集挂起）若退回模糊副本，换源就成了"先糊后清晰 / 先清晰后糊"的硬切（2026-10-03
+     * 用户报告：滑动时是 Liquid Glass，一停就变成小米式磨砂）。清晰副本把所有阶段收敛成同一种
+     * 清晰度，剩下的差别只有"折射带里有没有下层内容"，那才是实时档本来的特征。
+     *
+     * 映射随位图一起走：AGSL 的 `content.eval` 吃位图像素坐标，后端的 `backdropScale` 必须按
+     * [refractionWidth] / [refractionHeight] 算，不能按呈现尺寸。模糊副本仍有它的用处——外部
+     * 窗口（Dialog）的玻璃取样刻意只吃被过滤过的底图，不把下层内容透进面板（见 [drawOpticalRegion]）；
+     * [presentationShader] 的 localMatrix 逐帧被边缘溶解改写，也不能与折射输入共用实例。
+     */
+    private val refractionBitmap = if (crispRefraction && opticalBitmap !== bitmap) bitmap else opticalBitmap
+
+    val bitmapShader = BitmapShader(refractionBitmap, Shader.TileMode.CLAMP, Shader.TileMode.CLAMP)
+
+    /**
+     * 折射输入的位图尺寸。AGSL 的 `content.eval` 吃**位图像素坐标**，后端的 `backdropScale`
+     * 必须按这份尺寸算（窗口尺寸 / 它）；按呈现尺寸算会在标清档把模糊副本错位 4 倍——
+     * 一份 20dp 模糊的低频底图错位后观感仍是"一片柔和的色"、很难被发现，但玻璃与底图的
+     * 空间对应关系已经错了。
+     */
+    val refractionWidth: Int
+        get() = refractionBitmap.width
+    val refractionHeight: Int
+        get() = refractionBitmap.height
 
     private val rootPaint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG)
 
     /**
-     * 反馈抑制专用的独立 Shader 与 Matrix。
+     * 外部窗口（Dialog）玻璃取样专用的独立 Shader 与 Matrix，吃被过滤过的光学副本。
      *
      * 不能复用 [bitmapShader]：那一份已经作为 RuntimeShader 的 `content` 输入被后端持有，
-     * 逐帧改写它的 local matrix 会污染折射采样。
+     * 逐帧改写它的 local matrix 会污染折射采样；[drawOpticalRegion] 也因此不能与抑制替换
+     * 或边缘溶解共用实例。
      */
-    private val maskShader by lazy(LazyThreadSafetyMode.NONE) {
+    private val opticalRegionShader by lazy(LazyThreadSafetyMode.NONE) {
         BitmapShader(opticalBitmap, Shader.TileMode.CLAMP, Shader.TileMode.CLAMP).apply {
             // 与旧路径的 FILTER_BITMAP_FLAG 对齐：稳定底图是 0.25 倍采样，最近邻会在
             // 抑制区域露出明显色块。setFilterMode 是 API 33 才有的显式声明，31-32 仍依赖
-            // maskPaint 的 FILTER_BITMAP_FLAG。
+            // paint 的 FILTER_BITMAP_FLAG。
             if (AndroidVersion.isAtLeast(AndroidVersion.T)) {
                 setFilterMode(BitmapShader.FILTER_MODE_LINEAR)
             }
         }
     }
-    private val maskMatrix = Matrix()
-    private val maskPaint by lazy(LazyThreadSafetyMode.NONE) {
-        Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG).apply { shader = maskShader }
+    private val opticalRegionMatrix = Matrix()
+    private val opticalRegionPaint by lazy(LazyThreadSafetyMode.NONE) {
+        Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG).apply { shader = opticalRegionShader }
     }
     private var closed = false
     private var published = false
@@ -85,18 +113,57 @@ internal class LiquidBackdropSource private constructor(
         canvas.drawBitmap(bitmap, null, bounds, rootPaint)
     }
 
-    /** The already-filtered static optical source, also used to remove captured glass feedback. */
-    fun drawOpticalBackdrop(canvas: Canvas, bounds: Rect, alpha: Int) {
+    /**
+     * 抑制替换底图：把**呈现位图**（与 [drawRoot] 同一张）画进 [bounds]。反馈抑制用它把截图里的
+     * 玻璃区域换成"玻璃背后的画面"，否则下一帧的光学输入会含上一帧自己的输出。
+     *
+     * 必须与折射输入同为清晰档：替换区正是玻璃自己的区域，也就是静止态玻璃内部采到的主要内容；
+     * 这里若画 20dp 模糊的光学副本，位移期刚给过清晰观感、一停下来玻璃内部就只剩一片糊，
+     * 读作"从 Liquid Glass 变成磨砂"（2026-10-03 用户报告）。换成呈现位图后，替换区与周围清晰
+     * 内容同清晰度，遮罩边界也不再是"模糊团 | 清晰内容"的可见台阶。
+     */
+    fun drawSuppressionBackdrop(canvas: Canvas, bounds: Rect, alpha: Int) {
         check(!closed) { "Liquid backdrop source is closed" }
         rootPaint.alpha = alpha.coerceIn(0, 255)
-        canvas.drawBitmap(opticalBitmap, null, bounds, rootPaint)
+        canvas.drawBitmap(bitmap, null, bounds, rootPaint)
+    }
+
+    /**
+     * [drawSuppressionBackdrop] 的路径填充版本：抑制底图分配失败时的兜底，逐帧按 [path] 填充，
+     * 内容与几何完全一致。
+     *
+     * 旧实现是 `clipPath` + 全图 `drawBitmap`：即使裁剪把光栅化限制在玻璃区域，Skia 仍要为整张
+     * 目标位图建立一次抗锯齿裁剪掩码并做 save/restore。带 Shader 的路径填充不分配裁剪掩码。
+     * 独立 Shader/Matrix：折射输入被 RuntimeShader 直接持有、边缘溶解与对话框取样各自逐帧改写
+     * localMatrix，三边都不能共用实例。
+     */
+    fun drawSuppressionBackdropMasked(canvas: Canvas, path: Path, dstBounds: Rect, alpha: Int) {
+        check(!closed) { "Liquid backdrop source is closed" }
+        if (dstBounds.isEmpty || bitmap.width <= 0 || bitmap.height <= 0) return
+        suppressionMatrix.setScale(
+            dstBounds.width().toFloat() / bitmap.width.toFloat(),
+            dstBounds.height().toFloat() / bitmap.height.toFloat()
+        )
+        suppressionMatrix.postTranslate(dstBounds.left.toFloat(), dstBounds.top.toFloat())
+        suppressionShader.setLocalMatrix(suppressionMatrix)
+        suppressionPaint.alpha = alpha.coerceIn(0, 255)
+        canvas.drawPath(path, suppressionPaint)
+    }
+
+    private val suppressionShader by lazy(LazyThreadSafetyMode.NONE) {
+        BitmapShader(bitmap, Shader.TileMode.CLAMP, Shader.TileMode.CLAMP).apply {
+            if (AndroidVersion.isAtLeast(AndroidVersion.T)) setFilterMode(BitmapShader.FILTER_MODE_LINEAR)
+        }
+    }
+    private val suppressionMatrix = Matrix()
+    private val suppressionPaint by lazy(LazyThreadSafetyMode.NONE) {
+        Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG).apply { shader = suppressionShader }
     }
 
     /**
      * 在表面本地坐标中按根坐标取一块光学采样区，供外部窗口（Dialog）里的玻璃表面使用：
-     * 那些表面折射不到自己窗口的内容，实时截屏里对应位置只有未压暗的锐利底页，
-     * 改采已过滤副本才不会把底页文字透进面板。与 [drawRootMasked] 共用独立 Shader，
-     * 不触碰折射后端持有的 [bitmapShader]。
+     * 那些表面折射不到自己窗口的内容，实时截屏里对应位置只有未压暗的锐利底页，改采已过滤副本
+     * 才不会把底页文字透进面板。这是模糊副本仅剩的两处用途之一（另一处是标清档的折射输入）。
      *
      * @param rootOffsetX/rootOffsetY 表面在 backdrop 全幅坐标中的位置（根视图像素）。
      */
@@ -114,14 +181,14 @@ internal class LiquidBackdropSource private constructor(
         ) return
         val scaleX = fullWidth.toFloat() / opticalBitmap.width.toFloat()
         val scaleY = fullHeight.toFloat() / opticalBitmap.height.toFloat()
-        maskMatrix.setScale(scaleX, scaleY)
-        maskMatrix.postTranslate(-rootOffsetX, -rootOffsetY)
-        maskShader.setLocalMatrix(maskMatrix)
-        maskPaint.alpha = alpha.coerceIn(0, 255)
+        opticalRegionMatrix.setScale(scaleX, scaleY)
+        opticalRegionMatrix.postTranslate(-rootOffsetX, -rootOffsetY)
+        opticalRegionShader.setLocalMatrix(opticalRegionMatrix)
+        opticalRegionPaint.alpha = alpha.coerceIn(0, 255)
         canvas.drawRoundRect(
             localBounds.left.toFloat(), localBounds.top.toFloat(),
             localBounds.right.toFloat(), localBounds.bottom.toFloat(),
-            radiusPx, radiusPx, maskPaint
+            radiusPx, radiusPx, opticalRegionPaint
         )
     }
 
@@ -130,7 +197,7 @@ internal class LiquidBackdropSource private constructor(
      * 逐像素乘以 [alphaMask] 的 alpha 再乘 [alpha]。供滚动边缘溶解把内容"溶回"窗口底图：
      * 画的必须与根背景逐像素一致，否则溶解区会露出一块色差。
      *
-     * 独立的 Shader/Matrix：[bitmapShader] 被折射后端持有，[maskShader] 属于光学副本。
+     * 独立的 Shader/Matrix：[bitmapShader] 被折射后端持有，[opticalRegionShader] 属于光学副本。
      * 同一 Shader 在多个宿主间逐次改 local matrix 是安全的——HWUI 在录制那一刻快照原生实例。
      */
     fun drawPresentationRegion(
@@ -190,26 +257,6 @@ internal class LiquidBackdropSource private constructor(
         closed = true
         if (opticalBitmap !== bitmap && !opticalBitmap.isRecycled) opticalBitmap.recycle()
         if (!bitmap.isRecycled) bitmap.recycle()
-    }
-
-    /**
-     * 以光学采样副本填充给定路径，几何映射与根背景相同，根背景本身仍显示用户原图。
-     *
-     * 旧实现是 `clipPath` + 全图 `drawBitmap`：即使裁剪把光栅化限制在玻璃区域，Skia 仍要为
-     * 整张目标位图建立一次抗锯齿裁剪掩码并做 save/restore。改成一次带 Shader 的路径填充后
-     * 不再分配裁剪掩码，也不在反馈抑制的逐帧路径执行 CPU 模糊。
-     */
-    fun drawRootMasked(canvas: Canvas, path: Path, dstBounds: Rect, alpha: Int) {
-        check(!closed) { "Liquid backdrop source is closed" }
-        if (dstBounds.isEmpty || opticalBitmap.width <= 0 || opticalBitmap.height <= 0) return
-        maskMatrix.setScale(
-            dstBounds.width().toFloat() / opticalBitmap.width.toFloat(),
-            dstBounds.height().toFloat() / opticalBitmap.height.toFloat()
-        )
-        maskMatrix.postTranslate(dstBounds.left.toFloat(), dstBounds.top.toFloat())
-        maskShader.setLocalMatrix(maskMatrix)
-        maskPaint.alpha = alpha.coerceIn(0, 255)
-        canvas.drawPath(path, maskPaint)
     }
 
     override fun close() {
@@ -290,6 +337,9 @@ internal class LiquidBackdropSource private constructor(
          * a 0.25x sample is stretched back over the window (2026-10-03 用户反馈"自定义图片糊"）。
          * The optical sample therefore no longer equals the presentation bitmap: it is downscaled
          * to the stable 0.25x budget first and blurred there, so refraction cost stays unchanged.
+         *
+         * [crispRefraction] 为 true 时折射输入改用呈现位图，见 [bitmapShader]：实时档下稳定底图
+         * 只是"实时截屏缺席时的替身"，替身必须与实时档同清晰度，否则换源会读成观感突变。
          */
         @WorkerThread
         fun fromCustomBitmap(
@@ -297,7 +347,8 @@ internal class LiquidBackdropSource private constructor(
             assetId: String,
             fullWidth: Int,
             fullHeight: Int,
-            density: Float
+            density: Float,
+            crispRefraction: Boolean
         ): LiquidBackdropSource {
             check(Looper.myLooper() !== Looper.getMainLooper()) {
                 "Custom optical backdrop must be prepared off the main thread"
@@ -332,7 +383,8 @@ internal class LiquidBackdropSource private constructor(
                         isRealtime = false,
                         fullWidth = fullWidth,
                         fullHeight = fullHeight,
-                        opticalBitmap = optical
+                        opticalBitmap = optical,
+                        crispRefraction = crispRefraction
                     )
                 } catch (failure: Throwable) {
                     optical.recycle()

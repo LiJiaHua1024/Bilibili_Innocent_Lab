@@ -1085,7 +1085,12 @@ internal class LiquidActivityRenderer(
             }
             if (Thread.currentThread().isInterrupted) { bitmap.recycle(); return@submit }
             val source = runCatching {
-                LiquidBackdropSource.fromCustomBitmap(bitmap, assetId, width, height, density)
+                LiquidBackdropSource.fromCustomBitmap(
+                    bitmap, assetId, width, height, density,
+                    // 实时档下稳定底图只是"实时截屏缺席时的替身"（起播、位移抑制、采集挂起），
+                    // 折射输入必须与实时档同清晰度，否则抑制→解除换源会读成组件先糊后清晰。
+                    crispRefraction = effectProfile == LiquidEffectProfile.REALTIME_CAPTURE
+                )
             }.getOrElse {
                 bitmap.recycle()
                 if (!Thread.currentThread().isInterrupted) mainHandler.post {
