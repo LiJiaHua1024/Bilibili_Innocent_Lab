@@ -155,11 +155,20 @@ internal class CommentKotlinPurifier(
 
     private fun resolveTop(type: Class<*>): TopShape? {
         val plan = ProtobufBuilderPlan.resolve(type) ?: return null
-        val fields = payloads.mapNotNull { (name, capability) ->
-            val has = noArg(type, "has$name")?.takeIf { it.returnType == classOf<Boolean>() } ?: return@mapNotNull null
-            val clear = plan.method("clear$name") ?: return@mapNotNull null
-            PayloadField(capability, has, clear)
-        }
+        // 缺失字段先收集、不立即上报：整体解析不出来时由 topShapeOf 报一次 top-shape
+        // （有单测钉死"整体失败只报一次"）；只有形状成立但个别字段被丢的部分解析，
+        // mapNotNull 时代才是真正的静默黑洞，这里逐字段留痕（每类只解析一次，天然有界）。
+        val missing = ArrayList<String>()
+        val fields = payloads.map { (name, capability) ->
+            val has = noArg(type, "has$name")?.takeIf { it.returnType == classOf<Boolean>() }
+            val clear = plan.method("clear$name")
+            if (has == null || clear == null) {
+                missing += name
+                null
+            } else {
+                PayloadField(capability, has, clear)
+            }
+        }.filterNotNull()
         val subject = if (!clearEmptyPage) null else run {
             val has = noArg(type, "hasSubjectControl")?.takeIf { it.returnType == classOf<Boolean>() } ?: return@run null
             val getter = noArg(type, "getSubjectControl")?.takeIf { !it.returnType.isPrimitive } ?: return@run null
@@ -171,6 +180,7 @@ internal class CommentKotlinPurifier(
             SubjectPath(has, getter, set, hasEmpty, controlPlan, clearEmpty)
         }
         if (fields.isEmpty() && subject == null) return null
+        missing.forEach { logSkip("top-payload:${type.simpleName}#$it") }
         return TopShape(plan, fields, subject)
     }
 
