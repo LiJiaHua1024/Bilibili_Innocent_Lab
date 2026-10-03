@@ -116,7 +116,11 @@ internal class PlayerSpeedSessions(private val requested: Float) {
         val temporary = point.flows.singleOrNull { it != base } ?: return null
         val overlay = point.readValue.invoke(temporary.get(manager))
         if (overlay != null && overlay !is Float) return null
-        return (overlay ?: value).takeIf { it.isFinite() && it > 0f && it <= 4f }
+        // 上限必须用配置区间而不是写死的旧值：范围扩到 8 倍后，prepared 路径仍按 4 拒收
+        // 会让 5–8 倍配置在这里返回 null、后续宿主改写速度时不再拉回默认值。
+        return (overlay ?: value).takeIf {
+            it.isFinite() && it > 0f && it <= PlayerSpeedConfig.MAX_MULTIPLIER
+        }
     }
 
     fun installPrepared(env: HookEnvironment, point: PlayerSpeedSessionLocator.Prepared,
