@@ -349,10 +349,19 @@ private class ComponentLibraryReplyStrategy private constructor(
             val moduleList = (poolModules?.invoke(pool) as? List<*>)
                 .orEmpty()
                 .filterNotNull()
-            val moduleText = moduleList.mapNotNull { module ->
+            // 匹配器返回的下标是对"传入名单"而言的：名字读不到的模块必须保留原下标
+            // （记成 原下标→名字 对），否则过滤后名单的下标套回未过滤的 moduleList
+            // 会整体错位，勾掉的模块拦不住、反而删掉别的模块。名字读不到按保守放行。
+            val namedModules = moduleList.withIndex().mapNotNull { (index, module) ->
                 runCatching { moduleName?.invoke(module) as? String }.getOrNull()
+                    ?.let { index to it }
             }
-            val match = ComponentLibraryPoolMatcher.match(poolText, moduleText, targetKeywords)
+            val match = ComponentLibraryPoolMatcher.match(
+                poolText, namedModules.map { it.second }, targetKeywords
+            )
+            val blockedIndexes = match?.moduleIndexes
+                ?.mapTo(HashSet()) { namedModules[it].first }
+                .orEmpty()
             val updated = when {
                 match == null -> pool
                 match.wholePool -> {
@@ -362,7 +371,7 @@ private class ComponentLibraryReplyStrategy private constructor(
                 addModule == null -> return@runCatching null
                 else -> {
                     changed = true
-                    rebuildPool(pool, moduleList.filterIndexed { index, _ -> index !in match.moduleIndexes })
+                    rebuildPool(pool, moduleList.filterIndexed { index, _ -> index !in blockedIndexes })
                 }
             }
             rebuiltPools += updated
