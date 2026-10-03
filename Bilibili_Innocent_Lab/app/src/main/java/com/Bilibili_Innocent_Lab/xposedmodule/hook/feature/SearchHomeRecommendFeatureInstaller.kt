@@ -14,7 +14,13 @@ internal class SearchHomeRecommendFeatureInstaller(private val enabled: Boolean)
         val points = environment.classLoader?.let(SearchHomeRecommendLocator::locate)
             ?: return FeatureInstallResult.Skipped("missing-search-home-model")
         var installed = 0
-        val expected = 3 + if (points.stateExpected || points.state != null) 1 else 0
+        // 分母按这个宿主上确实存在的落点算：delivery/cache/refresh 各自存在才计 1。
+        // 固定 3 会把 cache 或 refresh 本就不存在的宿主永远钉在 partial 上，
+        // 与 HomeTopBar 的"分母按存在的落点"口径一致。
+        val expected = (if (points.delivery != null) 1 else 0) +
+            (if (points.delivery?.cache != null) 1 else 0) +
+            (if (points.delivery?.refresh != null) 1 else 0) +
+            (if (points.state != null || points.stateExpected) 1 else 0)
         fun attempt(name: String, register: () -> Boolean) {
             if (runCatching(register).getOrElse {
                 environment.logError("search_home_register_$name", "[BIL] 搜索首页推荐边界安装失败($name): $it")
@@ -58,7 +64,14 @@ internal class SearchHomeRecommendFeatureInstaller(private val enabled: Boolean)
                 true
             }
         }
-        environment.reportStatus("search_home_recommend_status", if (installed == expected) "success" else "partial:$installed/$expected")
+        environment.reportStatus(
+            "search_home_recommend_status",
+            when {
+                expected == 0 -> "not-applicable-host"
+                installed == expected -> "success"
+                else -> "partial:$installed/$expected"
+            }
+        )
         return when {
             installed > 0 -> FeatureInstallResult.Installed(installed, installed == expected)
             // 候选多于一个时按歧义上报：FeatureSkipReason.fromRaw 以子串 "ambiguous" 映射为
