@@ -85,6 +85,7 @@ def run_git(repo_root: Path, *args: str) -> str:
         stderr=subprocess.PIPE,
         text=True,
         encoding="utf-8",
+        errors="replace",
     ).stdout
 
 
@@ -119,6 +120,26 @@ def validate_release_progression(
         if match is None or tag == identity.release_tag:
             continue
         candidates.append((tuple(int(part) for part in match.groups()), tag))
+    if not candidates:
+        # 历史重写后旧 Stable tag 全部悬空（tag --merged 返回空）。不能就此跳过
+        # 递进门禁——那会让版本倒退的发布静默通过。悬空 tag 的树仍是合法读取
+        # 基线（git show tag:path 比树不比祖先），取其中最高版本作为上一版，
+        # 让下方"必须更新"与 versionCode 比较照常执行；若悬空 tag 比本次还新，
+        # 门禁会按版本倒退拒绝，这正是要拦的场景。
+        all_tags = run_git(repo_root, "tag", "--list", "v[0-9]*")
+        for tag in all_tags.splitlines():
+            tag = tag.strip()
+            match = STABLE_TAG_PATTERN.fullmatch(tag)
+            if match is None or tag == identity.release_tag:
+                continue
+            merged = subprocess.run(
+                ["git", "merge-base", "--is-ancestor", tag, commit],
+                cwd=repo_root,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            ).returncode == 0
+            if not merged:
+                candidates.append((tuple(int(part) for part in match.groups()), tag))
     if not candidates:
         return None
 
