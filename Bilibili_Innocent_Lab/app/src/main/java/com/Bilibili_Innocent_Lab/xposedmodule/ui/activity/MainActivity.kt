@@ -7772,6 +7772,16 @@ class MainActivity : SkinnedActivity() {
                     textColor = colorResource(R.color.colorTextDark)
                     textSize = 12f
                 }
+                // 供设置项搜索命中子项：13 个勾选都在弹窗里，开关本体已 GONE，
+                // 没有这条索引就只有面板标题能被搜到（与其余四个弹窗面板的兜底同口径）。
+                TextView(lparams = LayoutParams(widthMatchParent = true)) {
+                    visibility = View.GONE
+                    text = PortraitContentFilterCatalog.options.joinToString(separator = " ") { option ->
+                        stringResource(portraitContentFilterLabel(option.preferenceKey))
+                    }
+                    textColor = colorResource(R.color.colorTextDark)
+                    textSize = 12f
+                }
             }
             ImageView(lparams = LayoutParams(18.dp, 18.dp)) {
                 setImageResource(R.drawable.ic_chevron_down)
