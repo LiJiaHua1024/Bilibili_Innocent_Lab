@@ -1344,7 +1344,8 @@ private fun MainActivity.applyVideoRelateFilterValue(preferenceKey: String, enab
 }
 
 @StringRes
-private fun MainActivity.portraitContentFilterLabel(preferenceKey: String): Int = when (preferenceKey) {
+// internal 而非 private：设置搜索的竖屏索引面板（MainActivity）也要按 key 取标签。
+internal fun MainActivity.portraitContentFilterLabel(preferenceKey: String): Int = when (preferenceKey) {
     FeaturePreferences.REMOVE_HOME_RECOMMEND_VERTICAL ->
         R.string.remove_home_recommend_vertical
     FeaturePreferences.REMOVE_STORY_ADS -> R.string.remove_story_ads
