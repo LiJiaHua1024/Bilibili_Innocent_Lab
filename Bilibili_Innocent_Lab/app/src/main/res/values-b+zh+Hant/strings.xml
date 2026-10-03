@@ -748,6 +748,7 @@
     <string name="diagnostics_report_cancel">取消</string>
     <string name="diagnostics_export_running">正在寫入並驗證報告…</string>
     <string name="diagnostics_export_success">診斷報告已儲存並完成讀回驗證。</string>
+    <string name="diagnostics_export_snapshot_stale">選擇儲存位置期間診斷快照已失效，請重新整理診斷後再次匯出。</string>
     <string name="diagnostics_export_failed">無法儲存或驗證診斷報告。</string>
     <string name="diagnostics_value_unknown">未知</string>
     <string name="diagnostics_value_yes">是</string>
