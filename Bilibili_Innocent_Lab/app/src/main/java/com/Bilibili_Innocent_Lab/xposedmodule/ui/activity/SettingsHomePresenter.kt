@@ -75,6 +75,9 @@ internal class SettingsHomePresenter(
     private val peerDisposers = mutableListOf<() -> Unit>()
     private var afterEdit: ((Boolean) -> Unit)? = null
     private var disposed = false
+
+    /** 弹窗队列派发前要先问：disposed 后 edit 会静默丢弃且不回调，队列会永久卡死。 */
+    internal val isDisposed: Boolean get() = disposed
     private var revealingPage = false
     private var userNavigationGeneration = 0L
     private var previousPage = 0
