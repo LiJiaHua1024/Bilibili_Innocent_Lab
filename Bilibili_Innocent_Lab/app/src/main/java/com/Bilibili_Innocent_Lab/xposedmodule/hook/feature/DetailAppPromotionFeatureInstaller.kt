@@ -226,9 +226,18 @@ internal class DetailAppPromotionFeatureInstaller(
     }
 
     private fun installRelateGameComponentBlock(environment: HookEnvironment): Int {
-        val loader = environment.classLoader ?: return 0
+        // 每个解析缺口都要留痕：父层照常上报 ready:relate，只有这里的日志能说明
+        // "游戏卡兜底为什么一个都没装"。同文件其余降级路径都有 logError，口径一致。
+        fun missing(reason: String): Int {
+            environment.logError(
+                "detail_promotion_game_missing",
+                "[BIL] 详情页游戏推荐组件兜底未安装: $reason"
+            )
+            return 0
+        }
+        val loader = environment.classLoader ?: return missing("no-class-loader")
         val viewBindingClass = KavaMemberLookup.classOrNull(loader, ANDROIDX_VIEW_BINDING)
-            ?: return 0
+            ?: return missing("no-view-binding")
         val baseComponent = GEMINI_BINDING_COMPONENT_CLASSES.firstNotNullOfOrNull { className ->
             KavaMemberLookup.classOrNull(loader, className)?.takeIf { candidate ->
                 // 接口的 isAbstract 同样为 true；gemini 包里的 UIComponent 正是接口，
@@ -245,7 +254,7 @@ internal class DetailAppPromotionFeatureInstaller(
                         makeAccessible = true
                     ) { it.name == BIND_TO_VIEW && it.parameterCount == 2 }.isNotEmpty()
             }
-        } ?: return 0
+        } ?: return missing("no-gemini-base-component")
         val gameComponent = RELATE_GAME_COMPONENT_CLASSES.mapNotNull { className ->
             KavaMemberLookup.classOrNull(loader, className)?.takeIf { candidate ->
                 candidate isSubclassOf baseComponent &&
@@ -266,14 +275,14 @@ internal class DetailAppPromotionFeatureInstaller(
                             method.parameterTypes[1].name == KOTLIN_CONTINUATION
                     }.isNotEmpty()
             }
-        }.distinctBy { it.name }.singleOrNull() ?: return 0
+        }.distinctBy { it.name }.singleOrNull() ?: return missing("missing-or-ambiguous-game-component")
         val simpleViewEntry = KavaMemberLookup.classOrNull(loader, GEMINI_SIMPLE_VIEW_ENTRY)
-            ?: return 0
+            ?: return missing("no-simple-view-entry")
         val simpleViewEntryConstructor = simpleViewEntry.declaredConstructors
             .filter { it.parameterTypes.contentEquals(arrayOf(classOf<View>())) }
             .singleOrNull()
             ?.apply { makeAccessible() }
-            ?: return 0
+            ?: return missing("no-simple-view-constructor")
         val createViewEntry = KavaMemberLookup.methods(
             baseComponent,
             includeSuperclasses = true,
@@ -282,7 +291,7 @@ internal class DetailAppPromotionFeatureInstaller(
             method.name == CREATE_VIEW_ENTRY && method.parameterTypes.contentEquals(
                 arrayOf(classOf<Context>(), classOf<ViewGroup>())
             )
-        }.distinctBy(Method::toGenericString).singleOrNull() ?: return 0
+        }.distinctBy(Method::toGenericString).singleOrNull() ?: return missing("no-create-view-entry")
         val bindToView = KavaMemberLookup.methods(
             baseComponent,
             includeSuperclasses = true,
@@ -290,7 +299,7 @@ internal class DetailAppPromotionFeatureInstaller(
         ) { method ->
             method.name == BIND_TO_VIEW && method.parameterCount == 2 &&
                 method.parameterTypes[1].name == KOTLIN_CONTINUATION
-        }.distinctBy(Method::toGenericString).singleOrNull() ?: return 0
+        }.distinctBy(Method::toGenericString).singleOrNull() ?: return missing("no-bind-to-view-entry")
 
         var installed = 0
         runCatching {
