@@ -108,7 +108,13 @@ internal fun MainActivity.showAiStrongModeDialog(anchor: View? = null) {
         programmatic = true
         box.isChecked = false
         programmatic = false
-        showBiliAccessKeyConfirmDialog(anchor = box) {
+        // 授权确认框必须以子面板盖在本面板上（cover 传本面板可见表面）：
+        // 不传的话共用底座会硬关本面板，授权回调里的勾选落进已销毁的窗口，
+        // "获取 access_key"第一次勾选必然失效。
+        showBiliAccessKeyConfirmDialog(
+            anchor = box,
+            cover = modalSurfaceBounds(dialog, container)
+        ) {
             programmatic = true
             box.isChecked = biliAccessKeyAuthorized
             programmatic = false
