@@ -27,6 +27,7 @@ import com.Bilibili_Innocent_Lab.xposedmodule.runtime.InjectedUiLocale
 import com.Bilibili_Innocent_Lab.xposedmodule.runtime.HostRuntimeDiagnosticsBridge
 import com.Bilibili_Innocent_Lab.xposedmodule.runtime.HostThreadGuard
 import com.Bilibili_Innocent_Lab.xposedmodule.runtime.MineComponentSnapshotHostBridge
+import com.Bilibili_Innocent_Lab.xposedmodule.runtime.noroot.NoRootTargetConfigBridge
 import com.Bilibili_Innocent_Lab.xposedmodule.runtime.TargetProcess
 import com.Bilibili_Innocent_Lab.xposedmodule.hook.config.HookConfigSource
 import com.Bilibili_Innocent_Lab.xposedmodule.hook.config.SnapshotHookConfigSource
@@ -4901,6 +4902,46 @@ class HookEntry : XposedModule() {
                 RoamingCompatHook.reportScanResult(context, biliClassLoader)
             }
 
+            // NPatch 免 Root 的"已激活"只认宿主进程回执：API102 重构删掉了旧的
+            // NoRootTargetConfigBridge 调用点后心跳再没有人发，模块侧
+            // heartbeatMatches 恒 false，SyncState.ACTIVE 永远降级成"需要重启"。
+            // 在授权安装链成功后恢复回执；noRootRevision 只在 NPatch 网关交付时
+            // 非零（LSPosed 提交路径恒为 0），模块侧 recordHeartbeat 还会按快照
+            // revision/版本逐项校验，非免 Root 交付与失配回执都会被拒收。
+            fun reportNoRootHeartbeatIfSynced(appContext: Context, config: RemoteHookConfigSnapshot) {
+                if (config.noRootRevision <= 0L) return
+                if (!TargetProcess.isMainProcess(appContext, TARGET_PACKAGE)) return
+                Thread({
+                    val targetInfo = runCatching {
+                        appContext.packageManager.getPackageInfo(TARGET_PACKAGE, 0)
+                    }.getOrNull()
+                    val targetVersionCode = targetInfo?.let {
+                        @Suppress("DEPRECATION")
+                        if (AndroidVersion.isAtLeast(AndroidVersion.P)) {
+                            it.longVersionCode
+                        } else {
+                            it.versionCode.toLong()
+                        }
+                    } ?: 0L
+                    val dispatched = NoRootTargetConfigBridge.reportRuntimeState(
+                        context = appContext,
+                        revision = config.noRootRevision,
+                        moduleVersionCode = config.moduleVersionCode,
+                        targetVersionCode = targetVersionCode,
+                        targetUpdateTime = targetInfo?.lastUpdateTime ?: 0L,
+                        processName = processName,
+                        active = true
+                    )
+                    frameworkLog(
+                        "[BIL] NPatch 免 Root 宿主回执" +
+                            "(revision=${config.noRootRevision}, dispatched=$dispatched)"
+                    )
+                }, "BIL-no-root-heartbeat").apply {
+                    isDaemon = true
+                    start()
+                }
+            }
+
             fun performAuthorizationAndInstall(
                 appContext: Context,
                 config: RemoteHookConfigSnapshot
@@ -4934,6 +4975,7 @@ class HookEntry : XposedModule() {
                         HostRuntimeDiagnosticsBridge.recordInstallChainCompleted()
                     }
                     reportScanResultIfReady(appContext)
+                    reportNoRootHeartbeatIfSynced(appContext, config)
                 }.onFailure { throwable ->
                     if (processName == TARGET_PACKAGE) {
                         HostRuntimeDiagnosticsBridge.recordInstallChainFailed()
