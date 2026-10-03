@@ -56,7 +56,12 @@ internal class VideoRelateFilterFeatureInstaller(
         if (hiddenTypes.any { normalizeType(it) == "LIVE" }) add("video_related_live_removed")
         if (hiddenTypes.any { normalizeType(it) == "COURSE" }) add("video_related_course_removed")
         if (hiddenTypes.any { normalizeType(it) == "SPECIAL" }) add("video_related_special_removed")
-        if (matchingEnhancementEnabled && (hiddenTypes.isNotEmpty() || strongModeEnabled || customReasonKeywords.isNotEmpty())) add("video_related_matching_enhancement_enabled")
+        // 声明口径必须与覆盖判定的 usable 一致：勾的类型里没有广告/话题、也没开强力模式
+        // 或自定义理由时，增强逻辑根本不会生效，声明出来只会得到"声明了却不可用"的假覆盖。
+        if (matchingEnhancementEnabled && (hiddenTypes.any {
+                HostContentSemanticClassifier.hiddenKind(normalizeType(it)) in REASON_ENHANCEMENT_KINDS
+            } || customReasonKeywords.isNotEmpty() || strongModeEnabled)
+        ) add("video_related_matching_enhancement_enabled")
         if (matchingEnhancementEnabled && strongModeEnabled) add("video_related_strong_mode_enabled")
         if (customReasonKeywords.isNotEmpty()) add("video_related_reason_filter_enabled")
         if (durationRange.isEnabled) add("video_related_duration_filter")
@@ -71,10 +76,7 @@ internal class VideoRelateFilterFeatureInstaller(
             .filterTo(linkedSetOf()) { it.isNotBlank() }
         val promotionReasonEnhancementActive = matchingEnhancementEnabled &&
             normalizedHidden.any { hidden ->
-                HostContentSemanticClassifier.hiddenKind(hidden) in setOf(
-                    HostContentKind.ADVERTISEMENT,
-                    HostContentKind.SPECIAL
-                )
+                HostContentSemanticClassifier.hiddenKind(hidden) in REASON_ENHANCEMENT_KINDS
             }
         val strongModeActive = matchingEnhancementEnabled && strongModeEnabled
         val reasonFilteringActive = promotionReasonEnhancementActive ||
@@ -842,6 +844,11 @@ internal class VideoRelateFilterFeatureInstaller(
         private const val TARGET_PACKAGE = "tv.danmaku.bili"
         private const val CHANNEL_STATUS = "video_relate_filter_status"
         private const val MAX_SERVICE_TITLE_LENGTH = 256
+        /** 匹配增强真正能生效的宿主内容类型；能力声明与覆盖判定都以它为准。 */
+        private val REASON_ENHANCEMENT_KINDS = setOf(
+            HostContentKind.ADVERTISEMENT,
+            HostContentKind.SPECIAL
+        )
         private val UNKNOWN_TYPES = setOf("UNKNOWN", "CARD_NOT_SET")
         private val KNOWN_CARD_TYPES = setOf(
             "AV",
