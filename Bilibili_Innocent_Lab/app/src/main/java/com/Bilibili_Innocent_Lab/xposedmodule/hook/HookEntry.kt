@@ -2754,21 +2754,20 @@ class HookEntry : XposedModule() {
                 0L
             )
 
-            // 每个宿主进程只做一次实时结构探测。实时结果始终优先；只有实时存在缺口时，
-            // 才让同一宿主指纹且通过结构校验的缓存补位，使后台 DEX 适配结果在下次冷启动生效。
+            // 每个宿主进程只做一次实时结构探测。实时结果始终优先；实时存在的每个缺口
+            // （不限更新拦截，还包括画质/回复脉络的 DexKit 兜底点）都由同一宿主指纹且
+            // 通过结构校验的缓存补位，使后台 DEX 适配结果在下次冷启动生效。
+            // 不能用"更新拦截已定位"当整份合并的开关：那会让实时候选表命中的宿主永远
+            // 拿不到缓存里的画质/脉络兜底实现（DexKit 自 ecc63f5 起兜底三个点）。
             val startupCache by lazy(LazyThreadSafetyMode.NONE) {
                 VersionAdapter.readStartupCache(authorizationContext, versionAdapterResetTimestamp)
             }
             val hostAdaptResult by lazy(LazyThreadSafetyMode.NONE) {
                 val runtime = biliClassLoader?.let { VersionAdapter.quickLocate(it) }
-                if (runtime?.blockUpdate != null) {
-                    runtime
-                } else {
-                    VersionAdapter.mergeRuntimeWithCached(
-                        runtime = runtime,
-                        cached = startupCache.cached
-                    )
-                }
+                VersionAdapter.mergeRuntimeWithCached(
+                    runtime = runtime,
+                    cached = startupCache.cached
+                )
             }
 
             // 读取日志开关 + 详细度档位（默认：开启 + 完整）
