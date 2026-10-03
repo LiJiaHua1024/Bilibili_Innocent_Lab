@@ -93,7 +93,7 @@ def find_previous_tag(repo_root: Path, commit: str, release_tag: str, channel: s
         parsed = _parse_tag(tag, pattern)
         if parsed is None or tag == release_tag:
             continue
-        if channel == "stable" and current is not None and parsed >= current:
+        if current is not None and parsed >= current:
             continue
         candidates.append((parsed, tag))
     return max(candidates)[1] if candidates else None
@@ -117,7 +117,7 @@ def find_orphaned_tag(repo_root: Path, commit: str, release_tag: str, channel: s
         parsed = _parse_tag(tag, pattern)
         if parsed is None or tag == release_tag:
             continue
-        if channel == "stable" and current is not None and parsed >= current:
+        if current is not None and parsed >= current:
             continue
         merged = subprocess.run(
             ["git", "merge-base", "--is-ancestor", tag, commit],
@@ -206,12 +206,29 @@ def _matches(path: str, patterns: list[str]) -> bool:
 def changed_lines_only(diff_text: str) -> str:
     """只保留增删行与所属文件名，去掉 diff 头和上下文，压缩文案类 diff。"""
     lines: list[str] = []
+    in_hunk = False
+    previous = ""
     for line in diff_text.splitlines():
-        if line.startswith("+++ b/"):
-            lines.append(f"# {line[6:]}")
-        elif line.startswith(("+++", "---", "diff --git", "index ", "@@")):
+        if line.startswith("diff --git"):
+            in_hunk = False
+            previous = line
             continue
-        elif line.startswith(("+", "-")) and line[1:].strip():
+        if not in_hunk:
+            # ---/+++ 头只在紧跟 diff --git / index（或 +++ 紧跟 ---）时成立：
+            # hunk 里的内容行本身可能以 -- / ++ 开头（删除行渲染成 "--- ..."、
+            # 新增行渲染成 "+++ ..."），一刀切会把它们当头部整行吞掉。
+            if line.startswith("--- ") and previous.startswith(("diff --git", "index ")):
+                previous = line
+                continue
+            if line.startswith("+++ ") and previous.startswith("--- "):
+                rest = line[6:] if line.startswith("+++ b/") else line[4:]
+                lines.append(f"# {rest}")
+                previous = line
+                continue
+        if line.startswith("@@"):
+            in_hunk = True
+        previous = line
+        if line.startswith(("+", "-")) and line[1:].strip():
             lines.append(line)
     return "\n".join(lines)
 
