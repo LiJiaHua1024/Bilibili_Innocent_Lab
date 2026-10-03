@@ -176,7 +176,14 @@ class DiagnosticsActivity : SkinnedActivity(),
     ) { uri ->
         pickerOpen = false
         val snapshot = currentSnapshot
-        if (uri != null && snapshot != null) viewModel.export(applicationContext, uri, snapshot)
+        if (uri == null) return@registerForActivityResult
+        // 后台刷新在用户停留文件选择器期间失败时快照会被清空：静默丢弃会让用户
+        // 以为已导出。给一条明确提示，导出按钮此时本就已随失败态禁用。
+        if (snapshot == null) {
+            Toast.makeText(this, R.string.diagnostics_export_snapshot_stale, Toast.LENGTH_LONG).show()
+            return@registerForActivityResult
+        }
+        viewModel.export(applicationContext, uri, snapshot)
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {

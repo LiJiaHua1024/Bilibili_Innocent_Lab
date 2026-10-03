@@ -748,6 +748,7 @@
     <string name="diagnostics_report_cancel">Cancel</string>
     <string name="diagnostics_export_running">Writing and verifying the report…</string>
     <string name="diagnostics_export_success">Diagnostic report saved and verified.</string>
+    <string name="diagnostics_export_snapshot_stale">The collected snapshot expired before a location was chosen. Refresh diagnostics and export again.</string>
     <string name="diagnostics_export_failed">Could not save or verify the diagnostic report.</string>
     <string name="diagnostics_value_unknown">unknown</string>
     <string name="diagnostics_value_yes">yes</string>
