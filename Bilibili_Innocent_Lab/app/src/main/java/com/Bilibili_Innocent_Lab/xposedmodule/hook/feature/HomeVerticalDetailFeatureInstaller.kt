@@ -42,20 +42,25 @@ internal class HomeVerticalDetailFeatureInstaller(
         if (instrumentationCount == 0) {
             return missing(environment, "no-safe-activity-launch-hook-point")
         }
-        val playConfigCount = installPlayConfigStorySuppression(environment)
-        val intentSanitizerCount = installIntentHandlerSanitizer(environment)
-        val installed = instrumentationCount + playConfigCount + intentSanitizerCount
+        val playConfig = installPlayConfigStorySuppression(environment)
+        val intentSanitizer = installIntentHandlerSanitizer(environment)
+        val installed = instrumentationCount + playConfig.installed + intentSanitizer.installed
+        // 分母只算这个宿主上确实存在的落点：PlayConfig/KPlayConfig 类或 Intent 入口
+        // 不存在的老宿主不算缺；存在却注册失败必须让 complete 掉成 false 并报 partial。
+        val expected = playConfig.expected + intentSanitizer.expected
+        val complete = installed >= expected
+        val status = if (complete) "success" else "partial:$installed/$expected"
 
         environment.reportRuntimeEvidence(ID, FeatureRuntimeStage.ADAPTED)
-        environment.reportStatus(CHANNEL_STATUS, "success")
+        environment.reportStatus(CHANNEL_STATUS, status)
         environment.logInfo(
             "home_vertical_ok",
             "[BIL] 竖屏视频普通详情路由已安装，backend=" +
                 backends.joinToString("+") { it.name.lowercase() } +
-                ",instrumentation=$instrumentationCount,playConfig=$playConfigCount," +
-                "intentSanitizer=$intentSanitizerCount,status=success"
+                ",instrumentation=$instrumentationCount,playConfig=${playConfig.installed}/${playConfig.expected}," +
+                "intentSanitizer=${intentSanitizer.installed}/${intentSanitizer.expected},status=$status"
         )
-        return FeatureInstallResult.Installed(installed)
+        return FeatureInstallResult.Installed(installed, complete = complete)
     }
 
     /**
@@ -81,16 +86,16 @@ internal class HomeVerticalDetailFeatureInstaller(
      * 矩阵：Java getter 的非 Builder 调用点 9.10.0 还有 3 个、9.13.0 / 9.14.0 是 0，`KPlayConfig`
      * 反之）。只 Hook Java 版在 9.13+ 上会"注册成功、永不触发"，所以两套都装，各自按类名判存。
      */
-    private fun installPlayConfigStorySuppression(environment: HookEnvironment): Int {
-        val loader = environment.classLoader ?: return 0
-        val javaCount = installPlayConfigGetters(
+    private fun installPlayConfigStorySuppression(environment: HookEnvironment): PlayConfigLayer {
+        val loader = environment.classLoader ?: return PlayConfigLayer(0, 0)
+        val java = installPlayConfigGetters(
             environment, loader, "play_config", PLAY_CONFIG_CLASS, BOOL_VALUE_CLASS
         ) { boolValueClass ->
             KavaMemberLookup.methodOrNull(boolValueClass, "getDefaultInstance")
                 ?.takeIf { it.isStatic && it.returnType == boolValueClass }
                 ?.let { runCatching { it.invoke(null) }.getOrNull() }
         }
-        val kotlinCount = installPlayConfigGetters(
+        val kotlin = installPlayConfigGetters(
             environment, loader, "k_play_config", K_PLAY_CONFIG_CLASS, K_BOOL_VALUE_CLASS
         ) { boolValueClass ->
             // kotlinx.serialization 数据类：全默认值的公开无参构造应得到 value=false；不假设，实测为 false 才用。
@@ -101,7 +106,7 @@ internal class HomeVerticalDetailFeatureInstaller(
                         ?.let { runCatching { it.invoke(instance) }.getOrNull() } == false
                 }
         }
-        return javaCount + kotlinCount
+        return PlayConfigLayer(java.installed + kotlin.installed, java.expected + kotlin.expected)
     }
 
     /** [defaultValueOf] 返回"开关关闭"的默认实例，返回 null 表示这套类在当前宿主上不可用。 */
@@ -112,12 +117,12 @@ internal class HomeVerticalDetailFeatureInstaller(
         configClassName: String,
         boolValueClassName: String,
         defaultValueOf: (Class<*>) -> Any?
-    ): Int {
-        val boolValueClass = KavaMemberLookup.classOrNull(loader, boolValueClassName) ?: return 0
-        val configClass = KavaMemberLookup.classOrNull(loader, configClassName) ?: return 0
+    ): PlayConfigLayer {
+        val boolValueClass = KavaMemberLookup.classOrNull(loader, boolValueClassName) ?: return PlayConfigLayer(0, 0)
+        val configClass = KavaMemberLookup.classOrNull(loader, configClassName) ?: return PlayConfigLayer(0, 0)
         val defaultValue = defaultValueOf(boolValueClass)
             ?.takeIf(boolValueClass::isInstance)
-            ?: return 0
+            ?: return PlayConfigLayer(0, 0)
         var installed = 0
         PLAY_CONFIG_STORY_GETTERS.forEach { methodName ->
             val method = KavaMemberLookup.methodOrNull(configClass, methodName)
@@ -145,8 +150,11 @@ internal class HomeVerticalDetailFeatureInstaller(
                 )
             }
         }
-        return installed
+        return PlayConfigLayer(installed, PLAY_CONFIG_STORY_GETTERS.size)
     }
+
+    /** 该层的"已装上"与"本宿主确实存在的落点数"；后者为 0 表示这一层在此宿主不适用。 */
+    private data class PlayConfigLayer(val installed: Int, val expected: Int)
 
     /**
      * 唯一路由写入边界。动态查找 Intent 参数，先复制再构造并校验完整契约，任何异常均保留
@@ -221,8 +229,8 @@ internal class HomeVerticalDetailFeatureInstaller(
     }
 
     /** IntentHandler 只清理强制 Story 参数，不再承担目标页面改写。 */
-    private fun installIntentHandlerSanitizer(environment: HookEnvironment): Int {
-        val point = points?.intentHandlerOnCreate ?: return 0
+    private fun installIntentHandlerSanitizer(environment: HookEnvironment): PlayConfigLayer {
+        val point = points?.intentHandlerOnCreate ?: return PlayConfigLayer(0, 0)
         return runCatching {
             environment.registrar.adapted("home.vertical.intent_handler_sanitizer", point) {
                 before {
@@ -241,13 +249,13 @@ internal class HomeVerticalDetailFeatureInstaller(
                     )
                 }
             }
-            1
+            PlayConfigLayer(1, 1)
         }.getOrElse { throwable ->
             environment.logError(
                 "home_vertical_intent_handler_failed",
                 "[BIL] 宿主 Intent 入口参数清理注册失败: $throwable"
             )
-            0
+            PlayConfigLayer(0, 1)
         }
     }
 
