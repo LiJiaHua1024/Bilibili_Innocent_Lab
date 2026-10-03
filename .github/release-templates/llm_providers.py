@@ -163,9 +163,21 @@ def _openai_complete(
     )
     try:
         choice = response["choices"][0]
-        text = choice["message"]["content"] or ""
+        raw = choice["message"]["content"] or ""
     except (KeyError, IndexError, TypeError) as error:
         raise ProviderError(f"响应结构无法识别：{str(response)[:300]}") from error
+    if isinstance(raw, list):
+        # OpenAI 兼容端点可能返回分片式 content（[{type:text,text:...}]）：
+        # 直接对 list 调 strip 会抛 AttributeError，绕过 ProviderError 降级链，
+        # 让"槽位失败→换下一个→回退规则版"整条设计失效；这里拼回纯文本。
+        text = "".join(
+            part["text"] for part in raw
+            if isinstance(part, dict) and isinstance(part.get("text"), str)
+        )
+    elif isinstance(raw, str):
+        text = raw
+    else:
+        raise ProviderError(f"响应内容类型异常：{type(raw).__name__}")
     if choice.get("finish_reason") == "length":
         raise ProviderError("输出达到长度上限被截断")
     if not text.strip():
