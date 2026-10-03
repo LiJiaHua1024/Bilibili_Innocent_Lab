@@ -196,8 +196,10 @@ internal class NativeFeedbackPanel(
                     runCatching { panel.merge(groups) }.onSuccess { merged ->
                         if (merged != null) {
                             args[0] = merged
-                            // 第一个参数被替换，清掉调用方针对原列表预计算的 Compose changed 位。
-                            args[changedIndex] = (args[changedIndex] as Int) and 0b1110.inv()
+                            // 第一个参数被换成了新列表：Compose 的 changed 位第 0 位对应
+                            // 参数 0，必须置位（而不是清别的位），否则调用方预计算的
+                            // "列表未变"会让下游组合跳过重读，注入的选项不再渲染。
+                            args[changedIndex] = (args[changedIndex] as Int) or 0b1
                             environment.reportRuntimeEvidence(SectionPickFeatureInstaller.ID, FeatureRuntimeStage.OBSERVED)
                         }
                     }.onFailure {
