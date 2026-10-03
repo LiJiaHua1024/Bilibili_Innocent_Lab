@@ -206,7 +206,8 @@ internal class HomeRecommendPurifyFeatureInstaller(
         // 名单非空却读不到 tid：必须报 partial。否则每张卡都拿 null、静默变成"从不命中"，
         // 用户只会看到"设了标签但没生效"，而状态通道一路 success。
         if (tagDimensionEnabled && accessors.tid == null) {
-            partialReason = "missing-tid-accessor"
+            partialReason = if (partialReason == null) "missing-tid-accessor"
+            else "$partialReason+missing-tid-accessor"
             environment.logError(
                 "home_recommend_tid_missing",
                 "[BIL] 首页推荐标签读取适配不完整（args/tid 链缺失），" +
@@ -215,7 +216,8 @@ internal class HomeRecommendPurifyFeatureInstaller(
         }
         // UP 名单非空却读不到读取链：同理必须报 partial，不能静默变成"从不命中"。
         if (authorDimensionEnabled && accessors.author == null) {
-            partialReason = "missing-author-accessor"
+            partialReason = if (partialReason == null) "missing-author-accessor"
+            else "$partialReason+missing-author-accessor"
             environment.logError(
                 "home_recommend_author_missing",
                 "[BIL] 首页推荐 UP 读取适配不完整（args/up 链缺失），" +
@@ -225,7 +227,8 @@ internal class HomeRecommendPurifyFeatureInstaller(
         // AI 声明这一档两条输入各自独立：uri 读不到只丢标签那半边，param 读不到只丢已知 aid 那半边；
         // 两条都没有才是整档失效，必须报 partial，不能静默变成"从不命中"。
         if (removeAiDeclared && accessors.uri == null && accessors.param == null) {
-            partialReason = "missing-ai-declared-readers"
+            partialReason = if (partialReason == null) "missing-ai-declared-readers"
+            else "$partialReason+missing-ai-declared-readers"
             environment.logError(
                 "home_recommend_ai_declared_missing",
                 "[BIL] 首页推荐 uri/param 读取适配不完整，AI 声明这一档不生效，其他推荐过滤继续"
@@ -233,7 +236,8 @@ internal class HomeRecommendPurifyFeatureInstaller(
         }
         // 只填了标签名却读不到 tname：同理，名字那半边会静默失效。
         if (blockedTagNames.isNotEmpty() && accessors.tid?.tnameGetter == null) {
-            partialReason = "missing-tname-accessor"
+            partialReason = if (partialReason == null) "missing-tname-accessor"
+            else "$partialReason+missing-tname-accessor"
             environment.logError(
                 "home_recommend_tname_missing",
                 "[BIL] 首页推荐标签名读取适配不完整（args/tname 链缺失），" +
@@ -320,6 +324,9 @@ internal class HomeRecommendPurifyFeatureInstaller(
                 "home_recommend_pgc_removed" -> extraTypesReadable || accessors.uri != null
                 "home_recommend_special_cards_removed" -> extraTypesReadable
                 "home_recommend_tid_block" -> accessors.tid != null
+                // UP 屏蔽的真实前提是 args/up 读取链；落进 else 的 routeReadable 会在
+                // "链缺失但路由字段可读"的宿主上把这一维度报成可用，与实际相反。
+                "home_recommend_author_block" -> accessors.author != null
                 AiDeclaredVideoPolicy.CAPABILITY_HOME -> accessors.uri != null || accessors.param != null
                 CAPABILITY_SEMANTIC -> accessors.title != null
                 else -> routeReadable
