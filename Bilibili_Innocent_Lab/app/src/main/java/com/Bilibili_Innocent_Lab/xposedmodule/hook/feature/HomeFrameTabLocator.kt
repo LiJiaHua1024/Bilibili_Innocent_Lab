@@ -121,8 +121,13 @@ internal object HomeFrameTabLocator {
             element to field
         }.toMap()
         if ("name" !in strings || "uri" !in strings) return Resolution.Failed("tab-item-fields")
-        val defaultSelected = itemFields.getOrNull(itemShape.elements.indexOf("default_selected"))
+        // default_selected 是"服务端默认选中项不得删除"这条保护的前提；读不到它时
+        // keep() 会对所有条目返回 false，勾中的首页/推荐页签会被静默删掉、宿主失去初始页。
+        // 与其余形状不符同口径：宁可整层 Failed 让过滤不装，也不能带着失效的保护继续删。
+        val defaultSelectedIndex = itemShape.elements.indexOf("default_selected")
+        val defaultSelected = itemFields.getOrNull(defaultSelectedIndex)
             ?.takeIf { it.type == classOf<Int>() }
+            ?: return Resolution.Failed("tab-item-default-selected")
         val constructors = KavaMemberLookup.declaredConstructors(dataClass, makeAccessible = true)
         if (constructors.isEmpty()) return Resolution.Failed("tab-data-constructors")
         (dataFields + itemFields).forEach { it.makeAccessible() }
