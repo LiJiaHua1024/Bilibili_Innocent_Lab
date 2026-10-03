@@ -165,10 +165,20 @@ internal data class LiquidCenterCropTransform(
     val translateY: Float
 )
 
-/** 导入和运行时共享的纯尺寸策略；源图再大也不会突破规范化资产边界。 */
+/**
+ * 导入和运行时共享的纯尺寸策略；源图再大也不会突破规范化资产边界。
+ *
+ * 上限取 4096 边 / 12M 像素：根背景按窗口原生像素呈现（见 `LiquidBackdropSizingPolicy` 的
+ * `resolvePresentation`），而中心裁剪只取画面的一半左右，所以素材在裁剪后仍要够得上真机
+ * 分辨率。4:3 的 4000×3000 实拍照片裁到 9:20 是 1350×3000——1080×2400 的屏幕上是缩小，
+ * 1440×3200 的屏幕上只放大 1.07 倍。旧上限 2048px/4MP 对同一张照片只剩 691×1536 的裁剪区，
+ * 在 1080×2400 上就要放大 1.56 倍，是"自定义图片糊"的第二个来源。
+ *
+ * 上限只抬不降：已保存的旧配置尺寸仍落在新上界内，codec 校验保持通过。
+ */
 internal object LiquidBackgroundSizingPolicy {
-    const val MAX_EDGE = 2048
-    const val MAX_NORMALIZED_PIXELS = 4L * 1024L * 1024L
+    const val MAX_EDGE = 4096
+    const val MAX_NORMALIZED_PIXELS = 12_000_000L
     const val MAX_INPUT_BYTES = 32L * 1024L * 1024L
     const val MAX_ASSET_BYTES = 16L * 1024L * 1024L
     const val MAX_DECLARED_EDGE = 16_384

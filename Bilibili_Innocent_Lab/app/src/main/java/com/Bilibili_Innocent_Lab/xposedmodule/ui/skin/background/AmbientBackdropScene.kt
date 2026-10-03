@@ -17,9 +17,13 @@ import com.Bilibili_Innocent_Lab.xposedmodule.ui.theme.MonetColors
  * ① 纵向色阶——顶部向 surface 轻抬、底部向深端渐沉，底色自带方向性明度场；
  * ② 四团环境光晕——primary 左上 / secondary 右中 / tertiary 下缘 / surface 顶部中性提升，
  *    每团用"亮核→肩部→归零"三段衰减，避免线性径向渐变的色团感；
- * ③ 四缘暗角——中心约一半透明，边缘轻压，视线收向中部；
- * 颗粒由调用方按需叠加（[addGrain]）：磨砂可见底图用它打散渐变色带，
- * Liquid 的折射采样底图保持干净不加。
+ * ③ 四缘暗角——中心约一半透明，边缘轻压，视线收向中部。
+ *
+ * 整幅场景只有低频内容：它按 0.2~0.25 倍窗口尺寸光栅化后被放大铺满屏幕，平滑渐变放大后
+ * 仍是平滑渐变，**但逐像素噪声会**——旧版在这里叠的 ±2 级颗粒在放大后成为 4~5px 的斑块状
+ * 纹理，实机观感就是"背景很脏"（2026-10-03 用户反馈）。色带交给 `DITHER_FLAG` 抖动处理，
+ * 不再靠颗粒打散，因此本场景不含任何逐像素噪声。光晕与暗角强度也同步收了一档：
+ * 光晕叠在中性底色上偏浑、深色暗角 22% 偏"蒙灰"，是同一反馈里的次要来源。
  */
 internal object AmbientBackdropScene {
 
@@ -41,19 +45,19 @@ internal object AmbientBackdropScene {
         canvas.drawRect(0f, 0f, w, h, wash)
 
         ambient(canvas, wash, w, h, x = .16f, y = .20f, radius = 1.05f,
-            color = palette.primary, alpha = if (dark) 0x2E else 0x3A)
+            color = palette.primary, alpha = if (dark) 0x22 else 0x2A)
         ambient(canvas, wash, w, h, x = .95f, y = .58f, radius = .92f,
-            color = palette.secondary, alpha = if (dark) 0x24 else 0x2E)
+            color = palette.secondary, alpha = if (dark) 0x1A else 0x22)
         ambient(canvas, wash, w, h, x = .28f, y = 1.05f, radius = .95f,
-            color = palette.tertiary, alpha = if (dark) 0x1C else 0x24)
+            color = palette.tertiary, alpha = if (dark) 0x14 else 0x1A)
         ambient(canvas, wash, w, h, x = .5f, y = -.04f, radius = 1.15f,
-            color = palette.surface, alpha = if (dark) 0x20 else 0x34)
+            color = palette.surface, alpha = if (dark) 0x1A else 0x26)
 
         wash.shader = RadialGradient(w * .5f, h * .42f, maxOf(w, h) * .74f,
             intArrayOf(Color.TRANSPARENT, Color.TRANSPARENT,
                 ColorUtils.setAlphaComponent(Color.BLACK,
-                    ((if (dark) 0x38 else 0x14) * 0.45f).toInt()),
-                ColorUtils.setAlphaComponent(Color.BLACK, if (dark) 0x38 else 0x14)),
+                    ((if (dark) 0x1E else 0x0C) * 0.45f).toInt()),
+                ColorUtils.setAlphaComponent(Color.BLACK, if (dark) 0x1E else 0x0C)),
             floatArrayOf(0f, .5f, .8f, 1f), Shader.TileMode.CLAMP)
         canvas.drawRect(0f, 0f, w, h, wash)
     }
@@ -81,23 +85,5 @@ internal object AmbientBackdropScene {
             ),
             floatArrayOf(0f, .55f, 1f), Shader.TileMode.CLAMP)
         canvas.drawRect(0f, 0f, w, h, wash)
-    }
-
-    /**
-     * 固定种子 LCG 颗粒（±2 级）：同一设备每次生成同一张纹理，打散平滑渐变的色带；
-     * 幅度小到只提供材质感，不构成图案。
-     */
-    fun addGrain(pixels: IntArray) {
-        var seed = 0x2C6FEB35
-        for (index in pixels.indices) {
-            seed = seed * 1103515245 + 12345
-            val noise = ((seed ushr 16) % 5) - 2
-            if (noise == 0) continue
-            val color = pixels[index]
-            val r = (((color ushr 16) and 0xFF) + noise).coerceIn(0, 255)
-            val g = (((color ushr 8) and 0xFF) + noise).coerceIn(0, 255)
-            val b = ((color and 0xFF) + noise).coerceIn(0, 255)
-            pixels[index] = (color and 0xFF000000.toInt()) or (r shl 16) or (g shl 8) or b
-        }
     }
 }

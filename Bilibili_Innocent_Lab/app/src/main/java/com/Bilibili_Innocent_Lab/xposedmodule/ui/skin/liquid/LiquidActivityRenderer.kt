@@ -646,9 +646,10 @@ internal class LiquidActivityRenderer(
         }
         releaseSuppressionUnderlay()
         suspendRealtimeCapture(releaseBuffers = true)
-        // 高阶折射/模糊和实时三缓冲可以在压力下永久降级，但最多 2 MiB 的稳定 underlay
-        // 仍是用户可见背景本身。释放它会让当前 Activity 无重建地退回纯色，表现为自定义
-        // 图片“过一段时间丢失”；保留稳定 source，同时切到零额外资源的 TRANSLUCENT 表面。
+        // 高阶折射/模糊和实时三缓冲可以在压力下永久降级，但稳定 underlay 仍是用户可见背景
+        // 本身（自动氛围底图 0.25x 采样；自定义图是窗口原生呈现位图，QHD 级 10~18 MB，小屏
+        // 只有数 MB）。释放它会让当前 Activity 无重建地退回纯色，表现为自定义图片"过一段
+        // 时间丢失"；保留稳定 source，同时切到零额外资源的 TRANSLUCENT 表面。
         backends.advanceToTranslucent()
         boundRoot?.invalidate()
         invalidateRegisteredSurfaces()
@@ -997,10 +998,17 @@ internal class LiquidActivityRenderer(
             return
         }
 
-        val targetSize = LiquidBackdropSizingPolicy.resolve(width, height)
+        // 窗口尺寸变了、但该类底图的位图尺寸没变时，只需改写窗口映射，不必重建：自动氛围底图
+        // 按光学采样尺寸持有位图（只有低频渐变，放大铺满不糊），自定义图按窗口原生呈现尺寸
+        // 持有位图（照片必须 1:1 才不糊）。
+        val reusable = if (existing?.customAssetId != null) {
+            LiquidBackdropSizingPolicy.resolvePresentation(width, height)
+        } else {
+            LiquidBackdropSizingPolicy.resolve(width, height)
+        }
         if (existing != null &&
-            existing.bitmap.width == targetSize.width &&
-            existing.bitmap.height == targetSize.height
+            existing.bitmap.width == reusable.width &&
+            existing.bitmap.height == reusable.height
         ) {
             captureRequests.invalidate()
             existing.updateFullSize(width, height)
@@ -1047,7 +1055,8 @@ internal class LiquidActivityRenderer(
         ) {
             return
         }
-        val target = LiquidBackdropSizingPolicy.resolve(width, height)
+        // 呈现尺寸：根背景 1:1 铺满窗口，照片才不会被放大成"看起来被压缩过"。
+        val target = LiquidBackdropSizingPolicy.resolvePresentation(width, height)
         val request = "$assetId:${target.width}x${target.height}:$width:$height"
         if (customBackdropRequest == request && customBackdropFuture?.isDone == false) return
 
@@ -1097,7 +1106,7 @@ internal class LiquidActivityRenderer(
                     ?: activity.resources.displayMetrics.widthPixels.coerceAtLeast(1)
                 val currentHeight = root.height.takeIf { it > 0 }
                     ?: activity.resources.displayMetrics.heightPixels.coerceAtLeast(1)
-                val currentTarget = LiquidBackdropSizingPolicy.resolve(currentWidth, currentHeight)
+                val currentTarget = LiquidBackdropSizingPolicy.resolvePresentation(currentWidth, currentHeight)
                 if (currentWidth != width || currentHeight != height || currentTarget != target) {
                     source.discardUnpublished()
                     customBackdropRequest = null

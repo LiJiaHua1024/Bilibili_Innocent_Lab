@@ -52,7 +52,21 @@ internal object LiquidBackgroundStore {
     private const val ASSET_SUFFIX = ".img"
     private const val TEMP_PREFIX = "liquid_import_"
     private const val COPY_BUFFER_BYTES = 64 * 1024
-    private const val JPEG_QUALITY = 92
+    /**
+     * 有损 WebP 的质量。素材必须重编码（去掉 EXIF/GPS 等元数据是本功能的隐私边界），
+     * 但呈现位图是按窗口原生像素 1:1 铺的，重编码损失会直接留在画面上；92 在细密纹理
+     * （树叶、织物）上仍能看到 DCT 振铃，因此抬到 95。文件体积受
+     * [LiquidBackgroundSizingPolicy.MAX_ASSET_BYTES] 约束。
+     */
+    private const val WEBP_QUALITY = 95
+
+    /**
+     * 图片上方那层统一罩（浅色提亮、深色压暗），只负责"正文直接落在图上时仍能读"。
+     * 原值 0x20 / 0x28 会把照片压成灰蒙一片，读作"像被压过画质"（2026-10-03 反馈），
+     * 两档各减一档；文字对比度由正文所在玻璃表面自己的色罩继续兜底。
+     */
+    private const val SCRIM_ALPHA_LIGHT = 0x12
+    private const val SCRIM_ALPHA_DARK = 0x20
 
     private val lock = Any()
 
@@ -165,7 +179,14 @@ internal object LiquidBackgroundStore {
         true
     }
 
-    /** 后台线程调用；返回的 Bitmap 已是最终 backdrop 尺寸并由调用方接管。 */
+    /**
+     * 后台线程调用；返回的 Bitmap 已是最终 backdrop 尺寸并由调用方接管。
+     *
+     * target 尺寸就是这张图的**呈现**尺寸：Liquid 渲染器传窗口原生尺寸
+     * （`LiquidBackdropSizingPolicy.resolvePresentation`），弹窗预览传预览视图的像素尺寸。
+     * 它不再等于折射采样的 0.25x 尺寸——采样副本由 `LiquidBackdropSource.fromCustomBitmap`
+     * 从这张呈现位图缩采样后生成。
+     */
     fun decodeBackdrop(
         context: Context,
         config: LiquidBackgroundConfig,
@@ -208,7 +229,7 @@ internal object LiquidBackgroundStore {
             canvas.drawBitmap(source, matrix, paint)
             paint.color = ColorUtils.setAlphaComponent(
                 if (dark) Color.BLACK else backgroundColor,
-                if (dark) 0x28 else 0x20
+                if (dark) SCRIM_ALPHA_DARK else SCRIM_ALPHA_LIGHT
             )
             canvas.drawRect(0f, 0f, targetWidth.toFloat(), targetHeight.toFloat(), paint)
             target.prepareToDraw()
@@ -342,7 +363,7 @@ internal object LiquidBackgroundStore {
                 if (Build.VERSION.SDK_INT >= 30) Bitmap.CompressFormat.WEBP_LOSSY
                 else Bitmap.CompressFormat.WEBP
             }
-            if (!bitmap.compress(format, JPEG_QUALITY, output)) return@runCatching false
+            if (!bitmap.compress(format, WEBP_QUALITY, output)) return@runCatching false
             output.fd.sync()
         }
         true

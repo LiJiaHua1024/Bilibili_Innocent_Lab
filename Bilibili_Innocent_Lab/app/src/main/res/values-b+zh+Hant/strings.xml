@@ -451,7 +451,8 @@
     <string name="panel_window_blur_summary">開啟後，在 柔光 介面美學下，使模組設定中各面板呼出時向背景施加毛玻璃模糊效果，輕微提升渲染壓力。</string>
     <string name="liquid_background_choose">選擇圖片</string>
     <string name="liquid_background_replace">更換圖片</string>
-    <string name="liquid_background_choose_description">透過系統檔案選擇器匯入，並將經過限幅、移除中繼資料的圖片複製到應用程式私人目錄。</string>
+    <string name="liquid_background_choose_description">從系統相片選擇器或相簿中選擇，並將經過限幅、移除中繼資料的圖片複製到應用程式私人目錄。</string>
+    <string name="liquid_background_picker_unavailable">裝置上沒有可用的圖片選擇器。</string>
     <string name="liquid_background_restore_automatic">恢復自動背景</string>
     <string name="liquid_background_restore_description">刪除應用程式私人目錄中的圖片副本，恢復動態配色背景。</string>
     <string name="liquid_realtime_capture_title">全螢幕即時取樣</string>

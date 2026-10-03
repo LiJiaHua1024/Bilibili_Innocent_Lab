@@ -11,10 +11,22 @@ class LiquidBackgroundSizingPolicyTest {
     fun `normalization preserves aspect ratio within hard limits`() {
         val size = LiquidBackgroundSizingPolicy.resolveNormalizedSize(8000, 4000)
 
-        assertEquals(2048, size.width)
-        assertEquals(1024, size.height)
-        assertTrue(size.width.toLong() * size.height <=
+        assertEquals(4096, size.width)
+        assertEquals(2048, size.height)
+        assertTrue(size.width.toLong() * size.height.toLong() <=
             LiquidBackgroundSizingPolicy.MAX_NORMALIZED_PIXELS)
+    }
+
+    @Test
+    fun `modern phone photo keeps enough pixels for a full-hd portrait window`() {
+        val size = LiquidBackgroundSizingPolicy.resolveNormalizedSize(4032, 3024)
+
+        assertEquals(4000, size.width)
+        assertEquals(3000, size.height)
+        // 中心裁剪到 9:20 后仍是缩小（scale <= 1），呈现位图不必再放大照片。
+        assertTrue(LiquidBackgroundSizingPolicy.centerCrop(
+            size.width, size.height, 1080, 2400
+        ).scale <= 1f)
     }
 
     @Test

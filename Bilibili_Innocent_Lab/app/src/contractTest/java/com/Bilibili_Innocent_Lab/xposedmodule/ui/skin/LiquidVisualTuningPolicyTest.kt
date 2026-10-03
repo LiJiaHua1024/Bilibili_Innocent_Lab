@@ -1,6 +1,7 @@
 package com.Bilibili_Innocent_Lab.xposedmodule.ui.skin
 
 import com.Bilibili_Innocent_Lab.xposedmodule.ui.skin.liquid.LiquidVisualTuningPolicy
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.io.File
@@ -10,19 +11,24 @@ class LiquidVisualTuningPolicyTest {
 
     /**
      * 未设自定义图时 Liquid 的自动 underlay 必须与标准磨砂皮肤共用 [AmbientBackdropScene]：
-     * 两种材质下用户看到的是同一个 Monet 氛围背景。折射采样副本保持无颗粒。
+     * 两种材质下用户看到的是同一个 Monet 氛围背景。
+     *
+     * 场景与两个调用方都不得再叠颗粒：可见底图按 0.2~0.25 倍窗口尺寸光栅化后放大铺满屏幕，
+     * 逐像素噪声会放大成 4~5px 的斑块状纹理，实机观感就是"背景很脏"（2026-10-03 用户反馈）。
+     * 色带由 DITHER_FLAG 负责；场景本身只有低频渐变与光晕，放大不会糊。
      */
     @Test
-    fun `auto backdrop shares the ambient scene with the frosted skin`() {
+    fun `auto backdrop shares the clean ambient scene with the frosted skin`() {
         val liquid = source("liquid/LiquidBackdropSource")
         val frosted = source("material/FrostedMaterialRenderer")
+        val scene = source("background/AmbientBackdropScene")
 
+        assertTrue(scene.contains("fun paint(canvas: Canvas, palette: MonetColors"))
+        assertFalse(scene.contains("addGrain"))
         assertTrue(liquid.contains("AmbientBackdropScene.paint(canvas, palette"))
-        assertTrue(liquid.contains("AmbientBackdropScene.addGrain(pixels)"))
-        // 颗粒只写进可见根位图；折射采样副本用加噪前的像素构建。
-        assertTrue(liquid.contains("opticalBitmap = optical"))
+        assertFalse(liquid.contains("addGrain"))
         assertTrue(frosted.contains("AmbientBackdropScene.paint(canvas, palette"))
-        assertTrue(frosted.contains("AmbientBackdropScene.addGrain(pixels)"))
+        assertFalse(frosted.contains("addGrain"))
     }
 
     @Test

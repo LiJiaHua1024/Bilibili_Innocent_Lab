@@ -126,7 +126,7 @@ internal class LiquidBackdropSource private constructor(
     }
 
     /**
-     * 按根坐标把**可见根背景**（[bitmap]，含颗粒，与 [drawRoot] 同一张）画进 [bounds]，
+     * 按根坐标把**可见根背景**（[bitmap]，与 [drawRoot] 同一张）画进 [bounds]，
      * 逐像素乘以 [alphaMask] 的 alpha 再乘 [alpha]。供滚动边缘溶解把内容"溶回"窗口底图：
      * 画的必须与根背景逐像素一致，否则溶解区会露出一块色差。
      *
@@ -224,8 +224,10 @@ internal class LiquidBackdropSource private constructor(
          * 未设自定义图时的稳定 underlay：与标准磨砂皮肤共用 [AmbientBackdropScene] 配方，
          * 两种材质下用户看到的是同一个 Monet 氛围背景。
          *
-         * 折射采样底图（[opticalBitmap]）保留颗粒加入前的干净副本——可见根背景带细颗粒纹理，
-         * 玻璃采样源保持平滑，折射内容不会被噪点污染。实时截屏路径不受影响。
+         * 场景按 0.25 倍窗口尺寸光栅化后直接放大铺满屏幕——它只有低频渐变与光晕，放大不会糊，
+         * 而本方法在 bindRoot 的主线程上同步执行，全分辨率光栅化会变成可感知的卡顿。
+         * 场景已不含颗粒噪声（见 [AmbientBackdropScene]），可见底图与折射采样底图因此共用
+         * 同一张位图，不必各持一份副本。实时截屏路径不受影响。
          */
         fun create(
             palette: MonetColors,
@@ -234,7 +236,6 @@ internal class LiquidBackdropSource private constructor(
         ): LiquidBackdropSource {
             val size = LiquidBackdropSizingPolicy.resolve(fullWidth, fullHeight)
             val bitmap = createBitmap(size.width, size.height, Bitmap.Config.ARGB_8888)
-            var optical: Bitmap? = null
             try {
                 val canvas = Canvas(bitmap)
                 val dark = ColorUtils.calculateLuminance(palette.background) < .5
@@ -266,26 +267,16 @@ internal class LiquidBackdropSource private constructor(
                     size.height.toFloat(),
                     seamPaint
                 )
-
-                val pixels = IntArray(size.width * size.height)
-                bitmap.getPixels(pixels, 0, size.width, 0, 0, size.width, size.height)
-                optical = createBitmap(size.width, size.height, Bitmap.Config.ARGB_8888)
-                optical.setPixels(pixels, 0, size.width, 0, 0, size.width, size.height)
-                AmbientBackdropScene.addGrain(pixels)
-                bitmap.setPixels(pixels, 0, size.width, 0, 0, size.width, size.height)
                 bitmap.prepareToDraw()
-                optical.prepareToDraw()
                 return LiquidBackdropSource(
                     bitmap = bitmap,
                     customAssetId = null,
                     isRealtime = false,
                     fullWidth = fullWidth,
-                    fullHeight = fullHeight,
-                    opticalBitmap = optical
+                    fullHeight = fullHeight
                 )
             } catch (throwable: Throwable) {
                 bitmap.recycle()
-                optical?.recycle()
                 throw throwable
             }
         }
@@ -293,6 +284,12 @@ internal class LiquidBackdropSource private constructor(
         /**
          * Called on the existing background loader after bounded image decoding. One optical copy
          * is shared by every surface; the caller keeps ownership of [bitmap] if construction fails.
+         *
+         * [bitmap] is the **presentation** image: it is drawn into the root bounds 1:1 and must be
+         * sized by [LiquidBackdropSizingPolicy.resolvePresentation] — photos are visibly soft when
+         * a 0.25x sample is stretched back over the window (2026-10-03 用户反馈"自定义图片糊"）。
+         * The optical sample therefore no longer equals the presentation bitmap: it is downscaled
+         * to the stable 0.25x budget first and blurred there, so refraction cost stays unchanged.
          */
         @WorkerThread
         fun fromCustomBitmap(
@@ -307,29 +304,42 @@ internal class LiquidBackdropSource private constructor(
             }
             require(!bitmap.isRecycled) { "Custom backdrop bitmap is recycled" }
             require(assetId.isNotBlank()) { "Custom backdrop asset id is blank" }
-            val expected = LiquidBackdropSizingPolicy.resolve(fullWidth, fullHeight)
+            val expected = LiquidBackdropSizingPolicy.resolvePresentation(fullWidth, fullHeight)
             require(bitmap.width == expected.width && bitmap.height == expected.height) {
-                "Custom backdrop bitmap does not match the bounded sample size"
+                "Custom backdrop bitmap does not match the bounded presentation size"
             }
-            val pixels = IntArray(bitmap.width * bitmap.height)
-            bitmap.getPixels(pixels, 0, bitmap.width, 0, 0, bitmap.width, bitmap.height)
-            val softened = LiquidOpticalSamplingPolicy.soften(pixels, bitmap.width, bitmap.height,
-                fullWidth, density)
-            if (Thread.currentThread().isInterrupted) throw InterruptedException("Backdrop replaced")
-            val optical = createBitmap(bitmap.width, bitmap.height, Bitmap.Config.ARGB_8888)
+            val sample = LiquidBackdropSizingPolicy.resolve(fullWidth, fullHeight)
+            val sampled = createBitmap(sample.width, sample.height, Bitmap.Config.ARGB_8888)
             try {
-                optical.setPixels(softened, 0, bitmap.width, 0, 0, bitmap.width, bitmap.height)
-                return LiquidBackdropSource(
-                    bitmap = bitmap,
-                    customAssetId = assetId,
-                    isRealtime = false,
-                    fullWidth = fullWidth,
-                    fullHeight = fullHeight,
-                    opticalBitmap = optical
+                Canvas(sampled).drawBitmap(
+                    bitmap,
+                    null,
+                    Rect(0, 0, sample.width, sample.height),
+                    Paint(Paint.FILTER_BITMAP_FLAG or Paint.DITHER_FLAG)
                 )
-            } catch (failure: Throwable) {
-                optical.recycle()
-                throw failure
+                val pixels = IntArray(sample.width * sample.height)
+                sampled.getPixels(pixels, 0, sample.width, 0, 0, sample.width, sample.height)
+                val softened = LiquidOpticalSamplingPolicy.soften(
+                    pixels, sample.width, sample.height, fullWidth, density
+                )
+                if (Thread.currentThread().isInterrupted) throw InterruptedException("Backdrop replaced")
+                val optical = createBitmap(sample.width, sample.height, Bitmap.Config.ARGB_8888)
+                try {
+                    optical.setPixels(softened, 0, sample.width, 0, 0, sample.width, sample.height)
+                    return LiquidBackdropSource(
+                        bitmap = bitmap,
+                        customAssetId = assetId,
+                        isRealtime = false,
+                        fullWidth = fullWidth,
+                        fullHeight = fullHeight,
+                        opticalBitmap = optical
+                    )
+                } catch (failure: Throwable) {
+                    optical.recycle()
+                    throw failure
+                }
+            } finally {
+                sampled.recycle()
             }
         }
 

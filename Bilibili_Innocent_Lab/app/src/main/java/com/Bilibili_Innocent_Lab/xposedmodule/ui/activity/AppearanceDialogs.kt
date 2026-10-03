@@ -5,6 +5,7 @@ package com.Bilibili_Innocent_Lab.xposedmodule.ui.activity
 // MainActivity 的**嵌套**类型：扩展函数里嵌套 classifier 不在作用域内，必须显式导入。
 import com.Bilibili_Innocent_Lab.xposedmodule.ui.activity.MainActivity.AppLanguage
 import android.app.Dialog
+import android.content.ActivityNotFoundException
 import android.content.res.ColorStateList
 import android.graphics.Color
 import android.graphics.Typeface
@@ -13,15 +14,18 @@ import android.graphics.drawable.RippleDrawable
 import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
+import androidx.activity.result.ActivityResultLauncher
 import androidx.annotation.StringRes
 import androidx.appcompat.app.AppCompatDelegate
 import androidx.core.graphics.ColorUtils
 import androidx.core.os.LocaleListCompat
+import androidx.core.view.doOnLayout
 import androidx.core.view.setPadding
 import com.Bilibili_Innocent_Lab.xposedmodule.R
 import com.Bilibili_Innocent_Lab.xposedmodule.runtime.InjectedUiLocale
 import com.Bilibili_Innocent_Lab.xposedmodule.ui.skin.background.LiquidBackgroundConfig
 import com.Bilibili_Innocent_Lab.xposedmodule.ui.skin.background.LiquidBackgroundMode
+import com.Bilibili_Innocent_Lab.xposedmodule.ui.skin.background.LiquidBackgroundPickerPolicy
 import com.Bilibili_Innocent_Lab.xposedmodule.ui.skin.background.LiquidBackgroundStore
 import com.Bilibili_Innocent_Lab.xposedmodule.ui.skin.liquid.LiquidRealtimeCaptureStore
 import com.highcapable.betterandroid.ui.extension.view.textColor
@@ -43,8 +47,9 @@ import android.widget.TextView as NativeTextView
  *
  * 只搬函数。**可变状态与生命周期注册必须留在 Activity 里**：
  *
- * - `liquidBackgroundPicker` 是 `registerForActivityResult(...)`，它在 Activity 构造期
- *   就要向宿主注册，搬成顶层属性会直接失去注册；
+ * - `liquidBackgroundPhotoPicker` / `liquidBackgroundGalleryPicker` 是
+ *   `registerForActivityResult(...)`，它们在 Activity 构造期就要向宿主注册，
+ *   搬成顶层属性会直接失去注册；
  * - `liquidBackgroundDialog` 这类 `var` 一旦变成文件级顶层属性，就从"每个 Activity 一份"
  *   变成**进程级单例**，跨 Activity 重建仍然残留——这是行为改变，不是重构。
  *
@@ -121,7 +126,7 @@ internal fun MainActivity.showLiquidBackgroundDialog(anchor: View? = null) {
             highlight = false
         ) {
             if (!liquidBackgroundImportInProgress) {
-                liquidBackgroundPicker.launch(arrayOf("image/*"))
+                launchLiquidBackgroundPicker()
             }
         },
         NativeLinearLayout.LayoutParams(
@@ -226,6 +231,28 @@ internal fun MainActivity.showLiquidBackgroundDialog(anchor: View? = null) {
         }
     })
 }
+
+/**
+ * 选图入口：系统照片选择器（相册式界面）可用就用它，否则先试系统相册的 ACTION_PICK，
+ * 没有相册再退 ACTION_GET_CONTENT。意图与降级理由集中在 [LiquidBackgroundPickerPolicy]。
+ *
+ * 相册的"有没有应用能处理"必须靠启动时抛的 [ActivityNotFoundException] 判断，不能预查
+ * （Android 11+ 包可见性过滤会让未声明的相册查不到），所以这里逐级 runCatching——三级都
+ * 起不来才提示，绝不让异常冒进点击处理器。
+ */
+internal fun MainActivity.launchLiquidBackgroundPicker() {
+    if (LiquidBackgroundPickerPolicy.isSystemPickerAvailable(this)) {
+        if (launchPicker(liquidBackgroundPhotoPicker, LiquidBackgroundPickerPolicy.systemPickerRequest())) {
+            return
+        }
+    }
+    if (launchPicker(liquidBackgroundGalleryPicker, LiquidBackgroundPickerPolicy.galleryIntent())) return
+    if (launchPicker(liquidBackgroundGalleryPicker, LiquidBackgroundPickerPolicy.documentFallbackIntent())) return
+    toast(getString(R.string.liquid_background_picker_unavailable))
+}
+
+private fun <I> launchPicker(launcher: ActivityResultLauncher<I>, input: I): Boolean =
+    runCatching { launcher.launch(input) }.isSuccess
 
 /** 高负载模式首次开启必须由用户显式确认；关闭保持一键可逆。 */
 internal fun MainActivity.showLiquidRealtimeCaptureConfirmDialog() {
@@ -463,21 +490,28 @@ private fun MainActivity.loadLiquidBackgroundPreview(
 ) {
     val backgroundColor = monetColors.background
     val dark = ColorUtils.calculateLuminance(monetColors.surface) < 0.5
-    liquidBackgroundWorker.execute {
-        val bitmap = LiquidBackgroundStore.decodeBackdrop(
-            context = applicationContext,
-            config = config,
-            targetWidth = 640,
-            targetHeight = 360,
-            backgroundColor = backgroundColor,
-            dark = dark
-        ) ?: return@execute
-        runOnUiThread {
-            if (!isFinishing && !isDestroyed && dialog.isShowing &&
-                liquidBackgroundDialog === dialog
-            ) {
-                preview.setImageBitmap(bitmap)
-            } else bitmap.recycle()
+    // 预览按视图自身的像素尺寸解码。原来固定解 640×360，在 3x 屏上这条 150dp 高的预览框
+    // 约 1000px 宽，看到的本来就是被拉大的图——用户判断"图片被压缩了"的第一现场正是这里。
+    // 布局完成前拿不到尺寸，等一次 layout 再解码。
+    preview.doOnLayout { view ->
+        val targetWidth = view.width.coerceAtLeast(1)
+        val targetHeight = view.height.coerceAtLeast(1)
+        liquidBackgroundWorker.execute {
+            val bitmap = LiquidBackgroundStore.decodeBackdrop(
+                context = applicationContext,
+                config = config,
+                targetWidth = targetWidth,
+                targetHeight = targetHeight,
+                backgroundColor = backgroundColor,
+                dark = dark
+            ) ?: return@execute
+            runOnUiThread {
+                if (!isFinishing && !isDestroyed && dialog.isShowing &&
+                    liquidBackgroundDialog === dialog
+                ) {
+                    preview.setImageBitmap(bitmap)
+                } else bitmap.recycle()
+            }
         }
     }
 }

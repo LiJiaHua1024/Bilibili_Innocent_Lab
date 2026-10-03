@@ -252,10 +252,19 @@ class MainActivity : SkinnedActivity() {
         }
     }
 
-    internal val liquidBackgroundPicker = registerForActivityResult(
-        ActivityResultContracts.OpenDocument()
+    /** 系统照片选择器（相册式界面，Android 13+ 自带）：自定义背景的默认选图入口。 */
+    internal val liquidBackgroundPhotoPicker = registerForActivityResult(
+        ActivityResultContracts.PickVisualMedia()
     ) { uri ->
         if (uri != null) importLiquidBackground(uri)
+    }
+
+    /** 照片选择器不可用时的相册兜底（ACTION_PICK / ACTION_GET_CONTENT），见 launchLiquidBackgroundPicker。 */
+    internal val liquidBackgroundGalleryPicker = registerForActivityResult(
+        ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        if (result.resultCode != Activity.RESULT_OK) return@registerForActivityResult
+        result.data?.data?.let(::importLiquidBackground)
     }
 
     private var adskipEnabled = true
