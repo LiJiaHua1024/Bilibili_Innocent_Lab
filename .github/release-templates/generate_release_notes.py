@@ -189,7 +189,12 @@ def _forbidden_hits(text: str, terms: list[str]) -> list[str]:
     hits = []
     for term in terms:
         if term.isascii():
-            if re.search(rf"(?<![A-Za-z0-9_]){re.escape(term)}(?![A-Za-z0-9_])", text):
+            if term.startswith("."):
+                # 点前缀词条（.kt/.xml）按后缀匹配：整词边界的左侧断言会被
+                # 文件名里的字母数字挡死，规则等于永远不命中。
+                if re.search(rf"{re.escape(term)}(?![A-Za-z0-9_])", text):
+                    hits.append(term)
+            elif re.search(rf"(?<![A-Za-z0-9_]){re.escape(term)}(?![A-Za-z0-9_])", text):
                 hits.append(term)
         elif term in text:
             hits.append(term)
