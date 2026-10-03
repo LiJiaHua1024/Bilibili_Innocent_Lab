@@ -487,15 +487,21 @@ private fun MainActivity.restoreAutomaticLiquidBackground() {
     liquidBackgroundImportInProgress = true
     liquidBackgroundDialog?.setCancelable(false)
     liquidBackgroundTask = liquidBackgroundWorker.submit {
-        val restored = LiquidBackgroundStore.restoreAutomatic(applicationContext)
+        // FutureTask 会吞掉 submit 体里的任何异常，runOnUiThread 就永远不跑，
+        // 导入锁停在 true，"自定义背景"面板在整个 Activity 生命周期内再也打不开。
+        val restored = runCatching { LiquidBackgroundStore.restoreAutomatic(applicationContext) }
         runOnUiThread {
-            if (isFinishing || isDestroyed) return@runOnUiThread
             liquidBackgroundImportInProgress = false
             liquidBackgroundDialog?.setCancelable(true)
-            if (restored) {
-                toast(getString(R.string.liquid_background_restore_success))
-                finishLiquidBackgroundChange()
-            } else toast(getString(R.string.liquid_background_storage_failed))
+            if (isFinishing || isDestroyed) return@runOnUiThread
+            restored.onSuccess { ok ->
+                if (ok) {
+                    toast(getString(R.string.liquid_background_restore_success))
+                    finishLiquidBackgroundChange()
+                } else toast(getString(R.string.liquid_background_storage_failed))
+            }.onFailure {
+                toast(getString(R.string.liquid_background_storage_failed))
+            }
         }
     }
 }
