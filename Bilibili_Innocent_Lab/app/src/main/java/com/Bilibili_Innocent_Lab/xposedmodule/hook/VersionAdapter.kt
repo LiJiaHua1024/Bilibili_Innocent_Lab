@@ -6462,9 +6462,11 @@ object VersionAdapter {
             .distinctBy(Method::toGenericString)
             .map { it.toHookPoint() }
             .toList()
+        // 空判据必须与 isStructurallyValid 的有效口径一致：urlSchemaGetters 是搜索跳转
+        // 第二道防线的唯一载体，只算它就足够让整组点成立，漏掉会把可用的防线整条丢弃。
         if (urlMethods.isEmpty() && emptyPageGetters.isEmpty() && voteWidgetMethods.isEmpty() &&
             followPoints == null && qoePoint == null && operationPoints.isEmpty() &&
-            quickReplyDialogMethods.isEmpty()) {
+            quickReplyDialogMethods.isEmpty() && urlSchemaGetters.isEmpty()) {
             null
         } else {
             CommentPurifyPoints(
