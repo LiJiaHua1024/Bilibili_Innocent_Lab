@@ -438,8 +438,10 @@ private fun MainActivity.restartBilibili() {
         // 先做一次幂等的授权探测（su -c id）：首次使用会触发 Root 管理器的授权
         // 弹窗，用户当场允许即继续；失败时区分「无 su 二进制」与「su 被拒绝」，
         // 给出对应指引而不是笼统的「重启失败」。
+        // 授权窗给足 2 分钟：用户要解锁、切到管理器、可能还有倒计时确认，
+        // 10s 的默认超时会把"还没点允许"误判成"Root 被拒绝"，重启整个流程直接不执行。
         val rootFailureRes = runCatching {
-            val probeExit = execShell(suPath ?: "su", "-c", "id")
+            val probeExit = execShell(suPath ?: "su", "-c", "id", timeoutMs = 120_000L)
             check(probeExit == 0) { "su probe exited with $probeExit" }
             null
         }.getOrElse { throwable ->
@@ -563,6 +565,9 @@ private fun MainActivity.findSuPath(): String? {
 /**
  * 执行固定的 root shell 命令。输出流由独立读取线程持续排空，且超时后会
  * 终止子进程，避免 stdout/stderr pipe 或异常 root 实现造成设置页后台线程悬挂。
+ *
+ * [timeoutMs] 默认 10s；授权探测必须传更长的窗：首次使用会弹出 Root 管理器的
+ * 授权确认，用户解锁、确认、可能还有倒计时，10s 内点不完就会被当成"Root 被拒绝"。
  */
-private fun MainActivity.execShell(vararg cmd: String): Int =
-    ShellCommandRunner.run(cmd.toList(), timeoutMs = 10_000L)
+private fun MainActivity.execShell(vararg cmd: String, timeoutMs: Long = 10_000L): Int =
+    ShellCommandRunner.run(cmd.toList(), timeoutMs = timeoutMs)
