@@ -383,6 +383,11 @@ internal class FrostedMaterialRenderer(private val palette: MonetColors, private
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             chromeGlass.values.forEach { (it.glass as GlowChromeGlassApi31).releaseDisplayList() }
         }
+        // 记着的尺寸必须跟着清零：requestBackdrop 的早退条件是"同尺寸且 frame/work 仍在"，
+        // 释放后 frame 已为 null 但尺寸没动，下一次同尺寸请求会被拦掉，柔光就停在纯色块
+        // 直到一次 stop→start。清零让任何后续请求（布局变化 / bindContentSource / resume）
+        // 都能立即重建，内存压力期本身不主动重画。
+        width = 0; height = 0
         root?.invalidate(); surfaces.keys.forEach(View::invalidate)
     }
 
