@@ -216,14 +216,15 @@ internal fun MainActivity.showLiquidBackgroundDialog(anchor: View? = null) {
             ViewGroup.LayoutParams.WRAP_CONTENT
         ).apply { topMargin = (16 * density).toInt() }
     )
-    presentModalDialog(dialog, container, anchor)
-    dialog.setOnDismissListener {
+    // 收尾必须走 onDismissed 回调：setOnDismissListener 是单字段覆盖，
+    // 会把共用底座监听器承担的全部清理（形变取消/模糊清理/三张表移除/预测返回注销）整条换掉。
+    presentModalDialog(dialog, container, anchor, onDismissed = {
         if (activeConfirmDialog === dialog) activeConfirmDialog = null
         if (liquidBackgroundDialog === dialog) {
             liquidBackgroundDialog = null
             liquidBackgroundDialogContainer = null
         }
-    }
+    })
 }
 
 /** 高负载模式首次开启必须由用户显式确认；关闭保持一键可逆。 */

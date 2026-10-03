@@ -2190,9 +2190,10 @@ class MainActivity : SkinnedActivity() {
         onExpanded: () -> Unit = {},
         onBackDismiss: () -> Unit = {},
         morphAnchorBounds: SettingsBackupMotionRect? = null,
-        coverBounds: SettingsBackupMotionRect? = null
+        coverBounds: SettingsBackupMotionRect? = null,
+        onDismissed: (() -> Unit)? = null
     ) = presentSizedModalDialog(dialog, container, null, morphAnchor, anchorStyle,
-        onExpanded, onBackDismiss, morphAnchorBounds, coverBounds)
+        onExpanded, onBackDismiss, morphAnchorBounds, coverBounds, onDismissed)
 
     /**
      * @param morphAnchor 传入无文字的来源图标（如工具栏的搜索/GitHub 按钮）即启用图标锚点形变：
@@ -2223,7 +2224,8 @@ class MainActivity : SkinnedActivity() {
         onExpanded: () -> Unit = {},
         onBackDismiss: () -> Unit = {},
         morphAnchorBounds: SettingsBackupMotionRect? = null,
-        coverBounds: SettingsBackupMotionRect? = null
+        coverBounds: SettingsBackupMotionRect? = null,
+        onDismissed: (() -> Unit)? = null
     ) {
         clearElasticInteractions()
         container.tag = com.Bilibili_Innocent_Lab.xposedmodule.ui.interaction.ElasticInteractionController.CONTAINER_TAG
@@ -2879,6 +2881,9 @@ class MainActivity : SkinnedActivity() {
                 activeHighlightsFrom = null
             }
             scheduleReleaseHighlights()
+            // 调用方的收尾在这里跑，而不是让调用方再 setOnDismissListener——
+            // 那是单字段覆盖，会把本监听器承担的全部清理整条换掉。
+            onDismissed?.invoke()
         }
         activeConfirmDialog = dialog
         dialog.show()
