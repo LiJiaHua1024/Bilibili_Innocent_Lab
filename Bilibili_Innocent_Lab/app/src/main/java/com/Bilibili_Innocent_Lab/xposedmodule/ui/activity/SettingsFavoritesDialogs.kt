@@ -65,6 +65,9 @@ internal fun MainActivity.showSettingsFavoritesDialog(anchor: View? = null) {
         if (draining || pendingOps.isEmpty()) return
         // 与 home.edit 的静默丢弃条件一致，先拦在外面。若挡住我们的是弹窗外发起的
         // 在途编辑（例如主页开关），它没有义务回调本队列——挂一个延迟重试自解。
+        // disposed 也必须挡：edit 对已销毁的 presenter 直接 return 不回调，
+        // draining 会永远停在 true，pendingOps 只增不减，之后所有勾选都只活在本地。
+        if (home.isDisposed) return
         if (home.editing || home.state?.canWrite != true) {
             container.postDelayed({
                 if (dialog.isShowing) drainOps()
