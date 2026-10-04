@@ -24,10 +24,12 @@ import com.Bilibili_Innocent_Lab.xposedmodule.ui.skin.material.LiveBackdropSampl
  *
  * 逐层向上取**最近一层**的合格者：越近的容器越是"底栏正下方那块内容"本身，录制树也越小。
  */
+internal interface HostDockLayer
+
 internal object HostBackdropLocator {
     private const val MAX_LEVELS = 8
 
-    /** 候选必须遮住底栏面积的比例。 */
+    /** 候选必须遮住底栏/顶栏面积的比例。 */
     private const val MIN_COVERAGE = 0.25f
     private val dockRect = Rect()
     private val siblingRect = Rect()
@@ -46,11 +48,12 @@ internal object HostBackdropLocator {
             val nodeIndex = parent.indexOfChild(node)
             var best: View? = null
             var bestOverlap = 0L
-            for (index in 0 until nodeIndex) {
+            for (index in 0 until parent.childCount) {
+                if (index == nodeIndex) continue
                 val child = parent.getChildAt(index) ?: continue
                 if (!child.isShown || child.alpha <= 0f) continue
                 if (child.width <= 0 || child.height <= 0) continue
-                if (child is HostBottomBarDockLayer || child is HostGlowView) continue
+                if (child is HostDockLayer || child is HostBottomBarDockLayer || child is HostGlowView) continue
                 child.getLocationOnScreen(location)
                 siblingRect.set(location[0], location[1], location[0] + child.width, location[1] + child.height)
                 val overlap = overlapArea(dockRect, siblingRect)

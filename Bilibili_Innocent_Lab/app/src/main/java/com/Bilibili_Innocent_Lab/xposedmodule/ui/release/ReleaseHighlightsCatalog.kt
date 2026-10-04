@@ -237,7 +237,11 @@ internal object ReleaseHighlightsCatalog {
         ReleaseHighlight("host-bottom-bar-fx", HighlightKind.NEW,
             R.string.host_bottom_bar_liquid_glass_tip,
             HighlightDestination("host.bottom_bar.liquid_glass.enabled",
-                alsoCovers = setOf("host.bottom_bar.touch_glow.enabled")))
+                alsoCovers = setOf("host.bottom_bar.touch_glow.enabled"))),
+        ReleaseHighlight("host-top-bar-fx", HighlightKind.NEW,
+            R.string.host_top_bar_liquid_glass_tip,
+            HighlightDestination("host.top_bar.liquid_glass.enabled",
+                alsoCovers = setOf("host.top_bar.touch_glow.enabled")))
     )))
     val currentRevision: Int get() = batches.maxOf { it.revision }
     val destinations get() = batches.sortedByDescending { it.revision }.flatMap { it.entries }

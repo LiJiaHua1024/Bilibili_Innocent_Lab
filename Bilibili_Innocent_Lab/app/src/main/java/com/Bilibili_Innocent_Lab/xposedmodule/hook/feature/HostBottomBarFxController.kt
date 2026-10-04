@@ -452,7 +452,7 @@ internal class HostBottomBarDockLayer(
     private val isDark: Boolean,
     private val backdrop: HostBottomBarBackdrop?,
     private val requestSanitization: () -> Unit
-) : FrameLayout(context) {
+) : FrameLayout(context), HostDockLayer {
 
     private val density = resources.displayMetrics.density
     private fun dp(v: Float) = v * density

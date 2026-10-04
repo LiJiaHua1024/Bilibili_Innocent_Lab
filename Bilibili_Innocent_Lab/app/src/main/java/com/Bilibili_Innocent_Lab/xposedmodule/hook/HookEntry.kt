@@ -48,6 +48,7 @@ import com.Bilibili_Innocent_Lab.xposedmodule.hook.feature.BlockComponentLibrary
 import com.Bilibili_Innocent_Lab.xposedmodule.hook.feature.ComponentLibraryPoolMatcher
 import com.Bilibili_Innocent_Lab.xposedmodule.hook.feature.BottomBarFeatureInstaller
 import com.Bilibili_Innocent_Lab.xposedmodule.hook.feature.HostBottomBarFxFeatureInstaller
+import com.Bilibili_Innocent_Lab.xposedmodule.hook.feature.HostTopBarFxFeatureInstaller
 import com.Bilibili_Innocent_Lab.xposedmodule.hook.feature.BvToAvFeatureInstaller
 import com.Bilibili_Innocent_Lab.xposedmodule.hook.feature.CommentPurifyFeatureInstaller
 import com.Bilibili_Innocent_Lab.xposedmodule.hook.feature.CommentFilterFeatureInstaller
@@ -3060,6 +3061,17 @@ class HookEntry : XposedModule() {
                         hideSearchDefaultWord = prefs.getBoolean(
                             FeaturePreferences.HIDE_HOME_SEARCH_DEFAULT_WORD,
                             false
+                        ),
+                        points = hostAdaptResult?.homeTopBar
+                    ),
+                    HostTopBarFxFeatureInstaller(
+                        liquidGlass = prefs.getBoolean(
+                            FeaturePreferences.HOST_TOP_BAR_LIQUID_GLASS,
+                            true
+                        ),
+                        touchGlow = prefs.getBoolean(
+                            FeaturePreferences.HOST_TOP_BAR_TOUCH_GLOW,
+                            true
                         ),
                         points = hostAdaptResult?.homeTopBar
                     )
