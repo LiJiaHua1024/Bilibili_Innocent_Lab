@@ -189,10 +189,10 @@
     <string name="custom_bottom_bar_hide_tip">打开哔哩哔哩主界面以扫描勾选项，也可使用手动名称规则；自动保留至少一个入口。</string>
     <string name="custom_bottom_bar_hide_dialog_title">底栏隐藏规则</string>
     <string name="custom_bottom_bar_hide_hint">例如：动态, 会员购</string>
-    <string name="host_bottom_bar_liquid_glass">底栏 Liquid Glass 悬浮效果</string>
-    <string name="host_bottom_bar_liquid_glass_tip">为哔哩哔哩宿主底栏应用晶莹通透的 Liquid Glass 胶囊悬浮样式与高光边缘。</string>
-    <string name="host_bottom_bar_touch_glow">底栏柔光动效</string>
-    <string name="host_bottom_bar_touch_glow_tip">触摸底栏图标时绽放自适应柔和光晕，跟随手指触点实时形变。</string>
+    <string name="host_bottom_bar_liquid_glass">底栏悬浮胶囊</string>
+    <string name="host_bottom_bar_liquid_glass_tip">将哔哩哔哩底栏改为悬浮胶囊，并以实时取样的玻璃材质透出下方内容，保留上缘高光；轻微提升渲染压力。</string>
+    <string name="host_bottom_bar_touch_glow">底栏触控光晕</string>
+    <string name="host_bottom_bar_touch_glow_tip">触摸底栏图标时绽放自适应光晕，跟随手指触点实时形变。</string>
     <string name="recommend_video_duration_range">按视频时长过滤推荐</string>
     <string name="recommend_video_duration_range_empty">当前未限制视频时长，点击编辑</string>
     <string name="recommend_video_duration_min_only">最短：%1$s</string>
