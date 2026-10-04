@@ -25,8 +25,12 @@ import android.view.animation.LinearInterpolator
 import android.widget.FrameLayout
 import androidx.coordinatorlayout.widget.CoordinatorLayout
 import com.Bilibili_Innocent_Lab.xposedmodule.ui.activity.GlowShape
+import com.Bilibili_Innocent_Lab.xposedmodule.ui.activity.ModernNavigationGesture
+import com.Bilibili_Innocent_Lab.xposedmodule.ui.activity.ModernNavigationIntent
 import com.Bilibili_Innocent_Lab.xposedmodule.ui.activity.ModernNavigationMotion
 import com.Bilibili_Innocent_Lab.xposedmodule.ui.activity.ModernNavigationSpring
+import com.Bilibili_Innocent_Lab.xposedmodule.ui.activity.SettingsPageMotionContinuation
+import com.Bilibili_Innocent_Lab.xposedmodule.ui.activity.SettingsPageMotionPolicy
 import com.Bilibili_Innocent_Lab.xposedmodule.ui.widget.TouchGlowRenderer
 import java.util.Collections
 import java.util.WeakHashMap
@@ -171,7 +175,7 @@ internal object HostBottomBarFxController {
         }
 
         // 4. 注入 Liquid Glass / 非线性可拖拽指示器 / 柔光 绘制层
-        val dockLayer = HostBottomBarDockLayer(context, config, container)
+        val dockLayer = HostBottomBarDockLayer(context, config, tabHost, container)
         tabHost.addView(
             dockLayer,
             0,
@@ -183,7 +187,13 @@ internal object HostBottomBarFxController {
             stripAllHostBackgrounds()
         }
 
-        // 5. 为每个 tab item 挂接物理滑动手势与非线性触控监听，并同步容器布局
+        // 5. 为底栏外壳、绘制层与每个 tab item 挂接全域弹性触控与非线性手势流
+        tabHost.setOnTouchListener { _, event ->
+            dockLayer.handleTouch(event, -1)
+        }
+        dockLayer.setOnTouchListener { _, event ->
+            dockLayer.handleTouch(event, -1)
+        }
         container?.let { c ->
             c.addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ ->
                 dockLayer.onContainerLayoutChanged()
@@ -197,8 +207,8 @@ internal object HostBottomBarFxController {
                         tabItem.foreground = null
                     }
                     (tabItem as? FrameLayout)?.foreground = null
-                    tabItem.setOnTouchListener { v, event ->
-                        dockLayer.onTabTouch(v, event, i)
+                    tabItem.setOnTouchListener { _, event ->
+                        dockLayer.handleTouch(event, i)
                     }
                 }
             }
@@ -214,17 +224,20 @@ internal object HostBottomBarFxController {
 /**
  * 宿主底栏专属绘制层。
  *
- * 采用模块原生 [ModernNavigationBar] 同款：
+ * 完整对齐模块原生 [ModernNavigationBar] 体系：
  * 1. 纯正通透 Liquid Glass 材质（浅色 28%-43% 柔光透雾、深色 31%-50% 曜石微透 + 双圈菲涅尔高光与弧形穹顶天光）。
- * 2. 物理阻尼谐振弹簧（[ModernNavigationSpring]）非线性动画。
- * 3. 完整的水平拖动滑块（Scrub）与指尖吸附交互。
- * 4. 触控自适应柔光（[TouchGlowRenderer]）。
- * 5. 严格杜绝宿主官方按压变暗矩形与启动时胶囊未对齐问题。
+ * 2. 完整槽位大胶囊（与模块 Selection 尺寸一致，拒绝局促小滑块）。
+ * 3. 2D 弹性形变与阻尼回弹（支持手指向上拉动底栏产生的弹性阻尼拉伸与 460ms 谐振物理回弹反馈）。
+ * 4. 彻底杜绝"傻快"：点击切页采用非线性临界阻尼弹簧曲线（[SettingsPageMotionContinuation]，1 页 320ms、2 页 440ms、3 页 520ms）伴随呼吸透镜形变。
+ * 5. 完整的水平拖动滑块（Scrub）与指尖吸附交互。
+ * 6. 触控自适应柔光（[TouchGlowRenderer]）。
+ * 7. 严格杜绝宿主官方按压变暗矩形与启动时胶囊未对齐问题。
  */
 @SuppressLint("ViewConstructor")
 internal class HostBottomBarDockLayer(
     context: Context,
     private val config: HostBottomBarFxConfig,
+    private val tabHost: ViewGroup,
     private val container: ViewGroup?
 ) : View(context) {
 
@@ -232,6 +245,7 @@ internal class HostBottomBarDockLayer(
     private fun dp(v: Float) = v * density
     private val inset = dp(ModernNavigationMotion.INSET_DP.toFloat())
     private val slop = ViewConfiguration.get(context).scaledTouchSlop.toFloat()
+    private val maximumTravel = dp(16f)
 
     // 几何与轮廓
     private val dockBounds = RectF()
@@ -272,12 +286,19 @@ internal class HostBottomBarDockLayer(
     private var reboundAnimator: ValueAnimator? = null
     private var indicatorSettling = false
 
-    // 拖动手势交互
+    // 2D 弹性形变位移与手势交互
+    private val gesture = ModernNavigationGesture()
     private var touchActive = false
-    private var isScrubbing = false
     private var downRawX = 0f
     private var downRawY = 0f
+    private var lastMoveTime = 0L
     private var initialIndicator = 0f
+    private var initialOffsetX = 0f
+    private var initialOffsetY = 0f
+    private var offsetX = 0f
+    private var offsetY = 0f
+    private var offsetVelocityX = 0f
+    private var offsetVelocityY = 0f
     private val myLoc = IntArray(2)
 
     // 柔光动效 (Touch Glow)
@@ -295,9 +316,9 @@ internal class HostBottomBarDockLayer(
 
     private val preDrawListener = android.view.ViewTreeObserver.OnPreDrawListener {
         val detected = detectSelectedTab()
-        if (!touchActive && detected != activeTabIndex) {
+        if (!touchActive && !indicatorSettling && detected != activeTabIndex) {
             activeTabIndex = detected
-            reboundTo(detected.toFloat())
+            reboundElastic(detected, scrubbed = false)
         }
         true
     }
@@ -343,86 +364,109 @@ internal class HostBottomBarDockLayer(
         }
     }
 
-    /** 处理 Tab 项的触控事件（支持轻触点击与水平拖拽滑块） */
-    fun onTabTouch(tabItem: View, event: MotionEvent, tabIndex: Int): Boolean {
-        suppressPressState(tabItem)
+    /** 处理底栏与各 Tab 项的统一触控流（支持点击非线性切换、水平滑块拖拽、以及向上拖拽弹性回弹） */
+    fun handleTouch(event: MotionEvent, tabIndex: Int): Boolean {
+        suppressPressState(tabHost)
         val rawX = event.rawX
         val rawY = event.rawY
+
+        getLocationInWindow(myLoc)
+        val localX = rawX - myLoc[0]
+        val localY = rawY - myLoc[1]
+        val availableW = (width - inset * 2f).coerceAtLeast(1f)
+        val slotW = availableW / count.coerceAtLeast(1)
 
         when (event.actionMasked) {
             MotionEvent.ACTION_DOWN -> {
                 touchActive = true
-                isScrubbing = false
                 downRawX = rawX
                 downRawY = rawY
+                lastMoveTime = event.eventTime
                 initialIndicator = displayedPosition
+                initialOffsetX = tabHost.translationX
+                initialOffsetY = tabHost.translationY
+                offsetX = initialOffsetX
+                offsetY = initialOffsetY
 
-                getLocationInWindow(myLoc)
-                glowX = rawX - myLoc[0]
-                glowY = rawY - myLoc[1]
+                val index = if (tabIndex in 0 until count) tabIndex
+                else ModernNavigationMotion.indexAt(localX, availableW, inset, count, false)
+
+                val selectedLeft = inset + displayedPosition * slotW
+                val inSelection = localX in selectedLeft..(selectedLeft + slotW)
+                gesture.begin(index, inSelection || true)
+
+                glowX = localX
+                glowY = localY
                 updateGlowPosition()
 
                 animatePress(1f)
                 stopRebound()
+                parent?.requestDisallowInterceptTouchEvent(true)
                 return true
             }
             MotionEvent.ACTION_MOVE -> {
                 if (!touchActive) return false
-                suppressPressState(tabItem)
+                suppressPressState(tabHost)
 
                 val dx = rawX - downRawX
                 val dy = rawY - downRawY
-
-                if (!isScrubbing && abs(dx) > slop && abs(dx) > abs(dy) * 1.15f) {
-                    isScrubbing = true
+                if (gesture.move(dx, dy, slop)) {
                     parent?.requestDisallowInterceptTouchEvent(true)
                 }
 
-                if (isScrubbing) {
-                    val availableW = (width - inset * 2f).coerceAtLeast(1f)
-                    val slotW = availableW / count.coerceAtLeast(1)
-                    val targetPos = (initialIndicator + dx / slotW).coerceIn(0f, (count - 1).toFloat())
-                    displayedPosition = targetPos
+                if (gesture.intent == ModernNavigationIntent.SCRUB) {
+                    displayedPosition = ModernNavigationMotion.scrubPosition(initialIndicator, dx, slotW, count, false)
                     updatePillFromPosition()
                 }
 
-                getLocationInWindow(myLoc)
-                glowX = rawX - myLoc[0]
-                glowY = rawY - myLoc[1]
+                // 2D 弹性形变（支持向上/斜向拉动底栏弹性阻尼反馈）
+                val factor = ModernNavigationMotion.displacementScale(dx, dy, maximumTravel, dp(48f))
+                val nextX = initialOffsetX + dx * factor
+                val nextY = initialOffsetY + dy * factor
+                val bounded = ModernNavigationMotion.travelClampScale(nextX, nextY, maximumTravel)
+                val elapsed = (event.eventTime - lastMoveTime).coerceAtLeast(1L)
+                offsetVelocityX = ((nextX * bounded - offsetX) * 1000f / elapsed).coerceIn(-dp(240f), dp(240f))
+                offsetVelocityY = ((nextY * bounded - offsetY) * 1000f / elapsed).coerceIn(-dp(240f), dp(240f))
+                offsetX = nextX * bounded
+                offsetY = nextY * bounded
+                lastMoveTime = event.eventTime
+
+                val travel = ModernNavigationMotion.travelClampScale(offsetX, offsetY, maximumTravel)
+                tabHost.translationX = offsetX * travel
+                tabHost.translationY = offsetY * travel
+
+                glowX = localX
+                glowY = localY
                 updateGlowPosition()
                 return true
             }
             MotionEvent.ACTION_UP -> {
                 if (!touchActive) return false
-                suppressPressState(tabItem)
+                suppressPressState(tabHost)
                 touchActive = false
-                animatePress(0f)
                 parent?.requestDisallowInterceptTouchEvent(false)
 
-                if (isScrubbing) {
-                    isScrubbing = false
-                    val target = displayedPosition.roundToInt().coerceIn(0, count - 1)
-                    reboundTo(target.toFloat())
-                    if (target != activeTabIndex) {
-                        activeTabIndex = target
-                        clickTab(target)
-                    }
-                } else {
-                    reboundTo(tabIndex.toFloat())
-                    if (tabIndex != activeTabIndex) {
-                        activeTabIndex = tabIndex
-                    }
-                    clickTab(tabIndex)
+                val releaseIndex = if (localX in 0f..width.toFloat() && localY in 0f..height.toFloat()) {
+                    ModernNavigationMotion.indexAt(localX, availableW, inset, count, false)
+                } else -1
+                val scrubbed = gesture.intent == ModernNavigationIntent.SCRUB
+                val target = gesture.finish(false, displayedPosition, releaseIndex, count)
+
+                if (event.eventTime - lastMoveTime > 100L) {
+                    offsetVelocityX = 0f
+                    offsetVelocityY = 0f
                 }
+                animatePress(0f)
+                reboundElastic(target, scrubbed)
                 return true
             }
             MotionEvent.ACTION_CANCEL -> {
                 touchActive = false
-                isScrubbing = false
-                suppressPressState(tabItem)
-                animatePress(0f)
-                reboundTo(activeTabIndex.toFloat())
+                suppressPressState(tabHost)
+                gesture.cancel()
                 parent?.requestDisallowInterceptTouchEvent(false)
+                animatePress(0f)
+                reboundElastic(null, scrubbed = false)
                 return true
             }
         }
@@ -441,7 +485,7 @@ internal class HostBottomBarDockLayer(
     }
 
     /** 阻尼弹簧按压非线性形变 */
-    private fun animatePress(target: Float) {
+    private fun animatePress(target: Float, onEnd: (() -> Unit)? = null) {
         pressGeneration++
         pressAnimator?.cancel()
         pressAnimator = null
@@ -468,27 +512,79 @@ internal class HostBottomBarDockLayer(
                     pressVelocity = 0f
                     updateGlowPosition()
                     updatePillFromPosition()
+                    onEnd?.invoke()
                 }
             })
             start()
         }
     }
 
-    /** 阻尼谐振回弹到指定 Tab 位置（460ms 物理自然回弹） */
-    fun reboundTo(target: Float) {
+    /** 2D 弹性底栏谐振回弹与非线性指示滑块平滑转场（彻底杜绝"傻快"） */
+    fun reboundElastic(target: Int?, scrubbed: Boolean) {
         stopRebound()
         val token = ++reboundGeneration
-        val indicator = ModernNavigationSpring(displayedPosition, target)
-        indicatorSettling = true
+        val springX = ModernNavigationSpring(offsetX, 0f, offsetVelocityX)
+        val springY = ModernNavigationSpring(offsetY, 0f, offsetVelocityY)
+
+        val startPos = displayedPosition
+        val endPos = target?.toFloat() ?: displayedPosition
+        val isClick = target != null && !scrubbed && abs(endPos - startPos) > 0.01f
+
+        // 导航切页时长与非线性临界阻尼弹簧（对齐模块原生 SettingsPageMotionContinuation：1 页 320ms、2 页 440ms、3 页 520ms）
+        val navDuration = if (isClick) {
+            SettingsPageMotionPolicy.navigationDuration(startPos, endPos)
+        } else {
+            ModernNavigationMotion.SPRING_DURATION_MS
+        }
+
+        val continuation = if (isClick) {
+            SettingsPageMotionContinuation(startPos, target, 0f, navDuration, count, navigation = true)
+        } else null
+
+        val indicatorSpring = if (!isClick && target != null) {
+            ModernNavigationSpring(startPos, endPos)
+        } else null
+
+        val animDuration = maxOf(ModernNavigationMotion.SPRING_DURATION_MS, navDuration)
+        indicatorSettling = target != null
+
+        if (isClick) {
+            // 点击伴随呼吸透镜微膨胀
+            animatePress(0.75f) { animatePress(0f) }
+            activeTabIndex = target
+            clickTab(target)
+        } else if (scrubbed && target != null) {
+            activeTabIndex = target
+            clickTab(target)
+        }
 
         reboundAnimator = ValueAnimator.ofFloat(0f, 1f).apply {
-            duration = ModernNavigationMotion.SPRING_DURATION_MS
+            duration = animDuration
             interpolator = LinearInterpolator()
             addUpdateListener {
-                if (token == reboundGeneration) {
-                    val seconds = it.animatedFraction * ModernNavigationMotion.SPRING_DURATION_MS / 1000f
-                    if (indicatorSettling) {
-                        displayedPosition = indicator.value(seconds).coerceIn(0f, (count - 1).toFloat())
+                if (token != reboundGeneration) return@addUpdateListener
+                val fraction = it.animatedFraction
+                val seconds = fraction * animDuration / 1000f
+
+                // 1. 底栏上下/左右拖拽后的物理弹性阻尼回弹
+                if (seconds <= ModernNavigationMotion.SPRING_DURATION_MS / 1000f) {
+                    val s = fraction * ModernNavigationMotion.SPRING_DURATION_MS / 1000f
+                    offsetX = springX.value(s)
+                    offsetY = springY.value(s)
+                } else {
+                    offsetX = 0f
+                    offsetY = 0f
+                }
+                tabHost.translationX = offsetX
+                tabHost.translationY = offsetY
+
+                // 2. 指示滑块非线性平滑过渡
+                if (indicatorSettling) {
+                    if (continuation != null) {
+                        val navFraction = (fraction * animDuration / navDuration.toFloat()).coerceIn(0f, 1f)
+                        displayedPosition = continuation.value(navFraction)
+                    } else if (indicatorSpring != null) {
+                        displayedPosition = indicatorSpring.value(seconds).coerceIn(0f, (count - 1).toFloat())
                     }
                     updatePillFromPosition()
                 }
@@ -497,8 +593,13 @@ internal class HostBottomBarDockLayer(
                 override fun onAnimationEnd(animation: Animator) {
                     if (token != reboundGeneration) return
                     reboundAnimator = null
-                    if (indicatorSettling) {
-                        displayedPosition = target.coerceIn(0f, (count - 1).toFloat())
+                    offsetX = 0f
+                    offsetY = 0f
+                    tabHost.translationX = 0f
+                    tabHost.translationY = 0f
+                    if (target != null) {
+                        displayedPosition = target.toFloat()
+                        activeTabIndex = target
                     }
                     indicatorSettling = false
                     updatePillFromPosition()
@@ -542,27 +643,22 @@ internal class HostBottomBarDockLayer(
         return c1 + (c2 - c1) * frac
     }
 
-    /** 根据当前物理连续位置 [displayedPosition] 和按压缩放因子计算滑块尺寸与位置 */
+    /** 根据当前物理连续位置 [displayedPosition] 和按压缩放因子计算滑块尺寸与位置（完整槽位大胶囊） */
     private fun updatePillFromPosition() {
         if (width <= 0 || height <= 0) return
-        val c = container
-        val tabW = if (c != null && activeTabIndex in 0 until c.childCount && c.getChildAt(activeTabIndex).width > 0) {
-            c.getChildAt(activeTabIndex).width.toFloat()
-        } else {
-            (width - inset * 2f).coerceAtLeast(1f) / count.coerceAtLeast(1)
-        }
-        val pillW = minOf(tabW * 0.78f, 62f * density)
-        val pillH = minOf((height - inset * 2f) * 0.80f, 40f * density)
+        val availableW = (width - inset * 2f).coerceAtLeast(1f)
+        val slotW = availableW / count.coerceAtLeast(1)
 
         val sx = ModernNavigationMotion.lensScaleX(pressFraction)
         val sy = ModernNavigationMotion.lensScaleY(pressFraction)
-        val scaledW = pillW * sx
-        val scaledH = pillH * sy
+        // 模仿模块原生 ModernNavigationBar：完整槽位大胶囊，边距仅留上下左右 inset
+        val pillW = slotW * sx
+        val pillH = (height - inset * 2f).coerceAtLeast(1f) * sy
 
         val cx = getInterpolatedCenter(displayedPosition)
         val cy = height / 2f
 
-        currentPillRect.set(cx - scaledW / 2f, cy - scaledH / 2f, cx + scaledW / 2f, cy + scaledH / 2f)
+        currentPillRect.set(cx - pillW / 2f, cy - pillH / 2f, cx + pillW / 2f, cy + pillH / 2f)
         postInvalidateOnAnimation()
     }
 
@@ -652,12 +748,12 @@ internal class HostBottomBarDockLayer(
                 edgePaint
             )
 
-            // 物理指示滑块（非线性阻尼谐振 + 呼吸形变 Liquid Lens）
+            // 物理指示滑块（完整槽位大胶囊，非线性阻尼谐振 + 呼吸形变 Liquid Lens）
             if (!currentPillRect.isEmpty) {
                 val pillCorner = currentPillRect.height() / 2f
-                pillPaint.color = if (dark) 0x28FFFFFF else 0x26FB7299
+                pillPaint.color = if (dark) 0x30FFFFFF else 0x24FB7299
                 canvas.drawRoundRect(currentPillRect, pillCorner, pillCorner, pillPaint)
-                pillBorderPaint.color = if (dark) 0x45FFFFFF else 0x42FB7299
+                pillBorderPaint.color = if (dark) 0x48FFFFFF else 0x3DFB7299
                 canvas.drawRoundRect(currentPillRect, pillCorner, pillCorner, pillBorderPaint)
             }
         }
