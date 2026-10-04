@@ -101,28 +101,67 @@ internal object HostBottomBarFxController {
             }
             tabHost.clipToOutline = true
             tabHost.elevation = 6f * density
+        }
 
-            // 隐藏宿主不透明纯色背景与分割线
-            bgView?.visibility = View.GONE
-            divView?.visibility = View.GONE
-            for (i in 0 until tabHost.childCount) {
-                val child = tabHost.getChildAt(i)
-                if (child is android.widget.ImageView) child.visibility = View.GONE
-                if (child != container && child.height in 1..4) child.visibility = View.GONE
-                // 调整内部容器居中对齐
-                if (child is ViewGroup && child !== container) {
-                    val clp = child.layoutParams as? ViewGroup.MarginLayoutParams
-                    if (clp != null && clp.topMargin != 0) {
-                        clp.topMargin = 0
-                        child.layoutParams = clp
+        // 3. 递归清除所有宿主原生的不透明背景、隐藏分割线与官方底图
+        fun stripAllHostBackgrounds() {
+            if (!config.liquidGlass) return
+            tabHost.background = null
+
+            fun cleanView(v: View) {
+                if (v is HostBottomBarDockLayer) return
+
+                // 清除宿主自带的不透明背景
+                v.background = null
+
+                // 彻底移除/隐藏分割线
+                if (v.id == divId || (v !is ViewGroup && (v.height in 1..4 || v.layoutParams?.height in 1..4))) {
+                    v.visibility = View.GONE
+                    v.layoutParams?.height = 0
+                    v.alpha = 0f
+                }
+
+                // 彻底隐藏官方底栏底图与非 icon 纯色遮罩
+                if (v.id == bgId || (v is android.widget.ImageView && v.id != 0 &&
+                                    context.resources.getResourceEntryName(v.id).contains("bg"))) {
+                    v.visibility = View.GONE
+                    v.layoutParams?.height = 0
+                    v.alpha = 0f
+                    (v as? android.widget.ImageView)?.setImageDrawable(null)
+                }
+
+                if (v is ViewGroup) {
+                    for (i in 0 until v.childCount) {
+                        cleanView(v.getChildAt(i))
                     }
                 }
             }
-            tabHost.background = null
-            container?.background = null
+            cleanView(tabHost)
+
+            // 将底栏内部容器居中垂直对齐，消除顶部暴露缝隙
+            for (i in 0 until tabHost.childCount) {
+                val child = tabHost.getChildAt(i)
+                if (child is ViewGroup) {
+                    val clp = child.layoutParams
+                    if (clp is FrameLayout.LayoutParams) {
+                        if (clp.gravity != Gravity.CENTER) {
+                            clp.gravity = Gravity.CENTER
+                            clp.topMargin = 0
+                            clp.bottomMargin = 0
+                            child.layoutParams = clp
+                        }
+                    } else if (clp is ViewGroup.MarginLayoutParams) {
+                        if (clp.topMargin != 0 || clp.bottomMargin != 0) {
+                            clp.topMargin = 0
+                            clp.bottomMargin = 0
+                            child.layoutParams = clp
+                        }
+                    }
+                }
+            }
         }
 
-        // 3. 注入 Liquid Glass / 流光 / 柔光 绘制层
+        // 4. 注入 Liquid Glass / 流光 / 柔光 绘制层
         val dockLayer = HostBottomBarDockLayer(context, config, container)
         tabHost.addView(
             dockLayer,
@@ -130,11 +169,18 @@ internal object HostBottomBarFxController {
             ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, barHeight)
         )
 
-        // 4. 为每个 tab item 挂接非拦截触控监听，为柔光与流光提供动效反馈
+        stripAllHostBackgrounds()
+        tabHost.addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ ->
+            stripAllHostBackgrounds()
+        }
+
+        // 5. 为每个 tab item 挂接非拦截触控监听，为柔光与流光提供动效反馈
         container?.let { c ->
             fun setupTabListeners() {
+                stripAllHostBackgrounds()
                 for (i in 0 until c.childCount) {
                     val tabItem = c.getChildAt(i)
+                    tabItem.background = null
                     tabItem.setOnTouchListener { _, event ->
                         dockLayer.dispatchHostTouch(tabItem, event, i)
                         false // 严禁拦截，保证宿主点击事件 100% 正常响应
