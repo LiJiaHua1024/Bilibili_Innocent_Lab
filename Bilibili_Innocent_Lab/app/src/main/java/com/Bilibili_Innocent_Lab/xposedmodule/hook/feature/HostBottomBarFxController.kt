@@ -60,6 +60,19 @@ internal data class HostBottomBarFxConfig(
 )
 
 /**
+ * 拖动滑块的落点语义：**落回当前页不算操作**。
+ *
+ * 模块自己的设置 pager 同页选中没有副作用，宿主不同——宿主点击当前 tab 是"刷新"（首页即刷新推荐流）。
+ * 手势收尾给的是"离预览位置最近的页"，所以拖开又落回原页会拿回原页索引；那种情况必须什么都不做，
+ * 只有真的落到别的页才把点击交回宿主。
+ */
+internal object HostBottomBarScrubRelease {
+    /** [target] 手势落点页；[scrubbed] 表示这次是横向拖动滑块收尾；[currentPage] 是宿主当前页。 */
+    fun selectableTarget(target: Int?, scrubbed: Boolean, currentPage: Int): Int? =
+        target?.takeUnless { scrubbed && it == currentPage }
+}
+
+/**
  * 哔哩哔哩宿主底栏视觉增强控制器。
  *
  * 100% 像素级对齐模块原生 [com.Bilibili_Innocent_Lab.xposedmodule.ui.activity.ModernNavigationBar]：
@@ -800,16 +813,18 @@ internal class HostBottomBarDockLayer(
         val startPos = displayedPosition
         val endPos = (target?.toFloat() ?: pagerPosition).coerceIn(0f, (count - 1).toFloat())
         val isClick = target != null && !scrubbed && abs(endPos - startPos) > 0.005f
+        // 落回当前页的拖动不算操作（见 HostBottomBarScrubRelease）：只有真的换页才把点击交回宿主。
+        val clickTarget = HostBottomBarScrubRelease.selectableTarget(target, scrubbed, selectedIndex)
         indicatorSettling = true
 
-        if (target != null) {
-            clickTab(target)
-            selectedIndex = target
-            pagerPosition = target.toFloat()
+        if (clickTarget != null) {
+            clickTab(clickTarget)
+            selectedIndex = clickTarget
+            pagerPosition = clickTarget.toFloat()
             // 按压闪光只跟随用户点击：外部同步切页（宿主自己翻页/双次点击同页）不播 0.8→0 双段动画，
             // 快速切换时少一条 920ms 的动画链。
             if (isClick && userInitiated) {
-                glowX = inset + (target + 0.5f) * slotWidth
+                glowX = inset + (clickTarget + 0.5f) * slotWidth
                 glowY = height / 2f
                 animatePress(0.8f) { animatePress(0f) }
             }
