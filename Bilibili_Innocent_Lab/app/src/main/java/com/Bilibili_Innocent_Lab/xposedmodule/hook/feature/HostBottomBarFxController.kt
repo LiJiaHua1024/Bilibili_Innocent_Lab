@@ -28,6 +28,9 @@ import android.view.ViewOutlineProvider
 import android.view.ViewTreeObserver
 import android.view.animation.LinearInterpolator
 import android.widget.FrameLayout
+import android.widget.LinearLayout
+import android.widget.TextView
+import androidx.constraintlayout.widget.ConstraintLayout
 import androidx.coordinatorlayout.widget.CoordinatorLayout
 import androidx.core.graphics.ColorUtils
 import com.Bilibili_Innocent_Lab.xposedmodule.ui.activity.GlowConfig
@@ -141,48 +144,21 @@ internal object HostBottomBarFxController {
             )
         }
 
-        // 3. 递归清除宿主分割线、背景图与按压深色背景
-        fun sanitizeHostViews() {
-            if (divId != 0) {
-                tabHost.findViewById<View>(divId)?.let { div ->
-                    div.visibility = View.GONE
-                    div.alpha = 0f
-                }
-            }
-            if (bgId != 0) {
-                tabHost.findViewById<View>(bgId)?.let { bg ->
-                    bg.visibility = View.GONE
-                    bg.alpha = 0f
-                    (bg as? android.widget.ImageView)?.setImageDrawable(null)
-                }
-            }
+        val insetH = inset.roundToInt()
 
-            container?.let { c ->
-                c.background = null
-                val clp = c.layoutParams
-                if (clp is FrameLayout.LayoutParams) {
-                    clp.gravity = Gravity.CENTER
-                    clp.height = ViewGroup.LayoutParams.MATCH_PARENT
-                    c.layoutParams = clp
-                }
-                c.setPadding(inset.roundToInt(), inset.roundToInt(), inset.roundToInt(), inset.roundToInt())
-                c.clipToPadding = false
-
-                for (i in 0 until c.childCount) {
-                    val tab = c.getChildAt(i)
-                    tab.background = null
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-                        tab.foreground = null
-                    }
-                    (tab as? FrameLayout)?.foreground = null
-                    if (tab.isPressed) tab.isPressed = false
-                }
-            }
+        // 3. 递归清除宿主分割线、背景图与按压深色背景，并完美对齐文字与图标居中
+        fun applyBarSanitizationAndAlignment() {
+            stripAllHostArtifacts(tabHost, isRoot = true)
+            alignTabContent(tabHost, container, density, insetH)
         }
 
-        sanitizeHostViews()
+        applyBarSanitizationAndAlignment()
 
-        // 4. 插入专属硬件加速指示滑块与柔光图层 (放在 container 之下)
+        tabHost.addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ ->
+            applyBarSanitizationAndAlignment()
+        }
+
+        // 4. 插入专属硬件加速指示滑块与柔光图层 (放在最底层)
         val dockLayer = HostBottomBarDockLayer(context, config, tabHost, container, palette, isDark)
         tabHost.addView(
             dockLayer,
@@ -199,8 +175,12 @@ internal object HostBottomBarFxController {
         }
 
         container?.let { c ->
+            c.addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ ->
+                applyBarSanitizationAndAlignment()
+            }
+
             fun hookTabTouch() {
-                sanitizeHostViews()
+                applyBarSanitizationAndAlignment()
                 for (i in 0 until c.childCount) {
                     val tabItem = c.getChildAt(i)
                     tabItem.background = null
@@ -218,6 +198,187 @@ internal object HostBottomBarFxController {
                 override fun onChildViewAdded(parent: View?, child: View?) { hookTabTouch() }
                 override fun onChildViewRemoved(parent: View?, child: View?) { hookTabTouch() }
             })
+        }
+    }
+
+    /**
+     * 垂直居中对齐底栏内容 (图标与文字组合居中于 64dp 悬浮胶囊内)。
+     * 消除文字过度靠下或图标独占居中的视觉失衡，完全还原模块导航栏的人机工程布局。
+     */
+    fun alignTabContent(tabHost: ViewGroup, container: ViewGroup?, density: Float, insetH: Int) {
+        if (container == null) return
+        val barHeight = tabHost.height.takeIf { it > 0 } ?: (ModernNavigationMotion.BAR_HEIGHT_DP * density).roundToInt()
+
+        // 1. 宿主中间层包装容器 (例如包裹 divider 与 container 的 LinearLayout) 铺满并居中
+        val contentParent = container.parent as? ViewGroup
+        if (contentParent != null && contentParent != tabHost) {
+            val clp = contentParent.layoutParams
+            if (clp != null) {
+                var changed = false
+                if (clp.height != ViewGroup.LayoutParams.MATCH_PARENT) {
+                    clp.height = ViewGroup.LayoutParams.MATCH_PARENT
+                    changed = true
+                }
+                if (clp is FrameLayout.LayoutParams && clp.gravity != Gravity.CENTER) {
+                    clp.gravity = Gravity.CENTER
+                    clp.topMargin = 0
+                    clp.bottomMargin = 0
+                    changed = true
+                }
+                if (changed) contentParent.layoutParams = clp
+            }
+            contentParent.setPadding(0, 0, 0, 0)
+            if (tabHost.width > 0 && barHeight > 0) {
+                if (contentParent.top != 0 || contentParent.bottom != barHeight) {
+                    contentParent.layout(0, 0, tabHost.width, barHeight)
+                }
+            }
+        }
+
+        // 2. container 左右内嵌 insetH，上下内边距清零，高度 MATCH_PARENT
+        val lp = container.layoutParams
+        if (lp != null) {
+            var changed = false
+            if (lp.height != ViewGroup.LayoutParams.MATCH_PARENT) {
+                lp.height = ViewGroup.LayoutParams.MATCH_PARENT
+                changed = true
+            }
+            if (lp is ViewGroup.MarginLayoutParams && (lp.topMargin != 0 || lp.bottomMargin != 0)) {
+                lp.topMargin = 0
+                lp.bottomMargin = 0
+                changed = true
+            }
+            if (changed) container.layoutParams = lp
+        }
+        container.setPadding(insetH, 0, insetH, 0)
+        container.clipToPadding = false
+        if (tabHost.width > 0 && barHeight > 0) {
+            if (container.top != 0 || container.bottom != barHeight) {
+                container.layout(0, 0, tabHost.width, barHeight)
+            }
+        }
+
+        // 3. 遍历每一个 Tab 项，确保 tab 高度铺满，且内部 normal_ll (包含图标与文字) 整体垂直居中
+        for (i in 0 until container.childCount) {
+            val tab = container.getChildAt(i) as? ViewGroup ?: continue
+            tab.background = null
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) tab.foreground = null
+            (tab as? FrameLayout)?.foreground = null
+            if (tab.isPressed) tab.isPressed = false
+            tab.setPadding(0, 0, 0, 0)
+
+            val tlp = tab.layoutParams
+            if (tlp != null && tlp.height != ViewGroup.LayoutParams.MATCH_PARENT) {
+                tlp.height = ViewGroup.LayoutParams.MATCH_PARENT
+                tab.layoutParams = tlp
+            }
+            if (barHeight > 0 && (tab.top != 0 || tab.bottom != barHeight)) {
+                tab.layout(tab.left, 0, tab.right, barHeight)
+            }
+
+            // 对齐 tab 内部承载图标和文字的布局
+            for (j in 0 until tab.childCount) {
+                val child = tab.getChildAt(j)
+                val cId = child.id
+                val name = if (cId != 0 && cId != View.NO_ID) {
+                    try { child.resources.getResourceEntryName(cId) } catch (_: Exception) { "" }
+                } else ""
+
+                if (name.contains("normal") || child is ConstraintLayout) {
+                    // normal_ll 必须是 WRAP_CONTENT，由内容自然决定高度
+                    val clp = child.layoutParams
+                    if (clp is FrameLayout.LayoutParams) {
+                        var nlpChanged = false
+                        if (clp.height != ViewGroup.LayoutParams.WRAP_CONTENT) {
+                            clp.height = ViewGroup.LayoutParams.WRAP_CONTENT
+                            nlpChanged = true
+                        }
+                        if (clp.gravity != Gravity.CENTER) {
+                            clp.gravity = Gravity.CENTER
+                            nlpChanged = true
+                        }
+                        if (clp.topMargin != 0 || clp.bottomMargin != 0) {
+                            clp.topMargin = 0
+                            clp.bottomMargin = 0
+                            nlpChanged = true
+                        }
+                        if (nlpChanged) child.layoutParams = clp
+                    }
+                    val ch = child.measuredHeight.takeIf { it > 0 } ?: child.height
+                    if (barHeight > 0 && ch > 0) {
+                        val targetTop = ((barHeight - ch) / 2f).roundToInt()
+                        if (child.top != targetTop || child.bottom != targetTop + ch) {
+                            child.layout(child.left, targetTop, child.right, targetTop + ch)
+                        }
+                    }
+
+                    // 优化文字属性，去除字体上下溢出内边距并完全居中
+                    if (child is ViewGroup) {
+                        for (k in 0 until child.childCount) {
+                            val subChild = child.getChildAt(k)
+                            if (subChild is TextView) {
+                                subChild.includeFontPadding = false
+                                subChild.gravity = Gravity.CENTER
+                            }
+                        }
+                    }
+                } else if (name.contains("publish") || child.javaClass.simpleName.contains("Publish")) {
+                    val plp = child.layoutParams as? FrameLayout.LayoutParams
+                    if (plp != null && plp.gravity != Gravity.CENTER) {
+                        plp.gravity = Gravity.CENTER
+                        child.layoutParams = plp
+                    }
+                    val ch = child.measuredHeight.takeIf { it > 0 } ?: child.height
+                    if (barHeight > 0 && ch > 0) {
+                        val targetTop = ((barHeight - ch) / 2f).roundToInt()
+                        if (child.top != targetTop || child.bottom != targetTop + ch) {
+                            child.layout(child.left, targetTop, child.right, targetTop + ch)
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    /** 彻底剥离宿主所有官方背景、分割线、并清除按压阴影残余 */
+    fun stripAllHostArtifacts(view: View, isRoot: Boolean = true) {
+        if (view is HostBottomBarDockLayer || view is HostGlowView) return
+
+        // 宿主 TabHost 本身的 Liquid Glass 背景予以保留，其余所有子 View 背景清空
+        if (!isRoot && view.background != null) {
+            view.background = null
+        }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && view.foreground != null) {
+            view.foreground = null
+        }
+        (view as? FrameLayout)?.foreground = null
+        if (view.isPressed) {
+            view.isPressed = false
+        }
+
+        val id = view.id
+        val resName = if (id != 0 && id != View.NO_ID) {
+            try { view.resources.getResourceEntryName(id) } catch (_: Exception) { "" }
+        } else ""
+
+        // 彻底移除官方分割线
+        if (resName.contains("divider") || (view !is ViewGroup && (view.height in 1..4 || view.layoutParams?.height in 1..4))) {
+            if (view.visibility != View.GONE) view.visibility = View.GONE
+            if (view.alpha != 0f) view.alpha = 0f
+            if (view.layoutParams?.height != 0) view.layoutParams?.height = 0
+        }
+
+        // 彻底隐藏官方底栏底图与非 icon 纯色遮罩
+        if (resName.contains("bg") && view !is ViewGroup) {
+            if (view.visibility != View.GONE) view.visibility = View.GONE
+            if (view.alpha != 0f) view.alpha = 0f
+            (view as? android.widget.ImageView)?.setImageDrawable(null)
+        }
+
+        if (view is ViewGroup) {
+            for (i in 0 until view.childCount) {
+                stripAllHostArtifacts(view.getChildAt(i), isRoot = false)
+            }
         }
     }
 }
@@ -302,15 +463,9 @@ internal class HostBottomBarDockLayer(
     private val slotWidth: Float get() = if (count > 0) contentWidth / count else 0f
 
     private val preDrawListener = ViewTreeObserver.OnPreDrawListener {
-        // 确保任何时刻宿主动态赋予的按压灰色背景与 foreground 被彻底消除
-        container?.let { c ->
-            for (i in 0 until c.childCount) {
-                val tab = c.getChildAt(i)
-                if (tab.background != null) tab.background = null
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && tab.foreground != null) tab.foreground = null
-                if (tab.isPressed) tab.isPressed = false
-            }
-        }
+        // 确保任何时刻宿主动态赋予的官方背景、分割线与按压变暗被彻底消除，杜绝外露缝隙
+        HostBottomBarFxController.stripAllHostArtifacts(tabHost, isRoot = true)
+        HostBottomBarFxController.alignTabContent(tabHost, container, density, inset.roundToInt())
         // 同步外部切页
         val detected = detectSelectedTab()
         if (!touchActive && !indicatorSettling && detected != selectedIndex) {
