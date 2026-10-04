@@ -56,7 +56,6 @@ import kotlin.math.roundToInt
 /** 配置项参数 */
 internal data class HostBottomBarFxConfig(
     val liquidGlass: Boolean = true,
-    val streamingLight: Boolean = true,
     val touchGlow: Boolean = true
 )
 
@@ -80,7 +79,7 @@ internal object HostBottomBarFxController {
     private val attachedHosts = Collections.newSetFromMap(WeakHashMap<ViewGroup, Boolean>())
 
     fun attach(tabHost: ViewGroup, config: HostBottomBarFxConfig) {
-        if (!config.liquidGlass && !config.streamingLight && !config.touchGlow) return
+        if (!config.liquidGlass && !config.touchGlow) return
         tabHost.post {
             attachInternal(tabHost, config)
         }

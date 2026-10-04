@@ -425,7 +425,6 @@ class MainActivity : SkinnedActivity() {
     private var freeCopyLightMode = false
     private var freeCopyAutoLight = false
     private var hostBottomBarLiquidGlass = true
-    private var hostBottomBarStreamingLight = true
     private var hostBottomBarTouchGlow = true
 
     /** 亮色开关二次确认进行中标志（防 setOnCheckedChangeListener 重入递归） */
@@ -4407,7 +4406,6 @@ class MainActivity : SkinnedActivity() {
         blockTeenagersModePrompt = uiSettings.bool(FeaturePreferences.BLOCK_TEENAGERS_MODE_PROMPT)
         purifySplashAds = uiSettings.bool(FeaturePreferences.PURIFY_SPLASH_ADS)
         hostBottomBarLiquidGlass = uiSettings.bool(FeaturePreferences.HOST_BOTTOM_BAR_LIQUID_GLASS)
-        hostBottomBarStreamingLight = uiSettings.bool(FeaturePreferences.HOST_BOTTOM_BAR_STREAMING_LIGHT)
         hostBottomBarTouchGlow = uiSettings.bool(FeaturePreferences.HOST_BOTTOM_BAR_TOUCH_GLOW)
         merchAdEnabled = uiSettings.bool(HookEntry.PREF_MERCH_ENABLED)
         freeCopyEnabled = uiSettings.bool(HookEntry.PREF_FREE_COPY_ENABLED)
@@ -8904,45 +8902,6 @@ class MainActivity : SkinnedActivity() {
             alpha = 0.6f
             setLineSpacing(6f, 1f)
             text = stringResource(R.string.host_bottom_bar_liquid_glass_tip)
-            textColor = colorResource(R.color.colorTextDark)
-            textSize = 12f
-        }
-        MaterialSwitch(
-            lparams = LayoutParams(widthMatchParent = true) {
-                topMargin = 12.dp
-                bottomMargin = 5.dp
-            }
-        ) {
-            bindFavoriteSwitch(this, FeaturePreferences.HOST_BOTTOM_BAR_STREAMING_LIGHT, directToggle = true)
-            text = stringResource(R.string.host_bottom_bar_streaming_light)
-            isAllCaps = false
-            textColor = colorResource(R.color.colorTextGray)
-            textSize = 15f
-            isChecked = hostBottomBarStreamingLight
-            setOnCheckedChangeListener { _, checked ->
-                hostBottomBarStreamingLight = checked
-                runCatching {
-                    prefs().edit {
-                        putBoolean(
-                            FeaturePreferences.HOST_BOTTOM_BAR_STREAMING_LIGHT,
-                            checked
-                        )
-                    }
-                }.onFailure { throwable ->
-                    Log.e(
-                        "BilibiliInnocentLab",
-                        "write host bottom bar streaming light prefs failed",
-                        throwable
-                    )
-                }
-            }
-        }
-        TextView(
-            lparams = LayoutParams(widthMatchParent = true)
-        ) {
-            alpha = 0.6f
-            setLineSpacing(6f, 1f)
-            text = stringResource(R.string.host_bottom_bar_streaming_light_tip)
             textColor = colorResource(R.color.colorTextDark)
             textSize = 12f
         }

@@ -597,13 +597,6 @@ internal object SettingsCatalog {
             introducedCatalogVersion = 38
         ),
         bool(
-            "host.bottom_bar.streaming_light.enabled",
-            FeaturePreferences.HOST_BOTTOM_BAR_STREAMING_LIGHT,
-            R.string.host_bottom_bar_streaming_light,
-            default = true,
-            introducedCatalogVersion = 38
-        ),
-        bool(
             "host.bottom_bar.touch_glow.enabled",
             FeaturePreferences.HOST_BOTTOM_BAR_TOUCH_GLOW,
             R.string.host_bottom_bar_touch_glow,
@@ -860,7 +853,7 @@ internal object SettingsCatalog {
     val byStorageKey: Map<String, SettingSpec> = specs.associateBy(SettingSpec::storageKey)
 
     init {
-        check(specs.size == 193) { "Expected 193 catalog settings, found ${specs.size}" }
+        check(specs.size == 192) { "Expected 192 catalog settings, found ${specs.size}" }
         check(byId.size == specs.size) { "Duplicate logical setting id" }
         check(specs.map(SettingSpec::storageKey).distinct().size == specs.size) {
             "Duplicate settings storage key"

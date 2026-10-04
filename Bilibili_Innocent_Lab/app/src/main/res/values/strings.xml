@@ -168,8 +168,6 @@
     <string name="custom_bottom_bar_hide_hint">Example: Dynamic, Mall</string>
     <string name="host_bottom_bar_liquid_glass">Bottom Bar Liquid Glass</string>
     <string name="host_bottom_bar_liquid_glass_tip">Apply translucent floating Liquid Glass capsule styling with specular highlights to Bilibili\'s bottom navigation bar.</string>
-    <string name="host_bottom_bar_streaming_light">Bottom Bar Streaming Light</string>
-    <string name="host_bottom_bar_streaming_light_tip">Circulate a luminous halo around the bottom bar capsule, accelerating on interaction.</string>
     <string name="host_bottom_bar_touch_glow">Bottom Bar Touch Glow</string>
     <string name="host_bottom_bar_touch_glow_tip">Bloom adaptive soft glow under your touch when interacting with bottom navigation tabs.</string>
     <string name="recommend_video_duration_range">Filter recommended videos by duration</string>

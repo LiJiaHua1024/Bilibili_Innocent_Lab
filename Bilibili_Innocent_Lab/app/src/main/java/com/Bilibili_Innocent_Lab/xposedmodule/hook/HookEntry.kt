@@ -3326,10 +3326,6 @@ class HookEntry : XposedModule() {
                             FeaturePreferences.HOST_BOTTOM_BAR_LIQUID_GLASS,
                             true
                         ),
-                        streamingLight = prefs.getBoolean(
-                            FeaturePreferences.HOST_BOTTOM_BAR_STREAMING_LIGHT,
-                            true
-                        ),
                         touchGlow = prefs.getBoolean(
                             FeaturePreferences.HOST_BOTTOM_BAR_TOUCH_GLOW,
                             true

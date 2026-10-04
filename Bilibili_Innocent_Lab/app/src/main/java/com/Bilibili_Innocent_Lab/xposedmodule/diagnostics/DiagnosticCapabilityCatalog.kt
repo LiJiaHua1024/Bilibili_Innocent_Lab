@@ -124,7 +124,6 @@ internal object DiagnosticCapabilityCatalog {
             "navigation.bottom_bar.hidden_rules",
             "navigation.bottom_bar.hidden_selectors",
             "host.bottom_bar.liquid_glass.enabled",
-            "host.bottom_bar.streaming_light.enabled",
             "host.bottom_bar.touch_glow.enabled"
         )),
         DiagnosticCapabilityDefinition("player_default_quality", "player_default_quality", R.string.player_default_quality, setOf("player.default_quality.qn")),

@@ -177,7 +177,6 @@ internal object FeaturePreferences {
     /** 勾选面板写入的选择器；与同名 *_HIDDEN_RULES 手填规则取并集，互不覆盖。 */
     const val BOTTOM_BAR_HIDDEN_SELECTORS = "bottom_bar_hidden_selectors"
     const val HOST_BOTTOM_BAR_LIQUID_GLASS = "host_bottom_bar_liquid_glass"
-    const val HOST_BOTTOM_BAR_STREAMING_LIGHT = "host_bottom_bar_streaming_light"
     const val HOST_BOTTOM_BAR_TOUCH_GLOW = "host_bottom_bar_touch_glow"
     const val HOME_TAB_HIDDEN_SELECTORS = "home_tab_hidden_selectors"
     const val HOME_COMPONENT_HIDDEN_SELECTORS = "home_component_hidden_selectors"
