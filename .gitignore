@@ -1,0 +1,17 @@
+# Build output
+build/
+.gradle/
+
+# Python bytecode（.github/release-templates 下的发布说明生成器）
+__pycache__/
+*.py[cod]
+
+# Local tooling state
+.zcode/
+
+# Android / IDE
+local.properties
+.idea/
+*.iml
+.DS_Store
+captures/

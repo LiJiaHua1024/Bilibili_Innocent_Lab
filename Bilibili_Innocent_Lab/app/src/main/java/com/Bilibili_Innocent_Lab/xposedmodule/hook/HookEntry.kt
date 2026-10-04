@@ -47,6 +47,7 @@ import com.Bilibili_Innocent_Lab.xposedmodule.hook.feature.CommentLegacyCopyBrid
 import com.Bilibili_Innocent_Lab.xposedmodule.hook.feature.BlockComponentLibraryFeatureInstaller
 import com.Bilibili_Innocent_Lab.xposedmodule.hook.feature.ComponentLibraryPoolMatcher
 import com.Bilibili_Innocent_Lab.xposedmodule.hook.feature.BottomBarFeatureInstaller
+import com.Bilibili_Innocent_Lab.xposedmodule.hook.feature.HostBottomBarFxFeatureInstaller
 import com.Bilibili_Innocent_Lab.xposedmodule.hook.feature.BvToAvFeatureInstaller
 import com.Bilibili_Innocent_Lab.xposedmodule.hook.feature.CommentPurifyFeatureInstaller
 import com.Bilibili_Innocent_Lab.xposedmodule.hook.feature.CommentFilterFeatureInstaller
@@ -3393,6 +3394,21 @@ class HookEntry : XposedModule() {
                             FeaturePreferences.BOTTOM_BAR_HIDDEN_SELECTORS,
                             ""
                         ).orEmpty(),
+                        points = hostAdaptResult?.bottomBar
+                    ),
+                    HostBottomBarFxFeatureInstaller(
+                        liquidGlass = prefs.getBoolean(
+                            FeaturePreferences.HOST_BOTTOM_BAR_LIQUID_GLASS,
+                            true
+                        ),
+                        streamingLight = prefs.getBoolean(
+                            FeaturePreferences.HOST_BOTTOM_BAR_STREAMING_LIGHT,
+                            true
+                        ),
+                        touchGlow = prefs.getBoolean(
+                            FeaturePreferences.HOST_BOTTOM_BAR_TOUCH_GLOW,
+                            true
+                        ),
                         points = hostAdaptResult?.bottomBar
                     )
                 )

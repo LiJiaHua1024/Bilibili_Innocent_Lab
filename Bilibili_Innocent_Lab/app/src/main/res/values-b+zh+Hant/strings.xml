@@ -189,6 +189,12 @@
     <string name="custom_bottom_bar_hide_tip">開啟嗶哩嗶哩主畫面以掃描勾選項，也可使用手動名稱規則；自動保留至少一個入口。</string>
     <string name="custom_bottom_bar_hide_dialog_title">底部導覽列隱藏規則</string>
     <string name="custom_bottom_bar_hide_hint">例如：動態, 會員購</string>
+    <string name="host_bottom_bar_liquid_glass">底部導覽列 Liquid Glass 懸浮效果</string>
+    <string name="host_bottom_bar_liquid_glass_tip">為嗶哩嗶哩主程式底部導覽列套用晶瑩通透的 Liquid Glass 膠囊懸浮樣式與高光邊緣。</string>
+    <string name="host_bottom_bar_streaming_light">底部導覽列流光動效</string>
+    <string name="host_bottom_bar_streaming_light_tip">沿底部導覽列膠囊輪廓循環流動光暈，並在互動切換時加速呼吸。</string>
+    <string name="host_bottom_bar_touch_glow">底部導覽列柔光動效</string>
+    <string name="host_bottom_bar_touch_glow_tip">觸摸底部導覽列圖示時綻放自適應柔和光暈，跟隨手指觸點即時形變。</string>
     <string name="recommend_video_duration_range">依影片時長過濾推薦</string>
     <string name="recommend_video_duration_range_empty">目前未限制影片時長，點按即可編輯</string>
     <string name="recommend_video_duration_min_only">最短：%1$s</string>
