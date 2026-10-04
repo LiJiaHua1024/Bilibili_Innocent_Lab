@@ -48,7 +48,11 @@ internal object DiagnosticCapabilityCatalog {
         DiagnosticCapabilityDefinition("home_banner_feed", "home_banner", R.string.diag_cap_home_banner_feed, setOf("ads.home_banner.hidden")),
         DiagnosticCapabilityDefinition("merchandise", "merchandise", R.string.merch_ad_enable, setOf("ads.merchandise.hidden")),
         DiagnosticCapabilityDefinition("home_top_bar_game_menu_hidden", "home_top_bar_purify", R.string.hide_home_game_menu, setOf("home.top_bar.game_menu.hidden")),
-        DiagnosticCapabilityDefinition("home_top_bar_search_word_hidden", "home_top_bar_purify", R.string.hide_home_search_default_word, setOf("home.top_bar.search_word.hidden")),
+        DiagnosticCapabilityDefinition("home_top_bar_search_word_hidden", "home_top_bar_purify", R.string.hide_home_search_default_word, setOf(
+            "home.top_bar.search_word.hidden",
+            "host.top_bar.liquid_glass.enabled",
+            "host.top_bar.touch_glow.enabled"
+        )),
         DiagnosticCapabilityDefinition("home_vertical_detail", "home_vertical_detail", R.string.home_vertical_open_detail, setOf("home.vertical.open_detail")),
         DiagnosticCapabilityDefinition("home_recommend_ads_removed", "home_recommend_purify", R.string.remove_home_recommend_ads, setOf("home.recommend.ads.removed")),
         DiagnosticCapabilityDefinition("home_recommend_cm_v2_removed", "home_recommend_purify", R.string.remove_home_recommend_cm_v2, setOf("home.recommend.cm_v2.removed")),

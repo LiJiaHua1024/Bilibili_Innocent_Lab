@@ -426,6 +426,8 @@ class MainActivity : SkinnedActivity() {
     private var freeCopyAutoLight = false
     private var hostBottomBarLiquidGlass = true
     private var hostBottomBarTouchGlow = true
+    private var hostTopBarLiquidGlass = true
+    private var hostTopBarTouchGlow = true
 
     /** 亮色开关二次确认进行中标志（防 setOnCheckedChangeListener 重入递归） */
     private var autoLightConfirmInProgress = false
@@ -4407,6 +4409,8 @@ class MainActivity : SkinnedActivity() {
         purifySplashAds = uiSettings.bool(FeaturePreferences.PURIFY_SPLASH_ADS)
         hostBottomBarLiquidGlass = uiSettings.bool(FeaturePreferences.HOST_BOTTOM_BAR_LIQUID_GLASS)
         hostBottomBarTouchGlow = uiSettings.bool(FeaturePreferences.HOST_BOTTOM_BAR_TOUCH_GLOW)
+        hostTopBarLiquidGlass = uiSettings.bool(FeaturePreferences.HOST_TOP_BAR_LIQUID_GLASS)
+        hostTopBarTouchGlow = uiSettings.bool(FeaturePreferences.HOST_TOP_BAR_TOUCH_GLOW)
         merchAdEnabled = uiSettings.bool(HookEntry.PREF_MERCH_ENABLED)
         freeCopyEnabled = uiSettings.bool(HookEntry.PREF_FREE_COPY_ENABLED)
         freeCopyDescEnabled = uiSettings.bool(HookEntry.PREF_FREE_COPY_DESC_ENABLED)
@@ -9510,6 +9514,84 @@ class MainActivity : SkinnedActivity() {
             alpha = 0.6f
             setLineSpacing(6f, 1f)
             text = stringResource(R.string.hide_home_search_default_word_tip)
+            textColor = colorResource(R.color.colorTextDark)
+            textSize = 12f
+        }
+        MaterialSwitch(
+            lparams = LayoutParams(widthMatchParent = true) {
+                topMargin = 12.dp
+                bottomMargin = 5.dp
+            }
+        ) {
+            bindFavoriteSwitch(this, FeaturePreferences.HOST_TOP_BAR_LIQUID_GLASS, directToggle = true)
+            text = stringResource(R.string.host_top_bar_liquid_glass)
+            isAllCaps = false
+            textColor = colorResource(R.color.colorTextGray)
+            textSize = 15f
+            isChecked = hostTopBarLiquidGlass
+            setOnCheckedChangeListener { _, checked ->
+                hostTopBarLiquidGlass = checked
+                runCatching {
+                    prefs().edit {
+                        putBoolean(
+                            FeaturePreferences.HOST_TOP_BAR_LIQUID_GLASS,
+                            checked
+                        )
+                    }
+                }.onFailure { throwable ->
+                    Log.e(
+                        "BilibiliInnocentLab",
+                        "write host top bar liquid glass prefs failed",
+                        throwable
+                    )
+                }
+            }
+        }
+        TextView(
+            lparams = LayoutParams(widthMatchParent = true)
+        ) {
+            alpha = 0.6f
+            setLineSpacing(6f, 1f)
+            text = stringResource(R.string.host_top_bar_liquid_glass_tip)
+            textColor = colorResource(R.color.colorTextDark)
+            textSize = 12f
+        }
+        MaterialSwitch(
+            lparams = LayoutParams(widthMatchParent = true) {
+                topMargin = 12.dp
+                bottomMargin = 5.dp
+            }
+        ) {
+            bindFavoriteSwitch(this, FeaturePreferences.HOST_TOP_BAR_TOUCH_GLOW, directToggle = true)
+            text = stringResource(R.string.host_top_bar_touch_glow)
+            isAllCaps = false
+            textColor = colorResource(R.color.colorTextGray)
+            textSize = 15f
+            isChecked = hostTopBarTouchGlow
+            setOnCheckedChangeListener { _, checked ->
+                hostTopBarTouchGlow = checked
+                runCatching {
+                    prefs().edit {
+                        putBoolean(
+                            FeaturePreferences.HOST_TOP_BAR_TOUCH_GLOW,
+                            checked
+                        )
+                    }
+                }.onFailure { throwable ->
+                    Log.e(
+                        "BilibiliInnocentLab",
+                        "write host top bar touch glow prefs failed",
+                        throwable
+                    )
+                }
+            }
+        }
+        TextView(
+            lparams = LayoutParams(widthMatchParent = true)
+        ) {
+            alpha = 0.6f
+            setLineSpacing(6f, 1f)
+            text = stringResource(R.string.host_top_bar_touch_glow_tip)
             textColor = colorResource(R.color.colorTextDark)
             textSize = 12f
         }
