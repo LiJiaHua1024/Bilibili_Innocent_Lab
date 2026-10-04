@@ -120,7 +120,13 @@ internal object DiagnosticCapabilityCatalog {
         DiagnosticCapabilityDefinition("story_action_favorite_hidden", "story_action_icons", R.string.hide_story_action_favorite, setOf("story.action.favorite.hidden"), introducedCatalogVersion = 17),
         DiagnosticCapabilityDefinition("story_action_share_hidden", "story_action_icons", R.string.hide_story_action_share, setOf("story.action.share.hidden"), introducedCatalogVersion = 17),
         DiagnosticCapabilityDefinition("story_action_danmaku_toggle_hidden", "story_action_icons", R.string.hide_story_action_danmaku_toggle, setOf("story.action.danmaku_toggle.hidden"), introducedCatalogVersion = 17),
-        DiagnosticCapabilityDefinition("bottom_bar", "bottom_bar", R.string.custom_bottom_bar_hide, setOf("navigation.bottom_bar.hidden_rules", "navigation.bottom_bar.hidden_selectors")),
+        DiagnosticCapabilityDefinition("bottom_bar", "bottom_bar", R.string.custom_bottom_bar_hide, setOf(
+            "navigation.bottom_bar.hidden_rules",
+            "navigation.bottom_bar.hidden_selectors",
+            "host.bottom_bar.liquid_glass.enabled",
+            "host.bottom_bar.streaming_light.enabled",
+            "host.bottom_bar.touch_glow.enabled"
+        )),
         DiagnosticCapabilityDefinition("player_default_quality", "player_default_quality", R.string.player_default_quality, setOf("player.default_quality.qn")),
         DiagnosticCapabilityDefinition("teenagers_mode_prompt", "teenagers_mode_prompt", R.string.block_teenagers_mode_prompt, setOf("prompt.teenagers_mode.blocked")),
         DiagnosticCapabilityDefinition("player_capability_background", "player_capabilities", R.string.player_unlock_background, setOf("player.capability.background")),

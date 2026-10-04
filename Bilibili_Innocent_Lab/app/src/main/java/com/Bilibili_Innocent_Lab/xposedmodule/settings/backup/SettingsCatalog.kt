@@ -30,7 +30,7 @@ import com.Bilibili_Innocent_Lab.xposedmodule.settings.appearance.ModalBackdropB
 internal object SettingsCatalog {
     const val PRODUCT_ID = "bilibili-innocent-lab.settings"
     const val SCOPE_ID = "core-user-settings"
-    const val CATALOG_VERSION = 37
+    const val CATALOG_VERSION = 38
     const val ID_PLAYER_DEFAULT_SPEED = "player.default_speed.percent"
     const val ID_PLAYER_LONG_PRESS_SPEED = "player.long_press_speed.percent"
     const val ID_FREE_COPY_COMMENT = "free_copy.comment.enabled"
@@ -589,6 +589,27 @@ internal object SettingsCatalog {
             R.string.custom_bottom_bar_hide,
             introducedCatalogVersion = 9
         ),
+        bool(
+            "host.bottom_bar.liquid_glass.enabled",
+            FeaturePreferences.HOST_BOTTOM_BAR_LIQUID_GLASS,
+            R.string.host_bottom_bar_liquid_glass,
+            default = true,
+            introducedCatalogVersion = 38
+        ),
+        bool(
+            "host.bottom_bar.streaming_light.enabled",
+            FeaturePreferences.HOST_BOTTOM_BAR_STREAMING_LIGHT,
+            R.string.host_bottom_bar_streaming_light,
+            default = true,
+            introducedCatalogVersion = 38
+        ),
+        bool(
+            "host.bottom_bar.touch_glow.enabled",
+            FeaturePreferences.HOST_BOTTOM_BAR_TOUCH_GLOW,
+            R.string.host_bottom_bar_touch_glow,
+            default = true,
+            introducedCatalogVersion = 38
+        ),
         integer(
             ID_RECOMMEND_VIDEO_MIN_DURATION,
             FeaturePreferences.RECOMMEND_VIDEO_MIN_DURATION_SECONDS,
@@ -839,7 +860,7 @@ internal object SettingsCatalog {
     val byStorageKey: Map<String, SettingSpec> = specs.associateBy(SettingSpec::storageKey)
 
     init {
-        check(specs.size == 190) { "Expected 190 catalog settings, found ${specs.size}" }
+        check(specs.size == 193) { "Expected 193 catalog settings, found ${specs.size}" }
         check(byId.size == specs.size) { "Duplicate logical setting id" }
         check(specs.map(SettingSpec::storageKey).distinct().size == specs.size) {
             "Duplicate settings storage key"

@@ -229,7 +229,11 @@ internal object ReleaseHighlightsCatalog {
             R.string.highlights_story_action_icons,
             HighlightDestination("story.action.like.hidden",
                 alsoCovers = listOf("comment", "coin", "favorite", "share", "danmaku_toggle")
-                    .map { "story.action.$it.hidden" }.toSet()))
+                    .map { "story.action.$it.hidden" }.toSet())),
+        ReleaseHighlight("host-bottom-bar-fx", HighlightKind.NEW,
+            R.string.host_bottom_bar_liquid_glass_tip,
+            HighlightDestination("host.bottom_bar.liquid_glass.enabled",
+                alsoCovers = setOf("host.bottom_bar.streaming_light.enabled", "host.bottom_bar.touch_glow.enabled")))
     )))
     val currentRevision: Int get() = batches.maxOf { it.revision }
     val destinations get() = batches.sortedByDescending { it.revision }.flatMap { it.entries }
