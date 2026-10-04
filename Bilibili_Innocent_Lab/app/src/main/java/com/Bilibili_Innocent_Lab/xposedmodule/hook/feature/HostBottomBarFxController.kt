@@ -65,9 +65,10 @@ internal data class HostBottomBarFxConfig(
  *
  * 100% 像素级对齐模块原生 [com.Bilibili_Innocent_Lab.xposedmodule.ui.activity.ModernNavigationBar]：
  * 1. 材质：直接应用 [ModernMaterialPolicy] 的 Liquid Glass 规范（浮动底栏 FLOATING 浅色 112/深色 120 雾度，菲涅尔高光上 140/下 32；
- *    指示滑块 SELECTED_ITEM 浅色 210/深色 218 晶体透镜，菲涅尔高光上 60/下 12；0.65dp 亚像素超细边缘描边）。
- * 2. 性能：彻底剔除 canvas.clipPath() 和主线程树递归，通过 RenderNode 硬件加速属性 (translationX, scaleX, scaleY)
- *    驱动大胶囊滑块与 2D 弹性拖拽，满血 120 FPS 零掉帧。
+ *    指示滑块 SELECTED_ITEM 浅色 210/深色 218 晶体透镜，菲涅尔高光上 60/下 12；0.65dp 亚像素超细边缘描边），
+ *    并叠加 [HostBottomBarBackdrop] 的实时透镜采样：底栏下方的内容被模糊/折射后从胶囊透出。
+ * 2. 性能：材质采样全在后台线程（UI 线程只有一次 Picture 录制，28ms 节流 + 后台单飞），动画只走 RenderNode 属性；
+ *    宿主专用的清理/对齐改成按需触发并合并到一帧一次，逐帧路径只剩 O(items) 空判与对齐（不再每帧全树递归）。
  * 3. 几何与对齐：BAR_HEIGHT_DP = 64dp, INSET = 4dp, slotWidth 分析对齐，首帧冷启动绝对居中，杜绝任何位移偏离。
  * 4. 物理反馈：460ms 阻尼简谐物理弹簧 (decay = 15.6, freq = 12.51559)；按压呼吸形变 (X +5.5%, Y +7.0%)；
  *    拖拽滑块 (Scrub) 与 2D 上拉弹性阻尼回弹 (MAX_TRAVEL = 4dp)。
@@ -108,6 +109,7 @@ internal object HostBottomBarFxController {
         val inset = ModernNavigationMotion.INSET_DP * density
 
         // 2. 悬浮胶囊几何形态与 Liquid Glass 外壳背景
+        val backdrop = if (config.liquidGlass) HostBottomBarBackdrop(density) else null
         if (config.liquidGlass) {
             val lp = tabHost.layoutParams
             if (lp != null) {
@@ -133,33 +135,46 @@ internal object HostBottomBarFxController {
                 }
             }
             tabHost.clipToOutline = true
-            tabHost.elevation = 6f * density
+            // 模块胶囊没有 elevation：与内容分层只靠 0.65dp 菲涅尔描边，投影会从半透明玻璃下透出灰边。
+            tabHost.elevation = 0f
 
-            // 应用模块浮动底栏原版 Liquid Glass 材质
+            // 应用模块浮动底栏原版 Liquid Glass 材质：常量色罩 + 实时透镜采样（模糊/折射底下的内容）
             tabHost.background = HostLiquidSurfaceDrawable(
                 color = palette.surface,
                 radius = barHeight / 2f,
                 density = density,
-                style = ModernMaterialPolicy.surface(SurfaceRole.FLOATING, isDark)
+                style = ModernMaterialPolicy.surface(SurfaceRole.FLOATING, isDark),
+                backdrop = backdrop
             )
         }
 
         val insetH = inset.roundToInt()
 
-        // 3. 递归清除宿主分割线、背景图与按压深色背景，并完美对齐文字与图标居中
-        fun applyBarSanitizationAndAlignment() {
+        // 3. 清除宿主分割线/背景、对齐内容：宿主会在按压、切页、重建 tab 时把官方背景重新挂回来，
+        //    所以保留整树清理，但改成"按需触发 + 合并到一帧一次"。逐帧路径只剩 pre-draw 里的
+        //    O(items) 空判与对齐（见 HostBottomBarDockLayer.preDrawListener），不再每帧全树递归。
+        var sanitizePosted = false
+        val sanitizeRunnable = Runnable {
+            sanitizePosted = false
             stripAllHostArtifacts(tabHost, isRoot = true)
             alignTabContent(tabHost, container, density, insetH)
+            // 冷启动时底栏还没有尺寸、找不到采样源；布局稳定后每次清理都顺手补一次定位（命中即 O(1)）。
+            backdrop?.revalidate()
         }
-
-        applyBarSanitizationAndAlignment()
-
-        tabHost.addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ ->
-            applyBarSanitizationAndAlignment()
+        val requestSanitization = {
+            if (!sanitizePosted) {
+                sanitizePosted = true
+                tabHost.postOnAnimation(sanitizeRunnable)
+            }
         }
+        requestSanitization()
 
-        // 4. 插入专属硬件加速指示滑块与柔光图层 (放在最底层)
-        val dockLayer = HostBottomBarDockLayer(context, config, tabHost, container, palette, isDark)
+        tabHost.addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ -> requestSanitization() }
+
+        // 4. 插入专属硬件加速指示滑块、柔光图层与实时透镜 (放在最底层)
+        val dockLayer = HostBottomBarDockLayer(
+            context, config, tabHost, container, palette, isDark, backdrop, requestSanitization
+        )
         tabHost.addView(
             dockLayer,
             0,
@@ -175,12 +190,10 @@ internal object HostBottomBarFxController {
         }
 
         container?.let { c ->
-            c.addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ ->
-                applyBarSanitizationAndAlignment()
-            }
+            c.addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ -> requestSanitization() }
 
             fun hookTabTouch() {
-                applyBarSanitizationAndAlignment()
+                requestSanitization()
                 for (i in 0 until c.childCount) {
                     val tabItem = c.getChildAt(i)
                     tabItem.background = null
@@ -195,10 +208,39 @@ internal object HostBottomBarFxController {
             }
             hookTabTouch()
             c.setOnHierarchyChangeListener(object : ViewGroup.OnHierarchyChangeListener {
-                override fun onChildViewAdded(parent: View?, child: View?) { hookTabTouch() }
-                override fun onChildViewRemoved(parent: View?, child: View?) { hookTabTouch() }
+                override fun onChildViewAdded(parent: View?, child: View?) {
+                    // 宿主重建 tab 时内容层可能整体被替换：重找实时透镜的采样源。
+                    backdrop?.revalidate()
+                    hookTabTouch()
+                }
+
+                override fun onChildViewRemoved(parent: View?, child: View?) {
+                    backdrop?.revalidate()
+                    hookTabTouch()
+                }
             })
         }
+    }
+
+    /**
+     * id → 资源名缓存。
+     *
+     * `getResourceEntryName` 走 AssetManager 的资源表（加锁、每次返回新建 String），而同一 id 在进程内
+     * 的名字恒定。宿主底栏的逐帧路径曾经每个节点查一次，是快速切页掉帧的来源之一；清理与对齐现在都
+     * 按需触发，这里再做一层缓存，让偶发的整树扫描也不产生这批查询。
+     */
+    private val resourceNames = HashMap<Int, String>()
+
+    private fun resourceName(view: View, id: Int): String {
+        if (id == 0 || id == View.NO_ID) return ""
+        resourceNames[id]?.let { return it }
+        val name = try {
+            view.resources.getResourceEntryName(id)
+        } catch (_: Exception) {
+            ""
+        }
+        resourceNames[id] = name
+        return name
     }
 
     /**
@@ -261,9 +303,9 @@ internal object HostBottomBarFxController {
         // 3. 遍历每一个 Tab 项，确保 tab 高度铺满，且内部 normal_ll (包含图标与文字) 整体垂直居中
         for (i in 0 until container.childCount) {
             val tab = container.getChildAt(i) as? ViewGroup ?: continue
-            tab.background = null
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) tab.foreground = null
-            (tab as? FrameLayout)?.foreground = null
+            if (tab.background != null) tab.background = null
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && tab.foreground != null) tab.foreground = null
+            if (tab is FrameLayout && tab.foreground != null) tab.foreground = null
             if (tab.isPressed) tab.isPressed = false
             tab.setPadding(0, 0, 0, 0)
 
@@ -280,9 +322,7 @@ internal object HostBottomBarFxController {
             for (j in 0 until tab.childCount) {
                 val child = tab.getChildAt(j)
                 val cId = child.id
-                val name = if (cId != 0 && cId != View.NO_ID) {
-                    try { child.resources.getResourceEntryName(cId) } catch (_: Exception) { "" }
-                } else ""
+                val name = resourceName(child, cId)
 
                 if (name.contains("normal") || child is ConstraintLayout) {
                     // normal_ll 必须是 WRAP_CONTENT，由内容自然决定高度
@@ -357,9 +397,7 @@ internal object HostBottomBarFxController {
         }
 
         val id = view.id
-        val resName = if (id != 0 && id != View.NO_ID) {
-            try { view.resources.getResourceEntryName(id) } catch (_: Exception) { "" }
-        } else ""
+        val resName = resourceName(view, id)
 
         // 彻底移除官方分割线
         if (resName.contains("divider") || (view !is ViewGroup && (view.height in 1..4 || view.layoutParams?.height in 1..4))) {
@@ -390,6 +428,7 @@ internal object HostBottomBarFxController {
  * - [selectionView]: 独立硬件加速子 View，承载 [SurfaceRole.SELECTED_ITEM] 晶体透镜，
  *   动画全程只更新 GPU RenderNode 的 translationX / scaleX / scaleY，零 CPU 重绘。
  * - [glowView]: 独立子 View，承载 [AdaptiveGlowPolicy] 与 [TouchGlowRenderer]，自适应触控柔光。
+ * - [backdrop]: 外壳胶囊的实时透镜采样源装配（模块柔光引擎软件路径的宿主等价物）。
  */
 @SuppressLint("ViewConstructor")
 internal class HostBottomBarDockLayer(
@@ -398,7 +437,9 @@ internal class HostBottomBarDockLayer(
     private val tabHost: ViewGroup,
     private val container: ViewGroup?,
     private val palette: MonetColors,
-    private val isDark: Boolean
+    private val isDark: Boolean,
+    private val backdrop: HostBottomBarBackdrop?,
+    private val requestSanitization: () -> Unit
 ) : FrameLayout(context) {
 
     private val density = resources.displayMetrics.density
@@ -435,6 +476,7 @@ internal class HostBottomBarDockLayer(
     private var pressAnimator: ValueAnimator? = null
     private var reboundAnimator: ValueAnimator? = null
     private var indicatorSettling = false
+    private var disposed = false
 
     // 4. 2D 弹性手势与滑块拖动 (Scrub)
     private val gesture = ModernNavigationGesture()
@@ -463,8 +505,10 @@ internal class HostBottomBarDockLayer(
     private val slotWidth: Float get() = if (count > 0) contentWidth / count else 0f
 
     private val preDrawListener = ViewTreeObserver.OnPreDrawListener {
-        // 确保任何时刻宿主动态赋予的官方背景、分割线与按压变暗被彻底消除，杜绝外露缝隙
-        HostBottomBarFxController.stripAllHostArtifacts(tabHost, isRoot = true)
+        if (disposed) return@OnPreDrawListener true
+        // 宿主会在按压/切页/重建 tab 时重新挂上官方背景并重新布局：这里逐帧只做 O(items) 空判，
+        // 命中才请求一次合并后的整树清理；不再每帧全树递归 + 资源名解析（快速切换掉帧的来源）。
+        if (hostReappliedArtifacts()) requestSanitization()
         HostBottomBarFxController.alignTabContent(tabHost, container, density, inset.roundToInt())
         // 同步外部切页
         val detected = detectSelectedTab()
@@ -473,6 +517,16 @@ internal class HostBottomBarDockLayer(
             reboundTo(detected, scrubbed = false)
         }
         true
+    }
+
+    /** 直属于底栏的 tab 项是否被宿主重新挂上了官方背景/按压态（不带资源查询，O(items)）。 */
+    private fun hostReappliedArtifacts(): Boolean {
+        val c = container ?: return false
+        for (i in 0 until c.childCount) {
+            val tab = c.getChildAt(i)
+            if (tab.background != null || tab.foreground != null || tab.isPressed) return true
+        }
+        return false
     }
 
     init {
@@ -521,23 +575,39 @@ internal class HostBottomBarDockLayer(
      * 完全通过 RenderNode 属性 (translationX, scaleX, scaleY) 驱动，不触发任何 CPU 绘制。
      */
     private fun applyVisuals() {
-        if (width <= 0 || height <= 0) return
+        if (disposed || width <= 0 || height <= 0) return
+        var moved = false
 
         // 1. 底栏 2D 弹性拖拽形变
         val travel = ModernNavigationMotion.travelClampScale(offsetX, offsetY, maximumTravel)
         val x = offsetX * travel
         val y = offsetY * travel
-        if (tabHost.translationX != x) tabHost.translationX = x
-        if (tabHost.translationY != y) tabHost.translationY = y
+        if (tabHost.translationX != x) {
+            tabHost.translationX = x
+            moved = true
+        }
+        if (tabHost.translationY != y) {
+            tabHost.translationY = y
+            moved = true
+        }
 
         // 2. 指示晶体透镜 RenderNode 位移与呼吸形变 (0 延迟对齐)
         val lensX = ModernNavigationMotion.physicalSlot(displayedPosition, count, rtl) * slotWidth
         val scaleX = ModernNavigationMotion.lensScaleX(press)
         val scaleY = ModernNavigationMotion.lensScaleY(press)
 
-        if (selectionView.translationX != lensX) selectionView.translationX = lensX
-        if (selectionView.scaleX != scaleX) selectionView.scaleX = scaleX
-        if (selectionView.scaleY != scaleY) selectionView.scaleY = scaleY
+        if (selectionView.translationX != lensX) {
+            selectionView.translationX = lensX
+            moved = true
+        }
+        if (selectionView.scaleX != scaleX) {
+            selectionView.scaleX = scaleX
+            moved = true
+        }
+        if (selectionView.scaleY != scaleY) {
+            selectionView.scaleY = scaleY
+            moved = true
+        }
 
         // 3. 柔光动效自适应位置
         if (config.touchGlow) {
@@ -553,11 +623,14 @@ internal class HostBottomBarDockLayer(
                 viewShiftY = y - initialOffsetY
             )
         }
+
+        // 4. 实时透镜：只有真的动了才通知重采样（对齐模块 moved 门控的 onVisualMovement）。
+        if (moved) backdrop?.onVisualMovement()
     }
 
     /** 统一触控手势处理 (完全对齐 ModernNavigationBar) */
     fun handleTouch(event: MotionEvent, tabIndex: Int = -1): Boolean {
-        if (!isEnabled || width <= 0) return false
+        if (disposed || !isEnabled || width <= 0) return false
         if (event.pointerCount > 1 || event.actionMasked == MotionEvent.ACTION_POINTER_DOWN) {
             ignorePointers = true
             cancelTouch()
@@ -655,7 +728,7 @@ internal class HostBottomBarDockLayer(
                 pointerId = MotionEvent.INVALID_POINTER_ID
                 parent?.requestDisallowInterceptTouchEvent(false)
                 animatePress(0f)
-                reboundTo(target, scrubbed)
+                reboundTo(target, scrubbed, userInitiated = true)
                 return true
             }
             MotionEvent.ACTION_CANCEL -> {
@@ -682,6 +755,15 @@ internal class HostBottomBarDockLayer(
         pressGeneration++
         pressAnimator?.cancel()
         pressAnimator = null
+        if (disposed) return
+        // 系统关闭动画 / 未附着：直接落值，不建 ValueAnimator（对齐模块 ModernNavigationBar.animatePress）。
+        if (!isAttachedToWindow || !ValueAnimator.areAnimatorsEnabled()) {
+            press = target
+            pressVelocity = 0f
+            applyVisuals()
+            after?.invoke()
+            return
+        }
 
         val token = pressGeneration
         val spring = ModernNavigationSpring(press, target, pressVelocity)
@@ -711,29 +793,44 @@ internal class HostBottomBarDockLayer(
     }
 
     /** 2D 弹性回弹与指示透镜物理弹簧到位 */
-    private fun reboundTo(target: Int?, scrubbed: Boolean) {
+    private fun reboundTo(target: Int?, scrubbed: Boolean, userInitiated: Boolean = false) {
         stopRebound()
+        if (disposed) return
         val token = ++reboundGeneration
-        val springX = ModernNavigationSpring(offsetX, 0f, offsetVelocityX)
-        val springY = ModernNavigationSpring(offsetY, 0f, offsetVelocityY)
 
         val startPos = displayedPosition
         val endPos = (target?.toFloat() ?: pagerPosition).coerceIn(0f, (count - 1).toFloat())
         val isClick = target != null && !scrubbed && abs(endPos - startPos) > 0.005f
         indicatorSettling = true
 
-        val indicatorSpring = ModernNavigationSpring(startPos, endPos)
-
         if (target != null) {
             clickTab(target)
             selectedIndex = target
             pagerPosition = target.toFloat()
-            if (isClick && !touchActive) {
+            // 按压闪光只跟随用户点击：外部同步切页（宿主自己翻页/双次点击同页）不播 0.8→0 双段动画，
+            // 快速切换时少一条 920ms 的动画链。
+            if (isClick && userInitiated) {
                 glowX = inset + (target + 0.5f) * slotWidth
                 glowY = height / 2f
                 animatePress(0.8f) { animatePress(0f) }
             }
         }
+
+        // 系统关闭动画 / 未附着：直接落值（对齐模块 ModernNavigationBar.reboundTo）。
+        if (!isAttachedToWindow || !ValueAnimator.areAnimatorsEnabled()) {
+            offsetX = 0f
+            offsetY = 0f
+            offsetVelocityX = 0f
+            offsetVelocityY = 0f
+            displayedPosition = endPos
+            indicatorSettling = false
+            applyVisuals()
+            return
+        }
+
+        val springX = ModernNavigationSpring(offsetX, 0f, offsetVelocityX)
+        val springY = ModernNavigationSpring(offsetY, 0f, offsetVelocityY)
+        val indicatorSpring = ModernNavigationSpring(startPos, endPos)
 
         reboundAnimator = ValueAnimator.ofFloat(0f, 1f).apply {
             duration = ModernNavigationMotion.SPRING_DURATION_MS
@@ -798,16 +895,54 @@ internal class HostBottomBarDockLayer(
         return selectedIndex
     }
 
+    /** 交互态归零（对齐模块 ModernNavigationBar.resetInteraction）：尺寸变化与视图分离时必须回到静止姿态。 */
+    private fun resetInteraction() {
+        gesture.cancel()
+        touchActive = false
+        ignorePointers = false
+        pointerId = MotionEvent.INVALID_POINTER_ID
+        pressGeneration++
+        pressAnimator?.cancel()
+        pressAnimator = null
+        stopRebound()
+        press = 0f
+        pressVelocity = 0f
+        offsetX = 0f
+        offsetY = 0f
+        offsetVelocityX = 0f
+        offsetVelocityY = 0f
+        displayedPosition = pagerPosition
+        parent?.requestDisallowInterceptTouchEvent(false)
+        applyVisuals()
+        // press 已归零 => 本帧起光晕不可见，此刻 reset 不构成可见跳变。
+        glowView.resetGestureState()
+    }
+
+    fun dispose() {
+        if (disposed) return
+        resetInteraction()
+        disposed = true
+        backdrop?.close()
+    }
+
+    override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
+        super.onSizeChanged(w, h, oldw, oldh)
+        if (w != oldw || h != oldh) {
+            resetInteraction()
+            backdrop?.revalidate()
+        }
+    }
+
     override fun onAttachedToWindow() {
         super.onAttachedToWindow()
+        if (disposed) return
         container?.viewTreeObserver?.addOnPreDrawListener(preDrawListener)
+        backdrop?.attach(tabHost)
     }
 
     override fun onDetachedFromWindow() {
         container?.viewTreeObserver?.removeOnPreDrawListener(preDrawListener)
-        pressAnimator?.cancel()
-        reboundAnimator?.cancel()
-        glowView.resetGestureState()
+        dispose()
         super.onDetachedFromWindow()
     }
 }
@@ -911,15 +1046,17 @@ internal class HostGlowView(
  *
  * 严格按照 [ModernSurfaceDrawable] 架构实现，包含：
  * 1. [ModernMaterialPolicy] 级精确半透明色阶 (SurfaceRole.FLOATING / SELECTED_ITEM)。
- * 2. 0.65dp 亚像素菲涅尔微光描边，上缘高光下缘沉入底色。
- * 3. 硬件加速 Outline 支持。
+ * 2. 实时透镜采样：底栏下方的内容经 [HostBottomBarBackdrop] 模糊/折射后叠在色罩之下（`style.live`）。
+ * 3. 0.65dp 亚像素菲涅尔微光描边，上缘高光下缘沉入底色。
+ * 4. 硬件加速 Outline 支持。
  */
 internal class HostLiquidSurfaceDrawable(
     private val color: Int,
     private val radius: Float,
     private val density: Float,
     private val style: ModernSurfaceStyle,
-    private val tintOnly: Boolean = false
+    private val tintOnly: Boolean = false,
+    private val backdrop: HostBottomBarBackdrop? = null
 ) : Drawable() {
 
     private val rect = RectF()
@@ -960,6 +1097,15 @@ internal class HostLiquidSurfaceDrawable(
 
         val tintAlpha = style.tintAlpha
         val overlayAlpha = tintAlpha * frameAlpha / 255
+        // 与模块 ModernSurfaceDrawable.draw 同一套 alpha 数学：实时透镜在下、色罩在上。
+        // 宿主没有静态磨砂的 revealFraction 淡入，色罩恒用 overlayAlpha —— 采样未就绪时就是改造前的
+        // 半透明色罩观感；若照抄模块的 "sampled ? overlayAlpha : frameAlpha"，找不到采样源时
+        // 会退回不透明实心块（那是模块首帧的过渡态，不是稳态）。
+        val sampleAlpha = FrostedMotionSurfaceAlpha.sampleAlpha(frameAlpha, overlayAlpha)
+        if (!tintOnly && style.live) {
+            val view = callback as? View
+            if (view != null) backdrop?.draw(canvas, rect, drawRadius, view, sampleAlpha)
+        }
         fill.color = ColorUtils.setAlphaComponent(color, overlayAlpha)
         canvas.drawRoundRect(rect, drawRadius, drawRadius, fill)
 
