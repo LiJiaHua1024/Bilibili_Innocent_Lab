@@ -6,11 +6,10 @@ import java.util.concurrent.atomic.AtomicBoolean
 
 /**
  * 宿主底栏视觉增强安装器。
- * 负责挂钩 TabHost 绑定点，向哔哩哔哩底栏注入 Liquid Glass / 流光 / 柔光效果。
+ * 负责挂钩 TabHost 绑定点，向哔哩哔哩底栏注入 Liquid Glass 外壳与触控柔光。
  */
 internal class HostBottomBarFxFeatureInstaller(
     private val liquidGlass: Boolean,
-    private val streamingLight: Boolean,
     private val touchGlow: Boolean,
     private val points: VersionAdapter.BottomBarPoints?
 ) : FeatureInstaller {
@@ -21,7 +20,7 @@ internal class HostBottomBarFxFeatureInstaller(
         if (environment.processName != TARGET_PACKAGE) {
             return FeatureInstallResult.Skipped("non-main-process")
         }
-        if (!liquidGlass && !streamingLight && !touchGlow) {
+        if (!liquidGlass && !touchGlow) {
             return FeatureInstallResult.Skipped("disabled")
         }
         val adapted = points ?: run {
@@ -33,7 +32,6 @@ internal class HostBottomBarFxFeatureInstaller(
         val firstHit = AtomicBoolean(false)
         val config = HostBottomBarFxConfig(
             liquidGlass = liquidGlass,
-            streamingLight = streamingLight,
             touchGlow = touchGlow
         )
 
@@ -46,7 +44,7 @@ internal class HostBottomBarFxFeatureInstaller(
                         environment.reportRuntimeEvidence(ID, FeatureRuntimeStage.APPLIED)
                         environment.logInfo(
                             "host_bottom_bar_fx_hit",
-                            "[BIL] 宿主底栏视觉增强生效(liquidGlass=$liquidGlass, streamingLight=$streamingLight, touchGlow=$touchGlow)"
+                            "[BIL] 宿主底栏视觉增强生效(liquidGlass=$liquidGlass, touchGlow=$touchGlow)"
                         )
                     }
                 }
@@ -54,7 +52,7 @@ internal class HostBottomBarFxFeatureInstaller(
             environment.reportStatus(CHANNEL_STATUS, "success:active")
             environment.logInfo(
                 "host_bottom_bar_fx_ok",
-                "[BIL] 宿主底栏视觉增强安装成功(liquidGlass=$liquidGlass, streamingLight=$streamingLight, touchGlow=$touchGlow)"
+                "[BIL] 宿主底栏视觉增强安装成功(liquidGlass=$liquidGlass, touchGlow=$touchGlow)"
             )
             FeatureInstallResult.Installed(1)
         }.getOrElse { throwable ->
