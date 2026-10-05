@@ -78,9 +78,8 @@ internal object HostTopFusionPolicy {
  * 4. **曲线两端都收敛**：满强度保持到状态栏下沿，之后按 smoothstep 减到 0，所以状态栏下沿
  *    与底边都不会出现分界线。
  *
- * 模糊本身来自 [HostBottomBarBackdrop] 的实时透镜采样（与顶栏胶囊共用同一次内容层录制），
- * 渐隐曲线则在后台线程按行烘进采样纹理（见 [LiveSampleProfile]），UI 线程只画一张
- * BitmapShader 矩形加一道同曲线的色罩。
+ * 模糊本身来自 [HostBottomBarBackdrop]：API 31+ 在同帧内容节点上完成模糊与渐隐，
+ * 与顶栏胶囊共用内容录制；旧系统保留后台软件采样。色罩始终使用同一条渐隐曲线。
  */
 @SuppressLint("ViewConstructor")
 internal class HostTopStatusFusionView(
@@ -147,6 +146,7 @@ internal class HostTopStatusFusionView(
         val end = HostTopFusionPolicy.fadeEndFraction(contentRestTop, density, statusBarInset, bandHeight)
         if (end == profile.fadeEnd) return
         profile = buildProfile(end)
+        scrim = null
         invalidate()
     }
 

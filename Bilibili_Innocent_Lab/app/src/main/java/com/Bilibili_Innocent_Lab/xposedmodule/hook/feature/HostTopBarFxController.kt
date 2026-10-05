@@ -95,7 +95,7 @@ internal object HostTopBarFxController {
         val marginV = (MARGIN_V_DP * density).roundToInt()
 
         // 1. 悬浮胶囊几何形态与 Liquid Glass 外壳背景
-        val backdrop = if (config.liquidGlass) HostBottomBarBackdrop(density) else null
+        val backdrop = if (config.liquidGlass) HostBottomBarBackdrop(density, preferGpu = true) else null
         var lastIsDark = isDark
 
         fun updateSurfaceDrawable(force: Boolean = false) {
