@@ -258,6 +258,30 @@ class MainActivity : SkinnedActivity() {
         if (uri != null) importLiquidBackground(uri)
     }
 
+    internal val liquidBackgroundPhotoPicker = registerForActivityResult(
+        ActivityResultContracts.PickVisualMedia()
+    ) { uri ->
+        uri?.let(::importLiquidBackground)
+    }
+
+    internal val liquidBackgroundGalleryPicker = registerForActivityResult(
+        ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        val uri = result.data?.data
+        if (result.resultCode == RESULT_OK && uri != null) importLiquidBackground(uri)
+    }
+
+    internal val liquidBackgroundGalleryPermission = registerForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        if (granted) {
+            launchLiquidBackgroundGallery(afterGrant = true)
+        } else {
+            toast(getString(R.string.liquid_background_gallery_permission_denied))
+            launchLiquidBackgroundDocumentPicker()
+        }
+    }
+
     private var adskipEnabled = true
     private var gamecardAdEnabled = true
     private var hideVideoDetailAppPromotion = false

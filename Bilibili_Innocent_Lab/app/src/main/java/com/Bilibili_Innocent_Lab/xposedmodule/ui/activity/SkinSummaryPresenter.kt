@@ -41,6 +41,7 @@ internal fun MainActivity.currentLiquidBackgroundSummary(): String {
 internal fun MainActivity.liquidBackgroundFailureText(reason: LiquidBackgroundImportFailure): Int =
     when (reason) {
         LiquidBackgroundImportFailure.READ_FAILED -> R.string.liquid_background_read_failed
+        LiquidBackgroundImportFailure.ACCESS_DENIED -> R.string.liquid_background_access_denied
         LiquidBackgroundImportFailure.FILE_TOO_LARGE -> R.string.liquid_background_file_too_large
         LiquidBackgroundImportFailure.UNSUPPORTED_IMAGE -> R.string.liquid_background_unsupported
         LiquidBackgroundImportFailure.DIMENSIONS_TOO_LARGE ->

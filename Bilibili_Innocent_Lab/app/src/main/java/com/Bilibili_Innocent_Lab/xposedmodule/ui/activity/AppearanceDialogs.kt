@@ -5,6 +5,9 @@ package com.Bilibili_Innocent_Lab.xposedmodule.ui.activity
 // MainActivity 的**嵌套**类型：扩展函数里嵌套 classifier 不在作用域内，必须显式导入。
 import com.Bilibili_Innocent_Lab.xposedmodule.ui.activity.MainActivity.AppLanguage
 import android.app.Dialog
+import android.content.ActivityNotFoundException
+import android.content.pm.PackageManager
+import android.os.Build
 import android.content.res.ColorStateList
 import android.graphics.Color
 import android.graphics.Typeface
@@ -13,8 +16,11 @@ import android.graphics.drawable.RippleDrawable
 import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
+import androidx.activity.result.PickVisualMediaRequest
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.annotation.StringRes
 import androidx.appcompat.app.AppCompatDelegate
+import androidx.core.content.ContextCompat
 import androidx.core.graphics.ColorUtils
 import androidx.core.os.LocaleListCompat
 import androidx.core.view.setPadding
@@ -22,6 +28,7 @@ import com.Bilibili_Innocent_Lab.xposedmodule.R
 import com.Bilibili_Innocent_Lab.xposedmodule.runtime.InjectedUiLocale
 import com.Bilibili_Innocent_Lab.xposedmodule.ui.skin.background.LiquidBackgroundConfig
 import com.Bilibili_Innocent_Lab.xposedmodule.ui.skin.background.LiquidBackgroundMode
+import com.Bilibili_Innocent_Lab.xposedmodule.ui.skin.background.LiquidBackgroundPickerPolicy
 import com.Bilibili_Innocent_Lab.xposedmodule.ui.skin.background.LiquidBackgroundStore
 import com.Bilibili_Innocent_Lab.xposedmodule.ui.skin.liquid.LiquidRealtimeCaptureStore
 import com.highcapable.betterandroid.ui.extension.view.textColor
@@ -43,15 +50,68 @@ import android.widget.TextView as NativeTextView
  *
  * 只搬函数。**可变状态与生命周期注册必须留在 Activity 里**：
  *
- * - `liquidBackgroundPicker` 是 `registerForActivityResult(...)`，它在 Activity 构造期
- *   就要向宿主注册，搬成顶层属性会直接失去注册；
+ * - `liquidBackgroundPicker` / `liquidBackgroundPhotoPicker` / `liquidBackgroundGalleryPicker` /
+ *   `liquidBackgroundGalleryPermission` 都是 `registerForActivityResult(...)`，它们在 Activity
+ *   构造期就要向宿主注册，搬成顶层属性会直接失去注册；
  * - `liquidBackgroundDialog` 这类 `var` 一旦变成文件级顶层属性，就从"每个 Activity 一份"
  *   变成**进程级单例**，跨 Activity 重建仍然残留——这是行为改变，不是重构。
  *
  * 所以它们留在 MainActivity 上，只放宽为 internal 供本文件读写。
  */
 
-/** 实验性功能中的自定义背景配置；选择器只授权单个 image URI，不申请媒体库权限。 */
+/**
+ * 选图顺序：系统照片选择器 → 相册（按系统版本申请读图权限）→ 文件选择器。
+ * 照片选择器排第一，因为它不需要任何权限，呈现上也是相册。
+ */
+internal fun MainActivity.launchLiquidBackgroundPicker() {
+    if (ActivityResultContracts.PickVisualMedia.isPhotoPickerAvailable(this) &&
+        tryLaunchPicker {
+            liquidBackgroundPhotoPicker.launch(
+                PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
+            )
+        }
+    ) return
+    launchLiquidBackgroundGallery(afterGrant = false)
+}
+
+/**
+ * 不用 `resolveActivity` 预检相册：Android 11+ 的包可见性可能把它藏起来，
+ * 以 launch 抛出的 [ActivityNotFoundException] 为准。
+ *
+ * Android 14 上刻意不声明 READ_MEDIA_VISUAL_USER_SELECTED：用户只选了部分照片时，
+ * 系统给本次会话的是临时 READ_MEDIA_IMAGES，回调同样报"已授予"，不需要单独的部分授权分支。
+ * 权限被永久拒绝时系统会立刻返回拒绝，这里直接回退到文件选择器，不跳转设置页。
+ */
+internal fun MainActivity.launchLiquidBackgroundGallery(afterGrant: Boolean) {
+    val permission = LiquidBackgroundPickerPolicy.galleryPermission(Build.VERSION.SDK_INT)
+    val granted = ContextCompat.checkSelfPermission(this, permission) == PackageManager.PERMISSION_GRANTED
+    if (granted || afterGrant) {
+        if (tryLaunchPicker { liquidBackgroundGalleryPicker.launch(LiquidBackgroundPickerPolicy.galleryIntent()) }) return
+        launchLiquidBackgroundDocumentPicker()
+        return
+    }
+    if (!tryLaunchPicker { liquidBackgroundGalleryPermission.launch(permission) }) {
+        launchLiquidBackgroundDocumentPicker()
+    }
+}
+
+internal fun MainActivity.launchLiquidBackgroundDocumentPicker() {
+    if (!tryLaunchPicker { liquidBackgroundPicker.launch(arrayOf(LiquidBackgroundPickerPolicy.MIME_TYPE)) }) {
+        toast(getString(R.string.liquid_background_picker_unavailable))
+    }
+}
+
+/** 只吞"没有应用能处理 / 被系统拒绝启动"两类；其余异常照常抛出。 */
+private inline fun tryLaunchPicker(launch: () -> Unit): Boolean = try {
+    launch()
+    true
+} catch (_: ActivityNotFoundException) {
+    false
+} catch (_: SecurityException) {
+    false
+}
+
+/** 实验性功能中的自定义背景配置；读图权限只在相册兜底时才申请。 */
 internal fun MainActivity.showLiquidBackgroundDialog(anchor: View? = null) {
     val activity = this
     if (liquidBackgroundImportInProgress) return
@@ -121,7 +181,7 @@ internal fun MainActivity.showLiquidBackgroundDialog(anchor: View? = null) {
             highlight = false
         ) {
             if (!liquidBackgroundImportInProgress) {
-                liquidBackgroundPicker.launch(arrayOf("image/*"))
+                launchLiquidBackgroundPicker()
             }
         },
         NativeLinearLayout.LayoutParams(

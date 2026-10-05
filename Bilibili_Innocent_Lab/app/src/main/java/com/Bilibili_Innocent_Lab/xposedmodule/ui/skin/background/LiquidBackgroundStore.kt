@@ -26,6 +26,7 @@ internal sealed interface LiquidBackgroundImportResult {
 
 internal enum class LiquidBackgroundImportFailure {
     READ_FAILED,
+    ACCESS_DENIED,
     FILE_TOO_LARGE,
     UNSUPPORTED_IMAGE,
     DIMENSIONS_TOO_LARGE,
@@ -91,6 +92,9 @@ internal object LiquidBackgroundStore {
                     CopyResult.TOO_LARGE -> return@synchronized LiquidBackgroundImportResult.Failure(
                         LiquidBackgroundImportFailure.FILE_TOO_LARGE
                     )
+                    CopyResult.ACCESS_DENIED -> return@synchronized LiquidBackgroundImportResult.Failure(
+                        LiquidBackgroundImportFailure.ACCESS_DENIED
+                    )
                     CopyResult.FAILED -> return@synchronized LiquidBackgroundImportResult.Failure(
                         LiquidBackgroundImportFailure.READ_FAILED
                     )
@@ -146,7 +150,7 @@ internal object LiquidBackgroundStore {
                 cleanupUnreferencedAssets(appContext, assetId)
                 LiquidBackgroundImportResult.Success(config)
             } catch (_: SecurityException) {
-                LiquidBackgroundImportResult.Failure(LiquidBackgroundImportFailure.READ_FAILED)
+                LiquidBackgroundImportResult.Failure(LiquidBackgroundImportFailure.ACCESS_DENIED)
             } catch (_: OutOfMemoryError) {
                 LiquidBackgroundImportResult.Failure(LiquidBackgroundImportFailure.DIMENSIONS_TOO_LARGE)
             } catch (_: Throwable) {
@@ -223,17 +227,26 @@ internal object LiquidBackgroundStore {
         val failure: LiquidBackgroundImportFailure?
     )
 
-    private enum class CopyResult { SUCCESS, TOO_LARGE, FAILED }
+    private enum class CopyResult { SUCCESS, TOO_LARGE, ACCESS_DENIED, FAILED }
 
     private fun copyExternalInput(context: Context, uri: Uri, destination: File): CopyResult {
-        val declaredLength = runCatching {
+        val declaredLength = try {
             context.contentResolver.openAssetFileDescriptor(uri, "r")?.use { it.length }
-        }.getOrNull()
+        } catch (_: SecurityException) {
+            return CopyResult.ACCESS_DENIED
+        } catch (_: Exception) {
+            null
+        }
         if (declaredLength != null && declaredLength > LiquidBackgroundSizingPolicy.MAX_INPUT_BYTES) {
             return CopyResult.TOO_LARGE
         }
-        val input = runCatching { context.contentResolver.openInputStream(uri) }.getOrNull()
-            ?: return CopyResult.FAILED
+        val input = try {
+            context.contentResolver.openInputStream(uri)
+        } catch (_: SecurityException) {
+            return CopyResult.ACCESS_DENIED
+        } catch (_: Exception) {
+            null
+        } ?: return CopyResult.FAILED
         return runCatching {
             input.use { source ->
                 FileOutputStream(destination).use { output ->
@@ -252,7 +265,7 @@ internal object LiquidBackgroundStore {
                 }
             }
             if (destination.length() <= 0L) CopyResult.FAILED else CopyResult.SUCCESS
-        }.getOrDefault(CopyResult.FAILED)
+        }.getOrElse { if (it is SecurityException) CopyResult.ACCESS_DENIED else CopyResult.FAILED }
     }
 
     private fun decodeAndNormalize(file: File): NormalizeResult {

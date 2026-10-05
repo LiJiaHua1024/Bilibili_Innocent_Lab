@@ -50,6 +50,9 @@
     <uses-permission android:name="${applicationId}.permission.QUERY_HOST_RUNTIME_DIAGNOSTICS" />
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.VIBRATE" />
+    <!-- 仅供自定义背景的相册兜底使用：系统照片选择器不可用时才会申请 -->
+    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32" />
+    <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
 
     <application
         android:name=".application.DefaultApplication"
