@@ -55,7 +55,7 @@ class LiquidVisualTuningPolicyTest {
         val liquid = source("liquid/LiquidBackdropSource")
         val publish = liquid.after("fun markPublished()").before("fun discardUnpublished()")
         assertTrue(publish.contains("if (opticalBitmap !== bitmap) opticalBitmap.prepareToDraw()"))
-        val discard = liquid.after("fun discardUnpublished()").before("fun drawRootMasked(")
+        val discard = liquid.after("fun discardUnpublished()").before("fun drawSuppressionBackdropMasked(")
         assertTrue(discard.contains("check(!published && !isRealtime)"))
         assertTrue(discard.contains("if (opticalBitmap !== bitmap && !opticalBitmap.isRecycled) opticalBitmap.recycle()"))
         assertTrue(discard.contains("if (!bitmap.isRecycled) bitmap.recycle()"))
