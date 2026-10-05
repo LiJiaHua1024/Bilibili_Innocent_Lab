@@ -11,6 +11,13 @@ import org.junit.Test
 class HomeVerticalDetailFeatureInstallerTest {
 
     @Test
+    fun `layer status compares only the installed layers with the expected landings`() {
+        assertEquals("success", HomeVerticalDetailFeatureInstaller.layerStatus(5, 5))
+        assertEquals("partial:4/5", HomeVerticalDetailFeatureInstaller.layerStatus(4, 5))
+        assertEquals("success", HomeVerticalDetailFeatureInstaller.layerStatus(0, 0))
+    }
+
+    @Test
     fun `rewrites only a valid story route and preserves query`() {
         assertEquals(
             "bilibili://video/BV1xx411c7mD?from=feed#page",

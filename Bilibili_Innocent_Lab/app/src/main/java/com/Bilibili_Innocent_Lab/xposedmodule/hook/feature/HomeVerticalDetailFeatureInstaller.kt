@@ -44,12 +44,13 @@ internal class HomeVerticalDetailFeatureInstaller(
         }
         val playConfig = installPlayConfigStorySuppression(environment)
         val intentSanitizer = installIntentHandlerSanitizer(environment)
-        val installed = instrumentationCount + playConfig.installed + intentSanitizer.installed
+        val layered = playConfig.installed + intentSanitizer.installed
+        val installed = instrumentationCount + layered
         // 分母只算这个宿主上确实存在的落点：PlayConfig/KPlayConfig 类或 Intent 入口
         // 不存在的老宿主不算缺；存在却注册失败必须让 complete 掉成 false 并报 partial。
         val expected = playConfig.expected + intentSanitizer.expected
-        val complete = installed >= expected
-        val status = if (complete) "success" else "partial:$installed/$expected"
+        val complete = layered == expected
+        val status = layerStatus(layered, expected)
 
         environment.reportRuntimeEvidence(ID, FeatureRuntimeStage.ADAPTED)
         environment.reportStatus(CHANNEL_STATUS, status)
@@ -493,6 +494,10 @@ internal class HomeVerticalDetailFeatureInstaller(
 
     companion object {
         const val ID = "home_vertical_detail"
+
+        internal fun layerStatus(installed: Int, expected: Int): String =
+            if (installed == expected) "success" else "partial:$installed/$expected"
+
         private const val TARGET_PACKAGE = "tv.danmaku.bili"
         private const val CHANNEL_STATUS = "home_vertical_detail_status"
         private const val BOOL_VALUE_CLASS = "com.bapis.bilibili.app.distribution.BoolValue"
