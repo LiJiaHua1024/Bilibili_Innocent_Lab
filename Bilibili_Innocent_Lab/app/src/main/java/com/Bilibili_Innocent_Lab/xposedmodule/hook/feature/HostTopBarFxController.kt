@@ -43,7 +43,8 @@ internal data class HostTopBarFxConfig(
  *    规范（亚像素 0.65dp 菲涅尔微光高光边缘 + 实时多趟模糊折射透出下方滚动的内容卡片，elevation = 0f）；
  * 3. **严格保留原版对齐与下划线指示器**：不破坏原生 Tab 的字号、内边距与基线对齐，完整保留原版下划线指示器；
  * 4. **零破坏与原生兼容**：不隐藏官方顶部的搜索/头像大栏，不强行截断右侧标签，完全兼容官方原生滚动折叠；
- * 5. **触控柔光**：可选挂接 [HostGlowView]，触摸顶栏标签时绽放自适应光晕，触控事件对宿主完全透明（零拦截）。
+ * 5. **触控柔光**：可选挂接 [HostGlowView]，触摸顶栏标签时绽放自适应光晕；
+ * 6. **手势收岛**：仅接管边缘向内且分类已到边界的滑动（右侧固定按钮直接收起），中心与可滚动分类仍交给宿主。
  */
 internal object HostTopBarFxController {
 
@@ -183,6 +184,10 @@ internal object HostTopBarFxController {
         // 3. 将顶栏配置为浮动在视频流上方的 Overlay 图层，视频流撑满整页不被挤压
         configureOverlayConstraints(topBarDock, barHeight, marginH, marginV, density)
 
+        val island = if (config.liquidGlass) {
+            HostTopIslandBinding.attach(topBarDock, hierarchy.tabContainer, density, glowView, backdrop)
+        } else null
+
         // 4. 周期性清理与对齐调度
         val topPadding = barHeight + marginV * 2
         val parent = topBarDock.parent as? ViewGroup
@@ -221,6 +226,7 @@ internal object HostTopBarFxController {
             stripTopBarArtifacts(topBarDock, isRoot = true)
             alignTopBarContent(topBarDock, density)
             updateSurfaceDrawable()
+            island?.sync()
             fusion?.refreshMaterial()
             fusion?.sync()
             val vp = (if (parent != null) findViewPager(parent) else null) ?: findViewPager(root)
