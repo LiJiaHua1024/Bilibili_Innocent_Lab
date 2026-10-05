@@ -171,7 +171,7 @@
     <string name="host_bottom_bar_touch_glow">Bottom bar touch glow</string>
     <string name="host_bottom_bar_touch_glow_tip">Blooms an adaptive glow that follows your finger while you touch a bottom bar tab.</string>
     <string name="host_top_bar_liquid_glass">Floating top bar</string>
-    <string name="host_top_bar_liquid_glass_tip">Turns Bilibili\'s top bar into a floating capsule with real-time sampled glass material, retaining the native underline indicator. Slightly increases rendering load.</string>
+    <string name="host_top_bar_liquid_glass_tip">Turns Bilibili\'s top bar into a floating capsule with real-time sampled glass material, retaining the native underline indicator. The feed now reaches up behind the status bar and melts into a blur under the capsule that fades out downward. Slightly increases rendering load.</string>
     <string name="host_top_bar_touch_glow">Top bar touch glow</string>
     <string name="host_top_bar_touch_glow_tip">Blooms an adaptive glow that follows your finger while you touch a top bar tab.</string>
     <string name="recommend_video_duration_range">Filter recommended videos by duration</string>

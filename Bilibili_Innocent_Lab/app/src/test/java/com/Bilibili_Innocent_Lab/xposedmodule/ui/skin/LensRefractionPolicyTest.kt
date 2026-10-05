@@ -96,4 +96,61 @@ class LensRefractionPolicyTest {
             }
         }
     }
+
+    @Test fun remapFlatIsAPlainResizeOfTheInnerRegion() {
+        val sw = 48
+        val sh = 20
+        val margin = 5
+        // 竖直渐变源：无折射时输出应逐行等值，且始终落在内区（外沿 ring 完全不参与）。
+        val source = IntArray(sw * sh) { i -> 0xFF000000.toInt() or ((i / sw) * 10) }
+        val out = IntArray(120 * 30)
+        LensRefractionPolicy.remapFlat(source, sw, sh, margin, out, 120, 30)
+        for (y in 0 until 30) {
+            val row = out.copyOfRange(y * 120, y * 120 + 120)
+            assertTrue("行内等值 @ $y", row.all { it == row[0] })
+            assertTrue("内区 @ $y: ${row[0] and 0xFF}", (row[0] and 0xFF) in 0..(sh - 1) * 10)
+        }
+        val values = (0 until 30).map { out[it * 120] and 0xFF }
+        assertEquals("单调", values.sorted(), values)
+        // 双线性取样落在内区 [margin-0.5, sh-margin-0.5)：永远不会取到外沿 ring 深处。
+        assertTrue("只在內区取值: $values", values.all { it in (margin - 1) * 10..(sh - margin) * 10 })
+        assertTrue("覆盖整个内区: $values", values.last() - values.first() > (sh - 2 * margin - 2) * 10)
+    }
+
+    @Test fun fadeVerticallyHoldsThenDecaysToTransparentSmoothly() {
+        val width = 4
+        val height = 100
+        val pixels = IntArray(width * height) { 0xFF3366CC.toInt() }
+        LensRefractionPolicy.fadeVertically(pixels, width, height, hold = 0.5f, end = 1f)
+
+        val alpha = { y: Int -> pixels[y * width] ushr 24 }
+        // 满强度区原样保留；末行完全透明（融合带下沿必须与未模糊的内容严丝合缝）。
+        assertEquals(0xFF, alpha(0))
+        assertEquals(0xFF, alpha(49))
+        assertEquals(0, alpha(height - 1))
+        // 单调，且没有任何一行跳变：100 行上的 smoothstep 单行最大斜率约 3/100 × 255 ≈ 8。
+        var previous = alpha(50)
+        for (y in 51 until height) {
+            val current = alpha(y)
+            assertTrue("单调 @ $y", current <= previous)
+            assertTrue("无跳变 @ $y: $previous → $current", previous - current <= 9)
+            previous = current
+        }
+        // RGB 原样保留；全透明行也不再泄露颜色。
+        assertEquals(0x003366CC, pixels[(height - 1) * width])
+        assertEquals(0xFF3366CC.toInt(), pixels[10 * width])
+    }
+
+    @Test fun fadeVerticallyKeepsZeroAlphaAndRejectsMismatchedBuffers() {
+        val pixels = intArrayOf(0x00FF0000, 0xFF00FF00.toInt(), 0xFF00FF00.toInt(), 0xFF00FF00.toInt())
+        LensRefractionPolicy.fadeVertically(pixels, 1, 4, hold = 0f, end = 0f)
+        assertEquals(0x00FF0000, pixels[0]) // end ≤ hold：不渐隐
+        LensRefractionPolicy.fadeVertically(pixels, 1, 4, hold = 0.75f, end = 1f)
+        assertEquals(0, pixels[0] ushr 24) // 原来就全透明的像素保持全透明
+        assertEquals(0xFF, pixels[1] ushr 24) // 满强度区原样
+        assertEquals(0xFF, pixels[2] ushr 24)
+        // 末行落在曲线中点（0.875 → smoothstep(0.5) = 0.5），alpha 恰好减半。
+        assertEquals(128, pixels[3] ushr 24)
+        assertTrue(runCatching { LensRefractionPolicy.fadeVertically(pixels, 1, 5, 0f, 1f) }.isFailure)
+    }
 }

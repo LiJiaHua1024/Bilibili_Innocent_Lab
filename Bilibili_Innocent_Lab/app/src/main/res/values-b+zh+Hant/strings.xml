@@ -194,7 +194,7 @@
     <string name="host_bottom_bar_touch_glow">底部導覽列觸控光暈</string>
     <string name="host_bottom_bar_touch_glow_tip">觸摸底部導覽列圖示時綻放自適應光暈，跟隨手指觸點即時形變。</string>
     <string name="host_top_bar_liquid_glass">頂欄懸浮膠囊</string>
-    <string name="host_top_bar_liquid_glass_tip">將嗶哩嗶哩頂欄改為懸浮膠囊，並以即時採樣的磨砂玻璃材質透出下方內容，保留原版下劃線指示器；輕微提升渲染壓力。</string>
+    <string name="host_top_bar_liquid_glass_tip">將嗶哩嗶哩頂欄改為懸浮膠囊，並以即時取樣的磨砂玻璃材質透出下方內容，保留原版下劃線指示器；影片流一路上延到狀態列下方，在頂欄之下凝成一層向下漸漸消隱的模糊；輕微提升渲染壓力。</string>
     <string name="host_top_bar_touch_glow">頂欄觸控光暈</string>
     <string name="host_top_bar_touch_glow_tip">觸摸頂欄標籤時綻放自適應光暈，跟隨手指觸點即時形變。</string>
     <string name="recommend_video_duration_range">依影片時長過濾推薦</string>
