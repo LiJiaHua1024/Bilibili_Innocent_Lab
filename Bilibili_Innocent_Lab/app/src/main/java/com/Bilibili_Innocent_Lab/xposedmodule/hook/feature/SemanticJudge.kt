@@ -1049,6 +1049,8 @@ internal class SemanticJudge(
                 return done("http-$status")
             }
             if (decoded == null) {
+                // 补发里一条都没判出不是来源的错，主请求刚成功，冷却会让所有过滤面在冷却期内失效。
+                if (!refill && status in 200..299) return done("parse")
                 slot.penalize(FAILURE_COOLDOWN_MS, clock())
                 return done("parse")
             }

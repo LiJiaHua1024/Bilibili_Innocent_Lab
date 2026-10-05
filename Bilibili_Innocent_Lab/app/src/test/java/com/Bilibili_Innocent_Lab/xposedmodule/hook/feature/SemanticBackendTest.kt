@@ -709,6 +709,26 @@ class SemanticBackendTest {
     }
 
     @Test
+    fun `a refill that judges nothing does not cool down the source that just answered`() {
+        var requests = 0
+        val judge = SemanticJudge("k", rules, backend = OpenAiCompatibleBackend("m"), batchSize = 20,
+            background = { it.run(); true }, clock = { 1_000L },
+            transport = { _, _, _ ->
+                requests += 1
+                if (requests == 1) 200 to chatReply("{\"results\":[{\"i\":0,\"p\":0.99}]}")
+                else 200 to chatReply("{\"results\":[]}")
+            })
+
+        val verdicts = judge.evaluate(listOf("加V领取兼职日结", "文本一", "文本二", "文本三"), SemanticMode.WAIT)
+        assertEquals(SemanticVerdict.BLOCK, verdicts[0])
+        assertTrue("refill must have been attempted, requests=$requests", requests > 1)
+
+        val before = requests
+        judge.evaluate(listOf("另一条全新的文本"), SemanticMode.WAIT)
+        assertTrue("source must not be in cooldown", requests > before)
+    }
+
+    @Test
     fun `a model that cannot turn thinking off runs at its lowest supported effort`() {
         // 2026-09-30 真机：基元律动转发的 GLM-5.3-FlashX 只认 reasoning_effort = low / high / max。
         val seen = ladderRun("https://tokenrhythm.studio/v1/chat/completions") { json ->
