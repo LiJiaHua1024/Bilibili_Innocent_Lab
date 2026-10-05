@@ -74,7 +74,32 @@ internal object LensRefractionPolicy {
      * 把含外沿的模糊采样 [source]（sw × sh，外沿 [margin] 像素）按透镜重采样到 [out]（dw × dh）。
      * dest 满幅对应 source 的内区 [margin, sw − margin] × [margin, sh − margin]。双线性、CLAMP。
      */
-    fun remap(source: IntArray, sw: Int, sh: Int, margin: Int, out: IntArray, dw: Int, dh: Int) {
+    fun remap(source: IntArray, sw: Int, sh: Int, margin: Int, out: IntArray, dw: Int, dh: Int) =
+        remap(source, sw, sh, margin, out, dw, dh, CENTER_GAIN_X, CENTER_GAIN_Y, RIM_PUSH_X, RIM_PUSH_Y)
+
+    /**
+     * 无折射变体：三个增益都给 0 时 [lens] 退化为恒等映射，输出就是内区的纯双线性缩放。
+     *
+     * 整幅宽的顶部融合带用它。透镜的中心放大与边沿外推是为窄胶囊的"厚玻璃边"设计的，
+     * 铺到横跨整屏的表面上会变成肉眼可见的横向形变（左右两端的拉伸尤其明显）。
+     */
+    fun remapFlat(source: IntArray, sw: Int, sh: Int, margin: Int, out: IntArray, dw: Int, dh: Int) =
+        remap(source, sw, sh, margin, out, dw, dh, 0f, 0f, 0f, 0f)
+
+    @Suppress("LongParameterList")
+    fun remap(
+        source: IntArray,
+        sw: Int,
+        sh: Int,
+        margin: Int,
+        out: IntArray,
+        dw: Int,
+        dh: Int,
+        centerGainX: Float,
+        centerGainY: Float,
+        rimPushX: Float,
+        rimPushY: Float
+    ) {
         require(sw > 0 && sh > 0 && source.size >= sw * sh)
         require(dw > 0 && dh > 0 && out.size >= dw * dh)
         val innerW = (sw - 2 * margin).coerceAtLeast(1).toFloat()
@@ -88,7 +113,7 @@ internal object LensRefractionPolicy {
         val columnFrac = FloatArray(dw)
         for (x in 0 until dw) {
             val u = (x + 0.5f) / dw * 2f - 1f
-            val sx = ((lens(u, CENTER_GAIN_X, RIM_PUSH_X) + 1f) * 0.5f * innerW + margin - 0.5f).coerceIn(0f, maxX)
+            val sx = ((lens(u, centerGainX, rimPushX) + 1f) * 0.5f * innerW + margin - 0.5f).coerceIn(0f, maxX)
             val x0 = sx.toInt().coerceIn(0, sw - 1)
             columnLeft[x] = x0
             columnRight[x] = (x0 + 1).coerceAtMost(sw - 1)
@@ -96,7 +121,7 @@ internal object LensRefractionPolicy {
         }
         for (y in 0 until dh) {
             val v = (y + 0.5f) / dh * 2f - 1f
-            val sy = ((lens(v, CENTER_GAIN_Y, RIM_PUSH_Y) + 1f) * 0.5f * innerH + margin - 0.5f).coerceIn(0f, maxY)
+            val sy = ((lens(v, centerGainY, rimPushY) + 1f) * 0.5f * innerH + margin - 0.5f).coerceIn(0f, maxY)
             val y0 = sy.toInt().coerceIn(0, sh - 1)
             val y1 = (y0 + 1).coerceAtMost(sh - 1)
             val fy = sy - y0
@@ -152,6 +177,47 @@ internal object LensRefractionPolicy {
             val b = ((c and 255) * 255 / a).coerceAtMost(255)
             pixels[i] = (a shl 24) or (r shl 16) or (g shl 8) or b
         }
+    }
+
+    /**
+     * 纹理纵向的 alpha 渐隐：`[0, hold]` 保持满不透明，`[hold, end]` 之间按 smoothstep 平滑减到 0。
+     * [hold]/[end] 为高度归一化位置。
+     *
+     * 选 smoothstep 而不是线性：它在两端导数都为 0，与上下两侧的"不渐隐"区域 C¹ 相接，
+     * 接缝处不会有肉眼可见的分界线——这正是顶栏融合带"模糊渐渐消减"的观感来源。
+     * 乘法在非预乘空间做，只改 alpha，RGB 原样保留。
+     */
+    fun fadeVertically(pixels: IntArray, width: Int, height: Int, hold: Float, end: Float) {
+        if (width <= 0 || height <= 0 || end <= hold) return
+        require(pixels.size >= width * height)
+        for (y in 0 until height) {
+            val weight = fadeWeight((y + 0.5f) / height, hold, end)
+            if (weight >= 1f) continue
+            val row = y * width
+            if (weight <= 0f) {
+                for (x in 0 until width) pixels[row + x] = pixels[row + x] and 0x00FFFFFF
+                continue
+            }
+            for (x in 0 until width) {
+                val color = pixels[row + x]
+                val alpha = color ushr 24
+                if (alpha == 0) continue
+                pixels[row + x] = ((alpha * weight + 0.5f).toInt().coerceIn(0, 255) shl 24) or
+                    (color and 0x00FFFFFF)
+            }
+        }
+    }
+
+    /**
+     * 渐隐曲线本体（归一化位置 → 权重）。采样纹理的逐像素渐隐（[fadeVertically]）与色罩的
+     * 多段渐变（宿主的 `HostTopStatusFusionView`）共用它，两条曲线因此永远同形。
+     * [end] ≤ [hold] 表示不渐隐，权重恒为 1。
+     */
+    fun fadeWeight(fraction: Float, hold: Float, end: Float): Float {
+        if (end <= hold || fraction <= hold) return 1f
+        val span = end - hold
+        val progress = ((fraction - hold) / span).coerceIn(0f, 1f)
+        return 1f - smooth(progress)
     }
 
     private fun smooth(t: Float): Float {

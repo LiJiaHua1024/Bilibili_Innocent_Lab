@@ -11,6 +11,7 @@ import android.view.ViewTreeObserver
 import com.Bilibili_Innocent_Lab.xposedmodule.hook.modern.ModernHookLog
 import com.Bilibili_Innocent_Lab.xposedmodule.ui.skin.geometry.ViewSamplingMatrix
 import com.Bilibili_Innocent_Lab.xposedmodule.ui.skin.material.LiveBackdropSampler
+import com.Bilibili_Innocent_Lab.xposedmodule.ui.skin.material.LiveSampleProfile
 
 /**
  * 宿主底栏下方"内容层"的运行时定位。
@@ -169,10 +170,23 @@ internal class HostBottomBarBackdrop(private val density: Float) {
         live.invalidate()
     }
 
-    /** 与 `FrostedMaterialRenderer.drawLiveSample` 的软件分支一致：接管前先登记，未就绪返回 false。 */
-    fun draw(canvas: Canvas, bounds: RectF, radius: Float, view: View, alpha: Int): Boolean {
+    /**
+     * 与 `FrostedMaterialRenderer.drawLiveSample` 的软件分支一致：接管前先登记，未就绪返回 false。
+     *
+     * [profile] 是表面自己的采样档案（透镜开关 + 纵向渐隐）；不传即胶囊/面板的既有行为。
+     * 同一 [HostBottomBarBackdrop] 上的多个表面共用一次内容层录制，档案因此必须按表面给，
+     * 不能挂在采样器实例上。
+     */
+    fun draw(
+        canvas: Canvas,
+        bounds: RectF,
+        radius: Float,
+        view: View,
+        alpha: Int,
+        profile: LiveSampleProfile? = null
+    ): Boolean {
         if (closed || content == null) return false
-        live.register(view)
+        live.register(view, profile)
         return live.draw(canvas, bounds, radius, view, alpha)
     }
 

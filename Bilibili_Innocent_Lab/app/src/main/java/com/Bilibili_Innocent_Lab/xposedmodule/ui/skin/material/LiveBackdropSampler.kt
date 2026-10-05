@@ -24,6 +24,25 @@ import kotlin.math.ceil
 import kotlin.math.floor
 
 /**
+ * 单个悬浮表面的采样档案：透镜重采样的开关与纹理纵向的 alpha 渐隐曲线。
+ *
+ * 默认档案 = 胶囊的既有行为（透镜 + 不渐隐），不传档案的表面逐位不变。
+ *
+ * [fadeHold] / [fadeEnd] 是纹理高度的归一化位置：`[0, fadeHold]` 保持满不透明，之后按
+ * smoothstep 平滑减到 [fadeEnd] 处的全透明。曲线**烘进采样纹理**（后台线程逐像素乘 alpha），
+ * 而不是在 UI 线程用遮罩合成：`ComposeShader` 的 DST_IN 在 API 28 以下的硬件画布上不支持，
+ * `saveLayer` 又要多一整层离屏；烘进纹理则零额外绘制、零 API 依赖，且天然逐像素平滑
+ * （分条绘制会留下可见的条带）。[fadeEnd] ≤ [fadeHold] 表示不渐隐。
+ */
+internal class LiveSampleProfile(
+    val refraction: Boolean = true,
+    val fadeHold: Float = 1f,
+    val fadeEnd: Float = 1f
+) {
+    val fades: Boolean get() = fadeEnd > fadeHold && fadeEnd > 0f
+}
+
+/**
  * 悬浮表面的实时"玻璃透镜"底图：把同一窗口里位于表面**下方**的内容层（由宿主 [bindSource]
  * 指定，通常是滚动页容器）在每次 pre-draw 时按低分辨率软件绘制到一小块位图，经预乘模糊与
  * [LensRefractionPolicy.remap] 透镜重采样后，作为 BitmapShader 供表面一笔画出。
@@ -53,6 +72,8 @@ internal class LiveBackdropSampler(
     private class Entry {
         var scale = 0
         var margin = 0
+        /** 本表面的采样档案；变化时标脏重采，见 [register]。 */
+        var profile: LiveSampleProfile? = null
         var sampleWidth = 0
         var sampleHeight = 0
         var outWidth = 0
@@ -106,6 +127,8 @@ internal class LiveBackdropSampler(
         val picture: Picture,
         /** null：录制时已带完整变换，原样回放；否则先套上这个变换再回放组录制。 */
         val replay: Matrix?,
+        /** 本表面的采样档案（透镜开关 + 渐隐曲线）；null = 胶囊/面板的既有行为（透镜 + 不渐隐）。 */
+        val profile: LiveSampleProfile?,
         val sample: Bitmap,
         val sampleCanvas: Canvas,
         val pixels: IntArray,
@@ -175,10 +198,15 @@ internal class LiveBackdropSampler(
     }
 
     /** 表面 draw 时登记；同窗口首个表面顺带装上 pre-draw 采样钩子。 */
-    fun register(view: View) {
+    fun register(view: View, profile: LiveSampleProfile? = null) {
         if (!isActive) return
-        if (!entries.containsKey(view)) {
-            entries[view] = Entry()
+        val existing = entries[view]
+        if (existing == null) {
+            entries[view] = Entry().apply { this.profile = profile }
+            dirty = true
+        } else if (existing.profile !== profile) {
+            // 档案换了（如深浅色切换后重建的样式对象）必须重采一次，否则旧纹理继续按旧曲线画。
+            existing.profile = profile
             dirty = true
         }
         val root = view.rootView ?: return
@@ -402,6 +430,7 @@ internal class LiveBackdropSampler(
         generation = entry.generation,
         picture = picture,
         replay = replay,
+        profile = entry.profile,
         sample = entry.sample!!,
         sampleCanvas = entry.sampleCanvas!!,
         pixels = entry.pixels!!,
@@ -521,12 +550,26 @@ internal class LiveBackdropSampler(
             val blurred = ModernBackdropBlur.blurInto(
                 job.pixels, job.scratch, job.sampleWidth, job.sampleHeight, job.blurRadius
             )
-            LensRefractionPolicy.remap(
-                blurred, job.sampleWidth, job.sampleHeight, job.margin,
-                job.out, job.outWidth, job.outHeight
-            )
+            val profile = job.profile
+            if (profile != null && !profile.refraction) {
+                LensRefractionPolicy.remapFlat(
+                    blurred, job.sampleWidth, job.sampleHeight, job.margin,
+                    job.out, job.outWidth, job.outHeight
+                )
+            } else {
+                LensRefractionPolicy.remap(
+                    blurred, job.sampleWidth, job.sampleHeight, job.margin,
+                    job.out, job.outWidth, job.outHeight
+                )
+            }
             LensRefractionPolicy.illuminate(job.out)
             LensRefractionPolicy.unpremultiply(job.out)
+            // 渐隐放在最后：解预乘后的 alpha 就是最终透明度，直接按行乘曲线即可（RGB 不受影响）。
+            if (profile != null && profile.fades) {
+                LensRefractionPolicy.fadeVertically(
+                    job.out, job.outWidth, job.outHeight, profile.fadeHold, profile.fadeEnd
+                )
+            }
         }
     }
 

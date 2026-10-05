@@ -194,7 +194,7 @@
     <string name="host_bottom_bar_touch_glow">底栏触控光晕</string>
     <string name="host_bottom_bar_touch_glow_tip">触摸底栏图标时绽放自适应光晕，跟随手指触点实时形变。</string>
     <string name="host_top_bar_liquid_glass">顶栏悬浮胶囊</string>
-    <string name="host_top_bar_liquid_glass_tip">将哔哩哔哩顶栏改为悬浮胶囊，并以实时取样的玻璃材质透出下方内容，保留原版下划线指示器；轻微提升渲染压力。</string>
+    <string name="host_top_bar_liquid_glass_tip">将哔哩哔哩顶栏改为悬浮胶囊，并以实时取样的玻璃材质透出下方内容，保留原版下划线指示器；视频流一路上延到状态栏下方，在顶栏之下凝成一层向下渐渐消隐的模糊；轻微提升渲染压力。</string>
     <string name="host_top_bar_touch_glow">顶栏触控光晕</string>
     <string name="host_top_bar_touch_glow_tip">触摸顶栏标签时绽放自适应光晕，跟随手指触点实时形变。</string>
     <string name="recommend_video_duration_range">按视频时长过滤推荐</string>
