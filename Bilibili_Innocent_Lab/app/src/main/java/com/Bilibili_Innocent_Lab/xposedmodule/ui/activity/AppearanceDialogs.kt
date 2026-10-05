@@ -7,7 +7,6 @@ import com.Bilibili_Innocent_Lab.xposedmodule.ui.activity.MainActivity.AppLangua
 import android.app.Dialog
 import android.content.ActivityNotFoundException
 import android.content.pm.PackageManager
-import android.os.Build
 import android.content.res.ColorStateList
 import android.graphics.Color
 import android.graphics.Typeface
@@ -31,6 +30,7 @@ import com.Bilibili_Innocent_Lab.xposedmodule.ui.skin.background.LiquidBackgroun
 import com.Bilibili_Innocent_Lab.xposedmodule.ui.skin.background.LiquidBackgroundPickerPolicy
 import com.Bilibili_Innocent_Lab.xposedmodule.ui.skin.background.LiquidBackgroundStore
 import com.Bilibili_Innocent_Lab.xposedmodule.ui.skin.liquid.LiquidRealtimeCaptureStore
+import com.highcapable.betterandroid.system.extension.utils.AndroidVersion
 import com.highcapable.betterandroid.ui.extension.view.textColor
 import com.highcapable.betterandroid.ui.extension.view.toast
 import com.highcapable.hikage.core.layout.LayoutParams
@@ -83,7 +83,7 @@ internal fun MainActivity.launchLiquidBackgroundPicker() {
  * 权限被永久拒绝时系统会立刻返回拒绝，这里直接回退到文件选择器，不跳转设置页。
  */
 internal fun MainActivity.launchLiquidBackgroundGallery(afterGrant: Boolean) {
-    val permission = LiquidBackgroundPickerPolicy.galleryPermission(Build.VERSION.SDK_INT)
+    val permission = LiquidBackgroundPickerPolicy.galleryPermission(AndroidVersion.code)
     val granted = ContextCompat.checkSelfPermission(this, permission) == PackageManager.PERMISSION_GRANTED
     if (granted || afterGrant) {
         if (tryLaunchPicker { liquidBackgroundGalleryPicker.launch(LiquidBackgroundPickerPolicy.galleryIntent()) }) return

@@ -12,5 +12,5 @@ internal object LiquidBackgroundPickerPolicy {
         if (sdkInt >= 33) Manifest.permission.READ_MEDIA_IMAGES else Manifest.permission.READ_EXTERNAL_STORAGE
 
     fun galleryIntent(): Intent =
-        Intent(Intent.ACTION_PICK, MediaStore.Images.Media.EXTERNAL_CONTENT_URI).setType(MIME_TYPE)
+        Intent(Intent.ACTION_PICK).setDataAndType(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, MIME_TYPE)
 }
