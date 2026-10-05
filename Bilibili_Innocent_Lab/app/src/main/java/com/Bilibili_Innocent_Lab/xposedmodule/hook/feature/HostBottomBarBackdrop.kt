@@ -89,9 +89,9 @@ internal object HostBackdropLocator {
  *   `LIVE_SAMPLE_MIN_INTERVAL_MS` 节流与后台单飞决定，UI 线程只录 [android.graphics.Picture]；
  * - 内容层找不到时 [draw] 返回 false，表面退回静态色罩（与模块"退回静态磨砂"同一降级）。
  */
-internal class HostBottomBarBackdrop(density: Float) {
+internal class HostBottomBarBackdrop(private val density: Float) {
 
-    private val live = LiveBackdropSampler(density, ViewSamplingMatrix())
+    private var live = LiveBackdropSampler(density, ViewSamplingMatrix())
     private var surface: View? = null
     private var content: View? = null
     private var hookedRoot: View? = null
@@ -113,11 +113,21 @@ internal class HostBottomBarBackdrop(density: Float) {
     }
 
     fun attach(surface: View) {
-        if (closed) return
+        if (closed) {
+            closed = false
+            live = LiveBackdropSampler(density, ViewSamplingMatrix())
+        }
         this.surface = surface
         hookRoot(surface)
         revalidate()
         registerTrim(surface)
+    }
+
+    /** 临时从窗口脱离（如切后台、切页）：暂停监听并释放位图，不永久销毁，再次 attach 时满血恢复 */
+    fun detach() {
+        unhookRoot()
+        live.releaseAll()
+        content = null
     }
 
     /** 内容层缺失或已脱离时重找；命中时 O(1) 早退，可以挂在每帧之外的布局/层级回调上。 */
@@ -126,12 +136,15 @@ internal class HostBottomBarBackdrop(density: Float) {
         val surface = this.surface ?: return
         hookRoot(surface)
         val current = content
-        if (current != null && current.isAttachedToWindow && current.parent != null) return
+        if (current != null && current.isAttachedToWindow && current.parent != null) {
+            live.bindSource(current)
+            return
+        }
         val found = HostBackdropLocator.find(surface)
         if (found == null) return
         content = found
         live.bindSource(found)
-        ModernHookLog.info("[BIL] 宿主底栏实时透镜绑定内容层: ${found.javaClass.name}")
+        ModernHookLog.info("[BIL] 宿主实时透镜绑定内容层: ${found.javaClass.name}")
     }
 
     /** 底栏自身动画/拖拽的位移通知：下一帧 pre-draw 重采样（与模块 `notifyPositionChanged` 同一入口）。 */

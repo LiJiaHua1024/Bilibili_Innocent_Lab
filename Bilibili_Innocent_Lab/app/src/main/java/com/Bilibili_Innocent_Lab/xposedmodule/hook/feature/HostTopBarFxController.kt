@@ -4,6 +4,7 @@ import android.annotation.SuppressLint
 import android.content.Context
 import android.content.res.Configuration
 import android.graphics.Outline
+import android.os.Build
 import android.view.Gravity
 import android.view.MotionEvent
 import android.view.View
@@ -91,6 +92,25 @@ internal object HostTopBarFxController {
 
         // 1. 悬浮胶囊几何形态与 Liquid Glass 外壳背景
         val backdrop = if (config.liquidGlass) HostBottomBarBackdrop(density) else null
+        var lastIsDark = isDark
+
+        fun updateSurfaceDrawable(force: Boolean = false) {
+            if (!config.liquidGlass) return
+            val curContext = topBarDock.context
+            val curDark = (curContext.resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES
+            if (force || topBarDock.background !is HostLiquidSurfaceDrawable || curDark != lastIsDark) {
+                lastIsDark = curDark
+                val curPalette = ModernPalette.resolve(curContext)
+                topBarDock.background = HostLiquidSurfaceDrawable(
+                    color = curPalette.surface,
+                    radius = barHeight / 2f,
+                    density = density,
+                    style = ModernMaterialPolicy.surface(SurfaceRole.FLOATING, curDark),
+                    backdrop = backdrop
+                )
+            }
+        }
+
         if (config.liquidGlass) {
             val lp = topBarDock.layoutParams
             if (lp != null) {
@@ -114,14 +134,7 @@ internal object HostTopBarFxController {
             topBarDock.clipToOutline = true
             topBarDock.elevation = 0f
 
-            // 清理顶栏自身及直接附带的实色背景，保留内容透出
-            topBarDock.background = HostLiquidSurfaceDrawable(
-                color = palette.surface,
-                radius = barHeight / 2f,
-                density = density,
-                style = ModernMaterialPolicy.surface(SurfaceRole.FLOATING, isDark),
-                backdrop = backdrop
-            )
+            updateSurfaceDrawable(force = true)
         }
 
         // 2. 触控柔光图层 (放在顶栏最底层)
@@ -166,10 +179,7 @@ internal object HostTopBarFxController {
         // 3. 将顶栏配置为浮动在视频流上方的 Overlay 图层，视频流撑满整页不被挤压
         configureOverlayConstraints(topBarDock, barHeight, marginH, marginV, density)
 
-        // 4. 填充宿主顶栏容器与根布局背景色，彻底杜绝外边距透出底层黑色窗口
-        applyHostContainerBackground(topBarDock, root, palette.background)
-
-        // 5. 周期性清理与对齐调度
+        // 4. 周期性清理与对齐调度
         val topPadding = barHeight + marginV * 2
         val parent = topBarDock.parent as? ViewGroup
         val viewPager = (if (parent != null) findViewPager(parent) else null) ?: findViewPager(root)
@@ -183,8 +193,7 @@ internal object HostTopBarFxController {
             configureOverlayConstraints(topBarDock, barHeight, marginH, marginV, density)
             stripTopBarArtifacts(topBarDock, isRoot = true)
             alignTopBarContent(topBarDock, density)
-            val currentPalette = ModernPalette.resolve(topBarDock.context)
-            applyHostContainerBackground(topBarDock, root, currentPalette.background)
+            updateSurfaceDrawable()
             val vp = (if (parent != null) findViewPager(parent) else null) ?: findViewPager(root)
             if (vp != null) {
                 applyScrollPadding(vp, topPadding, density)
@@ -212,15 +221,16 @@ internal object HostTopBarFxController {
             }
         }
 
-        // 4. 实时透镜生命周期绑定
+        // 5. 实时透镜生命周期绑定
         topBarDock.addOnAttachStateChangeListener(object : View.OnAttachStateChangeListener {
             override fun onViewAttachedToWindow(v: View) {
                 backdrop?.attach(topBarDock)
+                updateSurfaceDrawable(force = true)
                 requestSanitization()
             }
 
             override fun onViewDetachedFromWindow(v: View) {
-                backdrop?.close()
+                backdrop?.detach()
                 glowView?.resetGestureState()
             }
         })
@@ -238,6 +248,20 @@ internal object HostTopBarFxController {
             if (view.visibility != View.VISIBLE) view.visibility = View.VISIBLE
             if (view.alpha != 1f) view.alpha = 1f
             return
+        }
+
+        // 顶栏本身保留 Liquid Glass 背景，其余所有非指示器子 View 的背景/前景一律清空（与底栏 stripAllHostArtifacts 完全一致）
+        if (!isRoot) {
+            if (view.background != null) {
+                view.background = null
+            }
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && view.foreground != null) {
+                view.foreground = null
+            }
+            (view as? FrameLayout)?.foreground = null
+            if (view.isPressed) {
+                view.isPressed = false
+            }
         }
 
         val id = view.id
@@ -501,18 +525,6 @@ internal object HostTopBarFxController {
         return null
     }
 
-    /** 设置顶栏父容器与根布局背景色，防止悬浮胶囊外边距透出底层黑色窗口 */
-    internal fun applyHostContainerBackground(topBarDock: View, root: ViewGroup, backgroundColor: Int) {
-        val parent = topBarDock.parent as? ViewGroup
-        if (parent != null) {
-            parent.setBackgroundColor(backgroundColor)
-            val grandParent = parent.parent as? ViewGroup
-            if (grandParent != null && grandParent !== root) {
-                grandParent.setBackgroundColor(backgroundColor)
-            }
-        }
-        root.setBackgroundColor(backgroundColor)
-    }
 
     /** 定位顶栏各核心构件 */
     internal fun locateTopBarHierarchy(
