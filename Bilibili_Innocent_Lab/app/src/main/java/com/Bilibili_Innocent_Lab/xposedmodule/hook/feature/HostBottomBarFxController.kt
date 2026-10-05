@@ -1100,6 +1100,13 @@ internal class HostLiquidSurfaceDrawable(
             invalidateSelf()
         }
 
+    var verticalInset = 0f
+        set(value) {
+            if (field == value) return
+            field = value
+            invalidateSelf()
+        }
+
     init {
         edge.shader = edgeShader
     }
@@ -1110,7 +1117,7 @@ internal class HostLiquidSurfaceDrawable(
 
     override fun draw(canvas: Canvas) {
         rect.set(bounds)
-        rect.inset(horizontalInset, 0f)
+        rect.inset(horizontalInset, verticalInset)
         if (rect.isEmpty || !rect.left.isFinite() || !rect.top.isFinite() ||
             !rect.right.isFinite() || !rect.bottom.isFinite() || !radius.isFinite()
         ) return
