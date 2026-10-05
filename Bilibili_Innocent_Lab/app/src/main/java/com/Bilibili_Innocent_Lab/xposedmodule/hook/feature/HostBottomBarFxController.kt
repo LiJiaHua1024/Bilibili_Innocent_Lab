@@ -1092,6 +1092,14 @@ internal class HostLiquidSurfaceDrawable(
     private var edgeBottom = Float.NaN
     private var drawingAlpha = 255
 
+    /** 顶栏收岛只改变外壳宽度，不重新测量宿主分类。底栏默认保持 0。 */
+    var horizontalInset = 0f
+        set(value) {
+            if (field == value) return
+            field = value
+            invalidateSelf()
+        }
+
     init {
         edge.shader = edgeShader
     }
@@ -1102,6 +1110,7 @@ internal class HostLiquidSurfaceDrawable(
 
     override fun draw(canvas: Canvas) {
         rect.set(bounds)
+        rect.inset(horizontalInset, 0f)
         if (rect.isEmpty || !rect.left.isFinite() || !rect.top.isFinite() ||
             !rect.right.isFinite() || !rect.bottom.isFinite() || !radius.isFinite()
         ) return
