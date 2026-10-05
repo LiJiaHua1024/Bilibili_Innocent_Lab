@@ -24,20 +24,25 @@ import kotlin.math.ceil
 import kotlin.math.floor
 
 /**
- * 单个悬浮表面的采样档案：透镜重采样的开关与纹理纵向的 alpha 渐隐曲线。
+ * 单个悬浮表面的采样档案：透镜重采样的开关、纹理纵向的 alpha 渐隐曲线与重采样节奏。
  *
- * 默认档案 = 胶囊的既有行为（透镜 + 不渐隐），不传档案的表面逐位不变。
+ * 默认档案 = 胶囊的既有行为（透镜 + 不渐隐 + [ModernMaterialPolicy.LIVE_SAMPLE_MIN_INTERVAL_MS] 节流）。
  *
  * [fadeHold] / [fadeEnd] 是纹理高度的归一化位置：`[0, fadeHold]` 保持满不透明，之后按
  * smoothstep 平滑减到 [fadeEnd] 处的全透明。曲线**烘进采样纹理**（后台线程逐像素乘 alpha），
  * 而不是在 UI 线程用遮罩合成：`ComposeShader` 的 DST_IN 在 API 28 以下的硬件画布上不支持，
  * `saveLayer` 又要多一整层离屏；烘进纹理则零额外绘制、零 API 依赖，且天然逐像素平滑
  * （分条绘制会留下可见的条带）。[fadeEnd] ≤ [fadeHold] 表示不渐隐。
+ *
+ * [minIntervalMs] 是本表面对重采样节奏的下限要求，取**同一采样器上所有活跃表面的最小值**。
+ * 胶囊这类小表面靠 10dp 模糊把节流滞后藏起来就够了；顶栏融合带横跨整屏、又有一段渐隐直接
+ * 盖在清晰内容上，节流留下的"滞后—跳变"在那里就是肉眼可见的抖动，必须逐帧跟住（传 0）。
  */
 internal class LiveSampleProfile(
     val refraction: Boolean = true,
     val fadeHold: Float = 1f,
-    val fadeEnd: Float = 1f
+    val fadeEnd: Float = 1f,
+    val minIntervalMs: Long = ModernMaterialPolicy.LIVE_SAMPLE_MIN_INTERVAL_MS
 ) {
     val fades: Boolean get() = fadeEnd > fadeHold && fadeEnd > 0f
 }
@@ -251,11 +256,12 @@ internal class LiveBackdropSampler(
         if (inFlight) return
         // 节流：连续运动时不必每个 vsync 都重采样一遍内容层。落在间隔内就保持 dirty、
         // 投递一次收尾补采——**必须**补，否则手指停下的最后一帧被跳过就会永久停在
-        // 滞后的映射上。
+        // 滞后的映射上。间隔取所有活跃表面里最短的那个（见 [LiveSampleProfile.minIntervalMs]）。
+        val intervalMs = minIntervalMs()
         val now = System.nanoTime()
         val elapsedMs = (now - lastSampleNanos) / NANOS_PER_MILLISECOND
-        if (lastSampleNanos != 0L && elapsedMs < ModernMaterialPolicy.LIVE_SAMPLE_MIN_INTERVAL_MS) {
-            scheduleTrailingSample(ModernMaterialPolicy.LIVE_SAMPLE_MIN_INTERVAL_MS - elapsedMs)
+        if (lastSampleNanos != 0L && elapsedMs < intervalMs) {
+            scheduleTrailingSample(intervalMs - elapsedMs)
             return
         }
         lastSampleNanos = now
@@ -272,6 +278,19 @@ internal class LiveBackdropSampler(
             val ok = runCatching { jobs.forEach(::process) }.isSuccess
             mainHandler.post { onBatchDone(token, jobs, ok) }
         }
+    }
+
+    /**
+     * 本批采集的节流间隔：取所有活跃表面 [LiveSampleProfile.minIntervalMs] 的最小值。
+     * 表面数是个位数（胶囊、底栏、融合带、圆按钮），每帧遍历一遍可忽略。
+     */
+    private fun minIntervalMs(): Long {
+        var interval = ModernMaterialPolicy.LIVE_SAMPLE_MIN_INTERVAL_MS
+        for (entry in entries.values) {
+            val profile = entry.profile ?: continue
+            if (profile.minIntervalMs < interval) interval = profile.minIntervalMs
+        }
+        return interval
     }
 
     /** 一批采集的主线程部分：逐表面准备几何，再按组录制。返回 null 表示失败（调用方永久退回静态磨砂）。 */
@@ -466,7 +485,7 @@ internal class LiveBackdropSampler(
         // 保证即使本批结果全被丢弃，停下来的那一帧也一定会被补采。
         if (dirty) {
             val elapsedMs = (System.nanoTime() - lastSampleNanos) / NANOS_PER_MILLISECOND
-            scheduleTrailingSample(ModernMaterialPolicy.LIVE_SAMPLE_MIN_INTERVAL_MS - elapsedMs)
+            scheduleTrailingSample(minIntervalMs() - elapsedMs)
         }
     }
 

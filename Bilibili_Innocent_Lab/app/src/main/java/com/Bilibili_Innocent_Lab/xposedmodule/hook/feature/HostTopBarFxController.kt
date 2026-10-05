@@ -206,7 +206,12 @@ internal object HostTopBarFxController {
         }
 
         if (viewPager != null) {
-            setupViewPagerPageChangeListener(viewPager, density) { fusion?.scrollPadding ?: topPadding }
+            setupViewPagerPageChangeListener(
+                viewPager,
+                density,
+                { fusion?.scrollPadding ?: topPadding },
+                { fusion?.spinnerTravelBase ?: topPadding }
+            )
         }
 
         var sanitizePosted = false
@@ -220,7 +225,12 @@ internal object HostTopBarFxController {
             fusion?.sync()
             val vp = (if (parent != null) findViewPager(parent) else null) ?: findViewPager(root)
             if (vp != null) {
-                applyScrollPadding(vp, fusion?.scrollPadding ?: topPadding, density)
+                applyScrollPadding(
+                    vp,
+                    fusion?.scrollPadding ?: topPadding,
+                    density,
+                    fusion?.spinnerTravelBase ?: topPadding
+                )
             }
             backdrop?.revalidate(vp)
         }
@@ -502,7 +512,21 @@ internal object HostTopBarFxController {
         return (24f * resources.displayMetrics.density).roundToInt()
     }
 
-    internal fun applyScrollPadding(view: View, topPadding: Int, density: Float) {
+    /**
+     * 顶栏之下的滚动内边距与下拉刷新参数。
+     *
+     * @param topPadding 列表要用的顶部内边距（顶栏高度 + 内容上延位移）。
+     * @param spinnerTravelBase 下拉刷新提示球的**行程基准**：`SwipeRefreshLayout` 的 `end` 同时
+     *   决定"球的行程"和"停下后够到哪"，它是**距离**不是位置；内容上延后不能跟着一起挪，
+     *   跟着挪会让提示球按同比例变快（实测 1.9 倍，手感就是"轻轻一拉球就飞下去"）。
+     *   这里传未经上延的基础内边距，只有静止位置（`start`）跟着上延走。
+     */
+    internal fun applyScrollPadding(
+        view: View,
+        topPadding: Int,
+        density: Float,
+        spinnerTravelBase: Int = topPadding
+    ) {
         if (view is RecyclerView) {
             if (view.paddingTop != topPadding || view.clipToPadding) {
                 view.setPadding(view.paddingLeft, topPadding, view.paddingRight, view.paddingBottom)
@@ -529,28 +553,34 @@ internal object HostTopBarFxController {
                     Int::class.javaPrimitiveType,
                     Int::class.javaPrimitiveType
                 )
-                m.invoke(view, false, topPadding, topPadding + (40f * density).roundToInt())
+                m.invoke(view, false, topPadding, spinnerTravelBase + (40f * density).roundToInt())
             }
         }
         if (view is ViewGroup) {
             for (i in 0 until view.childCount) {
-                applyScrollPadding(view.getChildAt(i), topPadding, density)
+                applyScrollPadding(view.getChildAt(i), topPadding, density, spinnerTravelBase)
             }
         }
     }
 
     /**
-     * 切页后重建的列表要重新吃一遍顶栏内边距。[scrollPadding] 由 [HostTopFusionBinding] 持有
-     * ——内容上延之后它是"基础内边距 + 容器顶边位移"，不是常量，所以这里只能取当下值。
+     * 切页后重建的列表要重新吃一遍顶栏内边距。[scrollPadding] / [spinnerTravelBase] 由
+     * [HostTopFusionBinding] 持有——内容上延之后前者是"基础内边距 + 容器顶边位移"、后者是
+     * "未经上延的基础内边距"，都不是常量，所以这里只能取当下值。
      */
-    private fun setupViewPagerPageChangeListener(viewPager: ViewGroup, density: Float, scrollPadding: () -> Int) {
+    private fun setupViewPagerPageChangeListener(
+        viewPager: ViewGroup,
+        density: Float,
+        scrollPadding: () -> Int,
+        spinnerTravelBase: () -> Int
+    ) {
         runCatching {
             val listenerClass = Class.forName("androidx.viewpager.widget.ViewPager\$OnPageChangeListener", false, viewPager.javaClass.classLoader)
             val addListenerMethod = viewPager.javaClass.getMethod("addOnPageChangeListener", listenerClass)
             val handler = java.lang.reflect.InvocationHandler { _, method, _ ->
                 if (method.name == "onPageSelected") {
                     viewPager.post {
-                        applyScrollPadding(viewPager, scrollPadding(), density)
+                        applyScrollPadding(viewPager, scrollPadding(), density, spinnerTravelBase())
                     }
                 }
                 null
@@ -756,8 +786,17 @@ internal class HostTopFusionBinding private constructor(
     var scrollPadding = basePadding
         private set
 
+    /**
+     * 下拉刷新提示球的行程基准：**不能**跟着内容上延走（`SwipeRefreshLayout` 的 `end` 是距离
+     * 不是位置），否则提示球速度按同比例翻倍。见 [HostTopBarFxController.applyScrollPadding]。
+     */
+    val spinnerTravelBase: Int get() = basePadding
+
     /** 融合带顶边当前对齐到的屏幕 y。 */
     private var bandTop = Int.MIN_VALUE
+
+    /** 渐隐收口当前对齐到的"内容静止顶边"屏幕 y。 */
+    private var restTop = Int.MIN_VALUE
 
     /** 内容上延的固定位移量 = 观测到的容器最大屏幕顶边。 */
     private var contentOffset = 0
@@ -785,7 +824,9 @@ internal class HostTopFusionBinding private constructor(
                     palette = palette,
                     style = style,
                     backdrop = backdrop,
-                    statusBarInset = statusBarInset
+                    statusBarInset = statusBarInset,
+                    // 先按"容器顶边 = 状态栏下沿"这个下界建带；首次 sync 观测到真实顶边后只增不减地长高。
+                    initialHeight = HostTopFusionPolicy.bandHeight(statusBarInset + basePadding)
                 )
                 // 不传 LayoutParams：让宿主自己的 ConstraintLayout 生成它那一份（跨 ClassLoader）
                 container.addView(band)
@@ -847,6 +888,14 @@ internal class HostTopFusionBinding private constructor(
             // 表面动了：下一帧重采一次，否则纹理停在旧映射上（静止态纹理本就会随内容位移刷新）。
             backdrop?.onVisualMovement()
         }
+        // 渐隐收口锚在"内容静止顶边"：宿主 AppBar 一折叠，第一排卡片就上移，收口必须跟着上移，
+        // 否则它会被糊在渐隐尾里（且再也滑不出去）。
+        val contentRestTop = HostTopFusionPolicy.contentRestTop(top, basePadding)
+        if (contentRestTop != restTop) {
+            restTop = contentRestTop
+            band.updateFade(contentRestTop)
+            backdrop?.onVisualMovement()
+        }
         if (top > contentOffset) {
             contentOffset = top
             scrollPadding = basePadding + top
@@ -856,7 +905,7 @@ internal class HostTopFusionBinding private constructor(
                 pager.layoutParams = lp
             }
             if (pager != null) {
-                HostTopBarFxController.applyScrollPadding(pager, scrollPadding, density)
+                HostTopBarFxController.applyScrollPadding(pager, scrollPadding, density, basePadding)
             }
             ModernHookLog.info("[BIL] 顶栏融合带内容上延: offset=$top, scrollPadding=$scrollPadding")
         }
