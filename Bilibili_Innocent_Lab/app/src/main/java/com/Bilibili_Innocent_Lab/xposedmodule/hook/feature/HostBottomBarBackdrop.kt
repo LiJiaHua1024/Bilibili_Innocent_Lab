@@ -5,6 +5,7 @@ import android.content.res.Configuration
 import android.graphics.Canvas
 import android.graphics.Rect
 import android.graphics.RectF
+import android.os.Build
 import android.view.View
 import android.view.ViewGroup
 import android.view.ViewTreeObserver
@@ -80,7 +81,9 @@ internal object HostBackdropLocator {
 }
 
 /**
- * 宿主底栏的实时透镜材质——模块柔光引擎软件路径的宿主侧装配。
+ * 宿主栏的实时透镜材质——默认复用模块柔光引擎的软件路径。
+ * 顶栏通过 [preferGpu] 优先使用 [HostBackdropApi31]，在同帧内容节点上完成模糊与渐隐；
+ * 旧系统、软件画布或节点失败时仍走原软件路径。
  *
  * 管线本身全部复用模块原类（[LiveBackdropSampler] + `LensRefractionPolicy` + `ModernMaterialPolicy`
  * 的 FLOATING 色阶），与 `FrostedMaterialRenderer.drawLiveSample` 的软件分支逐行对应；区别只在
@@ -90,25 +93,26 @@ internal object HostBackdropLocator {
  *   `LIVE_SAMPLE_MIN_INTERVAL_MS` 节流与后台单飞决定，UI 线程只录 [android.graphics.Picture]；
  * - 内容层找不到时 [draw] 返回 false，表面退回静态色罩（与模块"退回静态磨砂"同一降级）。
  */
-internal class HostBottomBarBackdrop(private val density: Float) {
+internal class HostBottomBarBackdrop(private val density: Float, private val preferGpu: Boolean = false) {
 
     private var live = LiveBackdropSampler(density, ViewSamplingMatrix())
+    private var gpu = createGpu()
     private var surface: View? = null
     private var content: View? = null
     private var hookedRoot: View? = null
     private var trimRegistered = false
     private var closed = false
-    private val scrollListener = ViewTreeObserver.OnScrollChangedListener { live.invalidate() }
+    private val scrollListener = ViewTreeObserver.OnScrollChangedListener { onVisualMovement() }
     // 阈值沿用模块会话层原实现（FrostedMaterialRenderer.onTrimMemory）；API 34 起平台不再下发
     // RUNNING_* 级别，更高的级别照样满足条件；onLowMemory 在 API 35 起标记废弃，但仍是低端机的兜底。
     @Suppress("DEPRECATION")
     private val trimCallback = object : ComponentCallbacks2 {
         override fun onTrimMemory(level: Int) {
-            if (level >= ComponentCallbacks2.TRIM_MEMORY_RUNNING_LOW) live.releaseAll()
+            if (level >= ComponentCallbacks2.TRIM_MEMORY_RUNNING_LOW) releaseMemory()
         }
 
         @Suppress("DEPRECATION", "OVERRIDE_DEPRECATION")
-        override fun onLowMemory() = live.releaseAll()
+        override fun onLowMemory() = releaseMemory()
 
         override fun onConfigurationChanged(newConfig: Configuration) = Unit
     }
@@ -117,11 +121,12 @@ internal class HostBottomBarBackdrop(private val density: Float) {
         if (closed) {
             closed = false
             live = LiveBackdropSampler(density, ViewSamplingMatrix())
+            gpu = createGpu()
         }
         this.surface = surface
         if (explicitContent != null) {
             this.content = explicitContent
-            live.bindSource(explicitContent)
+            bindSource(explicitContent)
             ModernHookLog.info("[BIL] 宿主实时透镜绑定显式内容层: ${explicitContent.javaClass.name}")
         }
         hookRoot(surface)
@@ -135,6 +140,7 @@ internal class HostBottomBarBackdrop(private val density: Float) {
     fun detach() {
         unhookRoot()
         live.releaseAll()
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) gpu?.detach()
         content = null
     }
 
@@ -146,21 +152,21 @@ internal class HostBottomBarBackdrop(private val density: Float) {
         if (explicitContent != null) {
             if (this.content !== explicitContent) {
                 this.content = explicitContent
-                live.bindSource(explicitContent)
+                bindSource(explicitContent)
                 ModernHookLog.info("[BIL] 宿主实时透镜更新显式内容层: ${explicitContent.javaClass.name}")
             }
             return
         }
         val current = content
         if (current != null && current.isAttachedToWindow && current.parent != null) {
-            live.bindSource(current)
+            bindSource(current)
             return
         }
         val found = HostBackdropLocator.find(surface)
         ModernHookLog.info("[BIL] 宿主实时透镜寻找内容层: surface=${surface.javaClass.name}, found=${found?.javaClass?.name}")
         if (found == null) return
         content = found
-        live.bindSource(found)
+        bindSource(found)
         ModernHookLog.info("[BIL] 宿主实时透镜绑定内容层: ${found.javaClass.name}")
     }
 
@@ -168,6 +174,7 @@ internal class HostBottomBarBackdrop(private val density: Float) {
     fun onVisualMovement() {
         if (closed) return
         live.invalidate()
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) gpu?.invalidate()
     }
 
     /**
@@ -186,6 +193,12 @@ internal class HostBottomBarBackdrop(private val density: Float) {
         profile: LiveSampleProfile? = null
     ): Boolean {
         if (closed || content == null) return false
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S &&
+            gpu?.draw(canvas, bounds, radius, view, alpha, profile) == true
+        ) {
+            live.unregister(view)
+            return true
+        }
         live.register(view, profile)
         return live.draw(canvas, bounds, radius, view, alpha)
     }
@@ -196,8 +209,24 @@ internal class HostBottomBarBackdrop(private val density: Float) {
         unhookRoot()
         unregisterTrim()
         live.close()
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) gpu?.close()
         content = null
         surface = null
+    }
+
+    private fun createGpu(): HostBackdropApi31? =
+        if (preferGpu && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            runCatching { HostBackdropApi31(density) }.getOrNull()
+        } else null
+
+    private fun bindSource(view: View) {
+        live.bindSource(view)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) gpu?.bindSource(view)
+    }
+
+    private fun releaseMemory() {
+        live.releaseAll()
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) gpu?.releaseMemory()
     }
 
     private fun hookRoot(surface: View) {
