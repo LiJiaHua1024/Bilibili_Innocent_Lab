@@ -185,7 +185,7 @@ internal object HostTopBarFxController {
         configureOverlayConstraints(topBarDock, barHeight, marginH, marginV, density)
 
         val island = if (config.liquidGlass) {
-            HostTopIslandBinding.attach(topBarDock, hierarchy.tabContainer, density, glowView, backdrop)
+            HostTopIslandBinding.attach(topBarDock, hierarchy.tabContainer, density, glowView, backdrop, palette.primary)
         } else null
 
         // 4. 周期性清理与对齐调度

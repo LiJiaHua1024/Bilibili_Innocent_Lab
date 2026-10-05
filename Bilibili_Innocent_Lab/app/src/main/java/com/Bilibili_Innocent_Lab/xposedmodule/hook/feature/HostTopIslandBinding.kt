@@ -1,13 +1,14 @@
 package com.Bilibili_Innocent_Lab.xposedmodule.hook.feature
 
-import android.animation.Animator
-import android.animation.AnimatorListenerAdapter
 import android.animation.ValueAnimator
 import android.annotation.SuppressLint
 import android.graphics.Canvas
 import android.graphics.Outline
+import android.graphics.Paint
+import android.graphics.Path
 import android.graphics.Rect
 import android.graphics.drawable.Drawable
+import android.view.Choreographer
 import android.view.MotionEvent
 import android.view.View
 import android.view.ViewConfiguration
@@ -15,9 +16,10 @@ import android.view.ViewGroup
 import android.view.ViewOutlineProvider
 import android.view.ViewTreeObserver
 import android.view.accessibility.AccessibilityNodeInfo
-import android.view.animation.DecelerateInterpolator
 import android.widget.HorizontalScrollView
 import com.Bilibili_Innocent_Lab.xposedmodule.hook.modern.ModernHookLog
+import com.Bilibili_Innocent_Lab.xposedmodule.ui.interaction.ElasticSpringAxis
+import com.Bilibili_Innocent_Lab.xposedmodule.ui.theme.ModernPalette
 import java.util.WeakHashMap
 import kotlin.math.abs
 import kotlin.math.roundToInt
@@ -29,11 +31,14 @@ internal class HostTopIslandBinding private constructor(
     private val tabs: ViewGroup?,
     private val density: Float,
     private val glow: HostGlowView?,
-    private val backdrop: HostBottomBarBackdrop?
+    private val backdrop: HostBottomBarBackdrop?,
+    glyphColor: Int
 ) {
     private var progress = 0f
     private var collapsed = false
-    private var animator: ValueAnimator? = null
+    private var animating = false
+    private var lastFrameNanos = 0L
+    private val spring = ElasticSpringAxis()
     private val childAlphas = WeakHashMap<View, Float>()
     private val location = IntArray(2)
     private var gesture: HostTopIslandGesture? = null
@@ -43,15 +48,59 @@ internal class HostTopIslandBinding private constructor(
     private var consumed = false
     private val touchSlop = ViewConfiguration.get(dock.context).scaledTouchSlop.toFloat()
     private var observer: ViewTreeObserver? = null
-    private var lastSurface: Drawable? = null
+    private var lastSurface: Drawable? = dock.background
     private val preDraw = ViewTreeObserver.OnPreDrawListener { sync(); true }
+    private val glyphPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = glyphColor
+        style = Paint.Style.STROKE
+        strokeWidth = 1.55f * density
+        strokeCap = Paint.Cap.ROUND
+        strokeJoin = Paint.Join.ROUND
+    }
+    private val glyphPath = Path().apply {
+        addRoundRect(-8f * density, -5f * density, 8f * density, 6f * density,
+            2.2f * density, 2.2f * density, Path.Direction.CW)
+        moveTo(-4f * density, -9f * density)
+        lineTo(-1.2f * density, -5f * density)
+        moveTo(4f * density, -9f * density)
+        lineTo(1.2f * density, -5f * density)
+    }
+    private val frameCallback = object : Choreographer.FrameCallback {
+        override fun doFrame(frameTimeNanos: Long) {
+            if (!animating) return
+            if (!input.isAttachedToWindow) {
+                settle()
+                return
+            }
+            val previous = lastFrameNanos
+            lastFrameNanos = frameTimeNanos
+            val seconds = if (previous == 0L) 1f / 60f else (frameTimeNanos - previous) / 1e9f
+            val target = if (collapsed) 1f else 0f
+            spring.advance(seconds.coerceAtMost(HostTopIslandMotionSpec.MAX_FRAME_SECONDS), target,
+                if (collapsed) HostTopIslandMotionSpec.COLLAPSE_STIFFNESS else HostTopIslandMotionSpec.EXPAND_STIFFNESS,
+                HostTopIslandMotionSpec.DAMPING_RATIO)
+            applyProgress(spring.value)
+            val travel = (dock.width - dock.height).coerceAtLeast(1).toFloat()
+            if (spring.atRest(target, .5f / travel)) settle()
+            else Choreographer.getInstance().postFrameCallback(this)
+        }
+    }
 
     private val input = object : View(dock.context), HostDockLayer {
         override fun verifyDrawable(who: Drawable): Boolean = who === dock.background || super.verifyDrawable(who)
 
         override fun onDraw(canvas: Canvas) {
             // 宿主栏在收起后不可见，让剩余区域的触摸真正落到视频内容。
-            if (collapsed && animator == null) dock.background?.draw(canvas)
+            if (collapsed && !animating) dock.background?.draw(canvas)
+            val alpha = HostTopIslandMotionSpec.glyphAlpha(progress)
+            if (alpha <= 0f) return
+            glyphPaint.alpha = (220f * alpha).roundToInt()
+            val save = canvas.save()
+            canvas.translate(dock.width / 2f, dock.height / 2f + 1.5f * density * (1f - alpha))
+            val scale = .9f + .1f * alpha
+            canvas.scale(scale, scale)
+            canvas.drawPath(glyphPath, glyphPaint)
+            canvas.restoreToCount(save)
         }
 
         override fun onTouchEvent(event: MotionEvent): Boolean = handleTouch(event)
@@ -82,11 +131,12 @@ internal class HostTopIslandBinding private constructor(
             tabs: ViewGroup?,
             density: Float,
             glow: HostGlowView?,
-            backdrop: HostBottomBarBackdrop?
+            backdrop: HostBottomBarBackdrop?,
+            glyphColor: Int
         ): HostTopIslandBinding? {
             val parent = dock.parent as? ViewGroup ?: return null
             return runCatching {
-                HostTopIslandBinding(dock, tabs, density, glow, backdrop).also { it.install(parent) }
+                HostTopIslandBinding(dock, tabs, density, glow, backdrop, glyphColor).also { it.install(parent) }
             }.onFailure { ModernHookLog.info("[BIL] 顶栏收起手势装配失败: $it") }.getOrNull()
         }
     }
@@ -106,7 +156,9 @@ internal class HostTopIslandBinding private constructor(
         dock.outlineProvider = object : ViewOutlineProvider() {
             override fun getOutline(view: View, outline: Outline) {
                 val inset = horizontalInset().roundToInt()
-                outline.setRoundRect(inset, 0, view.width - inset, view.height, view.height / 2f)
+                val vertical = verticalInset().roundToInt()
+                val radius = minOf(view.width - inset * 2, view.height - vertical * 2) / 2f
+                outline.setRoundRect(inset, vertical, view.width - inset, view.height - vertical, radius)
             }
         }
         input.addOnAttachStateChangeListener(object : View.OnAttachStateChangeListener {
@@ -114,9 +166,7 @@ internal class HostTopIslandBinding private constructor(
             override fun onViewDetachedFromWindow(v: View) {
                 observer?.takeIf { it.isAlive }?.removeOnPreDrawListener(preDraw)
                 observer = null
-                animator?.cancel()
-                animator = null
-                applyProgress(if (collapsed) 1f else 0f)
+                settle()
                 gesture = null
                 consumed = false
                 glow?.resetGestureState()
@@ -147,21 +197,29 @@ internal class HostTopIslandBinding private constructor(
         input.translationX = dock.x - input.left
         input.translationY = dock.y - input.top
         input.visibility = if (dock.visibility == View.GONE) View.GONE else View.VISIBLE
-        (dock.background as? HostLiquidSurfaceDrawable)?.horizontalInset = horizontalInset()
-        if (progress > 0f) fadeChildren()
-        if (collapsed && animator == null) dock.visibility = View.INVISIBLE
-        surface?.callback = if (collapsed && animator == null) input else dock
+        (dock.background as? HostLiquidSurfaceDrawable)?.let {
+            it.horizontalInset = horizontalInset()
+            it.verticalInset = verticalInset()
+        }
+        if (animating || progress > 0f) fadeChildren()
+        if (collapsed && !animating) dock.visibility = View.INVISIBLE
+        surface?.callback = if (collapsed && !animating) input else dock
         if (geometryChanged || lastSurface !== surface) {
+            if (lastSurface !== surface) glyphPaint.color = ModernPalette.resolve(dock.context).primary
             lastSurface = surface
             dock.invalidateOutline()
             input.invalidate()
         }
     }
 
-    private fun horizontalInset() = ((dock.width - dock.height).coerceAtLeast(0) / 2f) * progress
+    private fun horizontalInset() = HostTopIslandMotionSpec.horizontalInset(
+        progress, dock.width.toFloat(), dock.height.toFloat(), density)
+
+    private fun verticalInset() = HostTopIslandMotionSpec.verticalInset(
+        progress, dock.width.toFloat(), dock.height.toFloat(), density)
 
     private fun fadeChildren() {
-        val alpha = (1f - progress) * (1f - progress)
+        val alpha = HostTopIslandMotionSpec.contentAlpha(progress)
         for (index in 0 until dock.childCount) {
             val child = dock.getChildAt(index)
             val original = childAlphas.getOrPut(child) { child.alpha }
@@ -171,7 +229,7 @@ internal class HostTopIslandBinding private constructor(
 
     private fun applyProgress(value: Float) {
         progress = value
-        if (value == 0f) {
+        if (value == 0f && !animating) {
             childAlphas.forEach { (child, alpha) -> child.alpha = alpha }
             childAlphas.clear()
         } else {
@@ -184,32 +242,34 @@ internal class HostTopIslandBinding private constructor(
         backdrop?.onVisualMovement()
     }
 
-    private fun animateTo(compact: Boolean) {
-        animator?.cancel()
+    private fun settle() {
+        animating = false
+        Choreographer.getInstance().removeFrameCallback(frameCallback)
+        lastFrameNanos = 0L
+        val target = if (collapsed) 1f else 0f
+        spring.reset(target)
+        applyProgress(target)
+    }
+
+    private fun animateTo(compact: Boolean, initialVelocity: Float = 0f) {
+        val wasAnimating = animating
         collapsed = compact
         dock.visibility = View.VISIBLE
         input.importantForAccessibility = if (compact) View.IMPORTANT_FOR_ACCESSIBILITY_YES
             else View.IMPORTANT_FOR_ACCESSIBILITY_NO
         input.isClickable = compact
-        val end = if (compact) 1f else 0f
         if (!ValueAnimator.areAnimatorsEnabled()) {
-            animator = null
-            applyProgress(end)
+            settle()
             return
         }
-        val animation = ValueAnimator.ofFloat(progress, end)
-        animator = animation
-        animation.duration = 280L
-        animation.interpolator = DecelerateInterpolator(2f)
-        animation.addUpdateListener { applyProgress(it.animatedValue as Float) }
-        animation.addListener(object : AnimatorListenerAdapter() {
-            override fun onAnimationEnd(animation: Animator) {
-                if (animator !== animation) return
-                animator = null
-                applyProgress(end)
-            }
-        })
-        animation.start()
+        // 中途点回展开只改目标，不清零当前位置和速度。
+        if (!wasAnimating) {
+            spring.value = progress
+            spring.velocity = initialVelocity.coerceIn(0f, 1.5f)
+            lastFrameNanos = 0L
+            animating = true
+            Choreographer.getInstance().postFrameCallback(frameCallback)
+        }
         ModernHookLog.info("[BIL] 顶栏灵动岛: ${if (compact) "collapsed" else "expanded"}")
     }
 
@@ -218,14 +278,18 @@ internal class HostTopIslandBinding private constructor(
             if (!dock.isShown && !collapsed) return false
             val inset = horizontalInset()
             // 胶囊/圆球外的区域直接放行，不保留覆盖整条顶栏的隐形触摸墙。
-            val radius = dock.height / 2f
-            val nearestX = event.x.coerceIn(inset + radius, dock.width - inset - radius)
+            val vertical = verticalInset()
+            val radius = minOf(dock.width - inset * 2f, dock.height - vertical * 2f) / 2f
+            val centerX = dock.width / 2f
+            val centerY = dock.height / 2f
+            val nearestX = event.x.coerceIn(minOf(inset + radius, centerX), maxOf(dock.width - inset - radius, centerX))
+            val nearestY = event.y.coerceIn(minOf(vertical + radius, centerY), maxOf(dock.height - vertical - radius, centerY))
             if ((event.x - nearestX) * (event.x - nearestX) +
-                (event.y - radius) * (event.y - radius) > radius * radius) return false
+                (event.y - nearestY) * (event.y - nearestY) > radius * radius) return false
             downX = event.x
             downY = event.y
-            consumed = animator != null
-            bubbleTouch = collapsed && !consumed
+            bubbleTouch = collapsed
+            consumed = animating && !bubbleTouch
             gesture = null
             if (bubbleTouch || consumed) return true
 
@@ -275,7 +339,10 @@ internal class HostTopIslandBinding private constructor(
             glow?.resetGestureState()
             consumed = true
             input.parent?.requestDisallowInterceptTouchEvent(true)
-            animateTo(true)
+            val elapsed = (event.eventTime - event.downTime).coerceAtLeast(1L)
+            val travel = (dock.width - dock.height).coerceAtLeast(1)
+            val velocity = abs(event.x - downX) * 1000f / elapsed / travel
+            animateTo(true, velocity)
             return true
         }
 
