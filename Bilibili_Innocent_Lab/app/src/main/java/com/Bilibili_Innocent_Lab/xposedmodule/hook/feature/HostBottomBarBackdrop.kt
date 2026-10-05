@@ -112,14 +112,21 @@ internal class HostBottomBarBackdrop(private val density: Float) {
         override fun onConfigurationChanged(newConfig: Configuration) = Unit
     }
 
-    fun attach(surface: View) {
+    fun attach(surface: View, explicitContent: View? = null) {
         if (closed) {
             closed = false
             live = LiveBackdropSampler(density, ViewSamplingMatrix())
         }
         this.surface = surface
+        if (explicitContent != null) {
+            this.content = explicitContent
+            live.bindSource(explicitContent)
+            ModernHookLog.info("[BIL] 宿主实时透镜绑定显式内容层: ${explicitContent.javaClass.name}")
+        }
         hookRoot(surface)
-        revalidate()
+        if (explicitContent == null) {
+            revalidate()
+        }
         registerTrim(surface)
     }
 
@@ -131,16 +138,25 @@ internal class HostBottomBarBackdrop(private val density: Float) {
     }
 
     /** 内容层缺失或已脱离时重找；命中时 O(1) 早退，可以挂在每帧之外的布局/层级回调上。 */
-    fun revalidate() {
+    fun revalidate(explicitContent: View? = null) {
         if (closed) return
         val surface = this.surface ?: return
         hookRoot(surface)
+        if (explicitContent != null) {
+            if (this.content !== explicitContent) {
+                this.content = explicitContent
+                live.bindSource(explicitContent)
+                ModernHookLog.info("[BIL] 宿主实时透镜更新显式内容层: ${explicitContent.javaClass.name}")
+            }
+            return
+        }
         val current = content
         if (current != null && current.isAttachedToWindow && current.parent != null) {
             live.bindSource(current)
             return
         }
         val found = HostBackdropLocator.find(surface)
+        ModernHookLog.info("[BIL] 宿主实时透镜寻找内容层: surface=${surface.javaClass.name}, found=${found?.javaClass?.name}")
         if (found == null) return
         content = found
         live.bindSource(found)

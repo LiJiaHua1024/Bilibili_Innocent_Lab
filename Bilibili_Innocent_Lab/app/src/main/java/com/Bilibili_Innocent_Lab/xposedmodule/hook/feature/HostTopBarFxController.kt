@@ -16,6 +16,7 @@ import android.widget.LinearLayout
 import android.widget.TextView
 import androidx.constraintlayout.widget.ConstraintLayout
 import androidx.recyclerview.widget.RecyclerView
+import com.Bilibili_Innocent_Lab.xposedmodule.hook.modern.ModernHookLog
 import com.Bilibili_Innocent_Lab.xposedmodule.runtime.KavaMemberLookup
 import com.Bilibili_Innocent_Lab.xposedmodule.ui.skin.material.ModernMaterialPolicy
 import com.Bilibili_Innocent_Lab.xposedmodule.ui.skin.model.SurfaceRole
@@ -198,7 +199,7 @@ internal object HostTopBarFxController {
             if (vp != null) {
                 applyScrollPadding(vp, topPadding, density)
             }
-            backdrop?.revalidate()
+            backdrop?.revalidate(vp)
         }
 
         val requestSanitization = {
@@ -224,7 +225,8 @@ internal object HostTopBarFxController {
         // 5. 实时透镜生命周期绑定
         topBarDock.addOnAttachStateChangeListener(object : View.OnAttachStateChangeListener {
             override fun onViewAttachedToWindow(v: View) {
-                backdrop?.attach(topBarDock)
+                val vp = (if (topBarDock.parent != null) findViewPager(topBarDock.parent as ViewGroup) else null) ?: findViewPager(root)
+                backdrop?.attach(topBarDock, vp)
                 updateSurfaceDrawable(force = true)
                 requestSanitization()
             }
@@ -235,7 +237,7 @@ internal object HostTopBarFxController {
             }
         })
         if (topBarDock.isAttachedToWindow) {
-            backdrop?.attach(topBarDock)
+            backdrop?.attach(topBarDock, viewPager)
         }
     }
 
@@ -551,6 +553,7 @@ internal object HostTopBarFxController {
             if (tabContainer != null) {
                 val candidateDock = findRowContainer(root, tabContainer) ?: tabContainer
                 val searchIcon = findSearchIcon(candidateDock)
+                ModernHookLog.info("[BIL] locateTopBarHierarchy: candidateDock=${candidateDock.javaClass.name}, res=${resourceName(candidateDock, candidateDock.id)}, parent=${candidateDock.parent?.javaClass?.name}, tabContainer=${tabContainer.javaClass.name}")
                 return TopBarHierarchy(
                     topBarDock = candidateDock,
                     searchRow = searchRow,

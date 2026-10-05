@@ -41,6 +41,7 @@ import com.Bilibili_Innocent_Lab.xposedmodule.ui.activity.ModernNavigationIntent
 import com.Bilibili_Innocent_Lab.xposedmodule.ui.activity.ModernNavigationMotion
 import com.Bilibili_Innocent_Lab.xposedmodule.ui.activity.ModernNavigationSpring
 import com.Bilibili_Innocent_Lab.xposedmodule.ui.activity.reachablePileRoomPx
+import com.Bilibili_Innocent_Lab.xposedmodule.hook.modern.ModernHookLog
 import com.Bilibili_Innocent_Lab.xposedmodule.ui.skin.material.FrostedMotionSurfaceAlpha
 import com.Bilibili_Innocent_Lab.xposedmodule.ui.skin.material.ModernMaterialPolicy
 import com.Bilibili_Innocent_Lab.xposedmodule.ui.skin.material.ModernSurfaceStyle
