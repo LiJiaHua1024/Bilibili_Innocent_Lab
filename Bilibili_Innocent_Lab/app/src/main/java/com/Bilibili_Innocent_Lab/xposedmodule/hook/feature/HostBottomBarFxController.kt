@@ -513,7 +513,7 @@ internal class HostBottomBarDockLayer(
     private val screenLoc = IntArray(2)
 
     private val rtl: Boolean get() = layoutDirection == LAYOUT_DIRECTION_RTL
-    private val count: Int get() = container?.childCount?.coerceIn(1, 8) ?: 5
+    private val count: Int get() = container?.childCount?.coerceIn(1, ModernNavigationMotion.MAX_ITEMS) ?: 5
     private val contentWidth: Float get() = (width - inset * 2f).coerceAtLeast(0f)
     private val slotWidth: Float get() = if (count > 0) contentWidth / count else 0f
 
