@@ -110,15 +110,16 @@ class ModalMotionRefinementTest {
         val controller = source("IconAnchoredMotionController")
         val apply = controller.after("private fun apply(")
             .before("private fun finish(")
-        assertTrue(apply.contains("layer.background == null"))
+        assertTrue(apply.contains("!layer.usesPersistentSurface && layer.background == null"))
         val prep = controller.after("fun prepareFirstFrame(")
             .before("fun startEntry(")
         assertTrue(prep.contains("contentBackground?.alpha = 0"))
         val exit = controller.after("private fun prepareExitFrame(")
             .before("private fun animateTo(")
         assertTrue(exit.contains("contentBackground?.alpha = 0"))
-        // 稳定端与硬关都要把卡片背景恢复回 255，不能留着 0 给复用 container 的路径。
-        assertTrue(controller.contains("contentBackground?.alpha = 255"))
+        // 稳定端只有非持久路径交还卡片；持久表面不能叠上第二张玻璃。
+        val settle = controller.after("private fun settleExpanded()").before("fun beginPredictiveBack(")
+        assertTrue(settle.contains("contentBackground?.alpha = if (layer.usesPersistentSurface) 0 else 255"))
     }
 
     @Test fun expansionTargetTracksTheLiveCardRectEveryFrame() {

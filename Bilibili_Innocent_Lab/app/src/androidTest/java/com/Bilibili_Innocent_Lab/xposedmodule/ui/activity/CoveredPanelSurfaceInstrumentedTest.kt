@@ -19,7 +19,7 @@ import org.junit.runner.RunWith
 /** 比较真实 Drawable 输出；不打开业务面板、不修改遥测设置。 */
 @RunWith(AndroidJUnit4::class)
 class CoveredPanelSurfaceInstrumentedTest {
-    private class Fixture {
+    private class Fixture(withCardBackground: Boolean = false) {
         private val context = InstrumentationRegistry.getInstrumentation().targetContext
         val layer = IconAnchoredMotionLayer(
             context,
@@ -31,7 +31,9 @@ class CoveredPanelSurfaceInstrumentedTest {
             Color.rgb(24, 24, 24),
             20f
         )
-        private val card = View(context)
+        val card = View(context).apply {
+            if (withCardBackground) background = ColorDrawable(Color.RED)
+        }
         val controller: IconAnchoredMotionController
 
         init {
@@ -78,6 +80,23 @@ class CoveredPanelSurfaceInstrumentedTest {
             assertFalse(f.layer.clipToOutline)
             assertEquals(0, Color.alpha(lastFrame[100 * 300 + 39]))
             assertTrue(Color.red(lastFrame[100 * 300 + 41]) > 100)
+        }
+    }
+
+    @Test fun persistentSurfaceOwnsTheFillDuringEntryRestAndPredictiveBack() {
+        InstrumentationRegistry.getInstrumentation().runOnMainSync {
+            val f = Fixture(withCardBackground = true)
+            assertTrue(f.controller.prepareFirstFrame())
+            assertEquals(0, f.card.background.alpha)
+            f.controller.snapToExpanded()
+            assertEquals(0, f.card.background.alpha)
+            val persistentOnly = f.pixels()
+            assertTrue(f.controller.beginPredictiveBack())
+            assertEquals(0, f.card.background.alpha)
+            assertArrayEquals(persistentOnly, f.pixels())
+            f.controller.progressPredictiveBack(.5f)
+            assertEquals(0, f.card.background.alpha)
+            f.controller.cancelMotion()
         }
     }
 
