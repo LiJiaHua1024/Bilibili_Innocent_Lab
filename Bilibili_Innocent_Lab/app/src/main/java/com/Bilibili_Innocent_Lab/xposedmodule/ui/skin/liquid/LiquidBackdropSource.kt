@@ -224,8 +224,8 @@ internal class LiquidBackdropSource private constructor(
          * 未设自定义图时的稳定 underlay：与标准磨砂皮肤共用 [AmbientBackdropScene] 配方，
          * 两种材质下用户看到的是同一个 Monet 氛围背景。
          *
-         * 折射采样底图（[opticalBitmap]）保留颗粒加入前的干净副本——可见根背景带细颗粒纹理，
-         * 玻璃采样源保持平滑，折射内容不会被噪点污染。实时截屏路径不受影响。
+         * 自动背景只有低频渐变；去掉颗粒后，显示与光学采样共用同一张位图，
+         * 不再读取像素或复制底图。自定义图片仍保留独立的模糊采样副本。
          */
         fun create(
             palette: MonetColors,
@@ -234,7 +234,6 @@ internal class LiquidBackdropSource private constructor(
         ): LiquidBackdropSource {
             val size = LiquidBackdropSizingPolicy.resolve(fullWidth, fullHeight)
             val bitmap = createBitmap(size.width, size.height, Bitmap.Config.ARGB_8888)
-            var optical: Bitmap? = null
             try {
                 val canvas = Canvas(bitmap)
                 val dark = ColorUtils.calculateLuminance(palette.background) < .5
@@ -267,25 +266,16 @@ internal class LiquidBackdropSource private constructor(
                     seamPaint
                 )
 
-                val pixels = IntArray(size.width * size.height)
-                bitmap.getPixels(pixels, 0, size.width, 0, 0, size.width, size.height)
-                optical = createBitmap(size.width, size.height, Bitmap.Config.ARGB_8888)
-                optical.setPixels(pixels, 0, size.width, 0, 0, size.width, size.height)
-                AmbientBackdropScene.addGrain(pixels)
-                bitmap.setPixels(pixels, 0, size.width, 0, 0, size.width, size.height)
                 bitmap.prepareToDraw()
-                optical.prepareToDraw()
                 return LiquidBackdropSource(
                     bitmap = bitmap,
                     customAssetId = null,
                     isRealtime = false,
                     fullWidth = fullWidth,
-                    fullHeight = fullHeight,
-                    opticalBitmap = optical
+                    fullHeight = fullHeight
                 )
             } catch (throwable: Throwable) {
                 bitmap.recycle()
-                optical?.recycle()
                 throw throwable
             }
         }
