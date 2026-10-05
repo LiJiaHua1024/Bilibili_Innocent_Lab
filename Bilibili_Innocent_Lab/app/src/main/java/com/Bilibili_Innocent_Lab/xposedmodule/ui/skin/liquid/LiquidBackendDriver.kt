@@ -1,6 +1,7 @@
 package com.Bilibili_Innocent_Lab.xposedmodule.ui.skin.liquid
 
 import android.graphics.Canvas
+import android.graphics.Matrix
 import android.graphics.Rect
 import com.Bilibili_Innocent_Lab.xposedmodule.ui.skin.model.LiquidRenderBackend
 
@@ -33,7 +34,9 @@ internal interface LiquidBackendDriver : AutoCloseable {
         opticalIntensity: Float,
         stretchDirY: Float,
         contentAlpha: Float,
-        motionLite: Boolean
+        motionLite: Boolean,
+        localToBackdrop: Matrix? = null,
+        stretchSampling: FloatArray? = null
     )
 }
 
@@ -53,7 +56,9 @@ internal class LiquidTranslucentBackend : LiquidBackendDriver {
         opticalIntensity: Float,
         stretchDirY: Float,
         contentAlpha: Float,
-        motionLite: Boolean
+        motionLite: Boolean,
+        localToBackdrop: Matrix?,
+        stretchSampling: FloatArray?
     ) = Unit
 
     override fun close() = Unit

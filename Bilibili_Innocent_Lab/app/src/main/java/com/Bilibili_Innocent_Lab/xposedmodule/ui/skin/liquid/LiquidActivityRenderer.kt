@@ -3,6 +3,8 @@ package com.Bilibili_Innocent_Lab.xposedmodule.ui.skin.liquid
 import android.annotation.SuppressLint
 import android.graphics.Bitmap
 import android.graphics.Canvas
+import com.Bilibili_Innocent_Lab.xposedmodule.ui.skin.geometry.ViewSamplingMatrix
+import com.Bilibili_Innocent_Lab.xposedmodule.ui.skin.geometry.SamplingMatrixMath
 import android.graphics.Color
 import android.graphics.LinearGradient
 import android.graphics.Matrix
@@ -198,6 +200,13 @@ internal class LiquidActivityRenderer(
     /** 悬浮栏宿主 → 可读性补偿；弱键，不延长 View 生命周期。 */
     private val surfaceLegibility = WeakHashMap<View, GlowLegibility>()
     private val backdropHostLocation = IntArray(2)
+    private val surfaceCoordinates = ViewSamplingMatrix()
+    private val surfaceToBackdrop = Matrix()
+    private val refreshSurfaceTransform = FloatArray(9)
+    private val stretchToBackdrop = Matrix()
+    private val stretchTransformValues = FloatArray(9)
+    private val stretchSampling = FloatArray(3)
+    private var stretchSamplingDistance = 0f
     /** 窗口底图换代计数，见 [windowBackdropGeneration]。 */
     private var backdropGeneration = 0L
 
@@ -607,7 +616,8 @@ internal class LiquidActivityRenderer(
         onStretchDistanceChanged(distance, edge)
 
     private fun onStretchDistanceChanged(distance: Float, edge: LiquidStretchEdge) {
-        if (closed || effectProfile != LiquidEffectProfile.REALTIME_CAPTURE) return
+        if (closed) return
+        val samplingChanged = abs(distance - stretchSamplingDistance) >= .0005f || distance == 0f && stretchSamplingDistance != 0f
         val next = LiquidRealtimeCapturePolicy.stretchOpticalIntensity(distance)
         val nextDir = when (edge) {
             LiquidStretchEdge.TOP -> -1f
@@ -616,15 +626,22 @@ internal class LiquidActivityRenderer(
         }
         // epsilon 挡住回弹尾段的亚感知步进（全程范围 0.85，0.004 ≈ 0.5%）；
         // 归零那帧 edge 变为 NONE、nextDir 必变，终态永远会发布，不会卡在半亮状态。
-        if (abs(next - stretchOpticalIntensity) < 0.004f && nextDir == stretchEdgeDirY) return
+        if (abs(next - stretchOpticalIntensity) < 0.004f && nextDir == stretchEdgeDirY && !samplingChanged) return
+        stretchSamplingDistance = distance
         stretchOpticalIntensity = next
         stretchEdgeDirY = nextDir
+        // EdgeEffect 在 RenderThread 改变整棵前景节点，View 的屏幕原点不会跟着变。
+        // 只拉边界、不产生 scroll 回调的手势也必须暂停滞后截图，归零后按原有静默窗口恢复。
+        if (distance > 0f) suppressRealtimeSamplingWhileScrolling()
         // 回弹不切换采样路径：玻璃覆盖区在截屏里本就被抑制遮罩换成稳定底图，过期
         // 像素进不了表面；而切到光学直采会让整圈边缘光在两条路径间乒乓闪烁
         // （2026-09-21 真机实证）。保持折射路径，方向性增益照常点亮回弹侧边缘。
         // 位移时间戳照常更新：若页面滑动已使抑制生效，回弹位移会顺延静默窗口。
         lastContentShiftNanos = System.nanoTime()
         invalidateRegisteredSurfaces()
+        // EdgeEffect has already advanced, while children have not been drawn yet.
+        // Flush this content batch now so every glass records the same native stretch frame.
+        boundRoot?.rootView?.let(::flushSurfaceRefresh)
     }
 
     @MainThread
@@ -724,6 +741,27 @@ internal class LiquidActivityRenderer(
         // 取样模式跑——折射弯曲对平滑底图无收益，但边缘光/通透全程与静止态一致，
         // 不再出现"切页瞬间高光消失再加载"的路径切换跳变（2026-09-21 真机实证）。
         val foreignWindow = host != null && host.rootView !== boundRoot?.rootView
+        val root = boundRoot
+        // Drawable 刚登记过同一帧的变换，复用它，避免每次 draw 再遍历宿主祖先链。
+        val screenTransform = host?.let { surfaceViews[it]?.takeIf { footprint -> footprint.hasTransform }?.screenTransform }
+        val samplingMatrix = if (screenTransform != null && root != null &&
+            surfaceCoordinates.sourceToTarget(screenTransform, root, surfaceToBackdrop)) surfaceToBackdrop else null
+        stretchSampling.fill(0f)
+        var stretchAncestor = host?.parent as? View
+        while (stretchAncestor != null && stretchAncestor !is LiquidStretchViewport) {
+            stretchAncestor = stretchAncestor.parent as? View
+        }
+        if (root != null && stretchAncestor is LiquidStretchViewport && stretchAncestor.samplingOverscroll != 0f &&
+            surfaceCoordinates.sourceToTarget(stretchAncestor, root, stretchToBackdrop)) {
+            stretchToBackdrop.getValues(stretchTransformValues)
+            // The vertical viewport must stay axis-aligned; unusual host transforms fail open.
+            if (stretchTransformValues[1] == 0f && stretchTransformValues[3] == 0f &&
+                stretchTransformValues[6] == 0f && stretchTransformValues[7] == 0f && stretchTransformValues[4] > 0f) {
+                stretchSampling[0] = stretchTransformValues[5]
+                stretchSampling[1] = stretchAncestor.height * stretchTransformValues[4]
+                stretchSampling[2] = stretchAncestor.samplingOverscroll
+            }
+        }
         var foreignFellBack = false
         val chrome = if (role == SurfaceRole.FLOATING && host != null && !foreignWindow) chromeBackdrops[host] else null
         chrome?.drewByNode = false
@@ -749,7 +787,8 @@ internal class LiquidActivityRenderer(
                             1f,
                             0f,
                             LiquidSurfaceAlphaPolicy.glassContentAlpha(role) * (alpha / 255f),
-                            motionLite = false
+                            motionLite = false,
+                            localToBackdrop = samplingMatrix
                         )
                     }.onFailure {
                         backends.markForeignDriverBroken()
@@ -768,7 +807,8 @@ internal class LiquidActivityRenderer(
                             rootOffsetX = (viewX - rootScreenLocation[0]).toFloat(),
                             rootOffsetY = (viewY - rootScreenLocation[1]).toFloat(),
                             alpha = (LiquidSurfaceAlphaPolicy.glassContentAlpha(role) * alpha.toFloat())
-                                .roundToInt()
+                                .roundToInt(),
+                            localToBackdrop = samplingMatrix
                         )
                     }
                 } else {
@@ -808,7 +848,9 @@ internal class LiquidActivityRenderer(
                             // 散射就是 GPU 墙——用户实测帧间隔 18% 超 12.5ms、`High input
                             // latency` 占 73% 帧，而 UI 线程只占 5.4ms，其余全在 GPU。
                             motionLite = (realtimeSamplingSuppressed && !suppressionFromMorphOnly) ||
-                                stretchOpticalIntensity > 1f
+                                stretchOpticalIntensity > 1f,
+                            localToBackdrop = samplingMatrix,
+                            stretchSampling = stretchSampling
                         )
                     }
                     chrome?.drewByNode = drewChrome
@@ -1167,6 +1209,7 @@ internal class LiquidActivityRenderer(
             if (!wasSuppressed && realtimeSamplingSuppressed) suppressionFromMorphOnly = true
         }
         footprint.update(bounds, radiusPx, originX, originY)
+        footprint.hasTransform = surfaceCoordinates.localToScreen(view, footprint.screenTransform)
     }
 
     /**
@@ -1393,8 +1436,10 @@ internal class LiquidActivityRenderer(
                 val visible = isSurfacePotentiallyVisible(view)
                 // 不可见表面的 movedSurfaceLocation 还是上一个表面的残留坐标，
                 // 原值比对结果无意义；shouldRefresh 对 !visible 本就会忽略该参数。
+                val transformChanged = visible && surfaceCoordinates.localToScreen(view, refreshSurfaceTransform) &&
+                    (!entry.value.hasTransform || !SamplingMatrixMath.equal(entry.value.screenTransform, refreshSurfaceTransform))
                 val originChanged = visible &&
-                    !entry.value.matchesOrigin(movedSurfaceLocation[0], movedSurfaceLocation[1])
+                    (!entry.value.matchesOrigin(movedSurfaceLocation[0], movedSurfaceLocation[1]) || transformChanged)
                 if (originChanged && windowRoot === mainWindowRoot) surfaceMoved = true
                 if (entry.value.refreshState.shouldRefresh(visible,
                         originChanged = originChanged,

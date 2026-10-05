@@ -57,7 +57,7 @@ internal class LiquidBackdropSource private constructor(
      * 逐帧改写它的 local matrix 会污染折射采样。
      */
     private val opticalRegionShader by lazy(LazyThreadSafetyMode.NONE) {
-        BitmapShader(opticalBitmap, Shader.TileMode.CLAMP, Shader.TileMode.CLAMP).apply {
+        BitmapShader(refractionBitmap, Shader.TileMode.CLAMP, Shader.TileMode.CLAMP).apply {
             // 与旧路径的 FILTER_BITMAP_FLAG 对齐：稳定底图是 0.25 倍采样，最近邻会在
             // 抑制区域露出明显色块。setFilterMode 是 API 33 才有的显式声明，31-32 仍依赖
             // opticalRegionPaint 的 FILTER_BITMAP_FLAG。
@@ -67,6 +67,7 @@ internal class LiquidBackdropSource private constructor(
         }
     }
     private val opticalRegionMatrix = Matrix()
+    private val opticalRootToLocal = Matrix()
     private val opticalRegionPaint by lazy(LazyThreadSafetyMode.NONE) {
         Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG).apply { shader = opticalRegionShader }
     }
@@ -113,16 +114,21 @@ internal class LiquidBackdropSource private constructor(
         radiusPx: Float,
         rootOffsetX: Float,
         rootOffsetY: Float,
-        alpha: Int
+        alpha: Int,
+        localToBackdrop: Matrix? = null
     ) {
         check(!closed) { "Liquid backdrop source is closed" }
-        if (localBounds.isEmpty || opticalBitmap.width <= 0 || opticalBitmap.height <= 0 ||
+        if (localBounds.isEmpty || refractionWidth <= 0 || refractionHeight <= 0 ||
             fullWidth <= 0 || fullHeight <= 0
         ) return
-        val scaleX = fullWidth.toFloat() / opticalBitmap.width.toFloat()
-        val scaleY = fullHeight.toFloat() / opticalBitmap.height.toFloat()
+        val scaleX = fullWidth.toFloat() / refractionWidth.toFloat()
+        val scaleY = fullHeight.toFloat() / refractionHeight.toFloat()
         opticalRegionMatrix.setScale(scaleX, scaleY)
-        opticalRegionMatrix.postTranslate(-rootOffsetX, -rootOffsetY)
+        if (localToBackdrop != null && localToBackdrop.invert(opticalRootToLocal)) {
+            opticalRegionMatrix.postConcat(opticalRootToLocal)
+        } else {
+            opticalRegionMatrix.postTranslate(-rootOffsetX, -rootOffsetY)
+        }
         opticalRegionShader.setLocalMatrix(opticalRegionMatrix)
         opticalRegionPaint.alpha = alpha.coerceIn(0, 255)
         canvas.drawRoundRect(

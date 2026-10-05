@@ -78,3 +78,10 @@ Except for DexKit's `Core/` directory, the upstream project is licensed under
 the Apache License, Version 2.0. The native core is licensed under the GNU
 Lesser General Public License, Version 3.0. See the upstream repository for the
 corresponding complete license texts and source code.
+## Android 边界拉伸采样坐标
+
+- 来源：Android Open Source Project 的 `EdgeEffect.java` 与 `StretchEffect.cpp`。
+- 用途：保持系统回弹动画，补偿前景玻璃中背景图片的采样位置。
+- 版权：Copyright 2010, 2021 The Android Open Source Project。
+- 许可证：Apache License 2.0（项目已有对应许可证全文）。
+- 原始工程：https://android.googlesource.com/platform/frameworks/base/

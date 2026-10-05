@@ -25,6 +25,7 @@ package com.Bilibili_Innocent_Lab.xposedmodule.ui.skin.liquid
 
 import android.graphics.BitmapShader
 import android.graphics.Canvas
+import android.graphics.Matrix
 import android.graphics.Paint
 import android.graphics.Rect
 import android.graphics.RuntimeShader
@@ -57,6 +58,7 @@ internal class LiquidRefractionBackendApi33(
     }
     private var source: LiquidBackdropSource? = null
     private var appliedScatterTapMode = FULL_SCATTER_TAPS
+    private val samplingValues = FloatArray(9)
 
     init {
         shader.applyLiquidOpticalUniforms(parameters, density)
@@ -91,12 +93,24 @@ internal class LiquidRefractionBackendApi33(
         opticalIntensity: Float,
         stretchDirY: Float,
         contentAlpha: Float,
-        motionLite: Boolean
+        motionLite: Boolean,
+        localToBackdrop: Matrix?,
+        stretchSampling: FloatArray?
     ) {
         checkNotNull(source) { "Liquid refraction backdrop is not bound" }
         shader.setFloatUniform("size", bounds.width().toFloat(), bounds.height().toFloat())
         shader.setFloatUniform("offset", -bounds.left.toFloat(), -bounds.top.toFloat())
-        shader.setFloatUniform("backdropOrigin", viewX.toFloat(), viewY.toFloat())
+        // offset 只把形状归零；纹理仍按承载 View 的完整局部坐标取样。
+        shader.setFloatUniform("backdropOrigin", (viewX + bounds.left).toFloat(), (viewY + bounds.top).toFloat())
+        shader.setFloatUniform("backdropMapped", if (localToBackdrop == null) 0f else 1f)
+        if (localToBackdrop != null) {
+            localToBackdrop.getValues(samplingValues)
+            shader.setFloatUniform("backdropMapX", samplingValues[0], samplingValues[1], samplingValues[2])
+            shader.setFloatUniform("backdropMapY", samplingValues[3], samplingValues[4], samplingValues[5])
+            shader.setFloatUniform("backdropMapW", samplingValues[6], samplingValues[7], samplingValues[8])
+        }
+        shader.setFloatUniform("stretchSampling", stretchSampling?.get(0) ?: 0f,
+            stretchSampling?.get(1) ?: 0f, stretchSampling?.get(2) ?: 0f)
         shader.setFloatUniform("cornerRadii", radiusPx, radiusPx, radiusPx, radiusPx)
         shader.setFloatUniform("opticalIntensity", opticalIntensity.coerceIn(1f, 1.85f))
         shader.setFloatUniform("stretchDirY", stretchDirY.coerceIn(-1f, 1f))
@@ -161,6 +175,8 @@ internal fun RuntimeShader.applyLiquidOpticalUniforms(parameters: LiquidParamete
     setFloatUniform("scatterTapMode", FULL_SCATTER_TAPS)
     setFloatUniform("dither", parameters.ditherAmplitude)
     setFloatUniform("nodeInput", 0f)
+    setFloatUniform("backdropMapped", 0f)
+    setFloatUniform("stretchSampling", 0f, 0f, 0f)
 }
 
 internal const val ROUNDED_RECT_REFRACTION_SHADER = """
@@ -173,6 +189,12 @@ uniform float2 offset;
 uniform float2 backdropScale;
 uniform float2 backdropOrigin;
 uniform float2 backdropExtent;
+uniform float backdropMapped;
+uniform float3 backdropMapX;
+uniform float3 backdropMapY;
+uniform float3 backdropMapW;
+// Viewport root-space top, height, signed HWUI stretch intensity.
+uniform float3 stretchSampling;
 uniform float4 cornerRadii;
 uniform float refractionHeight;
 uniform float refractionAmount;
@@ -253,8 +275,30 @@ half4 saturateColor(half4 color, float amount) {
     return half4(saturated, color.a);
 }
 
+float2 backdropPoint(float2 canvasCoord) {
+    float2 root = canvasCoord + offset + backdropOrigin;
+    if (backdropMapped > 0.5) {
+        float3 p = float3(canvasCoord, 1.0);
+        float w = dot(backdropMapW, p);
+        root = float2(dot(backdropMapX, p), dot(backdropMapY, p)) / w;
+    }
+    // HWUI warps the foreground after this shader. Look up the eventual output position
+    // so that the picture in the moving glass still matches the stationary background.
+    if (stretchSampling.y > 0.0 && abs(stretchSampling.z) > 0.0) {
+        float q = (root.y - stretchSampling.x) / stretchSampling.y;
+        bool bottom = stretchSampling.z < 0.0;
+        if (bottom) q = 1.0 - q;
+        float s = abs(stretchSampling.z);
+        float k = 1.0 + s;
+        q = k * k * q / (1.0 + 0.3 * s + 0.7 * s * k * q);
+        if (bottom) q = 1.0 - q;
+        root.y = stretchSampling.x + q * stretchSampling.y;
+    }
+    return root;
+}
+
 half4 sampleContent(float2 canvasCoord) {
-    float2 rootCoord = canvasCoord + offset + backdropOrigin;
+    float2 rootCoord = backdropPoint(canvasCoord);
     if (nodeInput > 0.5) {
         rootCoord = clamp(rootCoord, backdropOrigin + float2(0.5),
             backdropOrigin + size - float2(0.5));
@@ -355,7 +399,7 @@ half4 main(float2 coord) {
     // 而运动期正是 GPU 最紧的时候（真机：高级材质手风琴 GPU 50th 7ms / 90th 9ms，
     // `Slow issue draw commands` 占掉帧的 46/47，帧间隔中位 16.6ms＝每两帧丢一帧）。
     if (motionLite > 0.5 && deepInterior) {
-        float2 liteRoot = coord + offset + backdropOrigin;
+        float2 liteRoot = backdropPoint(coord);
         float2 liteMargin = min(liteRoot, backdropExtent - liteRoot);
         float liteNearest = max(min(liteMargin.x, liteMargin.y), 0.0);
         float liteReach = clamp(
@@ -404,7 +448,7 @@ half4 main(float2 coord) {
     // 这里按当前像素到 backdrop 边界的可用余量线性收敛位移强度：远离边缘时 `edgeReach` 为 1，
     // 画面中部完全不受影响；贴边时收敛到 0，折射平滑变浅而不是让平铺模式去补像素。
     // 代价是每像素约 9 条 ALU，没有额外纹理读取、没有新的 pass。
-    float2 rootCoord = coord + offset + backdropOrigin;
+    float2 rootCoord = backdropPoint(coord);
     float2 edgeMargin = min(rootCoord, backdropExtent - rootCoord);
     float nearestMargin = max(min(edgeMargin.x, edgeMargin.y), 0.0);
     float sampleReach = max(
