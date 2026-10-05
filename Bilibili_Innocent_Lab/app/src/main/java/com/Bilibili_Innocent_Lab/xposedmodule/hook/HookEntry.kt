@@ -308,11 +308,7 @@ class HookEntry : XposedModule() {
         @Volatile
         private var descTouchObservedAtMs = 0L
 
-        @Volatile
-        private var descTouchDownX = 0f
-
-        @Volatile
-        private var descTouchDownY = 0f
+        private val descCopyGesture = DescriptionCopyGesture()
 
         /** 长按是否已被 OnLongClickListener 路径处理（防双重弹窗） */
         @Volatile
@@ -444,15 +440,69 @@ class HookEntry : XposedModule() {
 
         private fun clearDescTouchSession(resetHandled: Boolean = true) {
             mainHandlerRef?.removeCallbacks(descLongPressRunnable)
+            if (resetHandled) {
+                descTouchedView?.let { view -> runCatching { view.cancelLongPress() } }
+            }
             descTouchedView = null
             descTouchDownMs = 0L
             descTouchObservedAtMs = 0L
-            if (resetHandled) descLongPressHandled = false
+            if (resetHandled) {
+                descLongPressHandled = false
+                descCopyGesture.reset()
+            }
         }
 
-        /** 简介长按判定（DOWN 后 500ms 触发，长按状态下弹气泡；MOVE/UP 时移除） */
+        /** 让出给滑动时同时取消模块、系统和宿主自实现长按，保留本次取消身份到终止事件。 */
+        private fun cancelDescLongPressCandidate() {
+            mainHandlerRef?.removeCallbacks(descLongPressRunnable)
+            descTouchedView?.let { view -> runCatching { view.cancelLongPress() } }
+            descTouchedView = null
+            descTouchDownMs = 0L
+            descTouchObservedAtMs = 0L
+        }
+
+        /** 只观察当前简介手势；非简介节点收到同一流的移动/多指/CANCEL 时也能及时取消。 */
+        private fun observeDescTouch(ev: android.view.MotionEvent) {
+            if (!descCopyGesture.matches(ev.downTime) || !descCopyGesture.isPending) return
+            val action = ev.actionMasked
+            if (action == android.view.MotionEvent.ACTION_CANCEL ||
+                action == android.view.MotionEvent.ACTION_POINTER_DOWN ||
+                action == android.view.MotionEvent.ACTION_POINTER_UP
+            ) {
+                if (descCopyGesture.cancel(ev.downTime)) cancelDescLongPressCandidate()
+                return
+            }
+            if (action != android.view.MotionEvent.ACTION_MOVE &&
+                action != android.view.MotionEvent.ACTION_UP
+            ) return
+            val index = ev.findPointerIndex(descCopyGesture.pointerId)
+            if (index < 0 || ev.pointerCount != 1) {
+                if (descCopyGesture.cancel(ev.downTime)) cancelDescLongPressCandidate()
+                return
+            }
+            // rawX/Y 在 minSdk 27 仅提供首指坐标；单指流用偏移换算历史点，避免引入 API 29 调用。
+            val offsetX = ev.rawX - ev.x
+            val offsetY = ev.rawY - ev.y
+            for (history in 0 until ev.historySize) {
+                if (descCopyGesture.sample(ev.downTime, ev.getPointerId(index), ev.pointerCount,
+                        ev.getHistoricalX(index, history) + offsetX,
+                        ev.getHistoricalY(index, history) + offsetY)
+                ) {
+                    cancelDescLongPressCandidate()
+                    return
+                }
+            }
+            if (descCopyGesture.sample(ev.downTime, ev.getPointerId(index), ev.pointerCount,
+                    ev.getX(index) + offsetX, ev.getY(index) + offsetY)
+            ) cancelDescLongPressCandidate()
+        }
+
+        /** 简介长按判定（实际处理 DOWN 后 400ms；与监听器、UP 共用同一候选）。 */
         private val descLongPressRunnable = HostThreadGuard.runnable("free_copy.desc_long_press") {
-            if (descLongPressHandled) return@runnable
+            if (descLongPressHandled || !descCopyGesture.isPending ||
+                android.os.SystemClock.uptimeMillis() - descTouchObservedAtMs <
+                    DescriptionCopyGesture.LONG_PRESS_MILLIS
+            ) return@runnable
             val v = descTouchedView ?: run {
                 clearDescTouchSession(resetHandled = true)
                 return@runnable
@@ -462,13 +512,7 @@ class HookEntry : XposedModule() {
                 clearDescTouchSession(resetHandled = true)
                 return@runnable
             }
-            descLongPressHandled = true
-            runCatching {
-                // 先弹泡（清 touch 标志）再 Vibrator 直震——官方震动由
-                // performHapticFeedback hook 在长按窗口内拦下，只保留我们这一次
-                showFreeCopyPopup(v, extractDescText(v))
-                hapticFeedback(v)
-            }
+            sharedFreeCopyListener.onLongClick(v)
         }
 
         /**
@@ -566,6 +610,7 @@ class HookEntry : XposedModule() {
             ourBubbleDialogRef = null
             commentLongPressHandled = false
             descLongPressHandled = false
+            descCopyGesture.finishHandled()
         }
 
         /**
@@ -578,6 +623,9 @@ class HookEntry : XposedModule() {
             val isDesc = descViewId != View.NO_ID && view.id == descViewId
             if (isDesc && !runtimeDescriptionFreeCopyEnabled) return@OnLongClickListener false
             if (!isDesc && !runtimeCommentFreeCopyEnabled) return@OnLongClickListener false
+            if (isDesc && (!view.isAttachedToWindow || !view.isShown ||
+                    view.windowVisibility != View.VISIBLE)
+            ) return@OnLongClickListener false
             // ViewHolder 从评论复用为“热门评论/最新评论”头部后，旧共享监听器可能暂时
             // 仍挂在 View 上。先验证评论身份，避免短点头部文本触发自由复制或吞掉点击。
             if (!isDesc && !isRegisteredCommentTreeMember(view)) {
@@ -585,12 +633,18 @@ class HookEntry : XposedModule() {
             }
             if (isDesc && descLongPressHandled) return@OnLongClickListener true
             if (!isDesc && commentLongPressHandled) return@OnLongClickListener true
+            if (isDesc && descCopyGesture.isTracking &&
+                (descTouchedView !== view || !descCopyGesture.isPending)
+            ) return@OnLongClickListener false
             val resolved = if (isDesc) {
                 FreeCopyContent(extractDescText(view))
             } else {
                 resolveCommentTextAtInteraction(view)
             } ?: return@OnLongClickListener false
             if (!isValidFreeCopyText(resolved.displayText)) return@OnLongClickListener false
+            if (isDesc && descCopyGesture.isTracking &&
+                !descCopyGesture.claim(descTouchDownMs, android.os.SystemClock.uptimeMillis())
+            ) return@OnLongClickListener false
             HostRuntimeDiagnosticsBridge.record("free_copy", FeatureRuntimeStage.OBSERVED)
             HostRuntimeDiagnosticsBridge.record(
                 if (isDesc) "free_copy_description_enabled" else "free_copy_comment_enabled",
@@ -4296,8 +4350,8 @@ class HookEntry : XposedModule() {
                     // UgcHeadlineService$c.w——均写剪贴板 + toast）。
                     // 因此 hook View.dispatchTouchEvent（触摸统一入口，任何 override
                     // onTouchEvent 的 desc 变体都必经，版本无关）做长按检测：DOWN 记录
-                    // 按下位置并 postDelayed 500ms 长按判定（长按状态中即弹气泡，不等
-                    // 松手）；MOVE 位移超阈值则取消；UP/CANCEL 取消剩余判定，若长按已弹
+                    // 按下位置并 postDelayed 400ms 长按判定（长按状态中即弹气泡，不等
+                    // 松手）；MOVE 超系统 touch slop 则取消全部长按源；UP/CANCEL 取消剩余判定，若长按已弹
                     // 气泡则消费事件（阻止官方复制）。短按/滑动放行（官方点击 span、展开
                     // 收起等行为不受影响）。descLongPressHandled 防双重弹窗。
                     // 评论树长按检测（9.8.0 官方评论长按不走 OnLongClickListener，触摸层
@@ -4317,6 +4371,7 @@ class HookEntry : XposedModule() {
                                     val v = instance as? View ?: return@before
                                     val ev = argOrNull(0) as? android.view.MotionEvent ?: return@before
                                     val action = ev.actionMasked
+                                    if (runtimeDescriptionFreeCopyEnabled) observeDescTouch(ev)
                                     // more_button 属于宿主独立点击控件，不属于评论正文自由复制范围。
                                     // 父 View 的 dispatch 会先建立评论会话；按钮本身到达 beforeHook
                                     // 时撤销它，并让同一 downTime 的全部后续节点/UP 直接交还宿主。
@@ -4341,7 +4396,9 @@ class HookEntry : XposedModule() {
                                             // 新手势落在非简介 View 时终止旧简介会话。desc 自身的
                                             // dispatch 之前也会经过祖先 View，此清理不会影响随后
                                             // desc 分支建立的新会话。
-                                            if (descTouchedView != null) {
+                                            if (descCopyGesture.isTracking &&
+                                                !descCopyGesture.matches(ev.downTime)
+                                            ) {
                                                 clearDescTouchSession(resetHandled = true)
                                             }
                                             if (!runtimeCommentFreeCopyEnabled) return@before
@@ -4376,6 +4433,12 @@ class HookEntry : XposedModule() {
                                         return@before
                                         }
 
+                                        if (descCopyGesture.matches(ev.downTime) &&
+                                            (action == android.view.MotionEvent.ACTION_UP ||
+                                                action == android.view.MotionEvent.ACTION_CANCEL)
+                                        ) {
+                                            clearDescTouchSession(resetHandled = !descLongPressHandled)
+                                        }
                                         if (!runtimeCommentFreeCopyEnabled) return@before
                                         // 没有活动会话时 MOVE/UP/CANCEL 仍是纯 O(1) 早退；有会话时
                                         // 也不再重复评论根祖先遍历。终止事件按 downTime 清理，
@@ -4426,29 +4489,25 @@ class HookEntry : XposedModule() {
                                             clearDescTouchSession(resetHandled = true)
                                             descTouchDownMs = ev.downTime
                                             descTouchObservedAtMs = android.os.SystemClock.uptimeMillis()
-                                            descTouchDownX = ev.rawX
-                                            descTouchDownY = ev.rawY
+                                            descCopyGesture.begin(ev.downTime, ev.getPointerId(0),
+                                                ev.rawX, ev.rawY,
+                                                android.view.ViewConfiguration.get(v.context)
+                                                    .scaledTouchSlop.toFloat())
                                             descLongPressHandled = false
                                             descTouchedView = v
-                                            // 长按状态下弹气泡（500ms 后判定，不等松手）
+                                            // 长按状态下弹气泡（400ms 后判定，不等松手）。
                                             val handler = mainHandlerOrNull()
                                             if (handler != null) {
                                                 handler.removeCallbacks(descLongPressRunnable)
-                                                val delay = (descTouchObservedAtMs + 400L -
+                                                val delay = (descTouchObservedAtMs +
+                                                    DescriptionCopyGesture.LONG_PRESS_MILLIS -
                                                     android.os.SystemClock.uptimeMillis()).coerceAtLeast(0L)
                                                 // 描述长按与固定 Runnable 的 removeCallbacks 必须保持配对。
                                                 //noinspection ReplaceWithCoroutinesExtension
                                                 handler.postDelayed(descLongPressRunnable, delay)
                                             }
                                         }
-                                        android.view.MotionEvent.ACTION_MOVE -> {
-                                            // 位移超过阈值视为滑动/滚动，取消长按判定并解除官方复制拦截
-                                            val moved = kotlin.math.abs(ev.rawX - descTouchDownX) +
-                                                kotlin.math.abs(ev.rawY - descTouchDownY)
-                                            if (moved >= 60f && !descLongPressHandled) {
-                                                clearDescTouchSession(resetHandled = true)
-                                            }
-                                        }
+                                        // MOVE/多指统一由 observeDescTouch 观察，宿主事件始终放行。
                                         android.view.MotionEvent.ACTION_UP,
                                         android.view.MotionEvent.ACTION_CANCEL -> {
                                             mainHandlerRef?.removeCallbacks(descLongPressRunnable)
@@ -4462,20 +4521,14 @@ class HookEntry : XposedModule() {
                                         return@before
                                             }
                                             val dur = (ev.eventTime - descTouchDownMs).coerceAtLeast(0L)
-                                            val moved = kotlin.math.abs(ev.rawX - descTouchDownX) +
-                                                kotlin.math.abs(ev.rawY - descTouchDownY)
                                             // 长按阈值内（≥400ms，官方长按判定线）松手：若气泡未弹
-                                            // （500ms runnable 未触发，如 400-500ms 松手）立即弹，并消费
+                                            // （主线程繁忙导致 runnable 未触发）立即弹，并消费
                                             // 事件阻止官方 UP 分支的长按复制（链接 span 的 b.b() 路径）。
                                             if (action == android.view.MotionEvent.ACTION_UP &&
-                                                dur >= 400L && moved < 60f && !handled
+                                                dur >= DescriptionCopyGesture.LONG_PRESS_MILLIS &&
+                                                descCopyGesture.isPending && !handled
                                             ) {
-                                                descLongPressHandled = true
-                                                handled = true
-                                                runCatching {
-                                                    showFreeCopyPopup(v, extractDescText(v))
-                                                    hapticFeedback(v)
-                                                }
+                                                handled = sharedFreeCopyListener.onLongClick(v)
                                             }
                                             clearDescTouchSession(resetHandled = !handled)
                                             if (handled && action == android.view.MotionEvent.ACTION_UP) {
