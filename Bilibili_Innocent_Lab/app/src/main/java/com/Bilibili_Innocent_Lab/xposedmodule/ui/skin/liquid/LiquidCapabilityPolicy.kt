@@ -71,6 +71,19 @@ internal object LiquidBackdropSizingPolicy {
     const val BYTES_PER_PIXEL = 4L
     private const val MAX_PIXELS = MAX_BUFFER_BYTES / BYTES_PER_PIXEL
 
+    /** 预览按控件的实际像素解码，超过现有位图预算才等比缩小。 */
+    fun resolvePreview(viewWidth: Int, viewHeight: Int): LiquidBackdropSize {
+        require(viewWidth > 0 && viewHeight > 0) { "Preview dimensions must be positive" }
+        val pixels = viewWidth.toLong() * viewHeight.toLong()
+        if (pixels <= MAX_PIXELS) return LiquidBackdropSize(viewWidth, viewHeight)
+        // 同时约束单边，防止极窄视图的另一边取整为 1 后突破像素预算。
+        val scale = minOf(sqrt(MAX_PIXELS.toDouble() / pixels),
+            MAX_PIXELS.toDouble() / viewWidth, MAX_PIXELS.toDouble() / viewHeight)
+        val height = (viewHeight * scale).toInt().coerceAtLeast(1)
+        val width = (viewWidth * scale).toInt().coerceIn(1, (MAX_PIXELS / height).toInt())
+        return LiquidBackdropSize(width, height)
+    }
+
     fun resolve(fullWidth: Int, fullHeight: Int): LiquidBackdropSize {
         require(fullWidth > 0 && fullHeight > 0) { "Backdrop dimensions must be positive" }
         var width = ceil(fullWidth * SAMPLE_SCALE).toInt().coerceAtLeast(1)

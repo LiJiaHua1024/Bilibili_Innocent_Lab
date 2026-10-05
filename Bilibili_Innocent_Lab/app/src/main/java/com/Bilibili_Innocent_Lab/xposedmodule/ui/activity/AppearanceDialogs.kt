@@ -22,6 +22,7 @@ import androidx.appcompat.app.AppCompatDelegate
 import androidx.core.content.ContextCompat
 import androidx.core.graphics.ColorUtils
 import androidx.core.os.LocaleListCompat
+import androidx.core.view.doOnLayout
 import androidx.core.view.setPadding
 import com.Bilibili_Innocent_Lab.xposedmodule.R
 import com.Bilibili_Innocent_Lab.xposedmodule.runtime.InjectedUiLocale
@@ -29,6 +30,7 @@ import com.Bilibili_Innocent_Lab.xposedmodule.ui.skin.background.LiquidBackgroun
 import com.Bilibili_Innocent_Lab.xposedmodule.ui.skin.background.LiquidBackgroundMode
 import com.Bilibili_Innocent_Lab.xposedmodule.ui.skin.background.LiquidBackgroundPickerPolicy
 import com.Bilibili_Innocent_Lab.xposedmodule.ui.skin.background.LiquidBackgroundStore
+import com.Bilibili_Innocent_Lab.xposedmodule.ui.skin.liquid.LiquidBackdropSizingPolicy
 import com.Bilibili_Innocent_Lab.xposedmodule.ui.skin.liquid.LiquidRealtimeCaptureStore
 import com.highcapable.betterandroid.system.extension.utils.AndroidVersion
 import com.highcapable.betterandroid.ui.extension.view.textColor
@@ -523,21 +525,27 @@ private fun MainActivity.loadLiquidBackgroundPreview(
 ) {
     val backgroundColor = monetColors.background
     val dark = ColorUtils.calculateLuminance(monetColors.surface) < 0.5
-    liquidBackgroundWorker.execute {
-        val bitmap = LiquidBackgroundStore.decodeBackdrop(
-            context = applicationContext,
-            config = config,
-            targetWidth = 640,
-            targetHeight = 360,
-            backgroundColor = backgroundColor,
-            dark = dark
-        ) ?: return@execute
-        runOnUiThread {
-            if (!isFinishing && !isDestroyed && dialog.isShowing &&
-                liquidBackgroundDialog === dialog
-            ) {
-                preview.setImageBitmap(bitmap)
-            } else bitmap.recycle()
+    preview.doOnLayout { view ->
+        if (isFinishing || isDestroyed || !dialog.isShowing ||
+            liquidBackgroundDialog !== dialog || view.width <= 0 || view.height <= 0
+        ) return@doOnLayout
+        val target = LiquidBackdropSizingPolicy.resolvePreview(view.width, view.height)
+        liquidBackgroundWorker.execute {
+            val bitmap = LiquidBackgroundStore.decodeBackdrop(
+                context = applicationContext,
+                config = config,
+                targetWidth = target.width,
+                targetHeight = target.height,
+                backgroundColor = backgroundColor,
+                dark = dark
+            ) ?: return@execute
+            runOnUiThread {
+                if (!isFinishing && !isDestroyed && dialog.isShowing &&
+                    liquidBackgroundDialog === dialog && preview.isAttachedToWindow
+                ) {
+                    preview.setImageBitmap(bitmap)
+                } else bitmap.recycle()
+            }
         }
     }
 }
