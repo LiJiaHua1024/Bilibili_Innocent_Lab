@@ -138,7 +138,7 @@ internal class DetailViewRuleHider(
      * 这些内层控件走的是纯可见性路径，RecyclerView 复用视图时同一对象会被拿去
      * 承载别的内容，没有这本账就永远停在 GONE。键随宿主视图回收自然清理。
      */
-    private val manuallyHidden = WeakHashMap<View, Boolean>()
+    private val innerHidden = InnerVisibilityBook()
 
     @Volatile private var ids: Map<String, Int>? = null
     @Volatile private var active: List<DetailViewPurifyPolicy.Rule> = emptyList()
@@ -210,17 +210,15 @@ internal class DetailViewRuleHider(
 
     /**
      * 内层 GONE 的还原不走 [collapsed]（那只记 item 根）：凡挂在本子项下、且本轮
-     * 没有再次隐藏的已记账控件，一律还原成 VISIBLE 并摘账。规则仍命中但目标已是
+     * 没有再次隐藏的已记账控件，一律还原成隐藏前的可见性并摘账。规则仍命中但目标已是
      * GONE 的（上一轮由本规则设的）已在 [keptHidden] 里，不会被误还原。
      */
     private fun restoreManuallyHidden(root: View, keptHidden: Collection<View>) {
-        val entries = manuallyHidden.entries.iterator()
-        while (entries.hasNext()) {
-            val target = entries.next().key
+        for (key in innerHidden.trackedKeys()) {
+            val target = key as? View ?: continue
             if (target in keptHidden) continue
             if (!(target === root || target.isDescendantOf(root))) continue
-            if (target.visibility == View.GONE) target.visibility = View.VISIBLE
-            entries.remove()
+            innerHidden.restore(ViewVisibilityBox(target))
         }
     }
 
@@ -238,7 +236,7 @@ internal class DetailViewRuleHider(
         rule: DetailViewPurifyPolicy.Rule,
         child: View,
         table: Map<String, Int>,
-        innerHidden: MutableCollection<View>
+        hiddenNow: MutableCollection<View>
     ): Boolean {
         // 最便宜的前置判据先走：有 itemIdName 的一次 int 比较；没有的先用 NO_ID 挡。
         val itemId = rule.itemIdName?.let { table[it] }
@@ -259,15 +257,13 @@ internal class DetailViewRuleHider(
             val hidden = if (rule.hidesItemRoot) {
                 // 光 GONE 不收缩那一格，要连尺寸一起归零；见 Rule.hidesItemRoot。
                 collapsed.collapse(ViewItemBox(target))
-            } else if (target.visibility != View.GONE) {
-                manuallyHidden[target] = true
-                target.visibility = View.GONE
-                innerHidden += target
+            } else if (innerHidden.hide(ViewVisibilityBox(target))) {
+                hiddenNow += target
                 true
             } else {
                 // 规则仍命中且目标已是 GONE（可能上一轮由本规则设的）：也要报给扫除，
                 // 否则会被当成"本轮未隐藏"而在回收复用时误还原成 VISIBLE。
-                if (manuallyHidden.containsKey(target)) innerHidden += target
+                if (innerHidden.tracks(target)) hiddenNow += target
                 false
             }
             if (hidden) {
@@ -390,6 +386,50 @@ private class ViewItemBox(private val view: View) : ItemBox {
         set(value) {
             view.isGone = value
         }
+}
+
+/** 一个内层控件在"可见性"这件事上的全部可变状态；抽成接口是为了让簿记可以脱离真 `View` 单测。 */
+internal interface VisibilityBox {
+    val key: Any
+    var visibility: Int
+}
+
+/** [VisibilityBox] 到真 `View` 的适配；只有属性转发，没有判断。 */
+private class ViewVisibilityBox(private val view: View) : VisibilityBox {
+    override val key: Any get() = view
+    override var visibility: Int
+        get() = view.visibility
+        set(value) {
+            view.visibility = value
+        }
+}
+
+/**
+ * 内层（非 item 根）被隐藏控件的原始可见性账本。还原回隐藏前的值，而不是一律 VISIBLE：
+ * 宿主原本设成 INVISIBLE 的控件不能被顺手变成可见。
+ */
+internal class InnerVisibilityBook {
+
+    private val saved = WeakHashMap<Any, Int>()
+
+    fun tracks(key: Any): Boolean = saved.containsKey(key)
+
+    /** visibility != GONE 时记下原值并设 GONE，返回 true；已是 GONE 返回 false（不覆盖已记的原值）。 */
+    fun hide(box: VisibilityBox): Boolean {
+        if (box.visibility == View.GONE) return false
+        saved[box.key] = box.visibility
+        box.visibility = View.GONE
+        return true
+    }
+
+    /** 有记录才还原：仍是 GONE 时恢复为记下的原值；无论是否改动都摘账。返回是否有记录。 */
+    fun restore(box: VisibilityBox): Boolean {
+        val original = saved.remove(box.key) ?: return false
+        if (box.visibility == View.GONE) box.visibility = original
+        return true
+    }
+
+    fun trackedKeys(): List<Any> = saved.keys.toList()
 }
 
 /**
