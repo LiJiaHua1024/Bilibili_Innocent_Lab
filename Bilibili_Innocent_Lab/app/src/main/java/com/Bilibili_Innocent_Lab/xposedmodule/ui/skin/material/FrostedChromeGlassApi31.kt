@@ -30,7 +30,7 @@ internal object FrostedChromeGlassApi31 {
     private const val EDGE_SLACK_DP = 2f
 
     /** 构造里会编译 AGSL；调用方负责把失败当作"节点路径不可用"。 */
-    fun create(density: Float): GlowChromeGlassApi31 {
+    fun create(density: Float, refraction: Boolean = true): GlowChromeGlassApi31 {
         val blur = GlowChromeBlurApi31.create(BLUR_RADIUS_DP * density)
         val gain = LensRefractionPolicy.LUMINANCE_GAIN
         val bias = LensRefractionPolicy.LUMINANCE_BIAS
@@ -42,7 +42,9 @@ internal object FrostedChromeGlassApi31 {
         )))
         val lit = RenderEffect.createColorFilterEffect(illuminate, blur)
         // Any 承载：RuntimeShader 是 API 33 类型，不能出现在本类（31+）的捕获字段里。
-        val lens: Any? = if (AndroidVersion.isAtLeast(AndroidVersion.T)) FrostedChromeLensApi33.create() else null
+        val lens: Any? = if (refraction && AndroidVersion.isAtLeast(AndroidVersion.T)) {
+            FrostedChromeLensApi33.create()
+        } else null
         // 边沿外推最多取到表面外 MARGIN_DP：与软件管线的外沿采样区一致。
         val padding = LensRefractionPolicy.marginPx(density) + (EDGE_SLACK_DP * density).toInt()
         return GlowChromeGlassApi31(padding) { width, height, pad, _, _, _ ->

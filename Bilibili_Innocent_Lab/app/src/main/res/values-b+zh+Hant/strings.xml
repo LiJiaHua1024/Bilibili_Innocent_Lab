@@ -189,6 +189,16 @@
     <string name="custom_bottom_bar_hide_tip">開啟嗶哩嗶哩主畫面以掃描勾選項，也可使用手動名稱規則；自動保留至少一個入口。</string>
     <string name="custom_bottom_bar_hide_dialog_title">底部導覽列隱藏規則</string>
     <string name="custom_bottom_bar_hide_hint">例如：動態, 會員購</string>
+    <string name="host_video_cards">影片卡片懸浮美化</string>
+    <string name="host_video_cards_tip">為影片封面增加大圓角，為卡片加入極淡的柔和灰色陰影，並加大雙欄間距及螢幕邊緣留白。重新啟動嗶哩嗶哩後生效。</string>
+    <string name="host_bottom_bar_liquid_glass">底部導覽列懸浮膠囊</string>
+    <string name="host_bottom_bar_liquid_glass_tip">將嗶哩嗶哩底部導覽列改為懸浮膠囊，並以即時取樣的玻璃材質透出下方內容，保留上緣高光；輕微提升渲染壓力。</string>
+    <string name="host_bottom_bar_touch_glow">底部導覽列觸控光暈</string>
+    <string name="host_bottom_bar_touch_glow_tip">觸摸底部導覽列圖示時綻放自適應光暈，跟隨手指觸點即時形變。</string>
+    <string name="host_top_bar_liquid_glass">頂欄懸浮膠囊</string>
+    <string name="host_top_bar_liquid_glass_tip">將嗶哩嗶哩頂欄改為懸浮膠囊，並以即時取樣的磨砂玻璃材質透出下方內容，保留原版下劃線指示器；影片流一路上延到狀態列下方，在頂欄之下凝成一層向下漸漸消隱的模糊；輕微提升渲染壓力。</string>
+    <string name="host_top_bar_touch_glow">頂欄觸控光暈</string>
+    <string name="host_top_bar_touch_glow_tip">觸摸頂欄標籤時綻放自適應光暈，跟隨手指觸點即時形變。</string>
     <string name="recommend_video_duration_range">依影片時長過濾推薦</string>
     <string name="recommend_video_duration_range_empty">目前未限制影片時長，點按即可編輯</string>
     <string name="recommend_video_duration_min_only">最短：%1$s</string>
@@ -258,7 +268,7 @@
     <string name="hide_dynamic_school_tab_tip">啟用後，隱藏動態頁面的「校園」分頁，其他分頁及順序不受影響。重新啟動 Bilibili 後生效。</string>
     <string name="prefer_dynamic_video_tab">預設顯示「影片」分頁</string>
     <string name="prefer_dynamic_video_tab_tip">啟用後，進入動態頁面時預設顯示「影片」分頁。重新啟動 Bilibili 後生效。</string>
-    <string name="number_display_settings">數字顯示</string>
+    <string name="number_display_settings">外觀與數字顯示</string>
     <string name="show_full_numbers">顯示完整數字</string>
     <string name="show_full_numbers_tip">啟用後，播放次數、按讚數等計數優先顯示完整數字，不再使用「萬／億」縮寫。重新啟動 Bilibili 後生效。</string>
     <string name="prompt_purify_settings">提示頁面</string>
@@ -371,6 +381,8 @@
     <string name="hide_comment_section">完全隱藏評論區</string>
     <string name="hide_comment_section_tip">開啟後，移除影片詳細頁的評論分頁，簡介等其他分頁不受影響。重新啟動 Bilibili 後生效。</string>
     <string name="reply_topology_enabled">回覆脈絡圖</string>
+    <string name="highlights_reply_topology_keyword_export">回覆脈絡支援依作者或回覆關鍵詞篩選，保留上層回覆關係，並可將目前可見的回覆預覽複製到剪貼簿。</string>
+    <string name="highlights_reply_topology_tree_explorer">深層回覆顯示真實層級，可開啟完整樹狀圖自由拖曳縮放，也可透過獨立入口查看最近上層與直接回覆。</string>
     <string name="reply_topology_enabled_tip">開啟後，有回覆的第一層評論會顯示「脈絡」入口，可檢視回覆關係並定位評論；僅開啟面板時載入資料。重新啟動 Bilibili 後生效。</string>
     <string name="remove_comment_search_links">關閉評論關鍵字搜尋連結</string>
     <string name="remove_comment_search_links_tip">啟用後，評論中的關鍵字不再跳轉至搜尋，評論文字與表情維持不變。重新啟動 Bilibili 後生效。</string>
@@ -1214,4 +1226,8 @@
     <string name="update_check_failed_canary">無法連線 GitHub 或備用鏡像，或尚無可用 Canary 產物</string>
     <string name="update_canary_actions">查看 Actions 建置</string>
     <string name="update_canary_telegram">到 Telegram 取得 APK</string>
+    <string name="host_bottom_bar_compact">小底部導覽列</string>
+    <string name="host_bottom_bar_compact_tip">縮小底部導覽列高度，減少佔用空間。重新啟動嗶哩嗶哩後生效。</string>
+    <string name="host_bottom_bar_icon_only">底部導覽列無字模式</string>
+    <string name="host_bottom_bar_icon_only_tip">隱藏首頁、動態等標籤，僅保留圖示並垂直置中，同時縮減上下留白。可與小底部導覽列疊加使用，重新啟動嗶哩嗶哩後生效。</string>
 </resources>

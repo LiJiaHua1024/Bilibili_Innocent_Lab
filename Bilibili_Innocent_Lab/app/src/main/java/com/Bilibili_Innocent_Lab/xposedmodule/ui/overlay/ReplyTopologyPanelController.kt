@@ -1,6 +1,7 @@
 package com.Bilibili_Innocent_Lab.xposedmodule.ui.overlay
 
 import android.app.Activity
+import android.graphics.Rect
 import android.os.Handler
 import android.os.Looper
 import android.view.Gravity
@@ -291,17 +292,12 @@ internal class ReplyTopologyPanelController : ReplyTopologyPanelHost {
         val availableWidth = parent.width.takeIf { it > 0 } ?: display.widthPixels
         val availableHeight = parent.height.takeIf { it > 0 } ?: display.heightPixels
         val edge = (8f * density).roundToInt()
-        val maxAvailableWidth = (availableWidth - edge * 2).coerceAtLeast(1)
-        val maxAvailableHeight = (availableHeight - edge * 2).coerceAtLeast(1)
-
-        val minWidth = ((config.minWidthDp * density).roundToInt()).coerceAtMost(maxAvailableWidth)
-        val maxWidth = ((config.maxWidthDp * density).roundToInt()).coerceAtMost(maxAvailableWidth)
-        val minHeight = ((config.minHeightDp * density).roundToInt()).coerceAtMost(maxAvailableHeight)
-        val maxHeight = ((config.maxHeightDp * density).roundToInt()).coerceAtMost(maxAvailableHeight)
-        val width = (availableWidth * config.widthFraction).roundToInt()
-            .coerceIn(minWidth.coerceAtMost(maxWidth), maxWidth.coerceAtLeast(minWidth))
-        val height = (availableHeight * config.heightFraction).roundToInt()
-            .coerceIn(minHeight.coerceAtMost(maxHeight), maxHeight.coerceAtLeast(minHeight))
+        val insets = Rect()
+        replyTopologyWindowInsets(parent, insets)
+        val maxAvailableWidth = (availableWidth - insets.left - insets.right - edge * 2).coerceAtLeast(1)
+        val maxAvailableHeight = (availableHeight - insets.top - insets.bottom - edge * 2).coerceAtLeast(1)
+        val width = ReplyTopologyPanelSizing.dimension(maxAvailableWidth, density, config.widthFraction, config.minWidthDp, config.maxWidthDp)
+        val height = ReplyTopologyPanelSizing.dimension(maxAvailableHeight, density, config.heightFraction, config.minHeightDp, config.maxHeightDp)
         return width to height
     }
 

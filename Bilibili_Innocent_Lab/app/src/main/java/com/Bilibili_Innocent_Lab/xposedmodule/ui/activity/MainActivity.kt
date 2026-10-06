@@ -442,6 +442,13 @@ class MainActivity : SkinnedActivity() {
     private var freeCopyDescEnabled = true
     private var freeCopyLightMode = false
     private var freeCopyAutoLight = false
+    internal var hostBottomBarLiquidGlass = false
+    internal var hostBottomBarTouchGlow = false
+    internal var hostVideoCards = false
+    internal var hostBottomBarCompact = false
+    internal var hostBottomBarIconOnly = false
+    internal var hostTopBarLiquidGlass = false
+    internal var hostTopBarTouchGlow = false
 
     /** 亮色开关二次确认进行中标志（防 setOnCheckedChangeListener 重入递归） */
     private var autoLightConfirmInProgress = false
@@ -4428,6 +4435,13 @@ class MainActivity : SkinnedActivity() {
         showBvAsAv = uiSettings.bool(FeaturePreferences.SHOW_BV_AS_AV)
         blockTeenagersModePrompt = uiSettings.bool(FeaturePreferences.BLOCK_TEENAGERS_MODE_PROMPT)
         purifySplashAds = uiSettings.bool(FeaturePreferences.PURIFY_SPLASH_ADS)
+        hostBottomBarLiquidGlass = uiSettings.bool(FeaturePreferences.HOST_BOTTOM_BAR_LIQUID_GLASS)
+        hostBottomBarTouchGlow = uiSettings.bool(FeaturePreferences.HOST_BOTTOM_BAR_TOUCH_GLOW)
+        hostVideoCards = uiSettings.bool(FeaturePreferences.HOST_VIDEO_CARDS)
+        hostBottomBarCompact = uiSettings.bool(FeaturePreferences.HOST_BOTTOM_BAR_COMPACT)
+        hostBottomBarIconOnly = uiSettings.bool(FeaturePreferences.HOST_BOTTOM_BAR_ICON_ONLY)
+        hostTopBarLiquidGlass = uiSettings.bool(FeaturePreferences.HOST_TOP_BAR_LIQUID_GLASS)
+        hostTopBarTouchGlow = uiSettings.bool(FeaturePreferences.HOST_TOP_BAR_TOUCH_GLOW)
         merchAdEnabled = uiSettings.bool(HookEntry.PREF_MERCH_ENABLED)
         freeCopyEnabled = uiSettings.bool(HookEntry.PREF_FREE_COPY_ENABLED)
         freeCopyDescEnabled = uiSettings.bool(HookEntry.PREF_FREE_COPY_DESC_ENABLED)
@@ -4871,7 +4885,7 @@ class MainActivity : SkinnedActivity() {
 
     internal fun styleHomeControls(root: View) = stylePreparedSkinControls(root)
 
-    private fun bindFavoriteSwitch(
+    internal fun bindFavoriteSwitch(
         view: com.Bilibili_Innocent_Lab.xposedmodule.ui.view.MaterialSwitch,
         storageKey: String,
         directToggle: Boolean = true
@@ -8887,6 +8901,7 @@ class MainActivity : SkinnedActivity() {
             textColor = colorResource(R.color.colorTextDark)
             textSize = 12f
         }
+        hostBottomBarAppearanceRows(this)
         TextView(
             lparams = LayoutParams(widthMatchParent = true) {
                 topMargin = AdvancedSubsectionStyle.TOP_MARGIN_DP.dp
@@ -9456,6 +9471,7 @@ class MainActivity : SkinnedActivity() {
             textColor = colorResource(R.color.colorTextDark)
             textSize = 12f
         }
+        hostTopBarAppearanceRows(this)
         TextView(
             lparams = LayoutParams(widthMatchParent = true) {
                 topMargin = 12.dp
@@ -9911,6 +9927,7 @@ class MainActivity : SkinnedActivity() {
             textSize = 12f
             typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
         }
+        hostVideoCardAppearanceRows(this)
         MaterialSwitch(
             lparams = LayoutParams(widthMatchParent = true) {
                 bottomMargin = 5.dp

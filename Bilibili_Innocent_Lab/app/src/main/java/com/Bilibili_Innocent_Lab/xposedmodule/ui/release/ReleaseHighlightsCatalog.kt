@@ -164,13 +164,9 @@ internal object ReleaseHighlightsCatalog {
             HighlightDestination(SettingsCatalog.ID_DYNAMIC_SEMANTIC_FILTER)),
         ReleaseHighlight("semantic-jev-endpoint", HighlightKind.NEW,
             R.string.highlights_semantic_jev,
-            HighlightDestination(SettingsCatalog.ID_SEMANTIC_JEV_ENDPOINT)),
-        ReleaseHighlight("semantic-jev-sensitivity", HighlightKind.NEW,
-            R.string.highlights_semantic_jev,
-            HighlightDestination(SettingsCatalog.ID_SEMANTIC_JEV_SENSITIVITY)),
-        ReleaseHighlight("semantic-jev-wait-first-screen", HighlightKind.NEW,
-            R.string.highlights_semantic_jev,
-            HighlightDestination(SettingsCatalog.ID_SEMANTIC_JEV_WAIT_FIRST_SCREEN)),
+            HighlightDestination(SettingsCatalog.ID_SEMANTIC_JEV_ENDPOINT,
+                alsoCovers = setOf(SettingsCatalog.ID_SEMANTIC_JEV_SENSITIVITY,
+                    SettingsCatalog.ID_SEMANTIC_JEV_WAIT_FIRST_SCREEN))),
         // v32：弹幕 / 评论 / 推荐视频三个智能过滤开关，外加四个面的屏蔽类型勾选。
         ReleaseHighlight("danmaku-semantic-filter", HighlightKind.NEW,
             R.string.highlights_semantic_more_surfaces,
@@ -229,11 +225,31 @@ internal object ReleaseHighlightsCatalog {
             R.string.brand_splash_skip_tip, HighlightDestination("splash.brand.skipped")),
         ReleaseHighlight("brand-splash-custom", HighlightKind.NEW,
             R.string.brand_splash_custom_tip, HighlightDestination("splash.custom_selection.enabled")),
+        ReleaseHighlight("host-video-cards", HighlightKind.NEW,
+            R.string.host_video_cards_tip,
+            HighlightDestination("host.video_cards.enabled")),
         ReleaseHighlight("story-action-icons", HighlightKind.NEW,
             R.string.highlights_story_action_icons,
             HighlightDestination("story.action.like.hidden",
                 alsoCovers = listOf("comment", "coin", "favorite", "share", "danmaku_toggle")
-                    .map { "story.action.$it.hidden" }.toSet()))
+                    .map { "story.action.$it.hidden" }.toSet())),
+        ReleaseHighlight("host-bottom-bar-fx", HighlightKind.NEW,
+            R.string.host_bottom_bar_liquid_glass_tip,
+            HighlightDestination("host.bottom_bar.liquid_glass.enabled",
+                alsoCovers = setOf("host.bottom_bar.touch_glow.enabled",
+                    "host.bottom_bar.compact.enabled", "host.bottom_bar.icon_only.enabled"))),
+        ReleaseHighlight("host-top-bar-fx", HighlightKind.NEW,
+            R.string.host_top_bar_liquid_glass_tip,
+            HighlightDestination("host.top_bar.liquid_glass.enabled",
+                alsoCovers = setOf("host.top_bar.touch_glow.enabled")))
+    )), ReleaseHighlightsBatch(6, listOf(
+        ReleaseHighlight("reply-topology-keyword-export", HighlightKind.IMPROVED,
+            R.string.highlights_reply_topology_keyword_export,
+            HighlightDestination("comments.reply_topology.enabled"))
+    )), ReleaseHighlightsBatch(7, listOf(
+        ReleaseHighlight("reply-topology-tree-explorer", HighlightKind.IMPROVED,
+            R.string.highlights_reply_topology_tree_explorer,
+            HighlightDestination("comments.reply_topology.enabled"))
     )))
     val currentRevision: Int get() = batches.maxOf { it.revision }
     val destinations get() = batches.sortedByDescending { it.revision }.flatMap { it.entries }

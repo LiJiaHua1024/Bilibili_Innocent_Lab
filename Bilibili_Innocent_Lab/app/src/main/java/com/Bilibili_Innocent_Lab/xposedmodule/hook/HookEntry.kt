@@ -44,9 +44,13 @@ import com.Bilibili_Innocent_Lab.xposedmodule.hook.feature.CommentFamilyCoverage
 import com.Bilibili_Innocent_Lab.xposedmodule.hook.feature.CommentComposeCopyBridge
 import com.Bilibili_Innocent_Lab.xposedmodule.hook.feature.CommentNativeSupplementBridge
 import com.Bilibili_Innocent_Lab.xposedmodule.hook.feature.CommentLegacyCopyBridge
+import com.Bilibili_Innocent_Lab.xposedmodule.runtime.replytopology.ReplyTopologyClipboardWrite
 import com.Bilibili_Innocent_Lab.xposedmodule.hook.feature.BlockComponentLibraryFeatureInstaller
 import com.Bilibili_Innocent_Lab.xposedmodule.hook.feature.ComponentLibraryPoolMatcher
 import com.Bilibili_Innocent_Lab.xposedmodule.hook.feature.BottomBarFeatureInstaller
+import com.Bilibili_Innocent_Lab.xposedmodule.hook.feature.HostBottomBarFxFeatureInstaller
+import com.Bilibili_Innocent_Lab.xposedmodule.hook.feature.HostVideoCardStyleFeatureInstaller
+import com.Bilibili_Innocent_Lab.xposedmodule.hook.feature.HostTopBarFxFeatureInstaller
 import com.Bilibili_Innocent_Lab.xposedmodule.hook.feature.BvToAvFeatureInstaller
 import com.Bilibili_Innocent_Lab.xposedmodule.hook.feature.CommentPurifyFeatureInstaller
 import com.Bilibili_Innocent_Lab.xposedmodule.hook.feature.CommentFilterFeatureInstaller
@@ -3061,6 +3065,17 @@ class HookEntry : XposedModule() {
                             false
                         ),
                         points = hostAdaptResult?.homeTopBar
+                    ),
+                    HostTopBarFxFeatureInstaller(
+                        liquidGlass = prefs.getBoolean(
+                            FeaturePreferences.HOST_TOP_BAR_LIQUID_GLASS,
+                            false
+                        ),
+                        touchGlow = prefs.getBoolean(
+                            FeaturePreferences.HOST_TOP_BAR_TOUCH_GLOW,
+                            false
+                        ),
+                        points = hostAdaptResult?.homeTopBar
                     )
                 )
             )
@@ -3394,6 +3409,22 @@ class HookEntry : XposedModule() {
                             ""
                         ).orEmpty(),
                         points = hostAdaptResult?.bottomBar
+                    ),
+                    HostBottomBarFxFeatureInstaller(
+                        liquidGlass = prefs.getBoolean(
+                            FeaturePreferences.HOST_BOTTOM_BAR_LIQUID_GLASS,
+                            false
+                        ),
+                        touchGlow = prefs.getBoolean(
+                            FeaturePreferences.HOST_BOTTOM_BAR_TOUCH_GLOW,
+                            false
+                        ),
+                        points = hostAdaptResult?.bottomBar,
+                        compact = prefs.getBoolean(FeaturePreferences.HOST_BOTTOM_BAR_COMPACT, false),
+                        iconOnly = prefs.getBoolean(FeaturePreferences.HOST_BOTTOM_BAR_ICON_ONLY, false)
+                    ),
+                    HostVideoCardStyleFeatureInstaller(
+                        enabled = prefs.getBoolean(FeaturePreferences.HOST_VIDEO_CARDS, false)
                     )
                 )
             )
@@ -4700,6 +4731,7 @@ class HookEntry : XposedModule() {
                                         return@before
                                     }
                                     val clip = args.getOrNull(0) as? android.content.ClipData ?: return@before
+                                    if (ReplyTopologyClipboardWrite.owns(clip)) return@before
                                     val clipText = runCatching {
                                         clip.getItemAt(0).coerceToText(null)?.toString()
                                     }.getOrNull() ?: return@before

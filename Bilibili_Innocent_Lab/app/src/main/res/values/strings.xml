@@ -166,6 +166,16 @@
     <string name="custom_bottom_bar_hide_tip">Open Bilibili once, then tick the bottom-bar entries to hide from the scan; manual name rules still work. At least one entry is always kept.</string>
     <string name="custom_bottom_bar_hide_dialog_title">Hidden bottom-bar rules</string>
     <string name="custom_bottom_bar_hide_hint">Example: Dynamic, Mall</string>
+    <string name="host_video_cards">Floating video cards</string>
+    <string name="host_video_cards_tip">Gives video covers large rounded corners and cards a subtle, soft gray shadow. Adds space between two-column cards and along the screen edges. Restart Bilibili to apply.</string>
+    <string name="host_bottom_bar_liquid_glass">Floating bottom bar</string>
+    <string name="host_bottom_bar_liquid_glass_tip">Turns Bilibili\'s bottom bar into a floating capsule and reveals the content beneath through a real-time sampled glass material, keeping a specular top edge. Slightly increases rendering load.</string>
+    <string name="host_bottom_bar_touch_glow">Bottom bar touch glow</string>
+    <string name="host_bottom_bar_touch_glow_tip">Blooms an adaptive glow that follows your finger while you touch a bottom bar tab.</string>
+    <string name="host_top_bar_liquid_glass">Floating top bar</string>
+    <string name="host_top_bar_liquid_glass_tip">Turns Bilibili\'s top bar into a floating capsule with real-time sampled glass material, retaining the native underline indicator. The feed now reaches up behind the status bar and melts into a blur under the capsule that fades out downward. Slightly increases rendering load.</string>
+    <string name="host_top_bar_touch_glow">Top bar touch glow</string>
+    <string name="host_top_bar_touch_glow_tip">Blooms an adaptive glow that follows your finger while you touch a top bar tab.</string>
     <string name="recommend_video_duration_range">Filter recommended videos by duration</string>
     <string name="recommend_video_duration_range_empty">No duration limits configured; tap to edit</string>
     <string name="recommend_video_duration_min_only">Minimum: %1$s</string>
@@ -245,7 +255,7 @@
     <string name="hide_dynamic_school_tab_tip">When enabled, hides the Campus tab while keeping the other tabs and their order. Restart Bilibili to apply.</string>
     <string name="prefer_dynamic_video_tab">Show the Video tab by default</string>
     <string name="prefer_dynamic_video_tab_tip">When enabled, the Dynamic page opens on the Video tab by default. Restart Bilibili to apply.</string>
-    <string name="number_display_settings">Number display</string>
+    <string name="number_display_settings">Appearance and numbers</string>
     <string name="show_full_numbers">Show full numbers</string>
     <string name="show_full_numbers_tip">When enabled, play counts, likes, and similar values prefer full numbers instead of abbreviated values. Restart Bilibili to apply.</string>
     <string name="prompt_purify_settings">Prompt pages</string>
@@ -371,6 +381,8 @@
     <string name="hide_comment_section">Hide the comment section</string>
     <string name="hide_comment_section_tip">Removes the comment tab from video details while leaving the introduction and other tabs available. Restart Bilibili to apply.</string>
     <string name="reply_topology_enabled">Reply context map</string>
+    <string name="highlights_reply_topology_keyword_export">Filter reply context by author or reply keywords while keeping ancestor replies, and copy the visible reply previews to the clipboard.</string>
+    <string name="highlights_reply_topology_tree_explorer">Deep replies show their actual levels. Open the full tree to pan and zoom freely, or view a reply’s recent ancestors and direct replies through a separate path entry.</string>
     <string name="reply_topology_enabled_tip">Adds a “Trace” entry to top-level comments with replies and presents the actual reply relationships in a draggable, navigable workflow view. Data is loaded only while the panel is open. Restart Bilibili to apply.</string>
     <string name="remove_comment_search_links">Disable comment keyword search links</string>
     <string name="remove_comment_search_links_tip">When enabled, comment keywords no longer open search. Comment text and emoji remain unchanged. Restart Bilibili to apply.</string>
@@ -1214,4 +1226,8 @@
     <string name="update_check_failed_canary">Cannot reach GitHub or the mirror, or no available Canary artifact was found</string>
     <string name="update_canary_actions">View Actions build</string>
     <string name="update_canary_telegram">Get APK on Telegram</string>
+    <string name="host_bottom_bar_compact">Compact bottom bar</string>
+    <string name="host_bottom_bar_compact_tip">Reduces the bottom bar height. Restart Bilibili to apply.</string>
+    <string name="host_bottom_bar_icon_only">Icon-only bottom bar</string>
+    <string name="host_bottom_bar_icon_only_tip">Hides tab labels, centers icons vertically, and reduces vertical space. Can be combined with compact mode. Restart Bilibili to apply.</string>
 </resources>

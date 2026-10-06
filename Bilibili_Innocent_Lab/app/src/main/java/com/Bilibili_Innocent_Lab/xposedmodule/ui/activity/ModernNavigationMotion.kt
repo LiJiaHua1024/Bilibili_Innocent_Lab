@@ -7,9 +7,15 @@ import kotlin.math.roundToInt
 import kotlin.math.sin
 import kotlin.math.sqrt
 
-/** Original, bounded geometry for a native four-item floating navigation surface. */
+/**
+ * Bounded geometry for a floating navigation surface.
+ *
+ * 宿主底栏（B 站原生 5 tab，经哔哩漫游或本模块"自定义底栏"隐藏后可为 1..5 个）与
+ * 模块自用 dock 共用这套运动学；[MAX_ITEMS] 是所有 tab 数量的统一上界，
+ * 宿主侧 [HostBottomBarFxController] 的 count 钳制也必须引用同一个值。
+ */
 internal object ModernNavigationMotion {
-    const val MAX_ITEMS = 4
+    const val MAX_ITEMS = 8
     const val BAR_HEIGHT_DP = 64
     const val INSET_DP = 4
     const val MAX_TRAVEL_DP = 4f

@@ -22,6 +22,8 @@ internal object DiagnosticCapabilityCatalog {
      */
     const val VERSION = 18
     val definitions = listOf(
+        DiagnosticCapabilityDefinition("host_video_cards", "host_video_cards", R.string.host_video_cards,
+            setOf("host.video_cards.enabled"), introducedCatalogVersion = 18),
         DiagnosticCapabilityDefinition("search_home_recommend_hidden", "search_home_recommend_hidden", R.string.hide_search_home_recommend, setOf("search.home_recommend.hidden"), introducedCatalogVersion = 4),
         DiagnosticCapabilityDefinition("player_interactive_legacy_follow", "player_interactive_overlay", R.string.diag_cap_player_interactive_legacy_follow, setOf("player.interactive_overlays.hidden"), "legacy/guide/clearAttention"),
         DiagnosticCapabilityDefinition("player_interactive_legacy_commands", "player_interactive_overlay", R.string.diag_cap_player_interactive_legacy_commands, setOf("player.interactive_overlays.hidden"), "legacy/guide/clearCommandDms"),
@@ -48,7 +50,11 @@ internal object DiagnosticCapabilityCatalog {
         DiagnosticCapabilityDefinition("home_banner_feed", "home_banner", R.string.diag_cap_home_banner_feed, setOf("ads.home_banner.hidden")),
         DiagnosticCapabilityDefinition("merchandise", "merchandise", R.string.merch_ad_enable, setOf("ads.merchandise.hidden")),
         DiagnosticCapabilityDefinition("home_top_bar_game_menu_hidden", "home_top_bar_purify", R.string.hide_home_game_menu, setOf("home.top_bar.game_menu.hidden")),
-        DiagnosticCapabilityDefinition("home_top_bar_search_word_hidden", "home_top_bar_purify", R.string.hide_home_search_default_word, setOf("home.top_bar.search_word.hidden")),
+        DiagnosticCapabilityDefinition("home_top_bar_search_word_hidden", "home_top_bar_purify", R.string.hide_home_search_default_word, setOf(
+            "home.top_bar.search_word.hidden",
+            "host.top_bar.liquid_glass.enabled",
+            "host.top_bar.touch_glow.enabled"
+        )),
         DiagnosticCapabilityDefinition("home_vertical_detail", "home_vertical_detail", R.string.home_vertical_open_detail, setOf("home.vertical.open_detail")),
         DiagnosticCapabilityDefinition("home_recommend_ads_removed", "home_recommend_purify", R.string.remove_home_recommend_ads, setOf("home.recommend.ads.removed")),
         DiagnosticCapabilityDefinition("home_recommend_cm_v2_removed", "home_recommend_purify", R.string.remove_home_recommend_cm_v2, setOf("home.recommend.cm_v2.removed")),
@@ -120,7 +126,14 @@ internal object DiagnosticCapabilityCatalog {
         DiagnosticCapabilityDefinition("story_action_favorite_hidden", "story_action_icons", R.string.hide_story_action_favorite, setOf("story.action.favorite.hidden"), introducedCatalogVersion = 17),
         DiagnosticCapabilityDefinition("story_action_share_hidden", "story_action_icons", R.string.hide_story_action_share, setOf("story.action.share.hidden"), introducedCatalogVersion = 17),
         DiagnosticCapabilityDefinition("story_action_danmaku_toggle_hidden", "story_action_icons", R.string.hide_story_action_danmaku_toggle, setOf("story.action.danmaku_toggle.hidden"), introducedCatalogVersion = 17),
-        DiagnosticCapabilityDefinition("bottom_bar", "bottom_bar", R.string.custom_bottom_bar_hide, setOf("navigation.bottom_bar.hidden_rules", "navigation.bottom_bar.hidden_selectors")),
+        DiagnosticCapabilityDefinition("bottom_bar", "bottom_bar", R.string.custom_bottom_bar_hide, setOf(
+            "navigation.bottom_bar.hidden_rules",
+            "navigation.bottom_bar.hidden_selectors",
+            "host.bottom_bar.liquid_glass.enabled",
+            "host.bottom_bar.compact.enabled",
+            "host.bottom_bar.icon_only.enabled",
+            "host.bottom_bar.touch_glow.enabled"
+        )),
         DiagnosticCapabilityDefinition("player_default_quality", "player_default_quality", R.string.player_default_quality, setOf("player.default_quality.qn")),
         DiagnosticCapabilityDefinition("teenagers_mode_prompt", "teenagers_mode_prompt", R.string.block_teenagers_mode_prompt, setOf("prompt.teenagers_mode.blocked")),
         DiagnosticCapabilityDefinition("player_capability_background", "player_capabilities", R.string.player_unlock_background, setOf("player.capability.background")),
