@@ -126,13 +126,21 @@ internal class HostTopIslandBinding private constructor(
 
         override fun onDraw(canvas: Canvas) {
             val shellSave = canvas.save()
-            canvas.translate(0f, touchPadding)
-            canvas.scale(feedback.scale, feedback.scale, dock.width / 2f, dock.height / 2f)
+            canvas.scale(feedback.scale, feedback.scale, dock.width / 2f, dock.height / 2f + touchPadding)
             // 宿主栏在收起后不可见，让剩余区域的触摸真正落到视频内容。
             if (collapsed && !animating) {
                 val surface = dock.background
-                if (surface is HostLiquidSurfaceDrawable) surface.drawForView(canvas, dock) else surface?.draw(canvas)
+                if (surface is HostLiquidSurfaceDrawable) {
+                    // 采样与刷新都绑定到真正绘制的可见层；外壳在该层内下移触摸容错距离。
+                    surface.drawForView(canvas, this, touchPadding)
+                } else {
+                    val save = canvas.save()
+                    canvas.translate(0f, touchPadding)
+                    surface?.draw(canvas)
+                    canvas.restoreToCount(save)
+                }
             }
+            canvas.translate(0f, touchPadding)
             if (collapsed && feedback.pressure > 0f) {
                 pressPaint.alpha = (24f * feedback.pressure).roundToInt()
                 canvas.drawCircle(dock.width / 2f, dock.height / 2f, dock.height / 2f, pressPaint)
