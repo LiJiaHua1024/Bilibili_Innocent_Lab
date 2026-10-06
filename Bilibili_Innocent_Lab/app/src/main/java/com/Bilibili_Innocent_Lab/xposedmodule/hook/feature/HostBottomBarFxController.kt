@@ -5,7 +5,6 @@ import android.animation.AnimatorListenerAdapter
 import android.animation.ValueAnimator
 import android.annotation.SuppressLint
 import android.content.Context
-import android.content.res.Configuration
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.ColorFilter
@@ -44,10 +43,10 @@ import com.Bilibili_Innocent_Lab.xposedmodule.ui.activity.ModernNavigationSpring
 import com.Bilibili_Innocent_Lab.xposedmodule.ui.activity.reachablePileRoomPx
 import com.Bilibili_Innocent_Lab.xposedmodule.hook.modern.ModernHookLog
 import com.Bilibili_Innocent_Lab.xposedmodule.ui.skin.material.FrostedMotionSurfaceAlpha
+import com.Bilibili_Innocent_Lab.xposedmodule.ui.skin.engine.GlowLegibilityPolicy
 import com.Bilibili_Innocent_Lab.xposedmodule.ui.skin.material.ModernMaterialPolicy
 import com.Bilibili_Innocent_Lab.xposedmodule.ui.skin.material.ModernSurfaceStyle
 import com.Bilibili_Innocent_Lab.xposedmodule.ui.skin.model.SurfaceRole
-import com.Bilibili_Innocent_Lab.xposedmodule.ui.theme.ModernPalette
 import com.Bilibili_Innocent_Lab.xposedmodule.ui.theme.MonetColors
 import com.Bilibili_Innocent_Lab.xposedmodule.ui.widget.TouchGlowRenderer
 import java.util.Collections
@@ -132,9 +131,10 @@ internal object HostBottomBarFxController {
 
         val context = tabHost.context
         val density = tabHost.resources.displayMetrics.density
-        val isDark = (context.resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES
-        val palette = ModernPalette.resolve(context)
-        val publishTint = if (config.liquidGlass) HostBottomBarPublishTint(context) else null
+        val theme = HostChromeTheme(context)
+        val colors = theme.read()
+        val isDark = colors.dark
+        val palette = colors.palette()
 
         // 1. 查找底栏内原有构件
         val bgId = context.resources.getIdentifier("tab_background", "id", context.packageName)
@@ -200,7 +200,7 @@ internal object HostBottomBarFxController {
         val sanitizeRunnable = Runnable {
             sanitizePosted = false
             if (config.liquidGlass || config.touchGlow) stripAllHostArtifacts(tabHost, isRoot = true)
-            alignTabContent(tabHost, container, density, insetH, publishTint, config)
+            alignTabContent(tabHost, container, density, insetH, config)
             // 冷启动时底栏还没有尺寸、找不到采样源；布局稳定后每次清理都顺手补一次定位（命中即 O(1)）。
             backdrop?.revalidate()
         }
@@ -218,7 +218,7 @@ internal object HostBottomBarFxController {
         if (!config.liquidGlass && !config.touchGlow) {
             container?.addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ -> requestSanitization() }
             tabHost.viewTreeObserver.addOnPreDrawListener {
-                alignTabContent(tabHost, container, density, insetH, publishTint, config)
+                alignTabContent(tabHost, container, density, insetH, config)
                 true
             }
             return
@@ -226,7 +226,8 @@ internal object HostBottomBarFxController {
 
         // 4. 插入专属硬件加速指示滑块、柔光图层与实时透镜 (放在最底层)
         val dockLayer = HostBottomBarDockLayer(
-            context, config, tabHost, container, palette, isDark, backdrop, publishTint, requestSanitization
+            context, config, tabHost, container, palette, isDark, backdrop, requestSanitization,
+            theme = theme
         )
         tabHost.addView(
             dockLayer,
@@ -305,7 +306,6 @@ internal object HostBottomBarFxController {
         container: ViewGroup?,
         density: Float,
         insetH: Int,
-        publishTint: HostBottomBarPublishTint? = null,
         config: HostBottomBarFxConfig = HostBottomBarFxConfig()
     ) {
         if (container == null) return
@@ -437,7 +437,6 @@ internal object HostBottomBarFxController {
                         }
                     }
                 } else if (name.contains("publish") || child.javaClass.simpleName.contains("Publish")) {
-                    publishTint?.apply(child)
                     val plp = child.layoutParams as? FrameLayout.LayoutParams
                     if (plp != null && plp.gravity != Gravity.CENTER) {
                         plp.gravity = Gravity.CENTER
@@ -504,7 +503,13 @@ internal object HostBottomBarFxController {
     fun stripAllHostArtifacts(view: View, isRoot: Boolean = true) {
         if (view is HostBottomBarDockLayer || view is HostGlowView) return
 
-        // 宿主 TabHost 本身的 Liquid Glass 背景予以保留，其余所有子 View 背景清空
+        val resName = resourceName(view, view.id)
+        // 发布按钮整棵子树交给宿主管理：日夜底色、白色加号、远程皮肤和 SVGA 动画
+        // 使用同一套原版换肤逻辑，不能只给普通加号重染或清掉它的 GradientDrawable。
+        if (resName == "home_publish_icon" || resName == "publish_root" ||
+            view.javaClass.simpleName == "HomeTabPublishView") return
+
+        // 保留宿主 TabHost 的玻璃背景，清除其余子 View 的官方底色。
         if (!isRoot && view.background != null) {
             view.background = null
         }
@@ -515,9 +520,6 @@ internal object HostBottomBarFxController {
         if (view.isPressed) {
             view.isPressed = false
         }
-
-        val id = view.id
-        val resName = resourceName(view, id)
 
         // 彻底移除官方分割线
         if (resName.contains("divider") || (view !is ViewGroup && (view.height in 1..4 || view.layoutParams?.height in 1..4))) {
@@ -556,11 +558,11 @@ internal class HostBottomBarDockLayer(
     private val config: HostBottomBarFxConfig,
     private val tabHost: ViewGroup,
     private val container: ViewGroup?,
-    private val palette: MonetColors,
-    private val isDark: Boolean,
+    palette: MonetColors,
+    isDark: Boolean,
     private val backdrop: HostBottomBarBackdrop?,
-    private val publishTint: HostBottomBarPublishTint?,
-    private val requestSanitization: () -> Unit
+    private val requestSanitization: () -> Unit,
+    private val theme: HostChromeTheme = HostChromeTheme(context)
 ) : FrameLayout(context), HostDockLayer {
 
     private val density = resources.displayMetrics.density
@@ -569,6 +571,7 @@ internal class HostBottomBarDockLayer(
     private val maximumTravel = dp(ModernNavigationMotion.MAX_TRAVEL_DP)
     private val slop = ViewConfiguration.get(context).scaledTouchSlop.toFloat()
     private val publishViewId = resources.getIdentifier("home_publish_icon", "id", context.packageName)
+    private var materialColors = HostChromeColors(isDark, palette.primary)
 
     // 1. 独立大胶囊晶体滑块 (硬件加速子 View)
     val selectionView = View(context).apply {
@@ -628,10 +631,11 @@ internal class HostBottomBarDockLayer(
 
     private val preDrawListener = ViewTreeObserver.OnPreDrawListener {
         if (disposed) return@OnPreDrawListener true
+        refreshMaterial()
         // 宿主会在按压/切页/重建 tab 时重新挂上官方背景并重新布局：这里逐帧只做 O(items) 空判，
         // 命中才请求一次合并后的整树清理；不再每帧全树递归 + 资源名解析（快速切换掉帧的来源）。
         if (hostReappliedArtifacts()) requestSanitization()
-        HostBottomBarFxController.alignTabContent(tabHost, container, density, inset.roundToInt(), publishTint, config)
+        HostBottomBarFxController.alignTabContent(tabHost, container, density, inset.roundToInt(), config)
         // 同步外部切页
         val detected = detectSelectedTab()
         if (!touchActive && !indicatorSettling && detected != selectedIndex) {
@@ -639,6 +643,32 @@ internal class HostBottomBarDockLayer(
             reboundTo(detected, scrubbed = false)
         }
         true
+    }
+
+    private fun refreshMaterial() {
+        val colors = theme.read()
+        val changed = colors != materialColors
+        if (config.liquidGlass && (changed || tabHost.background !is HostLiquidSurfaceDrawable)) {
+            tabHost.background = HostLiquidSurfaceDrawable(
+                color = colors.palette().surface,
+                radius = dp(config.heightDp) / 2f,
+                density = density,
+                style = ModernMaterialPolicy.surface(SurfaceRole.FLOATING, colors.dark),
+                backdrop = backdrop
+            )
+        }
+        if (!changed) return
+        materialColors = colors
+        if (config.liquidGlass) {
+            selectionView.background = HostLiquidSurfaceDrawable(
+                color = colors.palette().surface,
+                radius = dp(28f),
+                density = density,
+                style = ModernMaterialPolicy.surface(SurfaceRole.SELECTED_ITEM, colors.dark),
+                tintOnly = true
+            )
+        }
+        glowView.recolor(colors.accent)
     }
 
     /** 直属于底栏的 tab 项是否被宿主重新挂上了官方背景/按压态（不带资源查询，O(items)）。 */
@@ -1101,6 +1131,14 @@ internal class HostGlowView(
 
     private val radius = 64f * density
     private val renderer = TouchGlowRenderer(highlightColor, radius)
+    private var color = highlightColor
+
+    fun recolor(highlightColor: Int) {
+        if (color == highlightColor) return
+        color = highlightColor
+        renderer.recolor(highlightColor)
+        invalidate()
+    }
     private val config = GlowConfig.create(
         density = density,
         maxTravelPx = maximumTravel,
@@ -1215,6 +1253,9 @@ internal class HostLiquidSurfaceDrawable(
     private var edgeTop = Float.NaN
     private var edgeBottom = Float.NaN
     private var drawingAlpha = 255
+    private var tintFrom = style.tintAlpha.toFloat()
+    private var tintTo = style.tintAlpha
+    private var tintStarted = 0L
 
     /** 顶栏收岛只改变外壳宽度，不重新测量宿主分类。底栏默认保持 0。 */
     var horizontalInset = 0f
@@ -1255,7 +1296,7 @@ internal class HostLiquidSurfaceDrawable(
         val frameAlpha = FrostedMotionSurfaceAlpha.frameAlpha(color, drawingAlpha)
         if (frameAlpha <= 0) return
 
-        val tintAlpha = style.tintAlpha
+        val tintAlpha = legibleTintAlpha(reference)
         val overlayAlpha = tintAlpha * frameAlpha / 255
         // 与模块 ModernSurfaceDrawable.draw 同一套 alpha 数学：实时透镜在下、色罩在上。
         // 宿主没有静态磨砂的 revealFraction 淡入，色罩恒用 overlayAlpha —— 采样未就绪时就是改造前的
@@ -1284,6 +1325,25 @@ internal class HostLiquidSurfaceDrawable(
             (drawRadius - edge.strokeWidth / 2f).coerceAtLeast(0f),
             edge
         )
+    }
+
+    private fun legibleTintAlpha(reference: View?): Int {
+        if (tintOnly || !style.live || reference == null || GlowLegibilityPolicy.encodedLuma(color) >= .5f) {
+            return style.tintAlpha
+        }
+        val desired = backdrop?.legibleTintAlpha(reference, rect, color, style.tintAlpha) ?: style.tintAlpha
+        val now = SystemClock.uptimeMillis()
+        val fraction = ((now - tintStarted) / 240f).coerceIn(0f, 1f)
+        val current = tintFrom + (tintTo - tintFrom) * fraction
+        // 与引擎同样做迟滞与 240ms 过渡，避免内容取样噪声让色罩闪烁。
+        val hysteresis = ((.92f * 255f - style.tintAlpha) * GlowLegibilityPolicy.HYSTERESIS)
+        if (desired != tintTo && (abs(desired - tintTo) >= hysteresis || desired == style.tintAlpha || desired >= 234)) {
+            tintFrom = current
+            tintTo = desired
+            tintStarted = now
+        }
+        if (now - tintStarted < 240L) invalidateSelf()
+        return current.roundToInt()
     }
 
     override fun setAlpha(alpha: Int) {
