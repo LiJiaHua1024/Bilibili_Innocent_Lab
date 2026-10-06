@@ -723,8 +723,7 @@ internal class ReplyTopologyPanelView(
                 LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT, android.view.Gravity.TOP or android.view.Gravity.START
             ) else ViewGroup.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT)
             parent.addView(viewer, params)
-            viewer.submit(graph, rpid)
-            if (path && rpid != null) viewer.showPath(rpid) else viewer.showFull()
+            viewer.submit(graph, rpid, initialPath = rpid.takeIf { path })
             viewer.alpha = 0f
             viewer.animate().alpha(1f).setDuration(160L).setInterpolator(PathInterpolator(0f, 0f, 0.2f, 1f)).start()
         }.onFailure { closeTreeExplorer(viewer) }
@@ -851,7 +850,24 @@ internal class ReplyTopologyPanelView(
 
     private fun createWorkflowList(): View {
         recyclerView.apply {
-            layoutManager = LinearLayoutManager(context)
+            layoutManager = object : LinearLayoutManager(context) {
+                init { initialPrefetchItemCount = 8 }
+                override fun collectAdjacentPrefetchPositions(dx: Int, dy: Int, state: RecyclerView.State, registry: RecyclerView.LayoutManager.LayoutPrefetchRegistry) {
+                    HostThreadGuard.run("reply_topology.row_prefetch") {
+                        if (isReleased || dy == 0 || state.itemCount == 0) return@run
+                        val forward = dy > 0
+                        val edge = if (forward) findLastVisibleItemPosition() else findFirstVisibleItemPosition()
+                        if (edge == RecyclerView.NO_POSITION) return@run
+                        val distance = kotlin.math.abs(dy.toLong()).coerceAtMost(Int.MAX_VALUE.toLong()).toInt()
+                        for (step in 1..4) {
+                            val position = edge + if (forward) step else -step
+                            val priorityDistance = (distance.toLong() + (step - 1) * dp(66).toLong()).coerceAtMost(Int.MAX_VALUE.toLong()).toInt()
+                            if (position in 0 until state.itemCount) registry.addPosition(position, priorityDistance)
+                        }
+                    }
+                }
+            }
+            setItemViewCacheSize(8)
             adapter = workflowAdapter
             setHasFixedSize(true)
             itemAnimator = null

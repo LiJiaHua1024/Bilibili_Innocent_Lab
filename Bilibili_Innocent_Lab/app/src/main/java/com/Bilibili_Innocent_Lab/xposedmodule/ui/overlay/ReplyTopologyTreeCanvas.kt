@@ -17,6 +17,7 @@ import android.view.View
 import android.view.accessibility.AccessibilityNodeInfo
 import com.Bilibili_Innocent_Lab.xposedmodule.runtime.HostThreadGuard
 import com.Bilibili_Innocent_Lab.xposedmodule.runtime.replytopology.ReplyTopologyNodeFlags
+import com.Bilibili_Innocent_Lab.xposedmodule.runtime.replytopology.ReplyTopologyGraph
 import com.Bilibili_Innocent_Lab.xposedmodule.runtime.replytopology.ReplyTopologyTreeLayout
 import kotlin.math.exp
 import kotlin.math.floor
@@ -59,8 +60,18 @@ internal class ReplyTopologyTreeCanvas(
     private val metaPaint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
         color = theme.secondaryTextColor; textSize = TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_SP, 11f, resources.displayMetrics)
     }
-    private data class TextBlock(val title: StaticLayout, val body: StaticLayout, val depth: StaticLayout)
+    private class TextBlock(val title: StaticLayout, val body: StaticLayout, val depth: StaticLayout,
+        val author: String, val replied: String?, val message: String, val flags: Int, val level: Int) {
+        fun matches(graph: ReplyTopologyGraph, index: Int): Boolean =
+            author == graph.authorNames[index] && replied == graph.repliedAuthorNames[index] &&
+                message == graph.messagePreviews[index] && flags == graph.flags[index] && level == graph.depths[index]
+    }
     private val textCache = LruCache<Long, TextBlock>(96)
+    private var textWarmupPosted = false
+    private val textWarmup = HostThreadGuard.runnable("reply_topology.tree_text_warmup") {
+        textWarmupPosted = false
+        warmViewportText()
+    }
     private val flingFrame = HostThreadGuard.runnable("reply_topology.tree_fling") {
         if (!released) {
             val now = SystemClock.uptimeMillis()
@@ -70,6 +81,7 @@ internal class ReplyTopologyTreeCanvas(
             val decay = exp(-6.0 * dt)
             velocityX *= decay
             velocityY *= decay
+            requestTextWarmup()
             invalidate()
             if (hypot(velocityX, velocityY) > 20.0) postOnAnimation(flingFrameRunnable())
         }
@@ -83,15 +95,15 @@ internal class ReplyTopologyTreeCanvas(
         }
         override fun onScale(detector: ScaleGestureDetector): Boolean = HostThreadGuard.call("reply_topology.tree_scale", false) {
             if (released) false else viewport.zoom(detector.scaleFactor.toDouble(), detector.focusX.toDouble(), detector.focusY.toDouble())
-                .also { if (it) invalidate() }
+                .also { if (it) { requestTextWarmup(); invalidate() } }
         }
     })
     private val gestures = GestureDetector(context, object : GestureDetector.SimpleOnGestureListener() {
         override fun onDown(e: MotionEvent): Boolean = HostThreadGuard.call("reply_topology.tree_down", false) { stopFling(); !released }
         override fun onScroll(e1: MotionEvent?, e2: MotionEvent, distanceX: Float, distanceY: Float): Boolean =
             HostThreadGuard.call("reply_topology.tree_pan", false) {
-                if (released || scaler.isInProgress) false else viewport.pan(-distanceX.toDouble(), -distanceY.toDouble())
-                    .also { if (it) invalidate() }
+                if (released || wasScaling || scaler.isInProgress || e2.pointerCount != 1) false else viewport.pan(-distanceX.toDouble(), -distanceY.toDouble())
+                    .also { if (it) { requestTextWarmup(); invalidate() } }
             }
         override fun onSingleTapUp(e: MotionEvent): Boolean = HostThreadGuard.call("reply_topology.tree_select", false) {
             if (released || wasScaling) false else pick(e.x.toDouble(), e.y.toDouble())?.let {
@@ -103,7 +115,7 @@ internal class ReplyTopologyTreeCanvas(
             } ?: false
         }
         override fun onDoubleTap(e: MotionEvent): Boolean = HostThreadGuard.call("reply_topology.tree_double_tap", false) {
-            if (released) false else viewport.zoom(1.6, e.x.toDouble(), e.y.toDouble()).also { invalidate() }
+            if (released || wasScaling) false else viewport.zoom(1.6, e.x.toDouble(), e.y.toDouble()).also { requestTextWarmup(); invalidate() }
         }
         override fun onFling(e1: MotionEvent?, e2: MotionEvent, vx: Float, vy: Float): Boolean = HostThreadGuard.call("reply_topology.tree_fling_start", false) {
             if (released || wasScaling || !vx.isFinite() || !vy.isFinite()) return@call false
@@ -131,26 +143,31 @@ internal class ReplyTopologyTreeCanvas(
         val y = if (previousRow >= 0) viewport.screenY(previousRow * rowStep + cardHeight * 0.5) else 0.0
         scene = layout
         selectedRpid = selection?.takeIf { layout.rowOf(it) >= 0 }
-        textCache.evictAll()
+        // 相同 rpid 的内容由 matches 验真；分页和选中变化保留仍有效的布局。
+        if (previous?.graph?.key != layout.graph.key) textCache.evictAll()
         if (reset || !positioned) centerSelected(resetZoom = true)
         else if (previousRow >= 0 && anchor != null) {
             val row = layout.rowOf(anchor)
             if (row >= 0) viewport.place(layout.depthAt(row) * columnStep + cardWidth * 0.5, row * rowStep + cardHeight * 0.5, x, y)
         }
+        requestTextWarmup()
         invalidate()
     }
 
     fun fitView() {
+        if (released) return
         val value = scene ?: return
         stopFling()
         if (value.size > 0 && viewport.fit(value.maxDepth * columnStep + cardWidth,
                 (value.size - 1) * rowStep + cardHeight, width.toDouble(), height.toDouble(), 12.0 * density)) {
             positioned = true
+            requestTextWarmup()
             invalidate()
         }
     }
 
     fun centerSelected(resetZoom: Boolean = false) {
+        if (released) return
         val value = scene ?: return
         if (width <= 0 || height <= 0 || value.size == 0) return
         stopFling()
@@ -158,16 +175,23 @@ internal class ReplyTopologyTreeCanvas(
         viewport.place(value.depthAt(row) * columnStep + cardWidth * 0.5, row * rowStep + cardHeight * 0.5,
             width * 0.5, height * 0.5, if (resetZoom) 1.0 else max(viewport.scale, 0.4))
         positioned = true
+        requestTextWarmup()
         invalidate()
     }
 
-    fun zoomBy(factor: Double) { stopFling(); viewport.zoom(factor, width * 0.5, height * 0.5); invalidate() }
+    fun zoomBy(factor: Double) {
+        if (released) return
+        stopFling(); viewport.zoom(factor, width * 0.5, height * 0.5); requestTextWarmup(); invalidate()
+    }
     fun selection(): Long? = selectedRpid
 
     override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
         super.onSizeChanged(w, h, oldw, oldh)
-        if (!positioned) centerSelected(resetZoom = true)
-        else viewport.pan((w - oldw) * 0.5, (h - oldh) * 0.5)
+        if (!released) HostThreadGuard.run("reply_topology.tree_resize_canvas") {
+            if (!positioned) centerSelected(resetZoom = true)
+            else viewport.pan((w - oldw) * 0.5, (h - oldh) * 0.5)
+            requestTextWarmup()
+        }
     }
 
     override fun onTouchEvent(event: MotionEvent): Boolean = HostThreadGuard.call("reply_topology.tree_touch", false) {
@@ -176,6 +200,9 @@ internal class ReplyTopologyTreeCanvas(
         if (event.actionMasked == MotionEvent.ACTION_DOWN) wasScaling = false
         scaler.onTouchEvent(event)
         gestures.onTouchEvent(event)
+        if (event.actionMasked == MotionEvent.ACTION_UP || event.actionMasked == MotionEvent.ACTION_CANCEL) {
+            parent?.requestDisallowInterceptTouchEvent(false)
+        }
         true
     }
 
@@ -195,9 +222,12 @@ internal class ReplyTopologyTreeCanvas(
     private fun drawScene(canvas: Canvas) {
         val value = scene ?: return
         val zoom = viewport.scale
+        val visible = value.visibleRows(viewport.worldY(0.0), viewport.worldY(height.toDouble()), rowStep, cardHeight)
         edge.strokeWidth = (density * zoom).toFloat().coerceIn(1f, 2.5f * density)
         run {
-            for (row in 0 until value.size) {
+            val count = if (visible.isEmpty()) 0 else value.collectVisibleBranches(visible.first, visible.last)
+            for (branch in 0 until count) {
+                val row = value.visibleBranchRows[branch]
                 val last = value.lastChildRows[row]
                 if (last < 0) continue
                 val right = viewport.screenX(value.depthAt(row) * columnStep + cardWidth)
@@ -212,7 +242,6 @@ internal class ReplyTopologyTreeCanvas(
                 }
             }
         }
-        val visible = value.visibleRows(viewport.worldY(0.0), viewport.worldY(height.toDouble()), rowStep, cardHeight)
         var bucketX = Int.MIN_VALUE
         var bucketY = Int.MIN_VALUE
         for (row in visible) {
@@ -221,15 +250,17 @@ internal class ReplyTopologyTreeCanvas(
             val top = viewport.screenY(row * rowStep)
             val right = left + cardWidth * zoom
             val bottom = top + cardHeight * zoom
-            if (right < 0.0 || left > width || bottom < 0.0 || top > height) continue
             run {
                 val parentRow = value.parentRow(row)
                 if (parentRow >= 0) {
                     val from = viewport.screenX(value.depthAt(parentRow) * columnStep + cardWidth + (columnStep - cardWidth) * 0.5)
                     val y = viewport.screenY(row * rowStep + cardHeight * 0.5)
-                    if (y in 0.0..height.toDouble()) canvas.drawLine(max(0.0, from).toFloat(), y.toFloat(), left.toFloat(), y.toFloat(), edge)
+                    if (y in 0.0..height.toDouble() && from <= width && left >= 0.0) {
+                        canvas.drawLine(max(0.0, from).toFloat(), y.toFloat(), min(width.toDouble(), left).toFloat(), y.toFloat(), edge)
+                    }
                 }
             }
+            if (right < 0.0 || left > width || bottom < 0.0 || top > height) continue
             val selected = value.graph.rpids[index] == selectedRpid
             if (cardWidth * zoom < 24.0) {
                 val bx = (left / 2.0).toInt()
@@ -250,13 +281,18 @@ internal class ReplyTopologyTreeCanvas(
             canvas.drawRoundRect(0f, 0f, cardWidth.toFloat(), cardHeight.toFloat(), 10f * density, 10f * density, fill)
             canvas.drawRoundRect(0f, 0f, cardWidth.toFloat(), cardHeight.toFloat(), 10f * density, 10f * density, border)
             if (cardWidth * zoom >= 100.0 && cardHeight * zoom >= 36.0) {
-                val text = textCache.get(value.graph.rpids[index]) ?: textBlock(value, index).also { textCache.put(value.graph.rpids[index], it) }
+                val text = textCache.get(value.graph.rpids[index])?.takeIf { it.matches(value.graph, index) }
                 canvas.translate(8f * density, 7f * density)
-                text.title.draw(canvas)
-                canvas.translate(0f, 22f * density * fontFactor)
-                text.body.draw(canvas)
-                canvas.translate(0f, 64f * density * fontFactor)
-                text.depth.draw(canvas)
+                if (text != null) {
+                    text.title.draw(canvas)
+                    canvas.translate(0f, 22f * density * fontFactor)
+                    text.body.draw(canvas)
+                    canvas.translate(0f, 64f * density * fontFactor)
+                    text.depth.draw(canvas)
+                } else {
+                    // 首帧保留作者及可点击节点；文字布局在可见节点优先的帧任务中完成。
+                    canvas.drawText(value.graph.authorNames[index], 0f, -titlePaint.ascent(), titlePaint)
+                }
             }
             canvas.restoreToCount(save)
         }
@@ -274,7 +310,43 @@ internal class ReplyTopologyTreeCanvas(
         fun block(text: String, paint: TextPaint, lines: Int): StaticLayout = StaticLayout.Builder.obtain(text, 0, text.length, paint, (cardWidth - 16 * density).toInt().coerceAtLeast(1))
             .setAlignment(Layout.Alignment.ALIGN_NORMAL).setIncludePad(false).setMaxLines(lines)
             .setEllipsize(TextUtils.TruncateAt.END).build()
-        return TextBlock(block(title, titlePaint, 1), block(body, bodyPaint, 3), block(strings.depthLabel(graph.depths[index]), metaPaint, 1))
+        return TextBlock(block(title, titlePaint, 1), block(body, bodyPaint, 3), block(strings.depthLabel(graph.depths[index]), metaPaint, 1),
+            graph.authorNames[index], graph.repliedAuthorNames[index], graph.messagePreviews[index], flags, graph.depths[index])
+    }
+
+    private fun requestTextWarmup() {
+        if (released || textWarmupPosted || scene == null) return
+        textWarmupPosted = true
+        postOnAnimation(textWarmup)
+    }
+
+    private fun warmViewportText() {
+        val value = scene ?: return
+        if (released || width <= 0 || height <= 0 || cardWidth * viewport.scale < 100.0 || cardHeight * viewport.scale < 36.0) return
+        val visible = value.visibleRows(viewport.worldY(0.0), viewport.worldY(height.toDouble()), rowStep, cardHeight)
+        if (visible.isEmpty()) return
+        val candidates = ReplyTopologyLoadPriority.rows(value.size, visible.first, visible.last)
+        val start = SystemClock.uptimeMillis()
+        var built = 0
+        var pending = false
+        // 横向离屏卡片也属于邻近预取，不能抢在真正屏内的文字之前。
+        work@ for (rank in 0..1) for (row in candidates) {
+            val left = viewport.screenX(value.depthAt(row) * columnStep)
+            val right = left + cardWidth * viewport.scale
+            if (right < -width || left > width * 2.0) continue
+            val top = viewport.screenY(row * rowStep)
+            val bottom = top + cardHeight * viewport.scale
+            val onScreen = ReplyTopologyLoadPriority.intersects(left, top, right, bottom, width.toDouble(), height.toDouble())
+            if (onScreen != (rank == 0)) continue
+            val index = value.indexAt(row)
+            val id = value.graph.rpids[index]
+            if (textCache.get(id)?.matches(value.graph, index) == true) continue
+            if (built >= 4 || built > 0 && SystemClock.uptimeMillis() - start >= 2L) { pending = true; break@work }
+            textCache.put(id, textBlock(value, index))
+            built++
+        }
+        if (built > 0) invalidate()
+        if (pending) requestTextWarmup()
     }
 
     private fun pick(x: Double, y: Double): Long? {
@@ -299,18 +371,26 @@ internal class ReplyTopologyTreeCanvas(
     }
 
     override fun performAccessibilityAction(action: Int, arguments: android.os.Bundle?): Boolean {
-        val dx = when (action) { AccessibilityNodeInfo.AccessibilityAction.ACTION_SCROLL_LEFT.id -> width * 0.5; AccessibilityNodeInfo.AccessibilityAction.ACTION_SCROLL_RIGHT.id -> -width * 0.5; else -> 0.0 }
-        val dy = when (action) { AccessibilityNodeInfo.AccessibilityAction.ACTION_SCROLL_UP.id -> height * 0.5; AccessibilityNodeInfo.AccessibilityAction.ACTION_SCROLL_DOWN.id -> -height * 0.5; else -> 0.0 }
-        if (dx != 0.0 || dy != 0.0) { stopFling(); viewport.pan(dx, dy); invalidate(); return true }
-        return super.performAccessibilityAction(action, arguments)
+        if (released) return false
+        return HostThreadGuard.call("reply_topology.tree_accessibility", false) {
+            val dx = when (action) { AccessibilityNodeInfo.AccessibilityAction.ACTION_SCROLL_LEFT.id -> width * 0.5; AccessibilityNodeInfo.AccessibilityAction.ACTION_SCROLL_RIGHT.id -> -width * 0.5; else -> 0.0 }
+            val dy = when (action) { AccessibilityNodeInfo.AccessibilityAction.ACTION_SCROLL_UP.id -> height * 0.5; AccessibilityNodeInfo.AccessibilityAction.ACTION_SCROLL_DOWN.id -> -height * 0.5; else -> 0.0 }
+            if (dx != 0.0 || dy != 0.0) { stopFling(); viewport.pan(dx, dy); requestTextWarmup(); invalidate(); true }
+            else super.performAccessibilityAction(action, arguments)
+        }
     }
 
     fun release() {
         if (released) return
         released = true
+        removeCallbacks(textWarmup)
+        textWarmupPosted = false
         stopFling()
         val cancel = MotionEvent.obtain(0L, 0L, MotionEvent.ACTION_CANCEL, 0f, 0f, 0)
-        try { gestures.onTouchEvent(cancel); scaler.onTouchEvent(cancel) } finally { cancel.recycle() }
+        try {
+            runCatching { gestures.onTouchEvent(cancel) }
+            runCatching { scaler.onTouchEvent(cancel) }
+        } finally { cancel.recycle() }
         textCache.evictAll()
         scene = null
         select = null

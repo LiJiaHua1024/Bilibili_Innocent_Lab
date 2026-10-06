@@ -10,7 +10,12 @@ internal class ReplyTopologyTreeLayout(
 ) {
     val indexes = indexes.copyOf()
     private val rows = IntArray(graph.size) { -1 }
+    private val rowsById = HashMap<Long, Int>(indexes.size)
     val lastChildRows = IntArray(indexes.size) { -1 }
+    private var branchLeafCount = 1
+    private val branchEnds: IntArray
+    /** 查询输出复用；调用方消费完毕才可进行下一次查询。 */
+    val visibleBranchRows = IntArray(indexes.size)
     val size: Int get() = indexes.size
     val maxDepth: Int
 
@@ -21,6 +26,7 @@ internal class ReplyTopologyTreeLayout(
         this.indexes.forEachIndexed { row, index ->
             require(index in 0 until graph.size && index > previous) { "Tree indexes must be valid and ascending" }
             rows[index] = row
+            rowsById[graph.rpids[index]] = row
             deepest = maxOf(deepest, (graph.depths[index] - baseDepth).coerceAtLeast(0))
             previous = index
         }
@@ -29,12 +35,33 @@ internal class ReplyTopologyTreeLayout(
             val parent = graph.parentIndexes[index]
             if (parent in rows.indices && rows[parent] >= 0) lastChildRows[rows[parent]] = row
         }
+        while (branchLeafCount < size) branchLeafCount *= 2
+        branchEnds = IntArray(branchLeafCount * 2) { -1 }
+        for (row in 0 until size) branchEnds[branchLeafCount + row] = lastChildRows[row]
+        for (slot in branchLeafCount - 1 downTo 1) branchEnds[slot] = maxOf(branchEnds[slot * 2], branchEnds[slot * 2 + 1])
     }
 
     fun indexAt(row: Int): Int = indexes.getOrNull(row) ?: -1
-    fun rowOf(rpid: Long): Int = graph.rpids.indexOf(rpid).let { if (it >= 0) rows[it] else -1 }
+    fun rowOf(rpid: Long): Int = rowsById[rpid] ?: -1
     fun depthAt(row: Int): Int = (graph.depths[indexes[row]] - baseDepth).coerceAtLeast(0)
     fun parentRow(row: Int): Int = graph.parentIndexes[indexes[row]].let { rows.getOrNull(it) ?: -1 }
+
+    /** 包含视野上方但仍连接到屏内的父干线；区间树跳过完全不相交的分支。 */
+    fun collectVisibleBranches(first: Int, last: Int): Int {
+        if (first < 0 || last < first || first >= size) return 0
+        return collectBranches(1, 0, branchLeafCount - 1, first, minOf(last, size - 1), 0)
+    }
+
+    private fun collectBranches(slot: Int, low: Int, high: Int, first: Int, last: Int, output: Int): Int {
+        if (low > last || branchEnds[slot] < first) return output
+        if (low == high) {
+            visibleBranchRows[output] = low
+            return output + 1
+        }
+        val middle = (low + high) ushr 1
+        val next = collectBranches(slot * 2, low, middle, first, last, output)
+        return collectBranches(slot * 2 + 1, middle + 1, high, first, last, next)
+    }
 
     fun visibleRows(top: Double, bottom: Double, rowStep: Double, cardHeight: Double): IntRange {
         if (size == 0 || !top.isFinite() || !bottom.isFinite() || bottom < top ||

@@ -341,6 +341,7 @@ internal class ReplyTopologyNodeRow(
     private var metaText = ""
     private var trueDepth = 0
     private var trackLayout: ReplyTopologyTrackLayout? = null
+    private var trackFontScale = Float.NaN
 
     init {
         orientation = VERTICAL
@@ -420,13 +421,24 @@ internal class ReplyTopologyNodeRow(
 
     fun setOnPathRequested(block: () -> Unit) { pathView.setOnClickListener { block() } }
 
-    override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
-        super.onSizeChanged(w, h, oldw, oldh)
-        updateTrackLayout(w)
+    override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
+        // RecyclerView 首次布局／邻近预取都必须先确定内容盒；onSizeChanged 已晚于子控件测量，
+        // 此时再改 padding 会让路径按钮按旧宽度排到行外，直到下一次重测才出现。
+        try {
+            if (MeasureSpec.getMode(widthMeasureSpec) != MeasureSpec.UNSPECIFIED) {
+                updateTrackLayout(MeasureSpec.getSize(widthMeasureSpec))
+            }
+        } catch (failure: Throwable) {
+            HostThreadGuard.run("reply_topology.row_measure") { throw failure }
+        }
+        super.onMeasure(widthMeasureSpec, heightMeasureSpec)
     }
 
     private fun updateTrackLayout(w: Int) {
+        val fontScale = resources.configuration.fontScale
+        if (trackLayout?.width == w.toFloat() && trackFontScale == fontScale) return
         val layout = ReplyTopologyTrackLayout.resolve(w.toFloat(), density, resources.configuration.fontScale)
+        trackFontScale = fontScale
         if (layout == trackLayout) return
         trackLayout = layout
         setPadding(layout.trackWidth.roundToInt(), dp(7), dp(12), dp(7))
@@ -465,6 +477,7 @@ internal class ReplyTopologyNodeRow(
         metaView.text = null
         metaText = ""
         trueDepth = 0
+        pathView.visibility = View.GONE
         contentDescription = null
         setSelectedState(false)
     }

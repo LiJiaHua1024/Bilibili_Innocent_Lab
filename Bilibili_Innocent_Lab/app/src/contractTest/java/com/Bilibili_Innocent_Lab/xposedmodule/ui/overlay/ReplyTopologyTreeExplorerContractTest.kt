@@ -61,6 +61,37 @@ class ReplyTopologyTreeExplorerContractTest {
         assertTrue(canvas.contains("MotionEvent.ACTION_CANCEL"))
         assertTrue(canvas.contains("textCache.evictAll()"))
         assertTrue(canvas.contains("HostThreadGuard.runnable(\"reply_topology.tree_fling\")"))
+        assertTrue(canvas.contains("removeCallbacks(textWarmup)"))
+        assertTrue(canvas.contains("HostThreadGuard.runnable(\"reply_topology.tree_text_warmup\")"))
+        assertTrue(canvas.contains("HostThreadGuard.call(\"reply_topology.tree_accessibility\", false)"))
+    }
+
+    @Test fun visibleRowsAndNearbyRowsArePreparedWithoutDoingTextLayoutInDraw() {
+        val panel = SourceContract.read("ui/overlay/ReplyTopologyPanelView.kt")
+        assertTrue(panel.contains("initialPrefetchItemCount = 8"))
+        assertTrue(panel.contains("for (step in 1..4)"))
+        assertTrue(panel.contains("setItemViewCacheSize(8)"))
+        val adapter = SourceContract.read("ui/overlay/ReplyTopologyWorkflowAdapter.kt")
+        assertTrue(adapter.after("fun bind(\n").before("fun setOnPathRequested").contains("pathView.visibility = if (root) View.GONE else View.VISIBLE"))
+        val measure = adapter.after("override fun onMeasure").before("private fun updateTrackLayout")
+        assertTrue(measure.before("super.onMeasure").contains("updateTrackLayout(MeasureSpec.getSize(widthMeasureSpec))"))
+        assertFalse(adapter.after("internal class ReplyTopologyNodeRow").before("internal class ReplyTopologyTrackDecoration")
+            .contains("override fun onSizeChanged"))
+        val canvas = SourceContract.read("ui/overlay/ReplyTopologyTreeCanvas.kt")
+        val draw = canvas.after("private fun drawScene").before("private fun textBlock")
+        assertFalse(draw.contains("textBlock(value, index)"))
+        assertFalse(draw.contains("StaticLayout.Builder"))
+        assertTrue(draw.contains("value.collectVisibleBranches(visible.first, visible.last)"))
+        val warm = canvas.after("private fun warmViewportText").before("private fun pick")
+        assertTrue(warm.contains("ReplyTopologyLoadPriority.rows"))
+        assertTrue(warm.contains("if (onScreen != (rank == 0)) continue"))
+        assertTrue(warm.contains("built >= 4"))
+        assertTrue(warm.contains("SystemClock.uptimeMillis() - start >= 2L"))
+        assertTrue(canvas.contains("it.matches(value.graph, index)"))
+        val explorer = SourceContract.read("ui/overlay/ReplyTopologyTreeExplorer.kt")
+        assertTrue(explorer.contains("if (graph !== value) pathIndex = ReplyTopologyPath.Index(value)"))
+        assertFalse(explorer.contains("ReplyTopologyPath.resolve(value"))
+        assertTrue(panel.contains("viewer.submit(graph, rpid, initialPath = rpid.takeIf { path })"))
     }
 
     @Test fun resizingRecomputesSizeBeforePositionAndFullViewUsesTheSourceWindow() {

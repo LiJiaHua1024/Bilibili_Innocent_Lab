@@ -42,6 +42,7 @@ internal class ReplyTopologyTreeExplorer(
     private val textButton = chip(strings.treeText)
     private val fullButton = chip(strings.completeTree)
     private var graph: ReplyTopologyGraph? = null
+    private var pathIndex: ReplyTopologyPath.Index? = null
     private var selectedRpid: Long? = null
     private var pathRpid: Long? = null
     private var locate: ((Long) -> Boolean)? = onLocate
@@ -99,7 +100,7 @@ internal class ReplyTopologyTreeExplorer(
         textButton.setOnClickListener {
             HostThreadGuard.run("reply_topology.tree_text") {
                 val value = graph ?: return@run
-                val index = selectedRpid?.let(value.rpids::indexOf) ?: -1
+                val index = selectedRpid?.let { pathIndex?.indexOf(it) } ?: -1
                 if (index >= 0 && textAllowed(value, index)) text?.invoke(textButton, value.messagePreviews[index])
             }
         }
@@ -108,20 +109,23 @@ internal class ReplyTopologyTreeExplorer(
         updateSelection()
     }
 
-    fun submit(value: ReplyTopologyGraph, selected: Long? = selectedRpid) {
+    fun submit(value: ReplyTopologyGraph, selected: Long? = selectedRpid, initialPath: Long? = null) {
         if (released) return
         if (graph != null && graph?.key != value.key) { close?.invoke(this); return }
+        if (graph === value && selectedRpid == selected && initialPath == null) return
+        val initial = graph == null
+        if (graph !== value) pathIndex = ReplyTopologyPath.Index(value)
         graph = value
-        selectedRpid = selected?.takeIf { value.rpids.indexOf(it) >= 0 }
-        if (pathRpid != null && value.rpids.indexOf(requireNotNull(pathRpid)) < 0) pathRpid = null
-        rebuild(reset = false)
+        selectedRpid = selected?.takeIf { requireNotNull(pathIndex).indexOf(it) >= 0 }
+        if (initial) pathRpid = initialPath
+        if (pathRpid != null && requireNotNull(pathIndex).indexOf(requireNotNull(pathRpid)) < 0) pathRpid = null
+        rebuild(reset = initial)
     }
 
-    fun showFull() { pathRpid = null; rebuild(reset = true) }
+    fun showFull() { if (released) return; pathRpid = null; rebuild(reset = true) }
     fun selection(): Long? = selectedRpid
     fun showPath(rpid: Long) {
-        val value = graph ?: return
-        if (ReplyTopologyPath.resolve(value, rpid) == null) return
+        if (released || pathIndex?.indexOf(rpid)?.takeIf { it >= 0 } == null) return
         selectedRpid = rpid
         pathRpid = rpid
         rebuild(reset = true)
@@ -129,7 +133,7 @@ internal class ReplyTopologyTreeExplorer(
 
     private fun rebuild(reset: Boolean) {
         val value = graph ?: return
-        val path = pathRpid?.let { ReplyTopologyPath.resolve(value, it) }
+        val path = pathRpid?.let { pathIndex?.resolve(it) }
         val layout = if (path == null) ReplyTopologyTreeLayout(value) else ReplyTopologyTreeLayout(value, path.indexes, path.baseDepth)
         title.text = if (path == null) strings.completeTree else strings.viewPath
         scope.text = if (path == null) "${strings.treeLoadedFormat.format(value.size)} · ${strings.treeGestureHint}"
@@ -141,7 +145,7 @@ internal class ReplyTopologyTreeExplorer(
 
     private fun updateSelection() {
         val value = graph
-        val index = selectedRpid?.let { value?.rpids?.indexOf(it) } ?: -1
+        val index = selectedRpid?.let { pathIndex?.indexOf(it) } ?: -1
         pathButton.isEnabled = index >= 0
         locateButton.isEnabled = index >= 0
         textButton.isEnabled = value != null && index >= 0 && textAllowed(value, index)
@@ -213,7 +217,8 @@ internal class ReplyTopologyTreeExplorer(
         tree.release()
         controls.forEach { it.setOnClickListener(null) }
         controls.clear()
-        graph = null; locate = null; text = null; close = null
+        graph = null; pathIndex = null; selectedRpid = null; pathRpid = null
+        locate = null; text = null; close = null
     }
 
     private fun chip(label: String) = TextView(context).apply {

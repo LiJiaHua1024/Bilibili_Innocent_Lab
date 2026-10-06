@@ -67,6 +67,45 @@ class ReplyTopologyTreeLayoutTest {
     }
 
     private fun chain(count: Int) = ReplyTopologyGraphBuilder.build(key, chainNodes(count))
+    @Test fun indexedBranchesMatchBruteForceIncludingParentsAboveTheViewport() {
+        val random = java.util.Random(812L)
+        val nodes = (0..500).map { id -> node(100L + id, if (id == 0) 0L else 100L + random.nextInt(id)) }
+        val layout = ReplyTopologyTreeLayout(ReplyTopologyGraphBuilder.build(key, nodes))
+        for (first in 0 until layout.size step 7) {
+            val last = minOf(first + 9, layout.size - 1)
+            val expected = (0..last).filter { layout.lastChildRows[it] >= first }.toIntArray()
+            val count = layout.collectVisibleBranches(first, last)
+            assertArrayEquals(expected, layout.visibleBranchRows.copyOf(count))
+        }
+        assertEquals(0, layout.collectVisibleBranches(-1, -1))
+        assertEquals(0, layout.collectVisibleBranches(layout.size, layout.size + 1))
+    }
+
+    @Test fun longRootTrunkIsRetainedWithoutIncludingUnrelatedCompletedBranches() {
+        val graph = ReplyTopologyGraphBuilder.build(key, listOf(node(100L, 0L)) +
+            (1..10_000).map { node(100L + it, 100L) })
+        val layout = ReplyTopologyTreeLayout(graph)
+        assertEquals(1, layout.collectVisibleBranches(9_000, 9_010))
+        assertEquals(0, layout.visibleBranchRows[0])
+        assertEquals(9_990, layout.rowOf(10_090L))
+    }
+
+    @Test fun reusedPathIndexPreservesDirectChildrenAndDoesNotIncludeOtherBranches() {
+        val graph = ReplyTopologyGraphBuilder.build(key, chainNodes(20) +
+            (1..2_000).map { node(1_000L + it, 100L) } + listOf(node(900L, 120L), node(901L, 900L)))
+        val index = ReplyTopologyPath.Index(graph)
+        repeat(10) {
+            val path = requireNotNull(index.resolve(120L))
+            assertEquals(8, path.indexes.size)
+            assertTrue(path.indexes.map { graph.rpids[it] }.contains(900L))
+            assertFalse(path.indexes.map { graph.rpids[it] }.contains(901L))
+            assertEquals(14, path.omittedAncestors)
+        }
+        assertNull(index.resolve(Long.MAX_VALUE))
+        assertEquals(1, requireNotNull(index.resolve(120L, 0)).indexes.count { graph.rpids[it] == 120L })
+        assertTrue(runCatching { index.resolve(120L, -1) }.isFailure)
+    }
+
     private fun chainNodes(count: Int) = (0..count).map { node(100L + it, if (it == 0) 0L else 99L + it) }
     private fun node(id: Long, parent: Long) = ReplyTopologyNodeSnapshot.fromRaw(id,
         if (id == 100L) 0L else 100L, parent, authorName = "same author", message = "reply")
