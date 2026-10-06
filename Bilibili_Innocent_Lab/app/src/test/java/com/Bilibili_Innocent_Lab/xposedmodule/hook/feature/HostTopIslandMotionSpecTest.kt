@@ -15,15 +15,16 @@ class HostTopIslandMotionSpecTest {
         for (compact in listOf(false, true)) {
             val target = if (compact) 1f else 0f
             val spring = ElasticSpringAxis(1f - target)
+            val damping = if (compact) HostTopIslandMotionSpec.DAMPING_RATIO else HostTopIslandMotionSpec.EXPAND_DAMPING_RATIO
             val stiffness = if (compact) HostTopIslandMotionSpec.COLLAPSE_STIFFNESS else HostTopIslandMotionSpec.EXPAND_STIFFNESS
-            repeat(3) { spring.advance(1f / 60f, target, stiffness, HostTopIslandMotionSpec.DAMPING_RATIO) }
+            repeat(3) { spring.advance(1f / 60f, target, stiffness, damping) }
             assertTrue("前 50ms 不能突然走掉大半行程", abs(spring.value - (1f - target)) < .15f)
             var frames = 3
             while (!spring.atRest(target, .5f / (width - height)) && frames < 120) {
-                spring.advance(1f / 60f, target, stiffness, HostTopIslandMotionSpec.DAMPING_RATIO)
+                spring.advance(1f / 60f, target, stiffness, damping)
                 frames++
             }
-            assertTrue("收尾必须保留减速时间，且不无限爬行: $frames", frames in 36..72)
+            assertTrue("收尾必须保留减速时间，且不无限爬行: $frames", frames in 36..84)
             val before = HostTopIslandMotionSpec.shellWidth(spring.value, width, height, density)
             val end = HostTopIslandMotionSpec.shellWidth(target, width, height, density)
             assertTrue("静止落位不能产生像素跳变", abs(before - end) <= .5f)
@@ -35,11 +36,23 @@ class HostTopIslandMotionSpecTest {
             val progress = step / 200f
             val shell = HostTopIslandMotionSpec.shellWidth(progress, width, height, density)
             assertTrue(shell >= height * .93f)
-            assertTrue(shell <= width + 4f * density)
+            assertTrue(shell <= width + 12f * density)
             val vertical = HostTopIslandMotionSpec.verticalInset(progress, width, height, density)
             assertTrue(height - 2f * vertical > 0f)
-            assertTrue(abs(vertical) < 1f * density)
+            assertTrue(abs(vertical) < 2f * density)
         }
+    }
+
+    @Test fun expansionHasAVisibleOvershootAndThenReturnsToItsFinalSize() {
+        val spring = ElasticSpringAxis(1f)
+        var maxStretch = 0f
+        repeat(90) {
+            spring.advance(1f / 60f, 0f, HostTopIslandMotionSpec.EXPAND_STIFFNESS,
+                HostTopIslandMotionSpec.EXPAND_DAMPING_RATIO)
+            maxStretch = maxOf(maxStretch, HostTopIslandMotionSpec.shellWidth(spring.value, width, height, density) - width)
+        }
+        assertTrue("展开要有肉眼可见的舒展回弹", maxStretch > 8f * density)
+        assertEquals(width, HostTopIslandMotionSpec.shellWidth(spring.value, width, height, density), .5f)
     }
 
     @Test fun nativeTextAndCompactGlyphHandOffWithoutOverlapping() {
@@ -59,10 +72,10 @@ class HostTopIslandMotionSpecTest {
         val position = spring.value
         val velocity = spring.velocity
         assertTrue(velocity > 0f)
-        spring.advance(1f / 120f, 0f, HostTopIslandMotionSpec.EXPAND_STIFFNESS, HostTopIslandMotionSpec.DAMPING_RATIO)
+        spring.advance(1f / 120f, 0f, HostTopIslandMotionSpec.EXPAND_STIFFNESS, HostTopIslandMotionSpec.EXPAND_DAMPING_RATIO)
         assertTrue("换目标不能立刻丢弃收缩惯性", spring.value > position)
         assertTrue(abs(spring.value - position) < .04f)
-        repeat(120) { spring.advance(1f / 120f, 0f, HostTopIslandMotionSpec.EXPAND_STIFFNESS, HostTopIslandMotionSpec.DAMPING_RATIO) }
+        repeat(168) { spring.advance(1f / 120f, 0f, HostTopIslandMotionSpec.EXPAND_STIFFNESS, HostTopIslandMotionSpec.EXPAND_DAMPING_RATIO) }
         assertEquals(0f, spring.value, .001f)
     }
 
@@ -73,5 +86,19 @@ class HostTopIslandMotionSpecTest {
         repeat(60) { highRefresh.advance(1f / 120f, 1f, HostTopIslandMotionSpec.COLLAPSE_STIFFNESS, HostTopIslandMotionSpec.DAMPING_RATIO) }
         assertEquals(sixty.value, highRefresh.value, .00001f)
         assertEquals(sixty.velocity, highRefresh.velocity, .00001f)
+    }
+
+    @Test fun expansionCanReverseIntoCollapseBeforeItsSpringTailFinishes() {
+        val spring = ElasticSpringAxis(1f)
+        repeat(20) { spring.advance(1f / 60f, 0f, HostTopIslandMotionSpec.EXPAND_STIFFNESS,
+            HostTopIslandMotionSpec.EXPAND_DAMPING_RATIO) }
+        assertTrue(!spring.atRest(0f, .5f / (width - height)))
+        val position = spring.value
+        spring.advance(1f / 120f, 1f, HostTopIslandMotionSpec.COLLAPSE_STIFFNESS,
+            HostTopIslandMotionSpec.DAMPING_RATIO)
+        assertTrue("反向不能跳到另一端或清空动画", abs(spring.value - position) < .03f)
+        repeat(90) { spring.advance(1f / 60f, 1f, HostTopIslandMotionSpec.COLLAPSE_STIFFNESS,
+            HostTopIslandMotionSpec.DAMPING_RATIO) }
+        assertEquals(1f, spring.value, .001f)
     }
 }
