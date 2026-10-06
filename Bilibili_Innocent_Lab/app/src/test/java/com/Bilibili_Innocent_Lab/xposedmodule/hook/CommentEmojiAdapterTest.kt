@@ -5,6 +5,27 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class CommentEmojiAdapterTest {
+    @Test
+    fun legacyEmojiDictionaryMatchesCurrentSpanRegardlessOfMapOrder() {
+        val content = com.bilibili.app.comm.comment2.model.BiliComment.Content("[dog][cat][dog]")
+        content.emote["[cat]"] = FakeSpan("https://i0.hdslb.com/cat.webp")
+        content.emote["[dog]"] = FakeSpan("https://i0.hdslb.com/dog.webp")
+        val result = CommentEmojiAdapter.resolve(content, content.mMsg, listOf(
+            FakeSpan("https://i0.hdslb.com/dog.webp"), FakeSpan("https://i0.hdslb.com/cat.webp"),
+            FakeSpan("https://i0.hdslb.com/dog.webp")))
+        assertEquals(listOf("[dog]", "[cat]", "[dog]"), result.emotes.map { it.token })
+        assertEquals(3, result.urlMatchedCount)
+    }
+    @Test
+    fun pushRichTextSourcePreservesEmojiTokensWithoutACommentItemWrapper() {
+        val raw = "[dog]"
+        val url = "https://i0.hdslb.com/dog.webp"
+        val rich = FakeRichText(raw, listOf(FakeEmote(url, "", raw)))
+        val span = FakeSpan(url)
+        val result = CommentEmojiAdapter.resolve(rich, raw, listOf(span))
+        assertEquals(raw, result.emotes.single().token)
+        assertTrue(result.spanMatches.single().span === span)
+    }
 
     private class FakeRichText(
         @Suppress("unused") val raw: String,

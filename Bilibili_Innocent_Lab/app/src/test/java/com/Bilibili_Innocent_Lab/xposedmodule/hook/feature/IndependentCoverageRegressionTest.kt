@@ -102,6 +102,17 @@ class IndependentCoverageRegressionTest {
         assertEquals(listOf(keep), result); assertEquals(3, source.size)
     }
 
+    @Test fun `category search reuses judgments without mutating its original list`() {
+        SearchPurifyFeatureInstaller(true, true, "blocked", false, "").install(env)
+        val keep = Item(false, SearchAv("normal"))
+        val source = listOf(Item(false, SearchAv("blocked")), Item(true, SearchAv("ad")), keep)
+        val result = recorded.invoke("search.purify.category.items") { source } as List<*>
+        assertEquals(listOf(keep), result)
+        assertEquals(3, source.size)
+        val unchanged = listOf(keep)
+        assertSame(unchanged, recorded.invoke("search.purify.category.items") { unchanged })
+    }
+
     class StoryItem(val ad: Boolean) { fun isAd() = ad }
     class StoryResponse { fun getItems(): List<StoryItem> = emptyList() }
     @Test fun `missing Story music reader does not disable working advertisement filter`() {

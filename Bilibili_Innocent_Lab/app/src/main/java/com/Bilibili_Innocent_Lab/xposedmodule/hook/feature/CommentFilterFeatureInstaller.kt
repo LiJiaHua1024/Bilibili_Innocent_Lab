@@ -385,7 +385,8 @@ internal class CommentFilterFeatureInstaller(
                 javaReplyClass = replyClass,
                 hookId = "comment.filter.kmoss.$rpc",
                 what = "评论过滤",
-                logKey = KMOSS_LOG_KEY
+                logKey = KMOSS_LOG_KEY,
+                shareUnchangedReply = true
             ) { javaReply ->
                 prewarmSemantic(javaReply, replyInfoClass, accessors, plan, readers)
                 rewriter.rewrite(javaReply).message

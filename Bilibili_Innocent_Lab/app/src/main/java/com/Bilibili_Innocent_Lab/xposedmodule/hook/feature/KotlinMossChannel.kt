@@ -66,6 +66,8 @@ internal object KotlinMossChannel {
         /** 可选：请求也走同样的往返（例如在请求里声明宿主自己的开关）；返回同一对象表示不改。 */
         javaRequestClass: Class<*>? = null,
         transformRequest: ((Any) -> Any)? = null,
+        /** 评论管线显式启用；其他 RPC 保持原代理与变换行为。 */
+        shareUnchangedReply: Boolean = false,
         transformJava: (Any) -> Any
     ): Boolean {
         fun skip(reason: String): Boolean {
@@ -107,16 +109,18 @@ internal object KotlinMossChannel {
                     }
                     val delegate = args.getOrNull(3) ?: return@before
                     val bridge = members.bridgeFor(args.getOrNull(4), args.getOrNull(2), codec) ?: return@before
-                    val proxy = MossResponseHandlerProxy.wrapTransform(handlerClass, delegate) { reply ->
-                        runCatching {
-                            bridge.transform(reply) { javaReply -> transformJava(javaReply) }
-                        }.getOrElse { throwable ->
-                            if (failedLogged.compareAndSet(false, true)) {
-                                environment.logError(
-                                    "${logKey}_failed",
-                                    "[BIL] $what 新通道过滤失败，已放行原响应(${entry.name}): $throwable"
-                                )
-                            }
+                    val failed: (Throwable) -> Unit = { throwable ->
+                        if (failedLogged.compareAndSet(false, true)) {
+                            environment.logError("${logKey}_failed",
+                                "[BIL] $what 新通道过滤失败，已放行原响应(${entry.name}): $throwable")
+                        }
+                    }
+                    val proxy = if (shareUnchangedReply) {
+                        val key = KotlinMossResponseHandlerProxy.Key(entry, javaReplyClass, args[4]!!, args[2]!!)
+                        KotlinMossResponseHandlerProxy.wrap(handlerClass, delegate, key, bridge, failed, transformJava)
+                    } else MossResponseHandlerProxy.wrapTransform(handlerClass, delegate) { reply ->
+                        runCatching { bridge.transform(reply, transformJava) }.getOrElse { throwable ->
+                            failed(throwable)
                             reply
                         }
                     } ?: return@before

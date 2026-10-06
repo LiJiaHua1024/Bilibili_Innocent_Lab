@@ -47,11 +47,23 @@ internal class CommentPurifyFeatureInstaller(
         if (environment.processName != TARGET_PACKAGE) {
             return FeatureInstallResult.Skipped("non-main-process")
         }
-        val adapted = points ?: return missing(environment, "missing-adapter-point")
+        val compose = CommentComposePurifyBridge(removeVoteWidgets, removeFollowButtons, blockQuickReply).install(environment)
+        val baseEnvironment = environment
+        val environment = environment.copy(capabilityEvidence = { id, result ->
+            baseEnvironment.capabilityEvidence?.invoke(id, mergeCommentLayer(result, compose[id]))
+        })
+        val adapted = points ?: run {
+            compose.forEach { (id, result) -> baseEnvironment.capabilityEvidence?.invoke(id, result) }
+            installKotlinChannel(environment)
+            val active = compose.values.filterIsInstance<FeatureInstallResult.Installed>()
+            return if (active.isEmpty()) missing(environment, "missing-adapter-point")
+            else FeatureInstallResult.Installed(active.sumOf { it.hookCount }, complete = false)
+        }
 
-        var installedCount = 0
-        var expectedCount = 0
-        val missingGroups = mutableListOf<String>()
+        var installedCount = compose.values.filterIsInstance<FeatureInstallResult.Installed>().sumOf { it.hookCount }
+        var expectedCount = compose.values.sumOf { (it as? FeatureInstallResult.Installed)?.hookCount ?: 1 }
+        val missingGroups = compose.filterValues { it !is FeatureInstallResult.Installed || !it.complete }
+            .keys.map { "compose:$it" }.toMutableList()
         if (removeSearchLinks) {
             val beforeInstalled = installedCount
             val beforeExpected = expectedCount
@@ -554,7 +566,8 @@ internal class CommentPurifyFeatureInstaller(
                 what = "评论净化",
                 logKey = KMOSS_LOG_KEY,
                 javaRequestClass = mainListReq?.takeIf { rewriteRequest },
-                transformRequest = requestTransform?.takeIf { rewriteRequest }
+                transformRequest = requestTransform?.takeIf { rewriteRequest },
+                shareUnchangedReply = true
             ) { javaReply -> purifier.purify(javaReply) }
             if (installed) hooks += 1
         }

@@ -114,14 +114,20 @@ internal class SearchPurifyFeatureInstaller(
         }
         if (installed == 0) return missing(environment, "registration-failed")
         // 9.12.0 起新版搜索（kntr.app.search）走 Kotlin KSearchMoss.searchAll，Java getter 碰不到；兜底通道不计入覆盖单位。
-        installKotlinChannel(environment, loader, responseClass, itemListGetter, members, plan)
+        val kotlinAll = installKotlinChannel(environment, loader, responseClass, itemListGetter, members, plan)
+        val category = installCategory(environment, loader, members, plan)
+        val boundaryInstalled = installed + (if (kotlinAll == true) 1 else 0) + category.first
+        val boundaryExpected = 1 + (if (kotlinAll != null) 1 else 0) + category.second
         val commercialComplete = resolved?.commercial?.hasCm != null && resolved.commercial.hasSpecial != null
-        if (removeCommercial) environment.reportCapabilityCoverage("search_commercial_removed", plan.removeCommercial, installed, if (commercialComplete) 1 else 2)
-        if (keywords.isNotEmpty()) environment.reportCapabilityCoverage("search_keyword_filter_enabled", plan.keywords.isNotEmpty(), installed, 1)
-        if (authorRules.isNotEmpty()) environment.reportCapabilityCoverage("search_author_filter_enabled", plan.authorRules.isNotEmpty(), installed, if (plan.authorRules == authorRules) 1 else 2)
+        if (removeCommercial) environment.reportCapabilityCoverage("search_commercial_removed", plan.removeCommercial,
+            boundaryInstalled, boundaryExpected + if (commercialComplete) 0 else 1)
+        if (keywords.isNotEmpty()) environment.reportCapabilityCoverage("search_keyword_filter_enabled", plan.keywords.isNotEmpty(),
+            boundaryInstalled, boundaryExpected)
+        if (authorRules.isNotEmpty()) environment.reportCapabilityCoverage("search_author_filter_enabled", plan.authorRules.isNotEmpty(),
+            boundaryInstalled, boundaryExpected + if (plan.authorRules == authorRules) 0 else 1)
 
-        var total = installed
-        var expected = 1
+        var total = boundaryInstalled
+        var expected = boundaryExpected
         val degraded = ArrayList<String>(3)
         fun account(requested: Boolean, usable: Boolean, label: String) {
             if (!requested) return
@@ -165,22 +171,27 @@ internal class SearchPurifyFeatureInstaller(
         responseClass: Class<*>,
         itemListGetter: Method,
         members: Members,
-        plan: Plan
-    ) {
+        plan: Plan,
+        rpc: String = "searchAll",
+        stem: String = "Item"
+    ): Boolean? {
+        val kotlinMossName = SEARCH_MOSS_CLASS.replace(".SearchMoss", ".KSearchMoss")
+        if (KavaMemberLookup.classOrNull(loader, kotlinMossName) == null) return null
         // 装不上要留下原因，否则诊断输出与"压根没尝试接入"完全无法区分（有界：三条）。
-        fun skip(reason: String) {
-            environment.logInfo("search_purify_kmoss_skip", "[BIL] 搜索结果过滤新通道未接入: $reason")
+        fun skip(reason: String): Boolean {
+            environment.logInfo("search_purify_kmoss_skip_$rpc", "[BIL] 搜索结果过滤 $rpc 新通道未接入: $reason")
+            return false
         }
         val builder = ProtobufBuilderPlan.resolve(responseClass) ?: return skip("no-response-builder")
-        val clearItem = builder.method("clearItem") ?: return skip("no-clear-item")
-        val addAllItem = builder.method("addAllItem", classOf<Iterable<*>>()) ?: return skip("no-add-all-item")
+        val clearItem = builder.method("clear$stem") ?: return skip("no-clear-item")
+        val addAllItem = builder.method("addAll$stem", classOf<Iterable<*>>()) ?: return skip("no-add-all-item")
         val bridge = KotlinMossChannel.prepare(environment, loader, "搜索结果过滤", KMOSS_LOG_KEY) ?: return skip("no-bridge")
         val installed = KotlinMossChannel.install(
             environment, loader, bridge,
             javaMossClassName = SEARCH_MOSS_CLASS,
-            rpc = "searchAll",
+            rpc = rpc,
             javaReplyClass = responseClass,
-            hookId = "search.purify.kmoss.searchAll",
+            hookId = "search.purify.kmoss.$rpc",
             what = "搜索结果过滤",
             logKey = KMOSS_LOG_KEY
         ) transform@{ javaReply ->
@@ -195,7 +206,42 @@ internal class SearchPurifyFeatureInstaller(
                 addAllItem.invoke(target, filtered)
             }
         }
-        environment.logInfo("search_purify_kmoss", "[BIL] 搜索结果过滤：Kotlin 新通道${if (installed) "已接入" else "未接入"}")
+        environment.logInfo("search_purify_kmoss_$rpc", "[BIL] 搜索结果过滤 $rpc：Kotlin 新通道${if (installed) "已接入" else "未接入"}")
+        return installed
+    }
+
+    /** 分类结果复用同一 Item 判据；不把番剧／直播等不同模型当作视频读取。 */
+    private fun installCategory(environment: HookEnvironment, loader: ClassLoader, members: Members, plan: Plan): Pair<Int, Int> {
+        val response = KavaMemberLookup.classOrNull(loader, "$SEARCH_PACKAGE.SearchByTypeResponse")
+            ?: return 0 to 0
+        val getter = KavaMemberLookup.methodOrNull(response, "getItemsList")
+            ?.takeIf { !it.isStatic && it.returnType isSubclassOf classOf<List<*>>() }
+        if (getter == null) {
+            environment.logError("search_category_shape", "[BIL] 分类搜索列表边界缺失")
+            return 0 to 1
+        }
+        var installed = 0
+        runCatching {
+            environment.registrar.exact("search.purify.category.items", response, getter.name) {
+                after {
+                    if (hasThrowable || KotlinMossChannel.isRaw()) return@after
+                    val source = result as? List<*> ?: return@after
+                    if (source.isEmpty()) return@after
+                    environment.reportRuntimeEvidence(ID, FeatureRuntimeStage.OBSERVED)
+                    val filtered = ProtobufListRetention.filterOrSame(source) { shouldRemove(it, members, plan) }
+                    if (filtered !== source) {
+                        result = filtered
+                        environment.reportRuntimeEvidence(ID, FeatureRuntimeStage.APPLIED, source.size - filtered.size)
+                    }
+                }
+            }
+            installed++
+        }.onFailure { environment.logError("search_category_registration", "[BIL] 分类搜索过滤注册失败") }
+        val kotlin = installKotlinChannel(environment, loader, response, getter, members, plan, "searchByType", "Items")
+        val expected = 1 + if (kotlin != null) 1 else 0
+        if (kotlin == true) installed++
+        environment.reportStatus("search_category_layers", "$installed/$expected")
+        return installed to expected
     }
 
     private fun shouldRemove(item: Any, members: Members, plan: Plan): Boolean {

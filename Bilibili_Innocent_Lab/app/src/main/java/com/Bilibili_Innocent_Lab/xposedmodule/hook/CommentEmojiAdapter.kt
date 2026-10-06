@@ -72,6 +72,33 @@ internal object CommentEmojiAdapter {
     internal fun extractEmotes(commentItem: Any?, raw: String): List<EmoteDescriptor> {
         if (commentItem == null || raw.isBlank()) return emptyList()
         val commentClass = commentItem.javaClass
+        // comment2 的 Content 将表情保存在字典中；键是 token，URL 仍与当前绘制 Span 交叉验真。
+        if (commentClass.name == "com.bilibili.app.comm.comment2.model.BiliComment\$Content") {
+            val map = KavaMemberLookup.fieldOrNull(commentClass, "emote")?.get(commentItem) as? Map<*, *>
+            if (!map.isNullOrEmpty()) {
+                val occurrences = ArrayList<EmoteDescriptor>()
+                map.entries.forEach { (key, value) ->
+                    val token = key as? String ?: return@forEach
+                    if (!isCustomEmojiToken(token) || value == null) return@forEach
+                    val urls = readStringValues(value).filterTo(linkedSetOf(), ::looksLikeResourceUrl)
+                    if (urls.isEmpty()) return@forEach
+                    var offset = raw.indexOf(token)
+                    while (offset >= 0) {
+                        occurrences += EmoteDescriptor(token, urls, offset, offset + token.length, 0)
+                        offset = raw.indexOf(token, offset + token.length)
+                    }
+                }
+                if (occurrences.isNotEmpty()) return occurrences.sortedBy { it.rawStart }
+                    .mapIndexed { index, item -> item.copy(ordinal = index) }
+            }
+        }
+        // 推送绑定传的是已同步核对的 RichText，而非 CommentItem；仍按正文及 Emote 结构验真。
+        if (hasIterableField(commentClass) && KavaMemberLookup.declaredFields(
+                commentClass, makeAccessible = true
+            ).any { it.type == String::class.java && runCatching { it.get(commentItem) == raw }.getOrDefault(false) }
+        ) {
+            extractFromRichText(commentItem, raw).takeIf { it.isNotEmpty() }?.let { return it }
+        }
         val cached = richTextMethodByCommentClass[commentClass]
         if (cached != null) {
             extractFromRichText(runCatching { cached.invoke(commentItem) }.getOrNull(), raw)

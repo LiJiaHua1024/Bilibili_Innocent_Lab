@@ -161,6 +161,18 @@ internal class CommentTopologyFeatureInstaller(
     private val lowBindPoint: VersionAdapter.HookPoint?,
     private val highBindPoint: VersionAdapter.HookPoint?
 ) : FeatureInstaller {
+    private var composeMenu: ReplyTopologyComposeMenu? = null
+    private val composeSeeds = LinkedHashMap<Long, ReplyTopologySeed>(32, 0.75f, true)
+
+    fun clearComposeMenu() {
+        composeMenu?.clear()
+    }
+
+    fun rememberComposeMenu(anchor: View, rootId: Long, sourceCurrent: () -> Boolean = { true }) {
+        val seed = synchronized(composeSeeds) { composeSeeds[rootId] }
+        // 查不到当前楼层时也要更新菜单状态，不能留下上一条评论的种子和点击绑定。
+        composeMenu?.remember(anchor, seed, sourceCurrent)
+    }
 
     override val id: String = ID
     private val bindingTokens = WeakHashMap<ViewGroup, Any>()
@@ -200,9 +212,20 @@ internal class CommentTopologyFeatureInstaller(
         val adapted = points ?: return missing(environment, "missing-adapter-point")
         val host = ReplyTopologyHostAccess.resolve(environment, adapted)
             ?: return missing(environment, "missing-host-access")
+        val expectedBindOwners = linkedSetOf<String>()
         val bindPoints = buildList {
+            lowBindPoint?.className?.let(expectedBindOwners::add)
             lowBindPoint?.let(::add)
+            CommentNativeBindingCatalog.mainHandlers.forEach { className ->
+                val owner = environment.classLoader?.let { KavaMemberLookup.classOrNull(it, className) }
+                    ?: return@forEach
+                expectedBindOwners += className
+                CommentNativeBindingCatalog.bindingMethods(owner).forEach { method ->
+                    add(VersionAdapter.HookPoint(owner.name, method.name, method.parameterTypes.map { it.name }))
+                }
+            }
             highBindPoint?.let { cachedPoint ->
+                expectedBindOwners += cachedPoint.className
                 val owner = environment.classLoader?.let { loader ->
                     KavaMemberLookup.classOrNull(loader, cachedPoint.className)
                 }
@@ -223,6 +246,7 @@ internal class CommentTopologyFeatureInstaller(
         val committed = AtomicBoolean(false)
         var installed = 0
         var bindInstalled = 0
+        val installedBindOwners = linkedSetOf<String>()
 
         // 先确认至少一个 UI 绑定入口可 Hook，再开启 mapper 数据桥。这样即使宿主 UI 漂移，
         // 也不会留下一个持续快照评论数据、却永远没有可见入口的半安装 Hook。
@@ -267,6 +291,7 @@ internal class CommentTopologyFeatureInstaller(
                 }
                 installed++
                 bindInstalled++
+                installedBindOwners += point.className
             }.onFailure { throwable ->
                 environment.logError(
                     "comment_topology_bind_$index",
@@ -306,7 +331,24 @@ internal class CommentTopologyFeatureInstaller(
         }
         committed.set(true)
 
-        val status = if (bindInstalled == bindPoints.size) "success" else "partial"
+        var composeComplete = true
+        val loader = environment.classLoader
+        if (loader != null && KavaMemberLookup.hasClass(loader, "kntr.common.comment.card.model.comment.CommentModel")) {
+            val menu = ReplyTopologyComposeMenu { anchor, seed ->
+                commentOwnerActivity(anchor.context)?.let { coordinator.open(it, seed, anchor) }
+            }
+            val menuResult = menu.install(environment)
+            if (menuResult is FeatureInstallResult.Installed) composeMenu = menu
+            val capture = installComposeSeeds(environment, host)
+            installed += (menuResult as? FeatureInstallResult.Installed)?.hookCount ?: 0
+            installed += (capture as? FeatureInstallResult.Installed)?.hookCount ?: 0
+            composeComplete = menuResult is FeatureInstallResult.Installed && menuResult.complete &&
+                capture is FeatureInstallResult.Installed && capture.complete
+            if (!composeComplete) environment.logError("comment_topology_compose_missing", "[BIL] 回复脉络 Compose 菜单／数据桥未完整接入")
+        }
+
+        val complete = bindInstalled == bindPoints.size && installedBindOwners.containsAll(expectedBindOwners) && composeComplete
+        val status = if (complete) "success" else "partial"
         environment.reportStatus(CHANNEL_STATUS, status)
         environment.logInfo(
             "comment_topology_ok",
@@ -315,7 +357,38 @@ internal class CommentTopologyFeatureInstaller(
                     "${point.methodName}(${point.paramClassNames.orEmpty().joinToString(",")})"
                 } + ",status=$status"
         )
-        return FeatureInstallResult.Installed(installed)
+        return FeatureInstallResult.Installed(
+            installed,
+            complete = complete
+        )
+    }
+
+    private fun installComposeSeeds(environment: HookEnvironment, host: ReplyTopologyHostAccess): FeatureInstallResult {
+        val loader = environment.classLoader ?: return FeatureInstallResult.Skipped("missing-class-loader")
+        val bridge = KotlinMossChannel.prepare(environment, loader, "回复脉络", "comment_topology_kmoss")
+            ?: return FeatureInstallResult.Skipped("missing-kotlin-bridge")
+        val reader = ProtobufReplyTreeVisitor(host.replyInfoClass) { reply ->
+            host.snapshotRoot(reply)?.let { seed ->
+                synchronized(composeSeeds) {
+                    composeSeeds[seed.key.rootRpid] = seed
+                    while (composeSeeds.size > 192) composeSeeds.remove(composeSeeds.keys.first())
+                }
+            }
+        }
+        var expected = 0
+        var installed = 0
+        listOf("mainList" to "MainListReply", "detailList" to "DetailListReply", "dialogList" to "DialogListReply").forEach { (rpc, name) ->
+            expected++
+            val response = KavaMemberLookup.classOrNull(loader, "com.bapis.bilibili.main.community.reply.v1.$name") ?: return@forEach
+            if (KotlinMossChannel.install(environment, loader, bridge,
+                    "com.bapis.bilibili.main.community.reply.v1.ReplyMoss", rpc, response,
+                    "comment.topology.kmoss.$rpc", "回复脉络", "comment_topology_kmoss",
+                    shareUnchangedReply = true
+                ) { reply -> reader.visit(reply); reply }
+            ) installed++
+        }
+        return if (installed > 0) FeatureInstallResult.Installed(installed, installed == expected)
+        else FeatureInstallResult.Skipped("missing-kotlin-reply-channel")
     }
 
     private fun findCommentItem(
@@ -1079,7 +1152,7 @@ internal class ReplyTopologyAnchorView(context: Context) : TextView(context) {
             HostThreadGuard.run("comment_topology.entry_click") {
                 val currentSeed = seed ?: return@run
                 val activity = findActivity(context) ?: return@run
-                coordinator?.open(activity, currentSeed)
+                coordinator?.open(activity, currentSeed, this@ReplyTopologyAnchorView)
             }
         }
     }
@@ -1145,9 +1218,14 @@ internal class ReplyTopologyCoordinator(
     private var lastOpacity = 0.90f
     private var lastPosition = ReplyTopologyPanelPosition(0.94f, 0.18f)
 
-    fun open(activity: Activity, seed: ReplyTopologySeed) {
+    fun open(activity: Activity, seed: ReplyTopologySeed, sourceAnchor: View? = null) {
         if (Looper.myLooper() !== Looper.getMainLooper()) {
-            mainHandler.post { open(activity, seed) }
+            val weakAnchor = sourceAnchor?.let(::WeakReference)
+            mainHandler.post {
+                val anchor = weakAnchor?.get()
+                if (weakAnchor != null && anchor == null) return@post
+                open(activity, seed, anchor)
+            }
             return
         }
         closeActive()
@@ -1158,6 +1236,7 @@ internal class ReplyTopologyCoordinator(
         val state = Active(
             token = token,
             activityRef = WeakReference(activity),
+            sourceAnchor = sourceAnchor?.let(::WeakReference),
             strings = ReplyTopologyPanelStrings.resolve(activity),
             worker = worker,
             nodes = ArrayList(seed.nodes),
@@ -1243,7 +1322,7 @@ internal class ReplyTopologyCoordinator(
                 close(state.token)
             }
         }
-        return panelController.attach(activity, config, listener)?.also(panelRef::set)
+        return panelController.attach(activity, config, listener, state.sourceAnchor?.get())?.also(panelRef::set)
     }
 
     private fun requestNext(state: Active) {
@@ -1524,6 +1603,7 @@ internal class ReplyTopologyCoordinator(
     private data class Active(
         val token: ReplyTopologySessionToken,
         var activityRef: WeakReference<Activity>,
+        val sourceAnchor: WeakReference<View>?,
         var strings: ReplyTopologyPanelStrings,
         val worker: ExecutorService,
         val nodes: ArrayList<com.Bilibili_Innocent_Lab.xposedmodule.runtime.replytopology.ReplyTopologyNodeSnapshot>,

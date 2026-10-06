@@ -31,11 +31,14 @@ internal class KotlinMossReplyBridge(
     private val toBytes: (Any) -> ByteArray,
     private val decode: (ByteArray) -> Any
 ) {
+    internal fun read(kotlinReply: Any): Any = parseJava(encode(kotlinReply))
+    internal fun write(javaReply: Any): Any = decode(toBytes(javaReply))
+
     /** @return 过滤后的 Kotlin 响应；[purifyJava] 返回同一个对象表示没有改动，此时返回 [kotlinReply] 本身。 */
     fun transform(kotlinReply: Any, purifyJava: (Any) -> Any): Any {
-        val javaReply = parseJava(encode(kotlinReply))
+        val javaReply = read(kotlinReply)
         val updated = purifyJava(javaReply)
-        return if (updated === javaReply) kotlinReply else decode(toBytes(updated))
+        return if (updated === javaReply) kotlinReply else write(updated)
     }
 }
 

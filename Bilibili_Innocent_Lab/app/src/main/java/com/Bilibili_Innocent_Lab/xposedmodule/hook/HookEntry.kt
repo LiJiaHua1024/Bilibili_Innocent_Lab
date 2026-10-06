@@ -39,6 +39,11 @@ import com.Bilibili_Innocent_Lab.xposedmodule.hook.modern.ModernMemberHookCreato
 import com.Bilibili_Innocent_Lab.xposedmodule.hook.modern.ModernMethodHook
 import com.Bilibili_Innocent_Lab.xposedmodule.hook.modern.ReflectAccess
 import com.Bilibili_Innocent_Lab.xposedmodule.hook.feature.BlockUpdateFeatureInstaller
+import com.Bilibili_Innocent_Lab.xposedmodule.hook.feature.CommentNativeBindingCatalog
+import com.Bilibili_Innocent_Lab.xposedmodule.hook.feature.CommentFamilyCoverage
+import com.Bilibili_Innocent_Lab.xposedmodule.hook.feature.CommentComposeCopyBridge
+import com.Bilibili_Innocent_Lab.xposedmodule.hook.feature.CommentNativeSupplementBridge
+import com.Bilibili_Innocent_Lab.xposedmodule.hook.feature.CommentLegacyCopyBridge
 import com.Bilibili_Innocent_Lab.xposedmodule.hook.feature.BlockComponentLibraryFeatureInstaller
 import com.Bilibili_Innocent_Lab.xposedmodule.hook.feature.ComponentLibraryPoolMatcher
 import com.Bilibili_Innocent_Lab.xposedmodule.hook.feature.BottomBarFeatureInstaller
@@ -187,17 +192,17 @@ class HookEntry : XposedModule() {
         }
 
         // 自由复制（高版本 9.x：评论正文渲染 handler，持有 CommentItem + 评论正文 TextView）
-        const val CLASS_COMMENT_HANDLER_V2 = "com.bilibili.app.comment3.ui.nextholderexp3.handle.CommentNextExperiment3ContentRichTextHandler"
+        const val CLASS_COMMENT_HANDLER_V2 = CommentNativeBindingCatalog.EXP3
         const val METHOD_COMMENT_BIND_V2 = "b"
 
         /** nextholder 管线（非 exp3）的正文 handler：`b(Zk.Q)/c(Zk.Q)` 绑定，
          * 字段 h 存 CommentItem、binding.a 是正文容器根。 */
         const val CLASS_COMMENT_HANDLER_NEXT =
-            "com.bilibili.app.comment3.ui.nextholder.handle.CommentNextContentRichTextHandler"
+            CommentNativeBindingCatalog.NEXT
 
         /** 8.63.0 及同类早期版本：非混淆 handler（holder.J 管线）。 */
         const val CLASS_COMMENT_HANDLER_LEGACY =
-            "com.bilibili.app.comment3.ui.holder.handle.CommentContentRichTextHandler"
+            CommentNativeBindingCatalog.LEGACY
 
         /**
          * 9.x 评论正文三级管线并存（9.13.0 `comment3.ui.adapter.a.onCreateViewHolder`
@@ -935,7 +940,9 @@ class HookEntry : XposedModule() {
                     cur = cur.parent as? View
                 }
             }
-            val state = semanticState ?: fallbackState
+            val image = additionalNativeCopy?.imageContent(v)
+            val state = image?.let { CommentRootState(it.first, false, true, it.second, 0L) }
+                ?: semanticState ?: fallbackState
             val renderedText = extractCommentText(registeredRoot ?: v)
             val visibleText = renderedText
                 ?.let(::snapshotCommentText)
@@ -1544,6 +1551,7 @@ class HookEntry : XposedModule() {
         @Volatile private var cRichTextAField: java.lang.reflect.Field? = null     // k.a（高版本 raw 字段）
         private val cHandlerViewFieldByClass =
             java.util.concurrent.ConcurrentHashMap<Class<*>, java.lang.reflect.Field>()
+        @Volatile private var additionalNativeCopy: CommentNativeSupplementBridge? = null
         /** 优先从当前绑定方法实参取得 CommentItem；不同方法下标独立，杜绝读取 Handler
          * 可变字段时被 RecyclerView 的下一条绑定覆盖。无 CommentItem 实参（9.8.0 d/e）
          * 才回退 Handler 字段。 */
@@ -1769,6 +1777,17 @@ class HookEntry : XposedModule() {
          */
         internal fun showReplyTraceBubble(anchor: View, rawText: CharSequence) =
             showFreeCopyPopup(anchor, FreeCopyContent(rawText))
+
+        /** 仅由已核对的评论模型桥调用；不把整个 Compose 窗口登记成评论触摸根。 */
+        internal fun showCommentModelBubble(anchor: View, rawText: String): Boolean {
+            if (!runtimeCommentFreeCopyEnabled || rawText.isBlank() ||
+                !anchor.isAttachedToWindow || !anchor.isShown || !anchor.hasWindowFocus()
+            ) return false
+            val previous = ourBubbleDialogRef?.get()
+            showFreeCopyPopup(anchor, FreeCopyContent(rawText))
+            val current = ourBubbleDialogRef?.get()
+            return current !== previous && current?.isShowing == true
+        }
 
         /** 脉络面板关闭或跨页迁移时收尾由脉络弹出的气泡，防孤儿弹窗；幂等。 */
         internal fun dismissReplyTraceBubbleIfShowing() {
@@ -3828,19 +3847,14 @@ class HookEntry : XposedModule() {
                 )
             )
 
-            featureInstallCoordinator.installAll(
-                listOf(
-                    CommentTopologyFeatureInstaller(
-                        enabled = prefs.getBoolean(
-                            FeaturePreferences.REPLY_TOPOLOGY_ENABLED,
-                            false
-                        ),
+            val commentTopologyEnabled = prefs.getBoolean(FeaturePreferences.REPLY_TOPOLOGY_ENABLED, false)
+            val commentTopologyInstaller = CommentTopologyFeatureInstaller(
+                        enabled = commentTopologyEnabled,
                         points = hostAdaptResult?.commentTopology,
                         lowBindPoint = hostAdaptResult?.commentLow,
                         highBindPoint = hostAdaptResult?.commentHigh
                     )
-                )
-            )
+            featureInstallCoordinator.installAll(listOf(commentTopologyInstaller))
 
             featureInstallCoordinator.installAll(
                 listOf(
@@ -3859,7 +3873,32 @@ class HookEntry : XposedModule() {
             // 三点按钮是 OnClickListener（非长按），头像/昵称等非 TextView 不受影响。
             val commentFreeCopyHooksInstalled = java.util.concurrent.atomic.AtomicBoolean(false)
             val commentFreeCopyBindingVerified = java.util.concurrent.atomic.AtomicBoolean(false)
+            val commentFamilies = CommentFamilyCoverage()
+            val composeCommentCopy = CommentComposeCopyBridge(
+                enabled = { runtimeCommentFreeCopyEnabled },
+                open = ::showCommentModelBubble,
+                observe = { runtimeCommentFreeCopyEnabled || commentTopologyEnabled },
+                onMore = commentTopologyInstaller::rememberComposeMenu,
+                resetMore = commentTopologyInstaller::clearComposeMenu
+            )
+            val nativeSupplement = CommentNativeSupplementBridge(
+                enabled = { runtimeCommentFreeCopyEnabled },
+                bind = { view, raw, source ->
+                    scheduleCommentBind(view, raw, false, rawTrusted = true, commentItem = source)
+                },
+                rawComment = { extractRawCommentTextV2(it) }
+            )
+            additionalNativeCopy = nativeSupplement
+            val legacyCommentCopy = CommentLegacyCopyBridge(biliClassLoader)
+            if (legacyCommentCopy.isApplicable()) commentFamilies.record("comment2", legacyCommentCopy.isReady())
             val installCommentFreeCopyHooks: () -> Unit = installCommentHooks@{
+                // 只开脉络时只观察 Compose 更多操作，不安装关闭状态的原生复制／滚动 Hook。
+                if (!runtimeCommentFreeCopyEnabled) {
+                    runCatching { composeCommentCopy.install(hookEnvironment) }.onFailure {
+                        logError("comment_topology_compose_observer", "[BIL] Compose 评论菜单观察桥安装失败")
+                    }
+                    return@installCommentHooks
+                }
                 if (!commentFreeCopyHooksInstalled.compareAndSet(false, true)) return@installCommentHooks
                 try {
                 // 读版本适配缓存（loadApp 阶段读 B 站 cache 文件，快路径零开销）；
@@ -3915,6 +3954,7 @@ class HookEntry : XposedModule() {
                 val lowHolderCls = adaptResult?.commentLow?.className ?: "com.bilibili.app.comment3.ui.holder.t0"
                 val lowHolderMethod = adaptResult?.commentLow?.methodName ?: "o0"
                 if (classExists(lowHolderCls, biliClassLoader)) {
+                    if (adaptResult?.commentLow != null) commentFamilies.record("low", false)
                     runCatching {
                         hookFirstMethod(lowHolderCls, lowHolderMethod) {
                             after {
@@ -3945,6 +3985,7 @@ class HookEntry : XposedModule() {
                     }.onSuccess {
                         freeCopyOk = true
                         commentFreeCopyBindingVerified.set(true)
+                        commentFamilies.record("low", true)
                     }.onFailure { t ->
                         // 高版本常保留旧 t0 类但删除旧绑定方法；这是残留结构，不应阻断
                         // 后续 CommentNextExperiment3 Handler 的独立注册。
@@ -3970,6 +4011,8 @@ class HookEntry : XposedModule() {
                 val highHandlerExists = highClassNames.any { classExists(it, biliClassLoader) }
                 if (highHandlerExists) {
                     for (highCls in highClassNames) {
+                    if (!classExists(highCls, biliClassLoader)) continue
+                    commentFamilies.record(highCls, false)
                     // 类名/方法名/参数签名优先取版本适配缓存（自动定位漂移签名），
                     // 仅适配命中的类走缓存签名；其余类跳过缓存直接特征扫描。
                     val highMethod = highPoint?.methodName ?: METHOD_COMMENT_BIND_V2
@@ -4110,6 +4153,12 @@ class HookEntry : XposedModule() {
                                 "[BIL] 9.x 评论 handler 无可用绑定方法: $highCls"
                             )
                         } else {
+                            val required = CommentNativeBindingCatalog.bindingMethods(handlerClass).map {
+                                "${it.name}${it.parameterTypes.joinToString(",") { type -> type.name }}"
+                            }.toSet()
+                            commentFamilies.record(highCls, FeatureInstallResult.Installed(
+                                registered.size, complete = required.isNotEmpty() && registered.containsAll(required)
+                            ))
                             logInfo(
                                 "free_copy_ok_v2:$highCls",
                                 "[BIL] 自由复制 hook 已注册（9.x $highCls ${registered.joinToString(", ") { it }}）"
@@ -4122,8 +4171,29 @@ class HookEntry : XposedModule() {
                         }
                     }
                     }
-                    freeCopyOk = true
+                    freeCopyOk = commentFamilies.installedCount() > 0
                 }
+                val compose = runCatching { composeCommentCopy.install(hookEnvironment) }.getOrElse {
+                    logError("free_copy_compose_registration", "[BIL] Compose 评论复制安装失败，原生管线继续工作")
+                    FeatureInstallResult.Skipped("registration-failed")
+                }
+                if (compose !is FeatureInstallResult.Skipped || compose.reason != "not-applicable-host") {
+                    commentFamilies.record("compose", compose)
+                }
+                if (compose is FeatureInstallResult.Installed) {
+                    freeCopyOk = true
+                    commentFreeCopyBindingVerified.set(true)
+                }
+                reportChannelStatus("free_copy_comment_layers", commentFamilies.describe())
+                runCatching { nativeSupplement.install(hookEnvironment) }.onSuccess { results ->
+                    results.forEach { (family, result) ->
+                        commentFamilies.record(family, result)
+                    }
+                }.onFailure {
+                    commentFamilies.record("native-supplement", false)
+                    logError("free_copy_native_supplement", "[BIL] 图片／推送评论复制安装失败，已有管线继续工作")
+                }
+                reportChannelStatus("free_copy_native_layers", commentFamilies.describe())
                 if (freeCopyOk) {
                     logInfo("free_copy_ok", "[BIL] 自由复制 hook 已注册")
                 } else {
@@ -4136,7 +4206,7 @@ class HookEntry : XposedModule() {
                 }
             }
             commentFreeCopyInstallerRef.set(installCommentFreeCopyHooks)
-            if (runtimeCommentFreeCopyEnabled) installCommentFreeCopyHooks()
+            if (runtimeCommentFreeCopyEnabled || commentTopologyEnabled) installCommentFreeCopyHooks()
 
             // ====== 4a. 气泡亮暗色自动跟随：详情页主题缓存 ======
             // 自动跟随开启时，进入视频详情页判定一次 B 站主题并缓存（详情页会话内 B 站
@@ -4302,11 +4372,15 @@ class HookEntry : XposedModule() {
                                 // 回复预览 TextView 设置官方长按监听，就立即把这个正文控件登记为
                                 // 独立弱引用根并夺回。只命中两个资源 id，不扫描整树、不影响三点
                                 // 操作栏；长按时从该 TextView 实时取文本。
-                                if (isCommentBodyTextView(v)) {
+                                if (isCommentBodyTextView(v) || additionalNativeCopy?.isImageBody(v) == true) {
+                                    val legacy = if (legacyCommentCopy.isBody(v)) {
+                                        legacyCommentCopy.capture(argOrNull(0))
+                                    } else null
                                     // 这里只负责在主绑定 hook 尚未登记时保证长按可用。TextView
                                     // backing 对 9.8.0 Emoji 只是 U+200B，绝不能冒充 raw；解析
                                     // 时会继续向祖先寻找本次绑定保存的完整 RichText 状态。
-                                    registerCommentRoot(v, null, false)
+                                    registerCommentRoot(v, legacy?.first, false,
+                                        rawTrusted = false, commentItem = legacy?.second)
                                     commentStealInProgress = true
                                     try {
                                         setLongClickListenerNoHook(v, sharedFreeCopyListener)
@@ -4828,7 +4902,8 @@ class HookEntry : XposedModule() {
                     val paths = (if (comment) 1 else 0) + (if (common) 1 else 0)
                     HostRuntimeDiagnosticsBridge.recordInstallation(FeatureInstallRecord(
                         "free_copy_comment_enabled",
-                        if (paths > 0) FeatureInstallResult.Installed(paths, complete = paths == 2)
+                        if (paths > 0) FeatureInstallResult.Installed(paths,
+                            complete = paths == 2 && commentFamilies.isComplete())
                         else FeatureInstallResult.Skipped("registration-failed"), null
                     ))
                 }
@@ -4857,7 +4932,9 @@ class HookEntry : XposedModule() {
                 val result = when {
                     !runtimeCommentFreeCopyEnabled && !runtimeDescriptionFreeCopyEnabled ->
                         FeatureInstallResult.Skipped("disabled")
-                    installedCount > 0 -> FeatureInstallResult.Installed(installedCount)
+                    installedCount > 0 -> FeatureInstallResult.Installed(installedCount,
+                        complete = (!runtimeCommentFreeCopyEnabled || commentFamilies.isComplete()) &&
+                            (!runtimeDescriptionFreeCopyEnabled || descriptionFreeCopyHooksInstalled.get()))
                     else -> FeatureInstallResult.Skipped("registration-failed")
                 }
                 HostRuntimeDiagnosticsBridge.recordInstallation(

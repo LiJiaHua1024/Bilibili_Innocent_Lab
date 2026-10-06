@@ -8,3 +8,4 @@ class Item(private val cm: Boolean, private val av: SearchAv) {
     fun getAv() = av
 }
 class SearchAllResponse(private val items: List<Item> = emptyList()) { fun getItemList() = items }
+class SearchByTypeResponse(private val items: List<Item> = emptyList()) { fun getItemsList() = items }
