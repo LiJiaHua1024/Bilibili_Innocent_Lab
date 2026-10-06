@@ -1,6 +1,8 @@
 package com.Bilibili_Innocent_Lab.xposedmodule.ui.overlay
 
 import android.animation.ValueAnimator
+import android.content.ClipData
+import android.content.ClipboardManager
 import android.content.Context
 import android.content.res.ColorStateList
 import android.graphics.Color
@@ -9,16 +11,25 @@ import android.graphics.drawable.GradientDrawable
 import android.graphics.drawable.RippleDrawable
 import android.os.Build
 import android.text.TextUtils
+import android.text.Editable
+import android.text.TextWatcher
 import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
 import android.view.WindowInsets
 import android.view.animation.PathInterpolator
+import android.view.inputmethod.EditorInfo
+import android.view.inputmethod.InputMethodManager
+import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.SeekBar
 import android.widget.TextView
+import android.widget.Toast
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
+import com.Bilibili_Innocent_Lab.xposedmodule.runtime.HostThreadGuard
+import com.Bilibili_Innocent_Lab.xposedmodule.runtime.replytopology.ReplyTopologyClipboardWrite
+import com.Bilibili_Innocent_Lab.xposedmodule.runtime.replytopology.ReplyTopologyExportText
 import java.lang.ref.WeakReference
 import kotlin.math.abs
 import kotlin.math.roundToInt
@@ -53,6 +64,9 @@ internal class ReplyTopologyPanelView(
     private val statusView = TextView(context)
     private val retryView = actionChip(strings.retry)
     private val continueView = actionChip(strings.continueLoading)
+    private val exportView = actionChip(strings.export)
+    private val filterInput = EditText(context)
+    private val keywordRow: View by lazy(LazyThreadSafetyMode.NONE) { createKeywordRow() }
     private val recyclerView = RecyclerView(context)
     private val workflowAdapter = ReplyTopologyWorkflowAdapter(
         theme,
@@ -64,6 +78,18 @@ internal class ReplyTopologyPanelView(
         { anchor, _, text -> panelListener?.onNodeFullTextRequested(anchor, text) }
     )
     private val trackDecoration = ReplyTopologyTrackDecoration(workflowAdapter, theme, density)
+    private val keywordWatcher = object : TextWatcher {
+        override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) = Unit
+        override fun afterTextChanged(s: Editable?) = Unit
+        override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {
+            HostThreadGuard.run("reply_topology.keyword_change") {
+                if (isReleased || exitTouchTransparent) return@run
+                workflowAdapter.setKeywordQuery(s?.toString().orEmpty())
+                updateExportAvailability()
+                recyclerView.invalidateItemDecorations()
+            }
+        }
+    }
 
     private var panelListener: ReplyTopologyPanelListener? = listener
     private var hostRef = WeakReference(host)
@@ -141,6 +167,7 @@ internal class ReplyTopologyPanelView(
         addView(createHeader(), LayoutParams(LayoutParams.MATCH_PARENT, dp(48)))
         addView(opacityRow, LayoutParams(LayoutParams.MATCH_PARENT, dp(34)))
         addView(createStatusRow(), LayoutParams(LayoutParams.MATCH_PARENT, dp(38)))
+        addView(keywordRow, LayoutParams(LayoutParams.MATCH_PARENT, dp(KEYWORD_ROW_HEIGHT_DP)))
         addView(createWorkflowList(), LayoutParams(LayoutParams.MATCH_PARENT, 0, 1f))
         updateState(currentState)
     }
@@ -187,6 +214,7 @@ internal class ReplyTopologyPanelView(
         closeView.setOnClickListener(null)
         retryView.setOnClickListener(null)
         continueView.setOnClickListener(null)
+        releaseKeywordControls()
         opacitySeek.setOnSeekBarChangeListener(null)
         isClickable = false
         isFocusable = false
@@ -227,6 +255,7 @@ internal class ReplyTopologyPanelView(
         if (isReleased) return
         workflowAdapter.submit(snapshot)
         recyclerView.invalidateItemDecorations()
+        updateExportAvailability()
     }
 
     fun updateState(state: ReplyTopologyPanelState) {
@@ -240,6 +269,7 @@ internal class ReplyTopologyPanelView(
         )
         retryView.visibility = if (state.canRetry) View.VISIBLE else View.GONE
         continueView.visibility = if (state.canContinue) View.VISIBLE else View.GONE
+        updateExportAvailability()
     }
 
     fun setBackgroundOpacity(opacity: Float, notify: Boolean) {
@@ -310,6 +340,7 @@ internal class ReplyTopologyPanelView(
             ReplyTopologyCompactMotionSpec.requireExpandedHeight(restored, compactPx)
         }
         userCollapsed = collapsed
+        if (collapsed) clearKeywordFocus()
         updateCollapseButton()
         if (!animated) {
             compactAnimator?.let { it.removeAllUpdateListeners(); it.removeAllListeners() }
@@ -321,20 +352,28 @@ internal class ReplyTopologyPanelView(
         val fromPx = params.height.takeIf { it > 0 } ?: height
         val toPx = if (collapsed) compactPx else expandedPx
         val opacityFullPx = dp(ReplyTopologyCompactMotionSpec.OPACITY_ROW_HEIGHT_DP)
+        val keywordFullPx = dp(KEYWORD_ROW_HEIGHT_DP)
         // 透明度行与面板总高按同一进度同步收缩/生长：它的占位连续变化使状态行文字
         // 全程保持位置连续（连贯位移）。列表为权重行，随剩余空间连续压缩/展开。
         opacityRow.visibility = View.VISIBLE
+        keywordRow.visibility = View.VISIBLE
         recyclerView.visibility = View.VISIBLE
         if (collapsed) {
             setOpacityRowHeight(opacityFullPx)
             opacityRow.alpha = 1f
+            setKeywordRowHeight(keywordFullPx)
+            keywordRow.alpha = 1f
         } else {
             setOpacityRowHeight(1)
             opacityRow.alpha = 0f
+            setKeywordRowHeight(1)
+            keywordRow.alpha = 0f
         }
         recyclerView.alpha = 1f
         val opacityFromPx = if (collapsed) opacityFullPx else 1
         val opacityToPx = if (collapsed) 1 else opacityFullPx
+        val keywordFromPx = if (collapsed) keywordFullPx else 1
+        val keywordToPx = if (collapsed) 1 else keywordFullPx
         val animator = ValueAnimator.ofFloat(0f, 1f).apply {
             duration = if (collapsed) {
                 ReplyTopologyCompactMotionSpec.COLLAPSE_DURATION_MS
@@ -355,6 +394,10 @@ internal class ReplyTopologyPanelView(
                 )
                 opacityRow.alpha =
                     ReplyTopologyCompactMotionSpec.opacityRowAlphaAt(progress, collapsed)
+                setKeywordRowHeight(
+                    ReplyTopologyCompactMotionSpec.heightAt(progress, keywordFromPx, keywordToPx)
+                )
+                keywordRow.alpha = ReplyTopologyCompactMotionSpec.opacityRowAlphaAt(progress, collapsed)
                 // 展开时高度增长会压缩 movementBounds 上限，逐帧钳制保证面板始终完整在屏内。
                 applyBoundedTranslation(translationX, translationY)
             }
@@ -390,13 +433,17 @@ internal class ReplyTopologyPanelView(
     private fun finalizeCompactState(collapsed: Boolean) {
         if (collapsed) {
             opacityRow.visibility = View.GONE
+            keywordRow.visibility = View.GONE
             recyclerView.visibility = View.GONE
         } else {
             opacityRow.visibility = View.VISIBLE
+            keywordRow.visibility = View.VISIBLE
+            setKeywordRowHeight(dp(KEYWORD_ROW_HEIGHT_DP))
             setOpacityRowHeight(dp(ReplyTopologyCompactMotionSpec.OPACITY_ROW_HEIGHT_DP))
             recyclerView.visibility = View.VISIBLE
         }
         opacityRow.alpha = 1f
+        keywordRow.alpha = 1f
         recyclerView.alpha = 1f
         applyBoundedTranslation(translationX, translationY)
     }
@@ -405,6 +452,13 @@ internal class ReplyTopologyPanelView(
         opacityRow.layoutParams?.let { layoutParams ->
             layoutParams.height = px
             opacityRow.layoutParams = layoutParams
+        }
+    }
+
+    private fun setKeywordRowHeight(px: Int) {
+        keywordRow.layoutParams?.let { params ->
+            params.height = px
+            keywordRow.layoutParams = params
         }
     }
 
@@ -448,6 +502,7 @@ internal class ReplyTopologyPanelView(
         closeView.setOnClickListener(null)
         retryView.setOnClickListener(null)
         continueView.setOnClickListener(null)
+        releaseKeywordControls()
         opacitySeek.setOnSeekBarChangeListener(null)
         workflowAdapter.release()
         recyclerView.adapter = null
@@ -580,6 +635,86 @@ internal class ReplyTopologyPanelView(
         row.addView(retryView, LayoutParams(LayoutParams.WRAP_CONTENT, dp(30)))
         row.addView(continueView, LayoutParams(LayoutParams.WRAP_CONTENT, dp(30)))
         return row
+    }
+
+    private fun createKeywordRow(): View {
+        val row = LinearLayout(context).apply {
+            orientation = HORIZONTAL
+            gravity = android.view.Gravity.CENTER_VERTICAL
+            setPadding(dp(14), 0, dp(10), 0)
+        }
+        filterInput.apply {
+            textSize = 12f
+            setSingleLine(true)
+            hint = strings.filterHint
+            contentDescription = strings.filterHint
+            setTextColor(theme.primaryTextColor)
+            setHintTextColor(theme.secondaryTextColor)
+            setPadding(dp(7), 0, dp(7), 0)
+            background = roundedRipple()
+            imeOptions = EditorInfo.IME_ACTION_DONE or EditorInfo.IME_FLAG_NO_EXTRACT_UI
+            importantForAutofill = View.IMPORTANT_FOR_AUTOFILL_NO
+            addTextChangedListener(keywordWatcher)
+            setOnEditorActionListener { _, action, _ ->
+                if (action != EditorInfo.IME_ACTION_DONE) false else {
+                    HostThreadGuard.run("reply_topology.keyword_done") { clearKeywordFocus() }
+                    true
+                }
+            }
+        }
+        exportView.visibility = View.VISIBLE
+        exportView.contentDescription = strings.export
+        exportView.setOnClickListener {
+            HostThreadGuard.run("reply_topology.export") { exportCurrentTopology() }
+        }
+        row.addView(filterInput, LayoutParams(0, dp(30), 1f).apply { marginEnd = dp(6) })
+        row.addView(exportView, LayoutParams(LayoutParams.WRAP_CONTENT, dp(30)))
+        updateExportAvailability()
+        return row
+    }
+
+    private fun updateExportAvailability() {
+        exportView.isEnabled = !isReleased && !exitTouchTransparent && workflowAdapter.visibleCount() > 0
+        exportView.alpha = if (exportView.isEnabled) 1f else 0.45f
+    }
+
+    private fun exportCurrentTopology() {
+        if (isReleased || exitTouchTransparent) return
+        when (val exported = workflowAdapter.exportText()) {
+            ReplyTopologyExportText.Result.Empty ->
+                Toast.makeText(context, strings.exportEmpty, Toast.LENGTH_SHORT).show()
+            ReplyTopologyExportText.Result.TooLarge ->
+                Toast.makeText(context, strings.exportTooLarge, Toast.LENGTH_SHORT).show()
+            is ReplyTopologyExportText.Result.Ready -> {
+                val copied = runCatching {
+                    val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
+                        ?: error("clipboard-unavailable")
+                    val clip = ClipData.newPlainText(strings.title, exported.text)
+                    ReplyTopologyClipboardWrite.write(clip) { clipboard.setPrimaryClip(clip) }
+                }.isSuccess
+                val message = if (copied) strings.exportSuccess.format(exported.count) else strings.exportFailed
+                Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+
+    private fun clearKeywordFocus() {
+        if (!filterInput.hasFocus()) return
+        val token = filterInput.windowToken
+        filterInput.clearFocus()
+        if (token != null) runCatching {
+            (context.getSystemService(Context.INPUT_METHOD_SERVICE) as? InputMethodManager)
+                ?.hideSoftInputFromWindow(token, 0)
+        }
+    }
+
+    private fun releaseKeywordControls() {
+        filterInput.removeTextChangedListener(keywordWatcher)
+        filterInput.setOnEditorActionListener(null)
+        clearKeywordFocus()
+        filterInput.isEnabled = false
+        exportView.setOnClickListener(null)
+        exportView.isEnabled = false
     }
 
     private fun createWorkflowList(): View {
@@ -760,6 +895,10 @@ internal class ReplyTopologyPanelView(
 
     private fun withAlpha(color: Int, alpha: Float): Int =
         (color and 0x00FFFFFF) or ((alpha.coerceIn(0f, 1f) * 255f).roundToInt() shl 24)
+
+    private companion object {
+        const val KEYWORD_ROW_HEIGHT_DP = 38
+    }
 
     private class MovementBounds {
         var minX = 0f

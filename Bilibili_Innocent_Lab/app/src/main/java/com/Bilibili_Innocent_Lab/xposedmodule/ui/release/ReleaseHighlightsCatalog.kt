@@ -164,13 +164,9 @@ internal object ReleaseHighlightsCatalog {
             HighlightDestination(SettingsCatalog.ID_DYNAMIC_SEMANTIC_FILTER)),
         ReleaseHighlight("semantic-jev-endpoint", HighlightKind.NEW,
             R.string.highlights_semantic_jev,
-            HighlightDestination(SettingsCatalog.ID_SEMANTIC_JEV_ENDPOINT)),
-        ReleaseHighlight("semantic-jev-sensitivity", HighlightKind.NEW,
-            R.string.highlights_semantic_jev,
-            HighlightDestination(SettingsCatalog.ID_SEMANTIC_JEV_SENSITIVITY)),
-        ReleaseHighlight("semantic-jev-wait-first-screen", HighlightKind.NEW,
-            R.string.highlights_semantic_jev,
-            HighlightDestination(SettingsCatalog.ID_SEMANTIC_JEV_WAIT_FIRST_SCREEN)),
+            HighlightDestination(SettingsCatalog.ID_SEMANTIC_JEV_ENDPOINT,
+                alsoCovers = setOf(SettingsCatalog.ID_SEMANTIC_JEV_SENSITIVITY,
+                    SettingsCatalog.ID_SEMANTIC_JEV_WAIT_FIRST_SCREEN))),
         // v32：弹幕 / 评论 / 推荐视频三个智能过滤开关，外加四个面的屏蔽类型勾选。
         ReleaseHighlight("danmaku-semantic-filter", HighlightKind.NEW,
             R.string.highlights_semantic_more_surfaces,
@@ -246,6 +242,10 @@ internal object ReleaseHighlightsCatalog {
             R.string.host_top_bar_liquid_glass_tip,
             HighlightDestination("host.top_bar.liquid_glass.enabled",
                 alsoCovers = setOf("host.top_bar.touch_glow.enabled")))
+    )), ReleaseHighlightsBatch(6, listOf(
+        ReleaseHighlight("reply-topology-keyword-export", HighlightKind.IMPROVED,
+            R.string.highlights_reply_topology_keyword_export,
+            HighlightDestination("comments.reply_topology.enabled"))
     )))
     val currentRevision: Int get() = batches.maxOf { it.revision }
     val destinations get() = batches.sortedByDescending { it.revision }.flatMap { it.entries }

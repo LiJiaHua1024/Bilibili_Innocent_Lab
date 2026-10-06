@@ -44,6 +44,7 @@ import com.Bilibili_Innocent_Lab.xposedmodule.hook.feature.CommentFamilyCoverage
 import com.Bilibili_Innocent_Lab.xposedmodule.hook.feature.CommentComposeCopyBridge
 import com.Bilibili_Innocent_Lab.xposedmodule.hook.feature.CommentNativeSupplementBridge
 import com.Bilibili_Innocent_Lab.xposedmodule.hook.feature.CommentLegacyCopyBridge
+import com.Bilibili_Innocent_Lab.xposedmodule.runtime.replytopology.ReplyTopologyClipboardWrite
 import com.Bilibili_Innocent_Lab.xposedmodule.hook.feature.BlockComponentLibraryFeatureInstaller
 import com.Bilibili_Innocent_Lab.xposedmodule.hook.feature.ComponentLibraryPoolMatcher
 import com.Bilibili_Innocent_Lab.xposedmodule.hook.feature.BottomBarFeatureInstaller
@@ -4730,6 +4731,7 @@ class HookEntry : XposedModule() {
                                         return@before
                                     }
                                     val clip = args.getOrNull(0) as? android.content.ClipData ?: return@before
+                                    if (ReplyTopologyClipboardWrite.owns(clip)) return@before
                                     val clipText = runCatching {
                                         clip.getItemAt(0).coerceToText(null)?.toString()
                                     }.getOrNull() ?: return@before
