@@ -106,6 +106,7 @@ internal object HostBottomBarFxController {
         val density = tabHost.resources.displayMetrics.density
         val isDark = (context.resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES
         val palette = ModernPalette.resolve(context)
+        val publishTint = if (config.liquidGlass) HostBottomBarPublishTint(context) else null
 
         // 1. 查找底栏内原有构件
         val bgId = context.resources.getIdentifier("tab_background", "id", context.packageName)
@@ -170,7 +171,7 @@ internal object HostBottomBarFxController {
         val sanitizeRunnable = Runnable {
             sanitizePosted = false
             stripAllHostArtifacts(tabHost, isRoot = true)
-            alignTabContent(tabHost, container, density, insetH)
+            alignTabContent(tabHost, container, density, insetH, publishTint)
             // 冷启动时底栏还没有尺寸、找不到采样源；布局稳定后每次清理都顺手补一次定位（命中即 O(1)）。
             backdrop?.revalidate()
         }
@@ -186,7 +187,7 @@ internal object HostBottomBarFxController {
 
         // 4. 插入专属硬件加速指示滑块、柔光图层与实时透镜 (放在最底层)
         val dockLayer = HostBottomBarDockLayer(
-            context, config, tabHost, container, palette, isDark, backdrop, requestSanitization
+            context, config, tabHost, container, palette, isDark, backdrop, publishTint, requestSanitization
         )
         tabHost.addView(
             dockLayer,
@@ -260,7 +261,13 @@ internal object HostBottomBarFxController {
      * 垂直居中对齐底栏内容 (图标与文字组合居中于 64dp 悬浮胶囊内)。
      * 消除文字过度靠下或图标独占居中的视觉失衡，完全还原模块导航栏的人机工程布局。
      */
-    fun alignTabContent(tabHost: ViewGroup, container: ViewGroup?, density: Float, insetH: Int) {
+    fun alignTabContent(
+        tabHost: ViewGroup,
+        container: ViewGroup?,
+        density: Float,
+        insetH: Int,
+        publishTint: HostBottomBarPublishTint? = null
+    ) {
         if (container == null) return
         val barHeight = tabHost.height.takeIf { it > 0 } ?: (ModernNavigationMotion.BAR_HEIGHT_DP * density).roundToInt()
 
@@ -376,6 +383,7 @@ internal object HostBottomBarFxController {
                         }
                     }
                 } else if (name.contains("publish") || child.javaClass.simpleName.contains("Publish")) {
+                    publishTint?.apply(child)
                     val plp = child.layoutParams as? FrameLayout.LayoutParams
                     if (plp != null && plp.gravity != Gravity.CENTER) {
                         plp.gravity = Gravity.CENTER
@@ -452,6 +460,7 @@ internal class HostBottomBarDockLayer(
     private val palette: MonetColors,
     private val isDark: Boolean,
     private val backdrop: HostBottomBarBackdrop?,
+    private val publishTint: HostBottomBarPublishTint?,
     private val requestSanitization: () -> Unit
 ) : FrameLayout(context), HostDockLayer {
 
@@ -522,7 +531,7 @@ internal class HostBottomBarDockLayer(
         // 宿主会在按压/切页/重建 tab 时重新挂上官方背景并重新布局：这里逐帧只做 O(items) 空判，
         // 命中才请求一次合并后的整树清理；不再每帧全树递归 + 资源名解析（快速切换掉帧的来源）。
         if (hostReappliedArtifacts()) requestSanitization()
-        HostBottomBarFxController.alignTabContent(tabHost, container, density, inset.roundToInt())
+        HostBottomBarFxController.alignTabContent(tabHost, container, density, inset.roundToInt(), publishTint)
         // 同步外部切页
         val detected = detectSelectedTab()
         if (!touchActive && !indicatorSettling && detected != selectedIndex) {
