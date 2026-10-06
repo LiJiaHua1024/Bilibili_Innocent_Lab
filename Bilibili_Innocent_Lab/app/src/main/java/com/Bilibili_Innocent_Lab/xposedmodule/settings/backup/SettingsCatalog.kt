@@ -30,7 +30,7 @@ import com.Bilibili_Innocent_Lab.xposedmodule.settings.appearance.ModalBackdropB
 internal object SettingsCatalog {
     const val PRODUCT_ID = "bilibili-innocent-lab.settings"
     const val SCOPE_ID = "core-user-settings"
-    const val CATALOG_VERSION = 41
+    const val CATALOG_VERSION = 42
     const val ID_PLAYER_DEFAULT_SPEED = "player.default_speed.percent"
     const val ID_PLAYER_LONG_PRESS_SPEED = "player.long_press_speed.percent"
     const val ID_FREE_COPY_COMMENT = "free_copy.comment.enabled"
@@ -594,49 +594,49 @@ internal object SettingsCatalog {
             FeaturePreferences.HOST_BOTTOM_BAR_LIQUID_GLASS,
             R.string.host_bottom_bar_liquid_glass,
             default = false,
-            introducedCatalogVersion = 38
+            introducedCatalogVersion = 39
         ),
         bool(
             "host.video_cards.enabled",
             FeaturePreferences.HOST_VIDEO_CARDS,
             R.string.host_video_cards,
             default = false,
-            introducedCatalogVersion = 41
+            introducedCatalogVersion = 42
         ),
         bool(
             "host.bottom_bar.compact.enabled",
             FeaturePreferences.HOST_BOTTOM_BAR_COMPACT,
             R.string.host_bottom_bar_compact,
             default = false,
-            introducedCatalogVersion = 40
+            introducedCatalogVersion = 41
         ),
         bool(
             "host.bottom_bar.icon_only.enabled",
             FeaturePreferences.HOST_BOTTOM_BAR_ICON_ONLY,
             R.string.host_bottom_bar_icon_only,
             default = false,
-            introducedCatalogVersion = 40
+            introducedCatalogVersion = 41
         ),
         bool(
             "host.bottom_bar.touch_glow.enabled",
             FeaturePreferences.HOST_BOTTOM_BAR_TOUCH_GLOW,
             R.string.host_bottom_bar_touch_glow,
             default = false,
-            introducedCatalogVersion = 38
+            introducedCatalogVersion = 39
         ),
         bool(
             "host.top_bar.liquid_glass.enabled",
             FeaturePreferences.HOST_TOP_BAR_LIQUID_GLASS,
             R.string.host_top_bar_liquid_glass,
             default = false,
-            introducedCatalogVersion = 39
+            introducedCatalogVersion = 40
         ),
         bool(
             "host.top_bar.touch_glow.enabled",
             FeaturePreferences.HOST_TOP_BAR_TOUCH_GLOW,
             R.string.host_top_bar_touch_glow,
             default = false,
-            introducedCatalogVersion = 39
+            introducedCatalogVersion = 40
         ),
         integer(
             ID_RECOMMEND_VIDEO_MIN_DURATION,
@@ -892,7 +892,7 @@ internal object SettingsCatalog {
     val byStorageKey: Map<String, SettingSpec> = specs.associateBy(SettingSpec::storageKey)
 
     init {
-        check(specs.size == 197) { "Expected 197 catalog settings, found ${specs.size}" }
+        check(specs.size == 199) { "Expected 199 catalog settings, found ${specs.size}" }
         check(byId.size == specs.size) { "Duplicate logical setting id" }
         check(specs.map(SettingSpec::storageKey).distinct().size == specs.size) {
             "Duplicate settings storage key"

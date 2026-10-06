@@ -94,6 +94,8 @@ home.top_bar.search_word.hidden
 home.vertical.open_detail
 host.bottom_bar.liquid_glass.enabled
 host.bottom_bar.touch_glow.enabled
+host.top_bar.liquid_glass.enabled
+host.top_bar.touch_glow.enabled
 links.external_browser.enabled
 live.double_tap.pause
 live.room_switch.blocked
