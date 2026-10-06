@@ -1208,4 +1208,8 @@
     <string name="hide_story_action_share">隱藏分享圖示</string>
     <string name="hide_story_action_danmaku_toggle">隱藏彈幕開關</string>
     <string name="highlights_story_action_icons">直向影片：右側按讚、留言、投幣、收藏、分享與彈幕開關可以逐個隱藏。</string>
+    <string name="host_bottom_bar_compact">小底部導覽列</string>
+    <string name="host_bottom_bar_compact_tip">縮小底部導覽列高度，減少佔用空間。重新啟動嗶哩嗶哩後生效。</string>
+    <string name="host_bottom_bar_icon_only">底部導覽列無字模式</string>
+    <string name="host_bottom_bar_icon_only_tip">隱藏首頁、動態等標籤，僅保留圖示並垂直置中，同時縮減上下留白。可與小底部導覽列疊加使用，重新啟動嗶哩嗶哩後生效。</string>
 </resources>

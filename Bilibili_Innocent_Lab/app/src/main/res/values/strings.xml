@@ -1208,4 +1208,8 @@
     <string name="hide_story_action_share">Hide the share icon</string>
     <string name="hide_story_action_danmaku_toggle">Hide the danmaku toggle</string>
     <string name="highlights_story_action_icons">Portrait feed: hide the like, comment, coin, favorite, share and danmaku toggle icons one by one.</string>
+    <string name="host_bottom_bar_compact">Compact bottom bar</string>
+    <string name="host_bottom_bar_compact_tip">Reduces the bottom bar height. Restart Bilibili to apply.</string>
+    <string name="host_bottom_bar_icon_only">Icon-only bottom bar</string>
+    <string name="host_bottom_bar_icon_only_tip">Hides tab labels, centers icons vertically, and reduces vertical space. Can be combined with compact mode. Restart Bilibili to apply.</string>
 </resources>

@@ -426,6 +426,8 @@ class MainActivity : SkinnedActivity() {
     private var freeCopyAutoLight = false
     private var hostBottomBarLiquidGlass = false
     private var hostBottomBarTouchGlow = false
+    private var hostBottomBarCompact = false
+    private var hostBottomBarIconOnly = false
     private var hostTopBarLiquidGlass = false
     private var hostTopBarTouchGlow = false
 
@@ -4409,6 +4411,8 @@ class MainActivity : SkinnedActivity() {
         purifySplashAds = uiSettings.bool(FeaturePreferences.PURIFY_SPLASH_ADS)
         hostBottomBarLiquidGlass = uiSettings.bool(FeaturePreferences.HOST_BOTTOM_BAR_LIQUID_GLASS)
         hostBottomBarTouchGlow = uiSettings.bool(FeaturePreferences.HOST_BOTTOM_BAR_TOUCH_GLOW)
+        hostBottomBarCompact = uiSettings.bool(FeaturePreferences.HOST_BOTTOM_BAR_COMPACT)
+        hostBottomBarIconOnly = uiSettings.bool(FeaturePreferences.HOST_BOTTOM_BAR_ICON_ONLY)
         hostTopBarLiquidGlass = uiSettings.bool(FeaturePreferences.HOST_TOP_BAR_LIQUID_GLASS)
         hostTopBarTouchGlow = uiSettings.bool(FeaturePreferences.HOST_TOP_BAR_TOUCH_GLOW)
         merchAdEnabled = uiSettings.bool(HookEntry.PREF_MERCH_ENABLED)
@@ -8906,6 +8910,78 @@ class MainActivity : SkinnedActivity() {
             alpha = 0.6f
             setLineSpacing(6f, 1f)
             text = stringResource(R.string.host_bottom_bar_liquid_glass_tip)
+            textColor = colorResource(R.color.colorTextDark)
+            textSize = 12f
+        }
+        MaterialSwitch(
+            lparams = LayoutParams(widthMatchParent = true) {
+                topMargin = 12.dp
+                bottomMargin = 5.dp
+            }
+        ) {
+            bindFavoriteSwitch(this, FeaturePreferences.HOST_BOTTOM_BAR_COMPACT, directToggle = true)
+            text = stringResource(R.string.host_bottom_bar_compact)
+            isAllCaps = false
+            textColor = colorResource(R.color.colorTextGray)
+            textSize = 15f
+            isChecked = hostBottomBarCompact
+            setOnCheckedChangeListener { _, checked ->
+                hostBottomBarCompact = checked
+                runCatching {
+                    prefs().edit {
+                        putBoolean(
+                            FeaturePreferences.HOST_BOTTOM_BAR_COMPACT,
+                            checked
+                        )
+                    }
+                }.onFailure { throwable ->
+                    Log.e(
+                        "BilibiliInnocentLab",
+                        "write host bottom bar compact prefs failed",
+                        throwable
+                    )
+                }
+            }
+        }
+        TextView(lparams = LayoutParams(widthMatchParent = true)) {
+            alpha = 0.6f
+            text = stringResource(R.string.host_bottom_bar_compact_tip)
+            textColor = colorResource(R.color.colorTextDark)
+            textSize = 12f
+        }
+        MaterialSwitch(
+            lparams = LayoutParams(widthMatchParent = true) {
+                topMargin = 12.dp
+                bottomMargin = 5.dp
+            }
+        ) {
+            bindFavoriteSwitch(this, FeaturePreferences.HOST_BOTTOM_BAR_ICON_ONLY, directToggle = true)
+            text = stringResource(R.string.host_bottom_bar_icon_only)
+            isAllCaps = false
+            textColor = colorResource(R.color.colorTextGray)
+            textSize = 15f
+            isChecked = hostBottomBarIconOnly
+            setOnCheckedChangeListener { _, checked ->
+                hostBottomBarIconOnly = checked
+                runCatching {
+                    prefs().edit {
+                        putBoolean(
+                            FeaturePreferences.HOST_BOTTOM_BAR_ICON_ONLY,
+                            checked
+                        )
+                    }
+                }.onFailure { throwable ->
+                    Log.e(
+                        "BilibiliInnocentLab",
+                        "write host bottom bar icon_only prefs failed",
+                        throwable
+                    )
+                }
+            }
+        }
+        TextView(lparams = LayoutParams(widthMatchParent = true)) {
+            alpha = 0.6f
+            text = stringResource(R.string.host_bottom_bar_icon_only_tip)
             textColor = colorResource(R.color.colorTextDark)
             textSize = 12f
         }

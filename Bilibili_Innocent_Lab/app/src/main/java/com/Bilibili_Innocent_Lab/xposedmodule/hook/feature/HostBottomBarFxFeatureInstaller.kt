@@ -11,7 +11,9 @@ import java.util.concurrent.atomic.AtomicBoolean
 internal class HostBottomBarFxFeatureInstaller(
     private val liquidGlass: Boolean,
     private val touchGlow: Boolean,
-    private val points: VersionAdapter.BottomBarPoints?
+    private val points: VersionAdapter.BottomBarPoints?,
+    private val compact: Boolean = false,
+    private val iconOnly: Boolean = false
 ) : FeatureInstaller {
 
     override val id: String = ID
@@ -20,7 +22,7 @@ internal class HostBottomBarFxFeatureInstaller(
         if (environment.processName != TARGET_PACKAGE) {
             return FeatureInstallResult.Skipped("non-main-process")
         }
-        if (!liquidGlass && !touchGlow) {
+        if (!liquidGlass && !touchGlow && !compact && !iconOnly) {
             return FeatureInstallResult.Skipped("disabled")
         }
         val adapted = points ?: run {
@@ -32,7 +34,9 @@ internal class HostBottomBarFxFeatureInstaller(
         val firstHit = AtomicBoolean(false)
         val config = HostBottomBarFxConfig(
             liquidGlass = liquidGlass,
-            touchGlow = touchGlow
+            touchGlow = touchGlow,
+            compact = compact,
+            iconOnly = iconOnly
         )
 
         return runCatching {

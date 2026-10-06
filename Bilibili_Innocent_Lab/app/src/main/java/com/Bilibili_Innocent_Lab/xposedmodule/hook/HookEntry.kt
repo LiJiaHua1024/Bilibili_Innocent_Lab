@@ -3342,7 +3342,9 @@ class HookEntry : XposedModule() {
                             FeaturePreferences.HOST_BOTTOM_BAR_TOUCH_GLOW,
                             false
                         ),
-                        points = hostAdaptResult?.bottomBar
+                        points = hostAdaptResult?.bottomBar,
+                        compact = prefs.getBoolean(FeaturePreferences.HOST_BOTTOM_BAR_COMPACT, false),
+                        iconOnly = prefs.getBoolean(FeaturePreferences.HOST_BOTTOM_BAR_ICON_ONLY, false)
                     )
                 )
             )
