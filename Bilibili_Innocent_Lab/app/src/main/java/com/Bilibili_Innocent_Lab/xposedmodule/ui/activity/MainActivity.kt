@@ -424,10 +424,10 @@ class MainActivity : SkinnedActivity() {
     private var freeCopyDescEnabled = true
     private var freeCopyLightMode = false
     private var freeCopyAutoLight = false
-    private var hostBottomBarLiquidGlass = true
-    private var hostBottomBarTouchGlow = true
-    private var hostTopBarLiquidGlass = true
-    private var hostTopBarTouchGlow = true
+    private var hostBottomBarLiquidGlass = false
+    private var hostBottomBarTouchGlow = false
+    private var hostTopBarLiquidGlass = false
+    private var hostTopBarTouchGlow = false
 
     /** 亮色开关二次确认进行中标志（防 setOnCheckedChangeListener 重入递归） */
     private var autoLightConfirmInProgress = false

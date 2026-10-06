@@ -2992,11 +2992,11 @@ class HookEntry : XposedModule() {
                     HostTopBarFxFeatureInstaller(
                         liquidGlass = prefs.getBoolean(
                             FeaturePreferences.HOST_TOP_BAR_LIQUID_GLASS,
-                            true
+                            false
                         ),
                         touchGlow = prefs.getBoolean(
                             FeaturePreferences.HOST_TOP_BAR_TOUCH_GLOW,
-                            true
+                            false
                         ),
                         points = hostAdaptResult?.homeTopBar
                     )
@@ -3336,11 +3336,11 @@ class HookEntry : XposedModule() {
                     HostBottomBarFxFeatureInstaller(
                         liquidGlass = prefs.getBoolean(
                             FeaturePreferences.HOST_BOTTOM_BAR_LIQUID_GLASS,
-                            true
+                            false
                         ),
                         touchGlow = prefs.getBoolean(
                             FeaturePreferences.HOST_BOTTOM_BAR_TOUCH_GLOW,
-                            true
+                            false
                         ),
                         points = hostAdaptResult?.bottomBar
                     )

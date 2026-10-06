@@ -593,28 +593,28 @@ internal object SettingsCatalog {
             "host.bottom_bar.liquid_glass.enabled",
             FeaturePreferences.HOST_BOTTOM_BAR_LIQUID_GLASS,
             R.string.host_bottom_bar_liquid_glass,
-            default = true,
+            default = false,
             introducedCatalogVersion = 38
         ),
         bool(
             "host.bottom_bar.touch_glow.enabled",
             FeaturePreferences.HOST_BOTTOM_BAR_TOUCH_GLOW,
             R.string.host_bottom_bar_touch_glow,
-            default = true,
+            default = false,
             introducedCatalogVersion = 38
         ),
         bool(
             "host.top_bar.liquid_glass.enabled",
             FeaturePreferences.HOST_TOP_BAR_LIQUID_GLASS,
             R.string.host_top_bar_liquid_glass,
-            default = true,
+            default = false,
             introducedCatalogVersion = 39
         ),
         bool(
             "host.top_bar.touch_glow.enabled",
             FeaturePreferences.HOST_TOP_BAR_TOUCH_GLOW,
             R.string.host_top_bar_touch_glow,
-            default = true,
+            default = false,
             introducedCatalogVersion = 39
         ),
         integer(
