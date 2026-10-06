@@ -1,0 +1,110 @@
+name: Manually sync Canary to Telegram
+
+on:
+  workflow_dispatch:
+    inputs:
+      canary_run_url:
+        description: 'Canary Actions 构建链接（例如 https://github.com/jichuo1/Bilibili_Innocent_Lab/actions/runs/37497610746）'
+        required: true
+        type: string
+      dry_run:
+        description: '仅验证构建和签名，不发送到 Telegram（用于测试）'
+        required: false
+        type: boolean
+        default: false
+
+# 频道投递串行执行，新的手动任务不取消正在发送的文件。
+concurrency:
+  group: canary-telegram
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  sync:
+    name: Verify selected Canary and send its APK
+    runs-on: ubuntu-latest
+    environment:
+      # 只读取固定证书指纹，不恢复私钥，也不重新构建 APK。
+      name: alpha-release
+    steps:
+      - name: Check out trusted delivery tooling
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ github.sha }}
+
+      - name: Require main and configured Telegram delivery
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+        run: |
+          set -euo pipefail
+          [[ "$GITHUB_REF" == "refs/heads/main" ]]
+          : "${TELEGRAM_BOT_TOKEN:?Missing TELEGRAM_BOT_TOKEN}"
+
+      - name: Validate selection and delivery tooling
+        run: python3 -m unittest discover -s .github/release-templates -p 'test_*.py'
+
+      - name: Download and verify the selected Canary package
+        id: package
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CANARY_RUN_URL: ${{ inputs.canary_run_url }}
+        run: |
+          python3 .github/release-templates/prepare_canary_delivery.py \
+            --run-url "$CANARY_RUN_URL" \
+            --destination "$RUNNER_TEMP/canary-telegram-package" \
+            --github-output "$GITHUB_OUTPUT"
+
+      - name: Set up Java
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Android APK inspection tools
+        uses: android-actions/setup-android@v4
+        with:
+          packages: platform-tools
+
+      - name: Install APK inspection tools
+        run: sdkmanager "build-tools;37.0.0"
+
+      - name: Verify APK identity and fixed signing certificate
+        env:
+          PACKAGE_DIRECTORY: ${{ steps.package.outputs.package_directory }}
+          APK_FILENAME: ${{ steps.package.outputs.apk_filename }}
+          VERSION_NAME: ${{ steps.package.outputs.version_name }}
+          VERSION_CODE: ${{ steps.package.outputs.version_code }}
+          EXPECTED_CERT_SHA256: ${{ secrets.ANDROID_SIGNING_CERT_SHA256 }}
+        run: |
+          python3 .github/release-templates/verify_release_apk.py \
+            --apk "$PACKAGE_DIRECTORY/$APK_FILENAME" \
+            --aapt "$ANDROID_SDK_ROOT/build-tools/37.0.0/aapt" \
+            --apksigner "$ANDROID_SDK_ROOT/build-tools/37.0.0/apksigner" \
+            --expected-package com.Bilibili_Innocent_Lab.xposedmodule \
+            --expected-version-name "$VERSION_NAME" --expected-version-code "$VERSION_CODE" \
+            --expected-cert-sha256 "$EXPECTED_CERT_SHA256"
+
+      - name: Send the selected Canary APK to Telegram
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ vars.TELEGRAM_RELEASE_CHAT_ID || '@Bilibili_Innocent_LabRelease' }}
+          PACKAGE_DIRECTORY: ${{ steps.package.outputs.package_directory }}
+          APK_FILENAME: ${{ steps.package.outputs.apk_filename }}
+          BUILD_TAG: ${{ steps.package.outputs.release_tag }}
+          SOURCE_COMMIT: ${{ steps.package.outputs.source_commit }}
+          SOURCE_RUN_URL: ${{ steps.package.outputs.source_run_url }}
+          DELIVERY_DRY_RUN: ${{ inputs.dry_run }}
+        run: |
+          set -euo pipefail
+          delivery_args=()
+          if [[ "$DELIVERY_DRY_RUN" == "true" ]]; then
+            delivery_args+=(--dry-run)
+          fi
+          python3 .github/release-templates/publish_telegram.py \
+            --tag "$BUILD_TAG" --commit "$SOURCE_COMMIT" --source-url "$SOURCE_RUN_URL" \
+            --apk "$PACKAGE_DIRECTORY/$APK_FILENAME" --build-info "$PACKAGE_DIRECTORY/BUILD_INFO.txt" \
+            --notes "$PACKAGE_DIRECTORY/CANARY_CHANGELOG.md" --summary "$GITHUB_STEP_SUMMARY" \
+            "${delivery_args[@]}"

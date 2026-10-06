@@ -419,20 +419,6 @@ jobs:
           retention-days: 30
           overwrite: true
 
-      - name: Deliver Canary APK to Telegram
-        continue-on-error: true
-        env:
-          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-          TELEGRAM_CHAT_ID: ${{ vars.TELEGRAM_RELEASE_CHAT_ID || '@Bilibili_Innocent_LabRelease' }}
-          BUILD_TAG: ${{ needs.verify.outputs.release_tag }}
-          APK_FILENAME: ${{ steps.apk.outputs.apk_filename }}
-        run: |
-          python3 .github/release-templates/publish_telegram.py \
-            --tag "$BUILD_TAG" --commit "$GITHUB_SHA" \
-            --source-url "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" \
-            --apk "release-asset/$APK_FILENAME" --build-info release-asset/BUILD_INFO.txt \
-            --notes release-asset/CANARY_CHANGELOG.md --summary "$GITHUB_STEP_SUMMARY"
-
       - name: Remove temporary signing keystore
         if: ${{ always() }}
         shell: bash
