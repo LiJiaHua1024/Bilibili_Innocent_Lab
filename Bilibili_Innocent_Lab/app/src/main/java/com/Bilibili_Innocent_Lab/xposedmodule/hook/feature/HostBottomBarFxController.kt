@@ -1115,7 +1115,12 @@ internal class HostLiquidSurfaceDrawable(
         rect.set(bounds)
     }
 
-    override fun draw(canvas: Canvas) {
+    override fun draw(canvas: Canvas) = drawSurface(canvas, callback as? View)
+
+    /** 触摸层比外壳高时，仍以宿主外壳的位置采样，避免磨砂内容随触摸容错区偏移。 */
+    fun drawForView(canvas: Canvas, reference: View) = drawSurface(canvas, reference)
+
+    private fun drawSurface(canvas: Canvas, reference: View?) {
         rect.set(bounds)
         rect.inset(horizontalInset, verticalInset)
         if (rect.isEmpty || !rect.left.isFinite() || !rect.top.isFinite() ||
@@ -1134,8 +1139,7 @@ internal class HostLiquidSurfaceDrawable(
         // 会退回不透明实心块（那是模块首帧的过渡态，不是稳态）。
         val sampleAlpha = FrostedMotionSurfaceAlpha.sampleAlpha(frameAlpha, overlayAlpha)
         if (!tintOnly && style.live) {
-            val view = callback as? View
-            if (view != null) backdrop?.draw(canvas, rect, drawRadius, view, sampleAlpha)
+            if (reference != null) backdrop?.draw(canvas, rect, drawRadius, reference, sampleAlpha)
         }
         fill.color = ColorUtils.setAlphaComponent(color, overlayAlpha)
         canvas.drawRoundRect(rect, drawRadius, drawRadius, fill)

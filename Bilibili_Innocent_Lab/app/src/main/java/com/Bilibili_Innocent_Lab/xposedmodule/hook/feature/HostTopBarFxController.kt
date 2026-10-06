@@ -184,14 +184,14 @@ internal object HostTopBarFxController {
         // 3. 将顶栏配置为浮动在视频流上方的 Overlay 图层，视频流撑满整页不被挤压
         configureOverlayConstraints(topBarDock, barHeight, marginH, marginV, density)
 
-        val island = if (config.liquidGlass) {
-            HostTopIslandBinding.attach(topBarDock, hierarchy.tabContainer, density, glowView, backdrop, palette.primary)
-        } else null
-
         // 4. 周期性清理与对齐调度
         val topPadding = barHeight + marginV * 2
         val parent = topBarDock.parent as? ViewGroup
         val viewPager = (if (parent != null) findViewPager(parent) else null) ?: findViewPager(root)
+        val island = if (config.liquidGlass) {
+            HostTopIslandBinding.attach(topBarDock, hierarchy.tabContainer, density, glowView, backdrop,
+                palette.primary, HostTopIslandPageActions(root, viewPager))
+        } else null
 
         // 5. 顶部状态栏融合带：内容一路上延到窗口顶边，在顶栏之下铺一层渐渐消隐的实时模糊
         val fusion = if (config.liquidGlass && parent != null) {
