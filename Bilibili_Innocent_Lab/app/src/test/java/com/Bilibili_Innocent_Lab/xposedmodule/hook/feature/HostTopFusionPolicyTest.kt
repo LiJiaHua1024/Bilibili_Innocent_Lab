@@ -16,6 +16,31 @@ class HostTopFusionPolicyTest {
     /** 首页展开态实测值。 */
     private val expandedTop = 244
 
+    @Test fun dockingReservesTheWholeHeaderAtTheTopAndNoneAwayFromIt() {
+        val range = HostTopFusionPolicy.DOCK_RANGE_DP * density
+        assertEquals(1f, HostTopFusionPolicy.dockingProgress(0f, range), 0f)
+        assertEquals(1f, HostTopFusionPolicy.dockingProgress(-80f, range), 0f)
+        assertEquals(0.5f, HostTopFusionPolicy.dockingProgress(range / 2f, range), 1e-6f)
+        assertEquals(0f, HostTopFusionPolicy.dockingProgress(range, range), 0f)
+        assertEquals(0f, HostTopFusionPolicy.dockingProgress(Float.POSITIVE_INFINITY, range), 0f)
+    }
+
+    @Test fun dockingFollowsDistanceContinuouslyInBothDirectionsWithoutEndpointJumps() {
+        val range = HostTopFusionPolicy.DOCK_RANGE_DP * density
+        var previous = 1f
+        for (i in 0..256) {
+            val distance = range * i / 256f
+            val progress = HostTopFusionPolicy.dockingProgress(distance, range)
+            assertTrue(progress <= previous)
+            assertTrue(previous - progress < 0.006f)
+            assertEquals(1f - progress, HostTopFusionPolicy.dockingProgress(range - distance, range), 1e-6f)
+            previous = progress
+        }
+        // 两端一像素手势只带来亚像素占位变化，返回/离开顶部不会突然跳一截。
+        assertTrue((1f - HostTopFusionPolicy.dockingProgress(1f, range)) * expandedTop < 0.01f)
+        assertTrue(HostTopFusionPolicy.dockingProgress(range - 1f, range) * expandedTop < 0.01f)
+    }
+
     @Test fun fadeEndsAboveTheRestingContentSoTheFirstRowStaysSharp() {
         for (containerTop in listOf(collapsedTop, expandedTop)) {
             val restTop = HostTopFusionPolicy.contentRestTop(containerTop, basePadding)

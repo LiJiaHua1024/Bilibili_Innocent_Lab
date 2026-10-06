@@ -186,9 +186,10 @@ internal object HostTopBarFxController {
         val topPadding = barHeight + marginV * 2
         val parent = topBarDock.parent as? ViewGroup
         val viewPager = (if (parent != null) findViewPager(parent) else null) ?: findViewPager(root)
+        val pageActions = HostTopIslandPageActions(root, viewPager)
         val island = if (config.liquidGlass) {
             HostTopIslandBinding.attach(topBarDock, hierarchy.tabContainer, density, glowView, backdrop,
-                palette.primary, HostTopIslandPageActions(root, viewPager))
+                palette.primary, pageActions)
         } else null
 
         // 5. 顶部状态栏融合带：内容一路上延到窗口顶边，在顶栏之下铺一层渐渐消隐的实时模糊
@@ -196,6 +197,7 @@ internal object HostTopBarFxController {
             HostTopFusionBinding.attach(
                 container = parent,
                 pager = viewPager,
+                pageActions = pageActions,
                 backdrop = backdrop,
                 basePadding = topPadding,
                 density = density,
@@ -545,7 +547,7 @@ internal object HostTopBarFxController {
     /**
      * 顶栏之下的滚动内边距与下拉刷新参数。
      *
-     * @param topPadding 列表要用的顶部内边距（顶栏高度 + 内容上延位移）。
+     * @param topPadding 列表要用的顶部内边距（胶囊行高度）；搜索区由 pager 位移占位。
      * @param spinnerTravelBase 下拉刷新提示球的**行程基准**：`SwipeRefreshLayout` 的 `end` 同时
      *   决定"球的行程"和"停下后够到哪"，它是**距离**不是位置；内容上延后不能跟着一起挪，
      *   跟着挪会让提示球按同比例变快（实测 1.9 倍，手感就是"轻轻一拉球就飞下去"）。
@@ -595,8 +597,7 @@ internal object HostTopBarFxController {
 
     /**
      * 切页后重建的列表要重新吃一遍顶栏内边距。[scrollPadding] / [spinnerTravelBase] 由
-     * [HostTopFusionBinding] 持有——内容上延之后前者是"基础内边距 + 容器顶边位移"、后者是
-     * "未经上延的基础内边距"，都不是常量，所以这里只能取当下值。
+     * [HostTopFusionBinding] 持有。切页只恢复固定胶囊行内边距，搜索区占位与原生刷新行程分开。
      */
     private fun setupViewPagerPageChangeListener(
         viewPager: ViewGroup,
@@ -790,20 +791,16 @@ internal object HostTopBarFxController {
  * 顶部"融合带"的运行时装配：让内容层从容器顶边一路画到窗口顶边，再在顶栏之下铺一层
  * 渐渐消隐的实时模糊（[HostTopStatusFusionView]）。
  *
- * **内容上延只做一次固定位移，不逐帧跟随。** 顶栏容器的屏幕顶边在宿主 AppBar 展开时最大、
- * 收起时变小（首页实测：展开 244px、收起约 90px，正好是状态栏下沿）；这里取运行期观测到的
- * **最大值**作为负 topMargin，于是任何折叠状态下 pager 的顶边都 ≤ 窗口顶边，卡片能一路画到
- * 屏幕最上方，而顶部那段"没有卡片"的高度由等量的 `paddingTop` 补回——内容的静止位置与官方
- * 逐像素一致，AppBar 折叠时内容跟着容器走（多出来的位移被同步缩掉的 padding 抵消）。
- *
- * 这样滚动全程零布局抖动：位移量与 padding 只增不减，且只在首次看到更大的顶边时写一次。
- * 融合带自身则必须**逐帧**钉在窗口顶边（它的渐隐曲线按屏幕坐标写死），所以走 translationY，
- * 只在容器顶边真的变了时才写，并顺手通知透镜采样器重采一帧——表面动了，纹理必须跟着动。
+ * 最大容器顶边作为固定负 topMargin，滚动内容仍能画到窗口顶边。列表只保留胶囊行的固定
+ * padding；临近列表起点时，pager 用 translationY 连续退回原布局位置，为搜索/状态栏恢复占位。
+ * 同一进度把融合带从模糊变为实色，并降回内容层。距离使用列表子项的局部坐标，视觉位移不会
+ * 反过来改变进度，也不会逐帧改 padding、干扰原生滚动与刷新行程。
  */
 internal class HostTopFusionBinding private constructor(
     private val container: ViewGroup,
     private val band: HostTopStatusFusionView,
     private val pager: ViewGroup?,
+    private val pageActions: HostTopIslandPageActions,
     private val backdrop: HostBottomBarBackdrop?,
     private val basePadding: Int,
     private val density: Float,
@@ -812,9 +809,8 @@ internal class HostTopFusionBinding private constructor(
     private val location = IntArray(2)
     private var preDraw: android.view.ViewTreeObserver.OnPreDrawListener? = null
 
-    /** 内容层当前生效的滚动内边距（基础值 + 上延位移），切页重建的列表按它补。 */
-    var scrollPadding = basePadding
-        private set
+    /** 固定胶囊行内边距；搜索区的占位由 pager 位移独立承担。 */
+    val scrollPadding: Int get() = basePadding
 
     /**
      * 下拉刷新提示球的行程基准：**不能**跟着内容上延走（`SwipeRefreshLayout` 的 `end` 是距离
@@ -830,6 +826,8 @@ internal class HostTopFusionBinding private constructor(
 
     /** 内容上延的固定位移量 = 观测到的容器最大屏幕顶边。 */
     private var contentOffset = 0
+    private var listPosition: HostTopListPosition? = null
+    private var dockingProgress = 1f
 
     /** 融合带当前生效的材质深浅色，见 [refreshMaterial]。 */
     private var materialDark = isDark
@@ -838,6 +836,7 @@ internal class HostTopFusionBinding private constructor(
         fun attach(
             container: ViewGroup,
             pager: ViewGroup?,
+            pageActions: HostTopIslandPageActions,
             backdrop: HostBottomBarBackdrop?,
             basePadding: Int,
             density: Float,
@@ -875,7 +874,7 @@ internal class HostTopFusionBinding private constructor(
                 }
                 // Z 序：低于顶栏胶囊（10f·density）、高于 ViewPager（0）——模糊永远在顶栏之下。
                 band.translationZ = 2f * density
-                HostTopFusionBinding(container, band, pager, backdrop, basePadding, density, isDark).also {
+                HostTopFusionBinding(container, band, pager, pageActions, backdrop, basePadding, density, isDark).also {
                     it.unclipToWindowTop()
                     it.install()
                 }
@@ -888,7 +887,6 @@ internal class HostTopFusionBinding private constructor(
         if (!observer.isAlive) return
         val listener = android.view.ViewTreeObserver.OnPreDrawListener {
             sync()
-            true
         }
         observer.addOnPreDrawListener(listener)
         preDraw = listener
@@ -906,9 +904,9 @@ internal class HostTopFusionBinding private constructor(
         sync()
     }
 
-    /** 对齐一次几何。每帧 pre-draw 调用，命中即 O(1) 早退（只读一次屏幕坐标）。 */
-    fun sync() {
-        val top = screenTopOf(container) ?: return
+    /** 原生滚动完成后、绘制之前同步。修复宿主覆盖的 padding 时等待重布局，不画错位帧。 */
+    fun sync(): Boolean {
+        val top = screenTopOf(container) ?: return true
         if (top != bandTop) {
             val first = bandTop == Int.MIN_VALUE
             bandTop = top
@@ -928,7 +926,6 @@ internal class HostTopFusionBinding private constructor(
         }
         if (top > contentOffset) {
             contentOffset = top
-            scrollPadding = basePadding + top
             val lp = pager?.layoutParams
             if (lp is ViewGroup.MarginLayoutParams && lp.topMargin != -top) {
                 lp.topMargin = -top
@@ -939,6 +936,23 @@ internal class HostTopFusionBinding private constructor(
             }
             ModernHookLog.info("[BIL] 顶栏融合带内容上延: offset=$top, scrollPadding=$scrollPadding")
         }
+        val list = pageActions.visibleList()
+        if (listPosition?.view !== list) listPosition = list?.let(::HostTopListPosition)
+        if (list != null && list.paddingTop != basePadding) {
+            HostTopBarFxController.applyScrollPadding(list, basePadding, density, basePadding)
+            if (list.paddingTop == basePadding) return false
+        }
+        listPosition?.edge()?.let { edge ->
+            val range = minOf(HostTopFusionPolicy.DOCK_RANGE_DP * density, edge.firstRowExtent)
+            dockingProgress = HostTopFusionPolicy.dockingProgress(edge.distance, range)
+        }
+        val offset = contentOffset * dockingProgress
+        if (pager != null && pager.translationY != offset) {
+            pager.translationY = offset
+            backdrop?.onVisualMovement()
+        }
+        band.updateDocking(dockingProgress, top)
+        return true
     }
 
     /** 深浅色/主题切换后刷新融合带的色罩（采样纹理只带 alpha 曲线，不受影响）。 */

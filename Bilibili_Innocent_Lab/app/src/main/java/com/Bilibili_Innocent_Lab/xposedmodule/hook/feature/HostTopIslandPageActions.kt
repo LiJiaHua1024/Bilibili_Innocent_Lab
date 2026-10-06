@@ -15,6 +15,9 @@ internal class HostTopIslandPageActions(private val root: ViewGroup, private val
     enum class Action { TOP, REFRESH, BUSY, UNAVAILABLE }
     private val appBar by lazy { findAppBar(root) }
 
+    /** 融合带与收岛操作使用同一个当前页，避免预加载邻页的滚动位置影响顶部。 */
+    fun visibleList(): View? = content().list
+
     fun state(): State {
         val content = content()
         return State(isAtTop(content), content.refresh?.let { HostTopIslandRefreshAccess.isRefreshing(it) } == true)
