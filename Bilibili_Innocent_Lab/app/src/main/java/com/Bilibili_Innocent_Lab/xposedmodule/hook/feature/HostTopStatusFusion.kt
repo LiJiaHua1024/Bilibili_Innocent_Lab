@@ -19,13 +19,23 @@ import kotlin.math.roundToInt
 /**
  * 顶部融合带的几何与曲线：纯标量，不碰 android.graphics，可在 JVM 单测里跑。
  *
- * **满强度只留给状态栏，渐隐整段落在"内容静止顶边之上"。** 内容静止顶边 = 顶栏容器顶边 +
+ * **滚动玻璃的满强度只留给状态栏，渐隐落在"内容静止顶边之上"；回顶时搜索区逐渐变为实色。** 内容静止顶边 = 顶栏容器顶边 +
  * 列表基础内边距（首页收起态 = 状态栏下沿 + 154px，即胶囊行下沿再往下一点）。这样：
  * - 推荐流第一排卡片停在静止位置时**完全清晰**——它在屏幕最下方时也不能被糊到（用户往上滑不动它，
  *   糊了就永远看不到清晰的），这是把渐隐收口放在它上方的唯一原因；
  * - 滚动时卡片从渐隐区穿过，仍然是从模糊渐渐变清晰，没有分界线。
  */
 internal object HostTopFusionPolicy {
+
+    /** 回顶前最后一段手势距离；进度直接跟手，两端的速度均收敛到零。 */
+    const val DOCK_RANGE_DP = 208f
+
+    fun dockingProgress(distance: Float, range: Float): Float {
+        if (!distance.isFinite()) return 0f
+        if (range <= 0f) return if (distance <= 0f) 1f else 0f
+        val t = (1f - distance / range).coerceIn(0f, 1f)
+        return t * t * (3f - 2f * t)
+    }
 
     /**
      * 渐隐收尾处离"内容静止顶边"的留白（dp）。留白比 smoothstep 的收口更靠上，
@@ -71,8 +81,8 @@ internal object HostTopFusionPolicy {
  * 四条几何约定：
  * 1. **锚在窗口顶边**：视图由控制器放在顶栏所在容器里，靠 `translationY = -容器屏幕顶边`
  *    把自身顶边钉在窗口 y = 0，于是局部坐标与屏幕坐标一一对应；
- * 2. **Z 序夹在内容与顶栏之间**：`translationZ` 低于顶栏胶囊、高于 ViewPager，模糊因此
- *    永远在顶栏之下（顶栏自身的玻璃与文字不被这层糊到），却又盖在卡片之上；
+ * 2. **滚动时夹在内容与顶栏之间，回顶时退回内容层**：`translationZ` 随占位进度降到 0，
+ *    模糊逐渐退场、搜索区变为实色，顶栏胶囊的层级和手势不变；
  * 3. **渐隐收口在内容静止顶边之上**（见 [HostTopFusionPolicy]）：第一排卡片停在静止位置时
  *    完全清晰，滚动中穿过渐隐区的卡片仍然平滑地由糊转清；
  * 4. **曲线两端都收敛**：满强度保持到状态栏下沿，之后按 smoothstep 减到 0，所以状态栏下沿
@@ -112,6 +122,18 @@ internal class HostTopStatusFusionView(
     private val scrimPaint = Paint(Paint.ANTI_ALIAS_FLAG)
     private var scrim: LinearGradient? = null
     private var scrimHeight = 0
+    private var dockingProgress = 1f
+    private var dockingBottom = 0
+
+    /** 同一进度控制模糊退场与实色占位；满进度时与内容同层，顶栏仍在其上。 */
+    fun updateDocking(progress: Float, bottom: Int) {
+        if (progress == dockingProgress && bottom == dockingBottom) return
+        dockingProgress = progress
+        dockingBottom = bottom
+        translationZ = 2f * density * (1f - progress)
+        scrim = null
+        invalidate()
+    }
 
     init {
         isClickable = false
@@ -156,7 +178,9 @@ internal class HostTopStatusFusionView(
         if (w <= 0 || h <= 0) return
         fill.set(0f, 0f, w.toFloat(), h.toFloat())
         // 采样未就绪时只留色罩：与官方顶栏的纯色底同一观感，不会闪出空洞。
-        backdrop?.draw(canvas, fill, 0f, this, 255, profile)
+        if (dockingProgress < 1f) {
+            backdrop?.draw(canvas, fill, 0f, this, (255 * (1f - dockingProgress)).roundToInt(), profile)
+        }
         scrimPaint.shader = scrimFor(h)
         canvas.drawRect(fill, scrimPaint)
     }
@@ -179,13 +203,17 @@ internal class HostTopStatusFusionView(
         val positions = FloatArray(SCRIM_STOPS + 1)
         val hold = profile.fadeHold
         val end = profile.fadeEnd
+        val dockHold = (dockingBottom.toFloat() / height).coerceIn(0f, end)
+        val opaqueColor = if (ColorUtils.calculateLuminance(palette.surface) > 0.5) 0xFFFFFFFF.toInt() else palette.surface
+        val color = ColorUtils.blendARGB(palette.surface, opaqueColor, dockingProgress)
         for (i in 0..SCRIM_STOPS) {
             val fraction = i / SCRIM_STOPS.toFloat()
             positions[i] = fraction
             colors[i] = ColorUtils.setAlphaComponent(
-                palette.surface,
-                (style.tintAlpha * HostTopFusionPolicy.fadeWeight(fraction, hold, end))
-                    .toInt().coerceIn(0, 255)
+                color,
+                ((1f - dockingProgress) * style.tintAlpha * HostTopFusionPolicy.fadeWeight(fraction, hold, end) +
+                    dockingProgress * 255f * HostTopFusionPolicy.fadeWeight(fraction, dockHold, end))
+                    .roundToInt().coerceIn(0, 255)
             )
         }
         return LinearGradient(0f, 0f, 0f, height.toFloat(), colors, positions, Shader.TileMode.CLAMP)
