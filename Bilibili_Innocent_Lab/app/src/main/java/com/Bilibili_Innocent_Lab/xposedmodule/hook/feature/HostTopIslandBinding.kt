@@ -23,7 +23,6 @@ import android.view.accessibility.AccessibilityNodeInfo
 import android.widget.HorizontalScrollView
 import com.Bilibili_Innocent_Lab.xposedmodule.hook.modern.ModernHookLog
 import com.Bilibili_Innocent_Lab.xposedmodule.ui.interaction.ElasticSpringAxis
-import com.Bilibili_Innocent_Lab.xposedmodule.ui.theme.ModernPalette
 import java.util.WeakHashMap
 import kotlin.math.abs
 import kotlin.math.roundToInt
@@ -280,6 +279,11 @@ internal class HostTopIslandBinding private constructor(
         input.translationY = dock.y - input.top - touchPadding
         input.visibility = if (dock.visibility == View.GONE) View.GONE else View.VISIBLE
         (dock.background as? HostLiquidSurfaceDrawable)?.let {
+            // 收岛后的 dock 不参与绘制，换肤新背景不会经 View.draw 自动获得边界。
+            // 输入层代画圆形外壳前同步尺寸，避免日夜切换后只剩箭头。
+            if (it.bounds.width() != dock.width || it.bounds.height() != dock.height) {
+                it.setBounds(0, 0, dock.width, dock.height)
+            }
             it.horizontalInset = horizontalInset()
             it.verticalInset = verticalInset()
         }
@@ -287,15 +291,18 @@ internal class HostTopIslandBinding private constructor(
         if (collapsed && !animating) dock.visibility = View.INVISIBLE
         surface?.callback = if (collapsed && !animating) input else dock
         if (geometryChanged || lastSurface !== surface) {
-            if (lastSurface !== surface) {
-                glyphPaint.color = ModernPalette.resolve(dock.context).primary
-                pressPaint.color = glyphPaint.color
-            }
             lastSurface = surface
             dock.invalidateOutline()
             input.invalidate()
         }
         if (collapsed) updatePageAction()
+    }
+
+    fun recolor(color: Int) {
+        if (glyphPaint.color == color) return
+        glyphPaint.color = color
+        pressPaint.color = color
+        input.invalidate()
     }
 
     private fun updatePageAction(force: Boolean = false) {

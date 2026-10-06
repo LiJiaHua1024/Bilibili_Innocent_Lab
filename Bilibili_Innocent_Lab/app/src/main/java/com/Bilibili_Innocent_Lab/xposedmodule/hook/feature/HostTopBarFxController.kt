@@ -2,7 +2,6 @@ package com.Bilibili_Innocent_Lab.xposedmodule.hook.feature
 
 import android.annotation.SuppressLint
 import android.content.Context
-import android.content.res.Configuration
 import android.graphics.Outline
 import android.os.Build
 import android.view.Gravity
@@ -10,6 +9,7 @@ import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
 import android.view.ViewOutlineProvider
+import android.view.ViewTreeObserver
 import android.view.WindowInsets
 import android.widget.FrameLayout
 import android.widget.ImageView
@@ -22,7 +22,6 @@ import com.Bilibili_Innocent_Lab.xposedmodule.runtime.KavaMemberLookup
 import com.Bilibili_Innocent_Lab.xposedmodule.ui.skin.material.ModernMaterialPolicy
 import com.Bilibili_Innocent_Lab.xposedmodule.ui.skin.material.ModernSurfaceStyle
 import com.Bilibili_Innocent_Lab.xposedmodule.ui.skin.model.SurfaceRole
-import com.Bilibili_Innocent_Lab.xposedmodule.ui.theme.ModernPalette
 import com.Bilibili_Innocent_Lab.xposedmodule.ui.theme.MonetColors
 import java.util.Collections
 import java.util.WeakHashMap
@@ -88,8 +87,10 @@ internal object HostTopBarFxController {
         val topBarDock = hierarchy.topBarDock
         val context = topBarDock.context
         val density = topBarDock.resources.displayMetrics.density
-        val isDark = (context.resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES
-        val palette = ModernPalette.resolve(context)
+        val theme = HostChromeTheme(context)
+        val colors = theme.read()
+        val isDark = colors.dark
+        val palette = colors.palette()
 
         val barHeight = (BAR_HEIGHT_DP * density).roundToInt()
         val marginH = (MARGIN_H_DP * density).roundToInt()
@@ -97,20 +98,17 @@ internal object HostTopBarFxController {
 
         // 1. 悬浮胶囊几何形态与 Liquid Glass 外壳背景
         val backdrop = if (config.liquidGlass) HostBottomBarBackdrop(density, preferGpu = true) else null
-        var lastIsDark = isDark
+        var materialColors = colors
 
-        fun updateSurfaceDrawable(force: Boolean = false) {
+        fun updateSurfaceDrawable(force: Boolean = false, current: HostChromeColors = theme.read()) {
             if (!config.liquidGlass) return
-            val curContext = topBarDock.context
-            val curDark = (curContext.resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES
-            if (force || topBarDock.background !is HostLiquidSurfaceDrawable || curDark != lastIsDark) {
-                lastIsDark = curDark
-                val curPalette = ModernPalette.resolve(curContext)
+            if (force || topBarDock.background !is HostLiquidSurfaceDrawable || current != materialColors) {
+                val curPalette = current.palette()
                 topBarDock.background = HostLiquidSurfaceDrawable(
                     color = curPalette.surface,
                     radius = barHeight / 2f,
                     density = density,
-                    style = ModernMaterialPolicy.surface(SurfaceRole.FLOATING, curDark),
+                    style = ModernMaterialPolicy.surface(SurfaceRole.FLOATING, current.dark),
                     backdrop = backdrop
                 )
             }
@@ -210,6 +208,29 @@ internal object HostTopBarFxController {
             null
         }
 
+        // 换肤可以不重建、不改变尺寸；在现有绘制帧同步颜色，不依赖布局清理触发。
+        fun refreshTheme() {
+            val current = theme.read()
+            updateSurfaceDrawable(current = current)
+            if (current != materialColors) {
+                glowView?.recolor(current.accent)
+                island?.recolor(current.accent)
+                materialColors = current
+            }
+            fusion?.refreshMaterial(current)
+        }
+        val materialPreDraw = ViewTreeObserver.OnPreDrawListener { refreshTheme(); true }
+        var materialObserver: ViewTreeObserver? = null
+        fun observeMaterial() {
+            val observer = topBarDock.viewTreeObserver
+            if (materialObserver === observer && observer.isAlive) return
+            materialObserver?.takeIf { it.isAlive }?.removeOnPreDrawListener(materialPreDraw)
+            if (observer.isAlive) {
+                observer.addOnPreDrawListener(materialPreDraw)
+                materialObserver = observer
+            }
+        }
+
         if (viewPager != null) {
             setupViewPagerPageChangeListener(
                 viewPager,
@@ -225,9 +246,8 @@ internal object HostTopBarFxController {
             configureOverlayConstraints(topBarDock, barHeight, marginH, marginV, density)
             stripTopBarArtifacts(topBarDock, isRoot = true)
             alignTopBarContent(topBarDock, density)
-            updateSurfaceDrawable()
+            refreshTheme()
             island?.sync()
-            fusion?.refreshMaterial()
             fusion?.sync()
             val vp = (if (parent != null) findViewPager(parent) else null) ?: findViewPager(root)
             if (vp != null) {
@@ -267,16 +287,20 @@ internal object HostTopBarFxController {
                 val vp = (if (topBarDock.parent != null) findViewPager(topBarDock.parent as ViewGroup) else null) ?: findViewPager(root)
                 backdrop?.attach(topBarDock, vp)
                 updateSurfaceDrawable(force = true)
+                observeMaterial()
                 requestSanitization()
             }
 
             override fun onViewDetachedFromWindow(v: View) {
                 backdrop?.detach()
+                materialObserver?.takeIf { it.isAlive }?.removeOnPreDrawListener(materialPreDraw)
+                materialObserver = null
                 glowView?.resetGestureState()
             }
         })
         if (topBarDock.isAttachedToWindow) {
             backdrop?.attach(topBarDock, viewPager)
+            observeMaterial()
         }
     }
 
@@ -918,15 +942,12 @@ internal class HostTopFusionBinding private constructor(
     }
 
     /** 深浅色/主题切换后刷新融合带的色罩（采样纹理只带 alpha 曲线，不受影响）。 */
-    fun refreshMaterial() {
-        val context = band.context
-        val isDark = (context.resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK) ==
-            Configuration.UI_MODE_NIGHT_YES
-        // 取色板要读壁纸 + 跑一遍 HCT，绝不能在每次清理里重算：只在深浅色真的翻转时才解析。
+    fun refreshMaterial(colors: HostChromeColors) {
+        val isDark = colors.dark
         if (isDark == materialDark) return
         materialDark = isDark
         band.updateMaterial(
-            ModernPalette.resolve(context),
+            colors.palette(),
             ModernMaterialPolicy.surface(SurfaceRole.TOP_BAR, isDark)
         )
     }

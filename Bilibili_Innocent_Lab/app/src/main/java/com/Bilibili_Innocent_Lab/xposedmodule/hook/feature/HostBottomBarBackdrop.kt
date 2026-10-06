@@ -6,11 +6,14 @@ import android.graphics.Canvas
 import android.graphics.Rect
 import android.graphics.RectF
 import android.os.Build
+import android.os.SystemClock
 import android.view.View
 import android.view.ViewGroup
 import android.view.ViewTreeObserver
 import com.Bilibili_Innocent_Lab.xposedmodule.hook.modern.ModernHookLog
 import com.Bilibili_Innocent_Lab.xposedmodule.ui.skin.geometry.ViewSamplingMatrix
+import com.Bilibili_Innocent_Lab.xposedmodule.ui.skin.engine.GlowContentProbe
+import com.Bilibili_Innocent_Lab.xposedmodule.ui.skin.engine.GlowContentSample
 import com.Bilibili_Innocent_Lab.xposedmodule.ui.skin.material.LiveBackdropSampler
 import com.Bilibili_Innocent_Lab.xposedmodule.ui.skin.material.LiveSampleProfile
 
@@ -102,6 +105,16 @@ internal class HostBottomBarBackdrop(private val density: Float, private val pre
     private var hookedRoot: View? = null
     private var trimRegistered = false
     private var closed = false
+    private var legibilityProbe: GlowContentProbe? = null
+    private var contentSample: GlowContentSample? = null
+    private var probeFailed = false
+    private var lastProbeTime = 0L
+    private val probeLocation = IntArray(2)
+    private val probeRegion = RectF()
+    private var tintSample: GlowContentSample? = null
+    private var tintColor = 0
+    private var tintBase = 0
+    private var tintGoal = 0
     private val scrollListener = ViewTreeObserver.OnScrollChangedListener { onVisualMovement() }
     // 阈值沿用模块会话层原实现（FrostedMaterialRenderer.onTrimMemory）；API 34 起平台不再下发
     // RUNNING_* 级别，更高的级别照样满足条件；onLowMemory 在 API 35 起标记废弃，但仍是低端机的兜底。
@@ -138,6 +151,7 @@ internal class HostBottomBarBackdrop(private val density: Float, private val pre
 
     /** 临时从窗口脱离（如切后台、切页）：暂停监听并释放位图，不永久销毁，再次 attach 时满血恢复 */
     fun detach() {
+        clearProbe()
         unhookRoot()
         live.releaseAll()
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) gpu?.detach()
@@ -151,6 +165,7 @@ internal class HostBottomBarBackdrop(private val density: Float, private val pre
         hookRoot(surface)
         if (explicitContent != null) {
             if (this.content !== explicitContent) {
+                clearProbe()
                 this.content = explicitContent
                 bindSource(explicitContent)
                 ModernHookLog.info("[BIL] 宿主实时透镜更新显式内容层: ${explicitContent.javaClass.name}")
@@ -165,6 +180,7 @@ internal class HostBottomBarBackdrop(private val density: Float, private val pre
         val found = HostBackdropLocator.find(surface)
         ModernHookLog.info("[BIL] 宿主实时透镜寻找内容层: surface=${surface.javaClass.name}, found=${found?.javaClass?.name}")
         if (found == null) return
+        clearProbe()
         content = found
         bindSource(found)
         ModernHookLog.info("[BIL] 宿主实时透镜绑定内容层: ${found.javaClass.name}")
@@ -203,9 +219,54 @@ internal class HostBottomBarBackdrop(private val density: Float, private val pre
         return live.draw(canvas, bounds, radius, view, alpha)
     }
 
+    /** 与凝光可读性探针同款后台统计，最多 8Hz；区域直接取当前胶囊（包含收岛后的裁剪）。 */
+    fun legibleTintAlpha(view: View, bounds: RectF, color: Int, baseAlpha: Int): Int {
+        val source = content
+        val now = SystemClock.uptimeMillis()
+        if (!closed && !probeFailed && source != null && source.isAttachedToWindow &&
+            view.isAttachedToWindow && (now - lastProbeTime >= 125L) &&
+            legibilityProbe?.inFlight != true
+        ) {
+            val probe = legibilityProbe ?: GlowContentProbe { samples ->
+                contentSample = samples.firstOrNull()
+                surface?.background?.invalidateSelf()
+            }.also { legibilityProbe = it }
+            view.getLocationOnScreen(probeLocation)
+            val x = probeLocation[0]
+            val y = probeLocation[1]
+            source.getLocationOnScreen(probeLocation)
+            probeRegion.set(bounds)
+            probeRegion.offset((x - probeLocation[0]).toFloat(), (y - probeLocation[1]).toFloat())
+            lastProbeTime = now
+            runCatching {
+                probe.probe(source, listOf(RectF(probeRegion))) { canvas, _ -> canvas.drawColor(color) }
+            }.onFailure {
+                probeFailed = true
+                clearProbe()
+                ModernHookLog.info("[BIL] 宿主栏可读性探针回退: ${it.javaClass.simpleName}")
+            }
+        }
+        if (tintSample !== contentSample || tintColor != color || tintBase != baseAlpha) {
+            tintSample = contentSample
+            tintColor = color
+            tintBase = baseAlpha
+            tintGoal = HostChromeLegibility.tintAlpha(contentSample, color, baseAlpha)
+        }
+        return tintGoal
+    }
+
+    private fun clearProbe() {
+        legibilityProbe?.close()
+        legibilityProbe = null
+        contentSample = null
+        tintColor = 0
+        lastProbeTime = 0L
+    }
+
     fun close() {
         if (closed) return
         closed = true
+        clearProbe()
         unhookRoot()
         unregisterTrim()
         live.close()
@@ -225,6 +286,7 @@ internal class HostBottomBarBackdrop(private val density: Float, private val pre
     }
 
     private fun releaseMemory() {
+        clearProbe()
         live.releaseAll()
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) gpu?.releaseMemory()
     }
