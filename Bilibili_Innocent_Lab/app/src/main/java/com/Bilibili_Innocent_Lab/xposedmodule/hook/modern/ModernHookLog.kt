@@ -29,19 +29,16 @@ internal object ModernHookLog {
     fun error(message: String, throwable: Throwable? = null) = write(message, throwable, error = true)
 
     private fun write(message: String, throwable: Throwable?, error: Boolean) {
+        try {
+            if (error) Log.e(TAG, message, throwable) else Log.i(TAG, message)
+        } catch (_: Throwable) {
+        }
         val target = sink
         if (target != null) {
             try {
                 target(message, throwable)
-                return
             } catch (_: Throwable) {
-                // 框架通道不可用：退到系统日志。
             }
-        }
-        try {
-            if (error) Log.e(TAG, message, throwable) else Log.i(TAG, message)
-        } catch (_: Throwable) {
-            // 日志通道全部不可用时丢弃这一条，不能把异常带回调用方。
         }
     }
 }

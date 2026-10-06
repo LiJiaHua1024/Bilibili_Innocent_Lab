@@ -131,11 +131,11 @@ class SettingsCatalogTest {
     }
 
     @Test
-    fun `catalog is a unique allowlist with 192 settings`() {
-        assertEquals(192, SettingsCatalog.specs.size)
-        assertEquals(192, SettingsCatalog.specs.map { it.id }.distinct().size)
-        assertEquals(192, SettingsCatalog.specs.map { it.storageKey }.distinct().size)
-        assertEquals(189, SettingsCatalog.specs.count { it.restorePolicy == RestorePolicy.AUTOMATIC })
+    fun `catalog is a unique allowlist with 199 settings`() {
+        assertEquals(199, SettingsCatalog.specs.size)
+        assertEquals(199, SettingsCatalog.specs.map { it.id }.distinct().size)
+        assertEquals(199, SettingsCatalog.specs.map { it.storageKey }.distinct().size)
+        assertEquals(196, SettingsCatalog.specs.count { it.restorePolicy == RestorePolicy.AUTOMATIC })
         assertEquals(3, SettingsCatalog.specs.count { it.restorePolicy == RestorePolicy.MANUAL })
         assertTrue(SettingsCatalog.specs.all { it.accepts(it.defaultValue) })
         assertTrue(SettingsCatalog.specs.all { it.id.matches(Regex("[a-z0-9][a-z0-9._-]{0,127}")) })
@@ -366,7 +366,7 @@ class SettingsCatalogTest {
         val expected = requireNotNull(javaClass.classLoader?.getResourceAsStream("settings-backup/catalog-v13.txt"))
             .bufferedReader().useLines { it.filter(String::isNotBlank).toList() }
         assertEquals(expected, SettingsCatalog.specs.filter { it.introducedCatalogVersion <= 13 }.map { it.id }.sorted())
-        assertEquals(38, SettingsCatalog.CATALOG_VERSION)
+        assertEquals(42, SettingsCatalog.CATALOG_VERSION)
         val added = SettingsCatalog.specs.filter { it.introducedCatalogVersion == 13 }
         assertEquals(6, added.size)
         assertTrue(added.all { it.restorePolicy == RestorePolicy.AUTOMATIC && ImportEffect.RESTART_BILIBILI in it.effects })
@@ -665,7 +665,7 @@ class SettingsCatalogTest {
 
     @Test
     fun `catalog types and manual roaming boundary are explicit`() {
-        assertEquals(128, SettingsCatalog.specs.count { it.type == SettingValueType.BOOLEAN })
+        assertEquals(135, SettingsCatalog.specs.count { it.type == SettingValueType.BOOLEAN })
         assertEquals(13, SettingsCatalog.specs.count { it.type == SettingValueType.INTEGER })
         assertEquals(51, SettingsCatalog.specs.count { it.type == SettingValueType.STRING })
 
@@ -780,7 +780,7 @@ class SettingsCatalogTest {
     fun `catalog v38 adds independent default off brand splash controls`() {
         val expected = requireNotNull(javaClass.classLoader?.getResourceAsStream("settings-backup/catalog-v38.txt"))
             .bufferedReader().useLines { it.filter(String::isNotBlank).toList() }
-        assertEquals(expected, SettingsCatalog.specs.map { it.id }.sorted())
+        assertEquals(expected, SettingsCatalog.specs.filter { it.introducedCatalogVersion <= 38 }.map { it.id }.sorted())
         val added = SettingsCatalog.specs.filter { it.introducedCatalogVersion == 38 }
         assertEquals(setOf(FeaturePreferences.BRAND_SPLASH_SKIP, FeaturePreferences.BRAND_SPLASH_CUSTOM),
             added.map { it.storageKey }.toSet())
@@ -803,5 +803,70 @@ class SettingsCatalogTest {
             com.Bilibili_Innocent_Lab.xposedmodule.hook.feature.StoryActionIcon.preferenceKeys.toSet(),
             added.map { it.storageKey }.toSet()
         )
+    }
+
+    @Test
+    fun `catalog v39 adds two default off host bottom bar visual effect switches`() {
+        val expected = requireNotNull(
+            javaClass.classLoader?.getResourceAsStream("settings-backup/catalog-v39.txt")
+        ).bufferedReader().useLines { it.filter(String::isNotBlank).toList() }
+        assertEquals(expected, SettingsCatalog.specs.filter { it.introducedCatalogVersion <= 39 }.map { it.id }.sorted())
+        val added = SettingsCatalog.specs.filter { it.introducedCatalogVersion == 39 }
+        assertEquals(2, added.size)
+        assertTrue(added.all {
+            it.type == SettingValueType.BOOLEAN && it.defaultValue == SettingValue.Bool(false) &&
+                it.restorePolicy == RestorePolicy.AUTOMATIC && ImportEffect.RESTART_BILIBILI in it.effects
+        })
+        assertEquals(
+            setOf(
+                com.Bilibili_Innocent_Lab.xposedmodule.hook.feature.FeaturePreferences.HOST_BOTTOM_BAR_LIQUID_GLASS,
+                com.Bilibili_Innocent_Lab.xposedmodule.hook.feature.FeaturePreferences.HOST_BOTTOM_BAR_TOUCH_GLOW
+            ),
+            added.map { it.storageKey }.toSet()
+        )
+    }
+
+    @Test
+    fun `catalog v40 adds two default off host top bar visual effect switches`() {
+        val expected = requireNotNull(
+            javaClass.classLoader?.getResourceAsStream("settings-backup/catalog-v40.txt")
+        ).bufferedReader().useLines { it.filter(String::isNotBlank).toList() }
+        assertEquals(expected, SettingsCatalog.specs.filter { it.introducedCatalogVersion <= 40 }.map { it.id }.sorted())
+        val added = SettingsCatalog.specs.filter { it.introducedCatalogVersion == 40 }
+        assertEquals(2, added.size)
+        assertTrue(added.all {
+            it.type == SettingValueType.BOOLEAN && it.defaultValue == SettingValue.Bool(false) &&
+                it.restorePolicy == RestorePolicy.AUTOMATIC && ImportEffect.RESTART_BILIBILI in it.effects
+        })
+        assertEquals(
+            setOf(
+                com.Bilibili_Innocent_Lab.xposedmodule.hook.feature.FeaturePreferences.HOST_TOP_BAR_LIQUID_GLASS,
+                com.Bilibili_Innocent_Lab.xposedmodule.hook.feature.FeaturePreferences.HOST_TOP_BAR_TOUCH_GLOW
+            ),
+            added.map { it.storageKey }.toSet()
+        )
+    }
+    @Test
+    fun `catalog v41 adds independently restorable default off bottom bar layout switches`() {
+        val added = SettingsCatalog.specs.filter { it.introducedCatalogVersion == 41 }
+        assertEquals(setOf("host.bottom_bar.compact.enabled", "host.bottom_bar.icon_only.enabled"),
+            added.map { it.id }.toSet())
+        assertTrue(added.all {
+            it.type == SettingValueType.BOOLEAN && it.defaultValue == SettingValue.Bool(false) &&
+                it.restorePolicy == RestorePolicy.AUTOMATIC && ImportEffect.RESTART_BILIBILI in it.effects
+        })
+    }
+
+    @Test
+    fun `catalog v42 adds one default off video card style setting`() {
+        val expected = requireNotNull(javaClass.classLoader?.getResourceAsStream("settings-backup/catalog-v42.txt"))
+            .bufferedReader().useLines { it.filter(String::isNotBlank).toList() }
+        assertEquals(expected, SettingsCatalog.specs.map { it.id }.sorted())
+        val added = SettingsCatalog.specs.single { it.introducedCatalogVersion == 42 }
+        assertEquals("host.video_cards.enabled", added.id)
+        assertEquals(FeaturePreferences.HOST_VIDEO_CARDS, added.storageKey)
+        assertEquals(SettingValue.Bool(false), added.defaultValue)
+        assertEquals(RestorePolicy.AUTOMATIC, added.restorePolicy)
+        assertTrue(ImportEffect.RESTART_BILIBILI in added.effects)
     }
 }
