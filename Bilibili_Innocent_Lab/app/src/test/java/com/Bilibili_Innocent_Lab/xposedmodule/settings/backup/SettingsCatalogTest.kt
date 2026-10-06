@@ -806,7 +806,7 @@ class SettingsCatalogTest {
     }
 
     @Test
-    fun `catalog v38 adds two default on host bottom bar visual effect switches`() {
+    fun `catalog v38 adds two default off host bottom bar visual effect switches`() {
         val expected = requireNotNull(
             javaClass.classLoader?.getResourceAsStream("settings-backup/catalog-v38.txt")
         ).bufferedReader().useLines { it.filter(String::isNotBlank).toList() }
@@ -814,7 +814,7 @@ class SettingsCatalogTest {
         val added = SettingsCatalog.specs.filter { it.introducedCatalogVersion == 38 }
         assertEquals(2, added.size)
         assertTrue(added.all {
-            it.type == SettingValueType.BOOLEAN && it.defaultValue == SettingValue.Bool(true) &&
+            it.type == SettingValueType.BOOLEAN && it.defaultValue == SettingValue.Bool(false) &&
                 it.restorePolicy == RestorePolicy.AUTOMATIC && ImportEffect.RESTART_BILIBILI in it.effects
         })
         assertEquals(
@@ -827,7 +827,7 @@ class SettingsCatalogTest {
     }
 
     @Test
-    fun `catalog v39 adds two default on host top bar visual effect switches`() {
+    fun `catalog v39 adds two default off host top bar visual effect switches`() {
         val expected = requireNotNull(
             javaClass.classLoader?.getResourceAsStream("settings-backup/catalog-v39.txt")
         ).bufferedReader().useLines { it.filter(String::isNotBlank).toList() }
@@ -835,7 +835,7 @@ class SettingsCatalogTest {
         val added = SettingsCatalog.specs.filter { it.introducedCatalogVersion == 39 }
         assertEquals(2, added.size)
         assertTrue(added.all {
-            it.type == SettingValueType.BOOLEAN && it.defaultValue == SettingValue.Bool(true) &&
+            it.type == SettingValueType.BOOLEAN && it.defaultValue == SettingValue.Bool(false) &&
                 it.restorePolicy == RestorePolicy.AUTOMATIC && ImportEffect.RESTART_BILIBILI in it.effects
         })
         assertEquals(
