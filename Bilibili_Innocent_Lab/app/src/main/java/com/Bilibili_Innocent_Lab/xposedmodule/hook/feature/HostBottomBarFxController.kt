@@ -19,6 +19,7 @@ import android.graphics.RectF
 import android.graphics.Shader
 import android.graphics.drawable.Drawable
 import android.os.Build
+import android.os.SystemClock
 import android.view.Gravity
 import android.view.MotionEvent
 import android.view.View
@@ -71,6 +72,12 @@ internal object HostBottomBarScrubRelease {
     /** [target] 手势落点页；[scrubbed] 表示这次是横向拖动滑块收尾；[currentPage] 是宿主当前页。 */
     fun selectableTarget(target: Int?, scrubbed: Boolean, currentPage: Int): Int? =
         target?.takeUnless { scrubbed && it == currentPage }
+
+    /** activate 返回是否选中了页面；发布动作和未被处理的点击都保留原页面。 */
+    fun activateTarget(target: Int?, scrubbed: Boolean, currentPage: Int, activate: (Int) -> Boolean): Int {
+        val index = selectableTarget(target, scrubbed, currentPage) ?: return currentPage
+        return if (activate(index)) index else currentPage
+    }
 }
 
 /**
@@ -469,6 +476,7 @@ internal class HostBottomBarDockLayer(
     private val inset = dp(ModernNavigationMotion.INSET_DP.toFloat())
     private val maximumTravel = dp(ModernNavigationMotion.MAX_TRAVEL_DP)
     private val slop = ViewConfiguration.get(context).scaledTouchSlop.toFloat()
+    private val publishViewId = resources.getIdentifier("home_publish_icon", "id", context.packageName)
 
     // 1. 独立大胶囊晶体滑块 (硬件加速子 View)
     val selectionView = View(context).apply {
@@ -821,23 +829,19 @@ internal class HostBottomBarDockLayer(
         val token = ++reboundGeneration
 
         val startPos = displayedPosition
-        val endPos = (target?.toFloat() ?: pagerPosition).coerceIn(0f, (count - 1).toFloat())
-        val isClick = target != null && !scrubbed && abs(endPos - startPos) > 0.005f
-        // 落回当前页的拖动不算操作（见 HostBottomBarScrubRelease）：只有真的换页才把点击交回宿主。
-        val clickTarget = HostBottomBarScrubRelease.selectableTarget(target, scrubbed, selectedIndex)
         indicatorSettling = true
+        // 发布按钮是动作，不是页面；不能把它记成选中页，否则下一帧同步会误点原页面（首页即刷新）。
+        selectedIndex = HostBottomBarScrubRelease.activateTarget(target, scrubbed, selectedIndex, ::clickTab)
+        pagerPosition = selectedIndex.toFloat()
+        val endPos = pagerPosition.coerceIn(0f, (count - 1).toFloat())
+        val isClick = target != null && !scrubbed && abs(endPos - startPos) > 0.005f
 
-        if (clickTarget != null) {
-            clickTab(clickTarget)
-            selectedIndex = clickTarget
-            pagerPosition = clickTarget.toFloat()
-            // 按压闪光只跟随用户点击：外部同步切页（宿主自己翻页/双次点击同页）不播 0.8→0 双段动画，
-            // 快速切换时少一条 920ms 的动画链。
-            if (isClick && userInitiated) {
-                glowX = inset + (clickTarget + 0.5f) * slotWidth
-                glowY = height / 2f
-                animatePress(0.8f) { animatePress(0f) }
-            }
+        // 按压闪光只跟随用户点击：外部同步切页（宿主自己翻页/双次点击同页）不播 0.8→0 双段动画，
+        // 快速切换时少一条 920ms 的动画链。
+        if (isClick && userInitiated) {
+            glowX = inset + (selectedIndex + 0.5f) * slotWidth
+            glowY = height / 2f
+            animatePress(0.8f) { animatePress(0f) }
         }
 
         // 系统关闭动画 / 未附着：直接落值（对齐模块 ModernNavigationBar.reboundTo）。
@@ -897,17 +901,36 @@ internal class HostBottomBarDockLayer(
         indicatorSettling = false
     }
 
-    private fun clickTab(index: Int) {
-        val c = container ?: return
-        if (index !in 0 until c.childCount) return
+    /** 返回是否激活页面；发布按钮只执行宿主动作，滑块随后回到原页面。 */
+    private fun clickTab(index: Int): Boolean {
+        val c = container ?: return false
+        if (index !in 0 until c.childCount) return false
         val tab = c.getChildAt(index)
-        if (!tab.performClick()) {
-            (tab as? ViewGroup)?.let { vg ->
-                for (i in 0 until vg.childCount) {
-                    if (vg.getChildAt(i).performClick()) break
-                }
+        if (!tab.isShown || !tab.isEnabled) return false
+        val publish = if (publishViewId != 0) tab.findViewById<View>(publishViewId) else null
+        if (publish?.isShown == true) {
+            if (!publish.isEnabled) return false
+            // HomeTabPublishView 自身实现 OnTouchListener，发布入口只接收完整 DOWN/UP，没有 OnClickListener。
+            val listener = publish as? View.OnTouchListener ?: return false
+            val now = SystemClock.uptimeMillis()
+            val event = MotionEvent.obtain(now, now, MotionEvent.ACTION_DOWN, publish.width / 2f, publish.height / 2f, 0)
+            try {
+                listener.onTouch(publish, event)
+                event.action = MotionEvent.ACTION_UP
+                listener.onTouch(publish, event)
+            } finally {
+                event.recycle()
+            }
+            return false
+        }
+        if (tab.performClick()) return true
+        (tab as? ViewGroup)?.let { vg ->
+            for (i in 0 until vg.childCount) {
+                val child = vg.getChildAt(i)
+                if (child.isShown && child.isEnabled && child.performClick()) return true
             }
         }
+        return false
     }
 
     private fun detectSelectedTab(): Int {

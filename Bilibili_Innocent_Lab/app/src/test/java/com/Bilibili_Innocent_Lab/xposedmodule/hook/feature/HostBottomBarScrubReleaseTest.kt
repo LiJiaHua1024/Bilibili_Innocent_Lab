@@ -24,4 +24,27 @@ class HostBottomBarScrubReleaseTest {
         assertNull(HostBottomBarScrubRelease.selectableTarget(null, scrubbed = false, currentPage = 1))
         assertNull(HostBottomBarScrubRelease.selectableTarget(null, scrubbed = true, currentPage = 1))
     }
+
+    @Test fun publishReleaseActivatesOnlyTheActionAndKeepsTheOriginalPage() {
+        for (originalPage in listOf(0, 4)) {
+            val activated = mutableListOf<Int>()
+            val selected = HostBottomBarScrubRelease.activateTarget(2, true, originalPage) {
+                activated += it
+                false // 宿主发布面板打开，但页面没有切换。
+            }
+            assertEquals(listOf(2), activated)
+            assertEquals(originalPage, selected)
+            // 回到原页面后的拖动松手不会再次触发首页刷新或“我的”点击。
+            HostBottomBarScrubRelease.activateTarget(selected, true, selected) {
+                activated += it
+                true
+            }
+            assertEquals(listOf(2), activated)
+        }
+    }
+
+    @Test fun pageSelectionRequiresTheHostToHandleTheClick() {
+        assertEquals(3, HostBottomBarScrubRelease.activateTarget(3, true, 0) { true })
+        assertEquals(0, HostBottomBarScrubRelease.activateTarget(3, true, 0) { false })
+    }
 }
