@@ -15,7 +15,7 @@ import android.widget.TextView
 import java.lang.ref.WeakReference
 import java.util.WeakHashMap
 
-/** 只处理宿主 RecyclerView 中有封面和标题的条目；不遍历 Activity 或播放器。 */
+/** 处理宿主 RecyclerView 视频条目及其不感兴趣反馈占位卡；不遍历 Activity 或播放器。 */
 internal class HostVideoCardStyle(
     private val grid: HostVideoCardGridAccess?,
     private val host: HostVideoCardHostAccess,
@@ -33,7 +33,8 @@ internal class HostVideoCardStyle(
         val childCount: Int,
         val covers: Array<Cover>,
         val info: WeakReference<View>?,
-        val spacing: HostVideoCardSpacing
+        val spacing: HostVideoCardSpacing,
+        val feedback: Boolean
     ) : ViewOutlineProvider() {
         var surface: Drawable? = null
         var surfaceRadius = -1f
@@ -126,12 +127,12 @@ internal class HostVideoCardStyle(
         }
     }
 
-    fun bind(root: View) {
+    fun bind(root: View, feedback: Boolean = false) {
         if (root !is ViewGroup) return
         var state = states[root]
-        if (state == null || state.childCount != root.childCount || !coversBelongTo(root, state)) {
-            if (state == null && excluded[root] == root.childCount) return
-            val discovered = discover(root, state?.spacing)
+        if (state == null || state.feedback != feedback || state.childCount != root.childCount || !coversBelongTo(root, state)) {
+            if (!feedback && state == null && excluded[root] == root.childCount) return
+            val discovered = discover(root, state?.spacing, feedback)
             if (discovered == null) {
                 excluded[root] = root.childCount
                 return
@@ -172,7 +173,7 @@ internal class HostVideoCardStyle(
         params.setMargins(spacing.left(span), spacing.top(span), spacing.right(span), spacing.bottom(span))
     }
 
-    private fun discover(root: ViewGroup, previousSpacing: HostVideoCardSpacing?): State? {
+    private fun discover(root: ViewGroup, previousSpacing: HostVideoCardSpacing?, feedback: Boolean): State? {
         val covers = ArrayList<Cover>(1)
         var hasTitle = false
         var info: WeakReference<View>? = null
@@ -188,13 +189,14 @@ internal class HostVideoCardStyle(
             }
             if (view is ViewGroup) for (i in 0 until view.childCount) visit(view.getChildAt(i), depth + 1)
         }
-        visit(root, 0)
-        if (!hasTitle || covers.isEmpty()) return null
+        // 占位卡保留整卡裁切、柔影与双列留白，不修改反馈内容的内部布局。
+        if (!feedback) visit(root, 0)
+        if (!feedback && (!hasTitle || covers.isEmpty())) return null
         val params = root.layoutParams as? ViewGroup.MarginLayoutParams
         val spacing = previousSpacing ?: HostVideoCardSpacing(params?.leftMargin ?: 0,
             params?.topMargin ?: 0, params?.rightMargin ?: 0, params?.bottomMargin ?: 0,
             root.resources.displayMetrics.density)
-        return State(root.childCount, covers.toTypedArray(), info, spacing)
+        return State(root.childCount, covers.toTypedArray(), info, spacing, feedback)
     }
 
     private fun configureInfo(root: ViewGroup, state: State) {
@@ -250,7 +252,7 @@ internal class HostVideoCardStyle(
             count++
             single = cover
         }
-        if (count == 0) return
+        if (count == 0 && !state.feedback) return
         // 贴满卡片顶部的封面由整个卡片统一裁切，底边保持直线，避免圆角切出异色缺口。
         val integrated = count == 1 && single != null && single.left == 0 && single.top == 0 && single.width == root.width
         state.integratedCover = integrated
