@@ -1,6 +1,5 @@
 package com.Bilibili_Innocent_Lab.xposedmodule.hook.feature
 
-import android.content.res.Configuration
 import android.graphics.Outline
 import android.graphics.drawable.Drawable
 import android.graphics.drawable.ColorDrawable
@@ -10,6 +9,7 @@ import android.util.TypedValue
 import android.view.View
 import android.view.ViewGroup
 import android.view.ViewOutlineProvider
+import android.view.ViewTreeObserver
 import android.widget.ImageView
 import android.widget.TextView
 import java.lang.ref.WeakReference
@@ -18,6 +18,7 @@ import java.util.WeakHashMap
 /** 只处理宿主 RecyclerView 中有封面和标题的条目；不遍历 Activity 或播放器。 */
 internal class HostVideoCardStyle(
     private val grid: HostVideoCardGridAccess?,
+    private val host: HostVideoCardHostAccess,
     private val onApplied: () -> Unit,
     private val onError: (Throwable) -> Unit
 ) {
@@ -25,6 +26,7 @@ internal class HostVideoCardStyle(
         val view = WeakReference(view)
         var width = -1
         var height = -1
+        var nativeRadius = -1f
     }
 
     private class State(
@@ -38,6 +40,7 @@ internal class HostVideoCardStyle(
         val geometry = HostVideoCardGeometry()
         var decorated = false
         var color = 0
+        var integratedCover = false
 
         fun updateGeometry(width: Int, height: Int, radius: Float): Boolean {
             return geometry.update(width, height, radius)
@@ -53,6 +56,7 @@ internal class HostVideoCardStyle(
     private val excluded = WeakHashMap<View, Int>()
     private class ListShadow(val drawable: HostVideoCardShadow, val background: LayerDrawable)
     private val listShadows = WeakHashMap<ViewGroup, ListShadow>()
+    private val listWatchers = WeakHashMap<ViewGroup, ListWatcher>()
     private val resourceKinds = SparseIntArray()
     private val recyclerTypes = HashMap<Class<*>, Boolean>()
     private val coverNames = setOf("cover_layout", "cover", "video_cover", "iv_cover", "cover_image", "image_cover", "cover_container", "thumbnail", "pic")
@@ -70,6 +74,56 @@ internal class HostVideoCardStyle(
     private val attachListener = object : View.OnAttachStateChangeListener {
         override fun onViewAttachedToWindow(view: View) = safelyApply(view)
         override fun onViewDetachedFromWindow(view: View) = Unit
+    }
+
+    /** 每帧每个列表只读一次宿主主题；平时仅比较缓存值，不扫描子树或重新测量。 */
+    private inner class ListWatcher(parent: ViewGroup) : ViewTreeObserver.OnPreDrawListener,
+        View.OnAttachStateChangeListener {
+        private val parent = WeakReference(parent)
+        private var observer: WeakReference<ViewTreeObserver>? = null
+
+        fun start() {
+            val current = parent.get()?.viewTreeObserver ?: return
+            if (observer?.get() === current) return
+            stop()
+            current.addOnPreDrawListener(this)
+            observer = WeakReference(current)
+        }
+
+        private fun stop() {
+            observer?.get()?.takeIf { it.isAlive }?.removeOnPreDrawListener(this)
+            observer = null
+        }
+
+        override fun onViewAttachedToWindow(view: View) = start()
+        override fun onViewDetachedFromWindow(view: View) = stop()
+
+        override fun onPreDraw(): Boolean {
+            val list = parent.get() ?: return true
+            val night = host.isNight(list.context)
+            val color = HostVideoCardSurface.color(night)
+            // 宿主换肤可能同时替换列表背景和卡片背景，当前帧绘制前一并恢复。
+            val shadow = listShadows[list]
+            if (shadow != null && list.background !== shadow.background) shadowFor(list)
+            for (i in 0 until list.childCount) {
+                val root = list.getChildAt(i) as? ViewGroup ?: continue
+                val state = states[root] ?: continue
+                if (!state.decorated) continue
+                var changed = state.color != color || root.background !== state.surface ||
+                    root.outlineProvider !== state || !root.clipToOutline
+                if (!changed) for (cached in state.covers) {
+                    val cover = cached.view.get() ?: continue
+                    val outline = if (state.integratedCover) ViewOutlineProvider.BOUNDS else coverOutline
+                    if (cover.outlineProvider !== outline || cover.clipToOutline == state.integratedCover ||
+                        cover.width != cached.width || cover.height != cached.height) {
+                        changed = true
+                        break
+                    }
+                }
+                if (changed) safelyApply(root, night)
+            }
+            return true
+        }
     }
 
     fun bind(root: View) {
@@ -157,18 +211,34 @@ internal class HostVideoCardStyle(
         }
         if (child is ViewGroup) for (i in 0 until child.childCount) {
             val text = child.getChildAt(i) as? TextView ?: continue
-            val target = TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_SP, 12f, text.resources.displayMetrics)
-            if (text.textSize != target) text.setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f)
+            val target = TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_SP, 10f, text.resources.displayMetrics)
+            if (text.textSize != target) text.setTextSize(TypedValue.COMPLEX_UNIT_SP, 10f)
+            // 图标独立保持原来的 9sp 尺寸，调整字号时不再一起改变图标。
+            val iconTarget = TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_SP, 9f, text.resources.displayMetrics)
+            val icons = text.compoundDrawables
+            var iconsChanged = false
+            for (icon in icons) {
+                if (icon == null) continue
+                val width = icon.bounds.width()
+                val height = icon.bounds.height()
+                val size = maxOf(width, height)
+                if (size <= iconTarget || size <= 0) continue
+                val scale = iconTarget / size
+                icon.setBounds(0, 0, (width * scale).toInt().coerceAtLeast(1),
+                    (height * scale).toInt().coerceAtLeast(1))
+                iconsChanged = true
+            }
+            if (iconsChanged) text.setCompoundDrawables(icons[0], icons[1], icons[2], icons[3])
         }
     }
 
-    private fun safelyApply(view: View) {
+    private fun safelyApply(view: View, night: Boolean? = null) {
         val root = view as? ViewGroup ?: return
         val state = states[root] ?: return
-        runCatching { apply(root, state) }.onFailure(onError)
+        runCatching { apply(root, state, night) }.onFailure(onError)
     }
 
-    private fun apply(root: ViewGroup, state: State) {
+    private fun apply(root: ViewGroup, state: State, nightOverride: Boolean?) {
         val parent = root.parent as? ViewGroup ?: return
         if (!isRecycler(parent.javaClass)) return
         var count = 0
@@ -179,20 +249,33 @@ internal class HostVideoCardStyle(
             if (cover.width <= 0 || cover.height <= 0 || cover.height >= parent.height * 0.7f) continue
             count++
             single = cover
+        }
+        if (count == 0) return
+        // 贴满卡片顶部的封面由整个卡片统一裁切，底边保持直线，避免圆角切出异色缺口。
+        val integrated = count == 1 && single != null && single.left == 0 && single.top == 0 && single.width == root.width
+        state.integratedCover = integrated
+        for (cached in state.covers) {
+            val cover = cached.view.get() ?: continue
+            if (cover.width <= 0 || cover.height <= 0 || cover.height >= parent.height * 0.7f) continue
             val resized = cached.width != cover.width || cached.height != cover.height
             cached.width = cover.width
             cached.height = cover.height
-            val replaced = cover.outlineProvider !== coverOutline
-            if (replaced) cover.outlineProvider = coverOutline
-            if (!cover.clipToOutline) cover.clipToOutline = true
+            val outline = if (integrated) ViewOutlineProvider.BOUNDS else coverOutline
+            val replaced = cover.outlineProvider !== outline
+            val nativeRadius = if (integrated) 0f else HostVideoCardStyleSpec.coverRadius(cover.width, cover.height)
+            if (cached.nativeRadius != nativeRadius || replaced) {
+                host.setCoverRadius(cover, nativeRadius)
+                cached.nativeRadius = nativeRadius
+            }
+            if (cover.outlineProvider !== outline) cover.outlineProvider = outline
+            if (cover.clipToOutline == integrated) cover.clipToOutline = !integrated
             if (resized && !replaced) cover.invalidateOutline()
         }
-        if (count == 0) return
         val density = root.resources.displayMetrics.density
-        val radius = if (count == 1 && single != null && single.left == 0 && single.top == 0 && single.width == root.width)
+        val radius = if (integrated && single != null)
             HostVideoCardStyleSpec.coverRadius(single.width, single.height) else 20f * density
         val resized = state.updateGeometry(root.width, root.height, radius)
-        val night = root.resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK == Configuration.UI_MODE_NIGHT_YES
+        val night = nightOverride ?: host.isNight(root.context)
         val color = HostVideoCardSurface.color(night)
         if (state.surface == null || state.surfaceRadius != radius || state.color != color) {
             val surface = HostVideoCardSurface.create(root, radius, night) ?: return
@@ -217,6 +300,12 @@ internal class HostVideoCardStyle(
     }
 
     private fun shadowFor(parent: ViewGroup): HostVideoCardShadow {
+        if (!listWatchers.containsKey(parent)) {
+            val watcher = ListWatcher(parent)
+            listWatchers[parent] = watcher
+            parent.addOnAttachStateChangeListener(watcher)
+            if (parent.isAttachedToWindow) watcher.start()
+        }
         val cached = listShadows[parent]
         if (cached != null && parent.background === cached.background) return cached.drawable
         val shadow = cached?.drawable ?: HostVideoCardShadow(parent) { view ->

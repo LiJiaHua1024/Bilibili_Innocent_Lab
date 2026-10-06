@@ -20,7 +20,7 @@ internal class HostVideoCardStyleFeatureInstaller(private val enabled: Boolean) 
         val firstHit = AtomicBoolean(false)
         val firstError = AtomicBoolean(false)
         val grid = HostVideoCardGridAccess.resolve(loader)
-        val style = HostVideoCardStyle(grid = grid, onApplied = {
+        val style = HostVideoCardStyle(grid = grid, host = HostVideoCardHostAccess(loader), onApplied = {
             if (firstHit.compareAndSet(false, true)) {
                 environment.reportRuntimeEvidence(ID, FeatureRuntimeStage.APPLIED)
                 environment.logInfo("host_video_cards_applied", "[BIL] 视频卡片大圆角、柔影和留白已生效")
