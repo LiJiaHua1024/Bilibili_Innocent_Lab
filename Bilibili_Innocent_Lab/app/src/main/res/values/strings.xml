@@ -1214,4 +1214,8 @@
     <string name="brand_splash_skip_tip">Skip Bilibili’s brand screen while keeping the system launch screen. Restart Bilibili to apply.</string>
     <string name="brand_splash_custom">Official splash selection</string>
     <string name="brand_splash_custom_tip">Choose available official splash images in Bilibili settings, including VIP images. Download the image first. Disable Skip brand splash to display it. DLC purchases are unchanged. Restart Bilibili to apply.</string>
+    <string name="host_bottom_bar_compact">Compact bottom bar</string>
+    <string name="host_bottom_bar_compact_tip">Reduces the bottom bar height. Restart Bilibili to apply.</string>
+    <string name="host_bottom_bar_icon_only">Icon-only bottom bar</string>
+    <string name="host_bottom_bar_icon_only_tip">Hides tab labels, centers icons vertically, and reduces vertical space. Can be combined with compact mode. Restart Bilibili to apply.</string>
 </resources>

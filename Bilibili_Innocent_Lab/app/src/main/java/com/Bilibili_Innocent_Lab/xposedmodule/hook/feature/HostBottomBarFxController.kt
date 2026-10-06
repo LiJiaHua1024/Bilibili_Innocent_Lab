@@ -58,8 +58,29 @@ import kotlin.math.roundToInt
 /** 配置项参数 */
 internal data class HostBottomBarFxConfig(
     val liquidGlass: Boolean = true,
-    val touchGlow: Boolean = true
-)
+    val touchGlow: Boolean = true,
+    val compact: Boolean = false,
+    val iconOnly: Boolean = false
+) {
+    val heightDp: Float
+        get() = when {
+            compact && iconOnly -> 44f
+            iconOnly -> 48f
+            compact -> 52f
+            else -> ModernNavigationMotion.BAR_HEIGHT_DP.toFloat()
+        }
+
+    fun horizontalMarginDp(parentWidthDp: Float, tabCount: Int): Float {
+        val baseMargin = if (liquidGlass) 16f else 0f
+        if (!iconOnly) return baseMargin
+        val normalWidth = (parentWidthDp - baseMargin * 2f).coerceAtLeast(0f)
+        // 收窄实际布局，让图标、滑块与触控坐标一起适配；窄屏仍保留每项 44dp 的空间。
+        val minimumWidth = tabCount.coerceAtLeast(1) * 44f + ModernNavigationMotion.INSET_DP * 2f
+        val widthFraction = if (compact) 0.84f else 0.88f
+        val width = (normalWidth * widthFraction).coerceAtLeast(minimumWidth).coerceAtMost(normalWidth)
+        return (parentWidthDp - width) / 2f
+    }
+}
 
 /**
  * 拖动滑块的落点语义：**落回当前页不算操作**。
@@ -100,7 +121,7 @@ internal object HostBottomBarFxController {
     private val attachedHosts = Collections.newSetFromMap(WeakHashMap<ViewGroup, Boolean>())
 
     fun attach(tabHost: ViewGroup, config: HostBottomBarFxConfig) {
-        if (!config.liquidGlass && !config.touchGlow) return
+        if (!config.liquidGlass && !config.touchGlow && !config.compact && !config.iconOnly) return
         tabHost.post {
             attachInternal(tabHost, config)
         }
@@ -124,21 +145,21 @@ internal object HostBottomBarFxController {
             ?: (0 until tabHost.childCount).map { tabHost.getChildAt(it) }
                 .filterIsInstance<ViewGroup>().firstOrNull()
 
-        val barHeight = (ModernNavigationMotion.BAR_HEIGHT_DP * density).roundToInt()
-        val marginH = (16f * density).roundToInt()
+        val barHeight = (config.heightDp * density).roundToInt()
+        val marginH = horizontalMarginPx(tabHost, container, config, density)
         val marginB = (12f * density).roundToInt()
         val inset = ModernNavigationMotion.INSET_DP * density
 
         // 2. 悬浮胶囊几何形态与 Liquid Glass 外壳背景
         val backdrop = if (config.liquidGlass) HostBottomBarBackdrop(density) else null
-        if (config.liquidGlass) {
+        if (config.liquidGlass || config.compact || config.iconOnly) {
             val lp = tabHost.layoutParams
             if (lp != null) {
                 lp.height = barHeight
-                if (lp is ViewGroup.MarginLayoutParams) {
+                if ((config.liquidGlass || config.iconOnly) && lp is ViewGroup.MarginLayoutParams) {
                     lp.leftMargin = marginH
                     lp.rightMargin = marginH
-                    lp.bottomMargin = marginB
+                    if (config.liquidGlass) lp.bottomMargin = marginB
                 }
                 if (lp is FrameLayout.LayoutParams) {
                     lp.gravity = Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL
@@ -147,7 +168,8 @@ internal object HostBottomBarFxController {
                 }
                 tabHost.layoutParams = lp
             }
-
+        }
+        if (config.liquidGlass) {
             tabHost.outlineProvider = object : ViewOutlineProvider() {
                 override fun getOutline(view: View, outline: Outline) {
                     if (view.width > 0 && view.height > 0) {
@@ -177,8 +199,8 @@ internal object HostBottomBarFxController {
         var sanitizePosted = false
         val sanitizeRunnable = Runnable {
             sanitizePosted = false
-            stripAllHostArtifacts(tabHost, isRoot = true)
-            alignTabContent(tabHost, container, density, insetH, publishTint)
+            if (config.liquidGlass || config.touchGlow) stripAllHostArtifacts(tabHost, isRoot = true)
+            alignTabContent(tabHost, container, density, insetH, publishTint, config)
             // 冷启动时底栏还没有尺寸、找不到采样源；布局稳定后每次清理都顺手补一次定位（命中即 O(1)）。
             backdrop?.revalidate()
         }
@@ -191,6 +213,16 @@ internal object HostBottomBarFxController {
         requestSanitization()
 
         tabHost.addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ -> requestSanitization() }
+
+
+        if (!config.liquidGlass && !config.touchGlow) {
+            container?.addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ -> requestSanitization() }
+            tabHost.viewTreeObserver.addOnPreDrawListener {
+                alignTabContent(tabHost, container, density, insetH, publishTint, config)
+                true
+            }
+            return
+        }
 
         // 4. 插入专属硬件加速指示滑块、柔光图层与实时透镜 (放在最底层)
         val dockLayer = HostBottomBarDockLayer(
@@ -265,7 +297,7 @@ internal object HostBottomBarFxController {
     }
 
     /**
-     * 垂直居中对齐底栏内容 (图标与文字组合居中于 64dp 悬浮胶囊内)。
+     * 垂直居中对齐底栏内容 (图标或图文组合居中于当前高度的底栏内)。
      * 消除文字过度靠下或图标独占居中的视觉失衡，完全还原模块导航栏的人机工程布局。
      */
     fun alignTabContent(
@@ -273,10 +305,20 @@ internal object HostBottomBarFxController {
         container: ViewGroup?,
         density: Float,
         insetH: Int,
-        publishTint: HostBottomBarPublishTint? = null
+        publishTint: HostBottomBarPublishTint? = null,
+        config: HostBottomBarFxConfig = HostBottomBarFxConfig()
     ) {
         if (container == null) return
-        val barHeight = tabHost.height.takeIf { it > 0 } ?: (ModernNavigationMotion.BAR_HEIGHT_DP * density).roundToInt()
+        if (config.iconOnly) {
+            val lp = tabHost.layoutParams as? ViewGroup.MarginLayoutParams
+            val marginH = horizontalMarginPx(tabHost, container, config, density)
+            if (lp != null && (lp.leftMargin != marginH || lp.rightMargin != marginH)) {
+                lp.leftMargin = marginH
+                lp.rightMargin = marginH
+                tabHost.layoutParams = lp
+            }
+        }
+        val barHeight = tabHost.height.takeIf { it > 0 } ?: (config.heightDp * density).roundToInt()
 
         // 1. 宿主中间层包装容器 (例如包裹 divider 与 container 的 LinearLayout) 铺满并居中
         val contentParent = container.parent as? ViewGroup
@@ -352,6 +394,11 @@ internal object HostBottomBarFxController {
                 val name = resourceName(child, cId)
 
                 if (name.contains("normal") || child is ConstraintLayout) {
+                    if (config.iconOnly && child is ViewGroup) {
+                        hideTabLabels(child)
+                        child.setPadding(0, 0, 0, 0)
+                        if (child is LinearLayout) child.gravity = Gravity.CENTER
+                    }
                     // normal_ll 必须是 WRAP_CONTENT，由内容自然决定高度
                     val clp = child.layoutParams
                     if (clp is FrameLayout.LayoutParams) {
@@ -408,6 +455,51 @@ internal object HostBottomBarFxController {
         }
     }
 
+    private fun horizontalMarginPx(
+        tabHost: ViewGroup,
+        container: ViewGroup?,
+        config: HostBottomBarFxConfig,
+        density: Float
+    ): Int {
+        val parent = tabHost.parent as? ViewGroup
+        val parentWidth = parent?.width?.takeIf { it > 0 } ?: tabHost.resources.displayMetrics.widthPixels
+        val availableWidth = parentWidth - (parent?.paddingLeft ?: 0) - (parent?.paddingRight ?: 0)
+        return (config.horizontalMarginDp(availableWidth / density, container?.childCount ?: 5) * density).roundToInt()
+    }
+
+    /** Only hide labels inside normal tab content; badge and publish overlays remain intact. */
+    private fun hideTabLabels(group: ViewGroup) {
+        for (i in 0 until group.childCount) {
+            val child = group.getChildAt(i)
+            val name = resourceName(child, child.id)
+            if (name.contains("badge") || name.contains("red") || name.contains("notify")) continue
+            if (child is TextView) {
+                if (child.visibility != View.GONE) child.visibility = View.GONE
+            } else if (child is ViewGroup) {
+                hideTabLabels(child)
+            }
+            if (child !is TextView) {
+                val lp = child.layoutParams
+                if (lp is ViewGroup.MarginLayoutParams && (lp.topMargin != 0 || lp.bottomMargin != 0)) {
+                    lp.topMargin = 0
+                    lp.bottomMargin = 0
+                    child.layoutParams = lp
+                }
+                if (lp is ConstraintLayout.LayoutParams &&
+                    (lp.topToTop != ConstraintLayout.LayoutParams.PARENT_ID ||
+                        lp.bottomToBottom != ConstraintLayout.LayoutParams.PARENT_ID ||
+                        lp.topToBottom != ConstraintLayout.LayoutParams.UNSET ||
+                        lp.bottomToTop != ConstraintLayout.LayoutParams.UNSET)) {
+                    lp.topToTop = ConstraintLayout.LayoutParams.PARENT_ID
+                    lp.bottomToBottom = ConstraintLayout.LayoutParams.PARENT_ID
+                    lp.topToBottom = ConstraintLayout.LayoutParams.UNSET
+                    lp.bottomToTop = ConstraintLayout.LayoutParams.UNSET
+                    lp.verticalBias = 0.5f
+                    child.layoutParams = lp
+                }
+            }
+        }
+    }
     /** 彻底剥离宿主所有官方背景、分割线、并清除按压阴影残余 */
     fun stripAllHostArtifacts(view: View, isRoot: Boolean = true) {
         if (view is HostBottomBarDockLayer || view is HostGlowView) return
@@ -539,7 +631,7 @@ internal class HostBottomBarDockLayer(
         // 宿主会在按压/切页/重建 tab 时重新挂上官方背景并重新布局：这里逐帧只做 O(items) 空判，
         // 命中才请求一次合并后的整树清理；不再每帧全树递归 + 资源名解析（快速切换掉帧的来源）。
         if (hostReappliedArtifacts()) requestSanitization()
-        HostBottomBarFxController.alignTabContent(tabHost, container, density, inset.roundToInt(), publishTint)
+        HostBottomBarFxController.alignTabContent(tabHost, container, density, inset.roundToInt(), publishTint, config)
         // 同步外部切页
         val detected = detectSelectedTab()
         if (!touchActive && !indicatorSettling && detected != selectedIndex) {

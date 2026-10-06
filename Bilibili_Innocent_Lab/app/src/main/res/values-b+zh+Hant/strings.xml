@@ -1214,4 +1214,8 @@
     <string name="brand_splash_skip_tip">略過嗶哩嗶哩品牌展示，系統啟動畫面仍會顯示。重新啟動嗶哩嗶哩生效。</string>
     <string name="brand_splash_custom">官方開屏自由選擇</string>
     <string name="brand_splash_custom_tip">在嗶哩嗶哩設定中選擇已提供的官方開屏，支援大會員素材。素材需先下載完成；關閉略過品牌開屏後顯示。不包含數位藏品權益。重新啟動嗶哩嗶哩生效。</string>
+    <string name="host_bottom_bar_compact">小底部導覽列</string>
+    <string name="host_bottom_bar_compact_tip">縮小底部導覽列高度，減少佔用空間。重新啟動嗶哩嗶哩後生效。</string>
+    <string name="host_bottom_bar_icon_only">底部導覽列無字模式</string>
+    <string name="host_bottom_bar_icon_only_tip">隱藏首頁、動態等標籤，僅保留圖示並垂直置中，同時縮減上下留白。可與小底部導覽列疊加使用，重新啟動嗶哩嗶哩後生效。</string>
 </resources>

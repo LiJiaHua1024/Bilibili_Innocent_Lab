@@ -1214,4 +1214,8 @@
     <string name="brand_splash_skip_tip">跳过哔哩哔哩品牌展示，系统启动画面仍会显示。重启哔哩哔哩生效。</string>
     <string name="brand_splash_custom">官方开屏自由选择</string>
     <string name="brand_splash_custom_tip">在哔哩哔哩设置中选择已提供的官方开屏，支持大会员素材。素材需先下载完成；关闭跳过品牌开屏后显示。不包含数字藏品权益。重启哔哩哔哩生效。</string>
+    <string name="host_bottom_bar_compact">小底栏</string>
+    <string name="host_bottom_bar_compact_tip">缩小底栏高度，减少占用空间。重启哔哩哔哩后生效。</string>
+    <string name="host_bottom_bar_icon_only">底栏无字模式</string>
+    <string name="host_bottom_bar_icon_only_tip">隐藏首页、动态等标签，仅保留图标并上下居中，同时缩减上下留白。可与小底栏叠加使用，重启哔哩哔哩后生效。</string>
 </resources>
