@@ -437,13 +437,13 @@
     <string name="skin_save_failed">Could not save the advanced material setting. The current appearance was kept.</string>
     <string name="skin_start_failed">The advanced material could not start. Soft Frost has been restored.</string>
     <string name="skin_recovery_save_failed">The advanced material stopped safely, but the Soft Frost recovery setting could not be saved. This screen will not restart automatically.</string>
-    <string name="liquid_background_setting_title">Advanced material background</string>
+    <string name="liquid_background_setting_title">Interface background</string>
     <string name="liquid_background_summary_automatic">Automatic dynamic-color background</string>
     <string name="liquid_background_summary_active">Custom image is active</string>
-    <string name="liquid_background_summary_saved">Custom image saved; turn on Advanced material to use it</string>
+    <string name="liquid_background_summary_saved">Image saved</string>
     <string name="liquid_background_summary_unavailable">Custom image is unavailable; automatic background will be used</string>
-    <string name="liquid_background_dialog_description">Choose a local image for the interface underlay. The root background and glass surfaces will sample the same processed image.</string>
-    <string name="liquid_background_preview_description">Current custom advanced material background preview</string>
+    <string name="liquid_background_dialog_description">Choose a local image as the interface background. Works with both the standard appearance and advanced material.</string>
+    <string name="liquid_background_preview_description">Current custom background preview</string>
     <string name="material_color_spec_title">Use SPEC 2025</string>
     <string name="material_color_spec_summary">The default color specification is SPEC 2021. Enable this option to use SPEC 2025; changes take effect immediately.</string>
     <string name="material_color_spec_save_failed">Could not save the color specification. The current setting was kept.</string>

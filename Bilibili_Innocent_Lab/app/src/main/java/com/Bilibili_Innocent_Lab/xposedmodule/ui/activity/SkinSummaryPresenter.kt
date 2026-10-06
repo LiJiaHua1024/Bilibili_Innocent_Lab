@@ -31,10 +31,7 @@ internal fun MainActivity.currentLiquidBackgroundSummary(): String {
     if (!state.assetPresent) {
         return getString(R.string.liquid_background_summary_unavailable)
     }
-    return getString(
-        if (isLiquidSkinRequested) R.string.liquid_background_summary_active
-        else R.string.liquid_background_summary_saved
-    )
+    return getString(R.string.liquid_background_summary_active)
 }
 
 @StringRes

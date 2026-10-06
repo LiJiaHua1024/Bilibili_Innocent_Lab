@@ -437,13 +437,13 @@
     <string name="skin_save_failed">進階材質設定儲存失敗，已維持目前狀態。</string>
     <string name="skin_start_failed">進階材質啟動失敗，已自動恢復為柔光。</string>
     <string name="skin_recovery_save_failed">進階材質已安全停止，但柔光恢復狀態儲存失敗，本介面不會自動重建。</string>
-    <string name="liquid_background_setting_title">進階材質背景</string>
+    <string name="liquid_background_setting_title">介面背景</string>
     <string name="liquid_background_summary_automatic">使用自動產生的動態配色背景</string>
     <string name="liquid_background_summary_active">正在使用自訂圖片</string>
-    <string name="liquid_background_summary_saved">圖片已儲存，開啟進階材質後生效</string>
+    <string name="liquid_background_summary_saved">圖片已儲存</string>
     <string name="liquid_background_summary_unavailable">自訂圖片無法使用，將使用自動背景</string>
-    <string name="liquid_background_dialog_description">選擇一張本機圖片作為圖形化介面的底層背景，頁面根背景與玻璃表面會取樣同一張處理後的圖片。</string>
-    <string name="liquid_background_preview_description">目前自訂進階材質背景預覽</string>
+    <string name="liquid_background_dialog_description">選擇一張本機圖片作為介面背景，一般外觀與進階材質下皆可使用。</string>
+    <string name="liquid_background_preview_description">目前自訂背景預覽</string>
     <string name="material_color_spec_title">使用 SPEC 2025</string>
     <string name="material_color_spec_summary">色彩標準預設使用 SPEC 2021，啟用後使用 SPEC 2025，切換後立即生效。</string>
     <string name="material_color_spec_save_failed">配色規範儲存失敗，已維持目前設定。</string>
