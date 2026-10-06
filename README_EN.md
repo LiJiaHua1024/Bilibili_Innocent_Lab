@@ -172,6 +172,7 @@ See [Settings organisation](docs/settings_organization.md) for the complete feat
 | Disable the client update prompt | Blocks the Bilibili client's own update reminder; it does not affect this module's Stable or Preview update checks |
 | Disable the teen mode prompt | Hides the teen mode notice page without changing teen mode's enabled state, restriction rules or system settings |
 | Show full numbers | Counts such as views and likes prefer the full value instead of abbreviations like "wan" and "yi"; only adapted number-formatting entry points are handled |
+| Floating video cards | Adds large rounded video covers, subtle soft gray card shadows, and more space between two-column cards and along screen edges; available in advanced enhancement settings, off by default, requires restarting Bilibili |
 | Show AV numbers instead of BV numbers | Bilibili shows either an AV number or a BV number at the same place; enabling this always shows the AV number. BV links in the body are still recognised and clickable |
 
 #### Sharing

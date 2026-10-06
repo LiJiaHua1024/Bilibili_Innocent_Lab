@@ -131,11 +131,11 @@ class SettingsCatalogTest {
     }
 
     @Test
-    fun `catalog is a unique allowlist with 196 settings`() {
-        assertEquals(196, SettingsCatalog.specs.size)
-        assertEquals(196, SettingsCatalog.specs.map { it.id }.distinct().size)
-        assertEquals(196, SettingsCatalog.specs.map { it.storageKey }.distinct().size)
-        assertEquals(193, SettingsCatalog.specs.count { it.restorePolicy == RestorePolicy.AUTOMATIC })
+    fun `catalog is a unique allowlist with 197 settings`() {
+        assertEquals(197, SettingsCatalog.specs.size)
+        assertEquals(197, SettingsCatalog.specs.map { it.id }.distinct().size)
+        assertEquals(197, SettingsCatalog.specs.map { it.storageKey }.distinct().size)
+        assertEquals(194, SettingsCatalog.specs.count { it.restorePolicy == RestorePolicy.AUTOMATIC })
         assertEquals(3, SettingsCatalog.specs.count { it.restorePolicy == RestorePolicy.MANUAL })
         assertTrue(SettingsCatalog.specs.all { it.accepts(it.defaultValue) })
         assertTrue(SettingsCatalog.specs.all { it.id.matches(Regex("[a-z0-9][a-z0-9._-]{0,127}")) })
@@ -366,7 +366,7 @@ class SettingsCatalogTest {
         val expected = requireNotNull(javaClass.classLoader?.getResourceAsStream("settings-backup/catalog-v13.txt"))
             .bufferedReader().useLines { it.filter(String::isNotBlank).toList() }
         assertEquals(expected, SettingsCatalog.specs.filter { it.introducedCatalogVersion <= 13 }.map { it.id }.sorted())
-        assertEquals(40, SettingsCatalog.CATALOG_VERSION)
+        assertEquals(41, SettingsCatalog.CATALOG_VERSION)
         val added = SettingsCatalog.specs.filter { it.introducedCatalogVersion == 13 }
         assertEquals(6, added.size)
         assertTrue(added.all { it.restorePolicy == RestorePolicy.AUTOMATIC && ImportEffect.RESTART_BILIBILI in it.effects })
@@ -665,7 +665,7 @@ class SettingsCatalogTest {
 
     @Test
     fun `catalog types and manual roaming boundary are explicit`() {
-        assertEquals(132, SettingsCatalog.specs.count { it.type == SettingValueType.BOOLEAN })
+        assertEquals(133, SettingsCatalog.specs.count { it.type == SettingValueType.BOOLEAN })
         assertEquals(13, SettingsCatalog.specs.count { it.type == SettingValueType.INTEGER })
         assertEquals(51, SettingsCatalog.specs.count { it.type == SettingValueType.STRING })
 

@@ -189,6 +189,8 @@
     <string name="custom_bottom_bar_hide_tip">打开哔哩哔哩主界面以扫描勾选项，也可使用手动名称规则；自动保留至少一个入口。</string>
     <string name="custom_bottom_bar_hide_dialog_title">底栏隐藏规则</string>
     <string name="custom_bottom_bar_hide_hint">例如：动态, 会员购</string>
+    <string name="host_video_cards">视频卡片悬浮美化</string>
+    <string name="host_video_cards_tip">为视频封面增加大圆角，为卡片添加极淡的柔和灰色阴影，并增大双列间距及屏幕边缘留白。重启哔哩哔哩后生效。</string>
     <string name="host_bottom_bar_liquid_glass">底栏悬浮胶囊</string>
     <string name="host_bottom_bar_liquid_glass_tip">将哔哩哔哩底栏改为悬浮胶囊，并以实时取样的玻璃材质透出下方内容，保留上缘高光；轻微提升渲染压力。</string>
     <string name="host_bottom_bar_touch_glow">底栏触控光晕</string>
@@ -266,7 +268,7 @@
     <string name="hide_dynamic_school_tab_tip">开启后，隐藏动态页的“校园”标签，其他标签及顺序不受影响。重启哔哩哔哩后生效。</string>
     <string name="prefer_dynamic_video_tab">默认显示“视频”标签</string>
     <string name="prefer_dynamic_video_tab_tip">开启后，进入动态页时默认显示“视频”标签。重启哔哩哔哩后生效。</string>
-    <string name="number_display_settings">数字显示</string>
+    <string name="number_display_settings">外观与数字显示</string>
     <string name="show_full_numbers">显示完整数字</string>
     <string name="show_full_numbers_tip">开启后，播放量、点赞数等计数优先显示完整数字，不再使用“万/亿”缩写。重启哔哩哔哩后生效。</string>
     <string name="prompt_purify_settings">提示页面</string>

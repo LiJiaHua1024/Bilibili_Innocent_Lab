@@ -443,6 +443,7 @@ class MainActivity : SkinnedActivity() {
     private var freeCopyAutoLight = false
     private var hostBottomBarLiquidGlass = false
     private var hostBottomBarTouchGlow = false
+    private var hostVideoCards = false
     private var hostBottomBarCompact = false
     private var hostBottomBarIconOnly = false
     private var hostTopBarLiquidGlass = false
@@ -4431,6 +4432,7 @@ class MainActivity : SkinnedActivity() {
         purifySplashAds = uiSettings.bool(FeaturePreferences.PURIFY_SPLASH_ADS)
         hostBottomBarLiquidGlass = uiSettings.bool(FeaturePreferences.HOST_BOTTOM_BAR_LIQUID_GLASS)
         hostBottomBarTouchGlow = uiSettings.bool(FeaturePreferences.HOST_BOTTOM_BAR_TOUCH_GLOW)
+        hostVideoCards = uiSettings.bool(FeaturePreferences.HOST_VIDEO_CARDS)
         hostBottomBarCompact = uiSettings.bool(FeaturePreferences.HOST_BOTTOM_BAR_COMPACT)
         hostBottomBarIconOnly = uiSettings.bool(FeaturePreferences.HOST_BOTTOM_BAR_ICON_ONLY)
         hostTopBarLiquidGlass = uiSettings.bool(FeaturePreferences.HOST_TOP_BAR_LIQUID_GLASS)
@@ -10145,6 +10147,31 @@ class MainActivity : SkinnedActivity() {
             textColor = monetColors.primary
             textSize = 12f
             typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+        }
+        MaterialSwitch(
+            lparams = LayoutParams(widthMatchParent = true) {
+                topMargin = 12.dp
+                bottomMargin = 5.dp
+            }
+        ) {
+            bindFavoriteSwitch(this, FeaturePreferences.HOST_VIDEO_CARDS, directToggle = true)
+            text = stringResource(R.string.host_video_cards)
+            isAllCaps = false
+            textColor = colorResource(R.color.colorTextGray)
+            textSize = 15f
+            isChecked = hostVideoCards
+            setOnCheckedChangeListener { _, checked ->
+                hostVideoCards = checked
+                runCatching { prefs().edit { putBoolean(FeaturePreferences.HOST_VIDEO_CARDS, checked) } }
+                    .onFailure { Log.e("BilibiliInnocentLab", "write host video card prefs failed", it) }
+            }
+        }
+        TextView(lparams = LayoutParams(widthMatchParent = true)) {
+            alpha = 0.6f
+            setLineSpacing(6f, 1f)
+            text = stringResource(R.string.host_video_cards_tip)
+            textColor = colorResource(R.color.colorTextDark)
+            textSize = 12f
         }
         MaterialSwitch(
             lparams = LayoutParams(widthMatchParent = true) {

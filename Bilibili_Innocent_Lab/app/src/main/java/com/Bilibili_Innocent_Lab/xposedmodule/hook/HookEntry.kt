@@ -48,6 +48,7 @@ import com.Bilibili_Innocent_Lab.xposedmodule.hook.feature.BlockComponentLibrary
 import com.Bilibili_Innocent_Lab.xposedmodule.hook.feature.ComponentLibraryPoolMatcher
 import com.Bilibili_Innocent_Lab.xposedmodule.hook.feature.BottomBarFeatureInstaller
 import com.Bilibili_Innocent_Lab.xposedmodule.hook.feature.HostBottomBarFxFeatureInstaller
+import com.Bilibili_Innocent_Lab.xposedmodule.hook.feature.HostVideoCardStyleFeatureInstaller
 import com.Bilibili_Innocent_Lab.xposedmodule.hook.feature.HostTopBarFxFeatureInstaller
 import com.Bilibili_Innocent_Lab.xposedmodule.hook.feature.BvToAvFeatureInstaller
 import com.Bilibili_Innocent_Lab.xposedmodule.hook.feature.CommentPurifyFeatureInstaller
@@ -3420,6 +3421,9 @@ class HookEntry : XposedModule() {
                         points = hostAdaptResult?.bottomBar,
                         compact = prefs.getBoolean(FeaturePreferences.HOST_BOTTOM_BAR_COMPACT, false),
                         iconOnly = prefs.getBoolean(FeaturePreferences.HOST_BOTTOM_BAR_ICON_ONLY, false)
+                    ),
+                    HostVideoCardStyleFeatureInstaller(
+                        enabled = prefs.getBoolean(FeaturePreferences.HOST_VIDEO_CARDS, false)
                     )
                 )
             )
