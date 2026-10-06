@@ -19,6 +19,27 @@ class ModernNavigationMotionTest {
         assertEquals(0f, ModernNavigationMotion.position(Float.NaN, 4), 0f)
     }
 
+    @Test fun fiveItemHostDocksClickAndScrubAcrossAllFiveSlots() {
+        // 宿主默认 5 tab(首页/动态/+/会员购/我的):滑块与点击必须覆盖索引 0..4。
+        assertEquals(4f, ModernNavigationMotion.position(9f, 5), .00001f)
+        assertEquals(4f, ModernNavigationMotion.physicalSlot(4f, 5, false), .00001f)
+        assertEquals(0f, ModernNavigationMotion.physicalSlot(4f, 5, true), .00001f)
+        assertEquals(4, ModernNavigationMotion.indexAt(350f, 280f, 4f, 5, false))
+        assertEquals(0, ModernNavigationMotion.indexAt(350f, 280f, 4f, 5, true))
+        assertEquals(0, ModernNavigationMotion.indexAt(10f, 280f, 4f, 5, false))
+        assertEquals(4, ModernNavigationMotion.indexAt(10f, 280f, 4f, 5, true))
+        // 从索引 1 拖一大段:非 RTL 到最右"我的"(4),RTL 钳到最左(0)。
+        assertEquals(4f, ModernNavigationMotion.scrubPosition(1f, 10000f, 70f, 5, false), 0f)
+        assertEquals(0f, ModernNavigationMotion.scrubPosition(1f, 10000f, 70f, 5, true), 0f)
+        // 轻点最右侧 tab(index 4)在 5 tab 下必须可选中——恢复 5 键后"不可点击"的直接回归。
+        val gesture = ModernNavigationGesture()
+        gesture.begin(4, false)
+        assertEquals(4, gesture.finish(false, 4f, 4, 5))
+        // 超出 MAX_ITEMS 的异常 count 仍被钳制/拒绝。
+        assertEquals(6f, ModernNavigationMotion.position(6f, 9), .00001f)
+        assertEquals(-1, ModernNavigationMotion.indexAt(10f, 280f, 4f, 9, false))
+    }
+
     @Test fun fourDirectionMovementHasOneFourDpVectorBudgetIncludingDiagonalRelease() {
         for (x in listOf(-10000f, -50f, 0f, 50f, 10000f)) for (y in listOf(-10000f, -50f, 0f, 50f, 10000f)) {
             val scale = ModernNavigationMotion.displacementScale(x, y, 4f, 48f)
