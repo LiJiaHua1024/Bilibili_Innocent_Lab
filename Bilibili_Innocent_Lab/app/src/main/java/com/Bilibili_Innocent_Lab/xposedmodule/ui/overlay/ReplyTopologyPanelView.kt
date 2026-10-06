@@ -67,6 +67,13 @@ internal class ReplyTopologyPanelView(
     private val exportView = actionChip(strings.export)
     private val filterInput = EditText(context)
     private val keywordRow: View by lazy(LazyThreadSafetyMode.NONE) { createKeywordRow() }
+    private val fullTreeView = actionChip(strings.completeTree)
+    private val explorationRow: View by lazy(LazyThreadSafetyMode.NONE) { createExplorationRow() }
+    private var deepTreeAvailable = false
+    private var treeExplorer: ReplyTopologyTreeExplorer? = null
+    private var parentViewportWidth = -1
+    private var parentViewportHeight = -1
+    private val lastParentInsets = Rect(-1, -1, -1, -1)
     private val recyclerView = RecyclerView(context)
     private val workflowAdapter = ReplyTopologyWorkflowAdapter(
         theme,
@@ -75,7 +82,8 @@ internal class ReplyTopologyPanelView(
             selectAndCenter(rpid)
             panelListener?.onNodeSelected(rpid)
         },
-        { anchor, _, text -> panelListener?.onNodeFullTextRequested(anchor, text) }
+        { anchor, _, text -> panelListener?.onNodeFullTextRequested(anchor, text) },
+        { rpid -> showTreeExplorer(rpid, path = true) }
     )
     private val trackDecoration = ReplyTopologyTrackDecoration(workflowAdapter, theme, density)
     private val keywordWatcher = object : TextWatcher {
@@ -86,6 +94,7 @@ internal class ReplyTopologyPanelView(
                 if (isReleased || exitTouchTransparent) return@run
                 workflowAdapter.setKeywordQuery(s?.toString().orEmpty())
                 updateExportAvailability()
+                updateExplorationAvailability()
                 recyclerView.invalidateItemDecorations()
             }
         }
@@ -148,9 +157,13 @@ internal class ReplyTopologyPanelView(
     }
 
     private val parentLayoutListener = OnLayoutChangeListener { _, _, _, _, _, _, _, _, _ ->
-        if (!isReleased) {
-            if (!positionInitialized) applyInitialPosition()
-            else applyBoundedTranslation(translationX, translationY)
+        HostThreadGuard.run("reply_topology.parent_resize") {
+            if (!isReleased) {
+                updateDimensionsToParent()
+                updateExplorationAvailability()
+                if (!positionInitialized) applyInitialPosition()
+                else applyBoundedTranslation(translationX, translationY)
+            }
         }
     }
 
@@ -168,6 +181,7 @@ internal class ReplyTopologyPanelView(
         addView(opacityRow, LayoutParams(LayoutParams.MATCH_PARENT, dp(34)))
         addView(createStatusRow(), LayoutParams(LayoutParams.MATCH_PARENT, dp(38)))
         addView(keywordRow, LayoutParams(LayoutParams.MATCH_PARENT, dp(KEYWORD_ROW_HEIGHT_DP)))
+        addView(explorationRow, LayoutParams(LayoutParams.MATCH_PARENT, dp(38)))
         addView(createWorkflowList(), LayoutParams(LayoutParams.MATCH_PARENT, 0, 1f))
         updateState(currentState)
     }
@@ -209,6 +223,7 @@ internal class ReplyTopologyPanelView(
             return
         }
         exitTouchTransparent = true
+        closeTreeExplorer()
         titleView.setOnTouchListener(null)
         collapseView.setOnClickListener(null)
         closeView.setOnClickListener(null)
@@ -256,6 +271,8 @@ internal class ReplyTopologyPanelView(
         workflowAdapter.submit(snapshot)
         recyclerView.invalidateItemDecorations()
         updateExportAvailability()
+        updateExplorationAvailability()
+        treeExplorer?.submit(snapshot.graph, treeExplorer?.selection())
     }
 
     fun updateState(state: ReplyTopologyPanelState) {
@@ -340,6 +357,7 @@ internal class ReplyTopologyPanelView(
             ReplyTopologyCompactMotionSpec.requireExpandedHeight(restored, compactPx)
         }
         userCollapsed = collapsed
+        if (collapsed) closeTreeExplorer()
         if (collapsed) clearKeywordFocus()
         updateCollapseButton()
         if (!animated) {
@@ -353,10 +371,12 @@ internal class ReplyTopologyPanelView(
         val toPx = if (collapsed) compactPx else expandedPx
         val opacityFullPx = dp(ReplyTopologyCompactMotionSpec.OPACITY_ROW_HEIGHT_DP)
         val keywordFullPx = dp(KEYWORD_ROW_HEIGHT_DP)
+        val explorationFullPx = dp(38)
         // 透明度行与面板总高按同一进度同步收缩/生长：它的占位连续变化使状态行文字
         // 全程保持位置连续（连贯位移）。列表为权重行，随剩余空间连续压缩/展开。
         opacityRow.visibility = View.VISIBLE
         keywordRow.visibility = View.VISIBLE
+        if (deepTreeAvailable) explorationRow.visibility = View.VISIBLE
         recyclerView.visibility = View.VISIBLE
         if (collapsed) {
             setOpacityRowHeight(opacityFullPx)
@@ -374,6 +394,8 @@ internal class ReplyTopologyPanelView(
         val opacityToPx = if (collapsed) 1 else opacityFullPx
         val keywordFromPx = if (collapsed) keywordFullPx else 1
         val keywordToPx = if (collapsed) 1 else keywordFullPx
+        val explorationFromPx = if (collapsed) explorationFullPx else 1
+        val explorationToPx = if (collapsed) 1 else explorationFullPx
         val animator = ValueAnimator.ofFloat(0f, 1f).apply {
             duration = if (collapsed) {
                 ReplyTopologyCompactMotionSpec.COLLAPSE_DURATION_MS
@@ -398,6 +420,12 @@ internal class ReplyTopologyPanelView(
                     ReplyTopologyCompactMotionSpec.heightAt(progress, keywordFromPx, keywordToPx)
                 )
                 keywordRow.alpha = ReplyTopologyCompactMotionSpec.opacityRowAlphaAt(progress, collapsed)
+                if (deepTreeAvailable) {
+                    explorationRow.layoutParams = explorationRow.layoutParams.apply {
+                        height = ReplyTopologyCompactMotionSpec.heightAt(progress, explorationFromPx, explorationToPx)
+                    }
+                    explorationRow.alpha = keywordRow.alpha
+                }
                 // 展开时高度增长会压缩 movementBounds 上限，逐帧钳制保证面板始终完整在屏内。
                 applyBoundedTranslation(translationX, translationY)
             }
@@ -434,16 +462,20 @@ internal class ReplyTopologyPanelView(
         if (collapsed) {
             opacityRow.visibility = View.GONE
             keywordRow.visibility = View.GONE
+            explorationRow.visibility = View.GONE
             recyclerView.visibility = View.GONE
         } else {
             opacityRow.visibility = View.VISIBLE
             keywordRow.visibility = View.VISIBLE
             setKeywordRowHeight(dp(KEYWORD_ROW_HEIGHT_DP))
+            explorationRow.layoutParams = explorationRow.layoutParams.apply { height = dp(38) }
+            explorationRow.visibility = if (deepTreeAvailable) View.VISIBLE else View.GONE
             setOpacityRowHeight(dp(ReplyTopologyCompactMotionSpec.OPACITY_ROW_HEIGHT_DP))
             recyclerView.visibility = View.VISIBLE
         }
         opacityRow.alpha = 1f
         keywordRow.alpha = 1f
+        explorationRow.alpha = 1f
         recyclerView.alpha = 1f
         applyBoundedTranslation(translationX, translationY)
     }
@@ -483,6 +515,7 @@ internal class ReplyTopologyPanelView(
     fun releaseResources(): ReplyTopologyPanelListener? {
         if (isReleased) return null
         isReleased = true
+        closeTreeExplorer()
         animate().setListener(null)
         animate().cancel()
         compactAnimator?.let { animator ->
@@ -637,6 +670,104 @@ internal class ReplyTopologyPanelView(
         return row
     }
 
+    private fun createExplorationRow(): View {
+        val row = LinearLayout(context).apply {
+            orientation = HORIZONTAL
+            gravity = android.view.Gravity.CENTER_VERTICAL
+            setPadding(dp(14), 0, dp(10), 0)
+            visibility = View.GONE
+        }
+        val hint = TextView(context).apply {
+            text = strings.compressedHint
+            textSize = 11f
+            setTextColor(theme.secondaryTextColor)
+            maxLines = 1
+            ellipsize = TextUtils.TruncateAt.END
+        }
+        fullTreeView.visibility = View.VISIBLE
+        fullTreeView.setOnClickListener {
+            HostThreadGuard.run("reply_topology.full_tree") { showTreeExplorer(workflowAdapter.selectedNode(), path = false) }
+        }
+        row.addView(hint, LayoutParams(0, LayoutParams.MATCH_PARENT, 1f))
+        row.addView(fullTreeView, LayoutParams(LayoutParams.WRAP_CONTENT, dp(32)))
+        return row
+    }
+
+    private fun updateExplorationAvailability() {
+        val areaWidth = recyclerView.width.takeIf { it > 0 } ?: width
+        val layout = ReplyTopologyTrackLayout.resolve(areaWidth.toFloat(), density, resources.configuration.fontScale)
+        deepTreeAvailable = workflowAdapter.hasCompressedDepth(layout.maxLane)
+        fullTreeView.isEnabled = deepTreeAvailable && !isReleased && !exitTouchTransparent
+        if (!compactAnimating) explorationRow.visibility = if (deepTreeAvailable && !userCollapsed) View.VISIBLE else View.GONE
+    }
+
+    private fun showTreeExplorer(rpid: Long?, path: Boolean) {
+        if (isReleased || exitTouchTransparent || !isAttachedToWindow || windowToken == null) return
+        val graph = workflowAdapter.currentGraph() ?: return
+        val parent = boundsParentRef?.get()?.takeIf { it === this.parent && it.windowToken == windowToken } ?: return
+        clearKeywordFocus()
+        closeTreeExplorer()
+        val viewer = ReplyTopologyTreeExplorer(context, theme, strings,
+            onLocate = { selected ->
+                if (selectAndCenter(selected)) { panelListener?.onNodeSelected(selected); true } else false
+            },
+            onText = { anchor, message -> panelListener?.onNodeFullTextRequested(anchor, message) },
+            onClose = { closeTreeExplorer(it) }
+        )
+        treeExplorer = viewer
+        runCatching {
+            var z = this.z
+            for (index in 0 until parent.childCount) parent.getChildAt(index).z.takeIf { it.isFinite() }?.let { z = maxOf(z, it) }
+            viewer.z = z + density
+            val params = if (parent is android.widget.FrameLayout) android.widget.FrameLayout.LayoutParams(
+                LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT, android.view.Gravity.TOP or android.view.Gravity.START
+            ) else ViewGroup.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT)
+            parent.addView(viewer, params)
+            viewer.submit(graph, rpid)
+            if (path && rpid != null) viewer.showPath(rpid) else viewer.showFull()
+            viewer.alpha = 0f
+            viewer.animate().alpha(1f).setDuration(160L).setInterpolator(PathInterpolator(0f, 0f, 0.2f, 1f)).start()
+        }.onFailure { closeTreeExplorer(viewer) }
+    }
+
+    private fun closeTreeExplorer(expected: ReplyTopologyTreeExplorer? = treeExplorer) {
+        val current = expected ?: return
+        if (treeExplorer === current) treeExplorer = null
+        current.release()
+        runCatching { (current.parent as? ViewGroup)?.removeView(current) }
+    }
+
+    override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
+        super.onSizeChanged(w, h, oldw, oldh)
+        if (!isReleased) {
+            updateExplorationAvailability()
+            if (positionInitialized) applyBoundedTranslation(translationX, translationY)
+        }
+    }
+
+    private fun updateDimensionsToParent() {
+        val parent = boundsParentRef?.get() ?: return
+        if (parent.width <= 0 || parent.height <= 0) return
+        readInsets(parent, systemBarInsets)
+        if (parentViewportWidth == parent.width && parentViewportHeight == parent.height && lastParentInsets == systemBarInsets) return
+        parentViewportWidth = parent.width
+        parentViewportHeight = parent.height
+        lastParentInsets.set(systemBarInsets)
+        val availableWidth = (parent.width - systemBarInsets.left - systemBarInsets.right - dp(16)).coerceAtLeast(1)
+        val availableHeight = (parent.height - systemBarInsets.top - systemBarInsets.bottom - dp(16)).coerceAtLeast(1)
+        val newWidth = ReplyTopologyPanelSizing.dimension(availableWidth, density, config.widthFraction, config.minWidthDp, config.maxWidthDp)
+        val newHeight = ReplyTopologyPanelSizing.dimension(availableHeight, density, config.heightFraction, config.minHeightDp, config.maxHeightDp)
+        val params = layoutParams ?: return
+        compactAnimator?.let { it.removeAllUpdateListeners(); it.removeAllListeners(); it.cancel() }
+        compactAnimator = null
+        compactAnimating = false
+        expandedHeightPx = newHeight
+        params.width = newWidth
+        params.height = if (userCollapsed) minOf(dp(ReplyTopologyCompactMotionSpec.COMPACT_HEIGHT_DP), availableHeight) else newHeight
+        layoutParams = params
+        finalizeCompactState(userCollapsed)
+    }
+
     private fun createKeywordRow(): View {
         val row = LinearLayout(context).apply {
             orientation = HORIZONTAL
@@ -709,6 +840,7 @@ internal class ReplyTopologyPanelView(
     }
 
     private fun releaseKeywordControls() {
+        fullTreeView.setOnClickListener(null)
         filterInput.removeTextChangedListener(keywordWatcher)
         filterInput.setOnEditorActionListener(null)
         clearKeywordFocus()
@@ -833,21 +965,7 @@ internal class ReplyTopologyPanelView(
     }
 
     private fun readInsets(view: View, out: Rect) {
-        val windowInsets = view.rootWindowInsets
-        if (windowInsets == null) {
-            out.setEmpty()
-        } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-            val insets = windowInsets.getInsets(WindowInsets.Type.systemBars())
-            out.set(insets.left, insets.top, insets.right, insets.bottom)
-        } else {
-            @Suppress("DEPRECATION")
-            out.set(
-                windowInsets.systemWindowInsetLeft,
-                windowInsets.systemWindowInsetTop,
-                windowInsets.systemWindowInsetRight,
-                windowInsets.systemWindowInsetBottom
-            )
-        }
+        replyTopologyWindowInsets(view, out)
     }
 
     private fun titleText(state: ReplyTopologyPanelState): String {

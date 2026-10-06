@@ -246,6 +246,10 @@ internal object ReleaseHighlightsCatalog {
         ReleaseHighlight("reply-topology-keyword-export", HighlightKind.IMPROVED,
             R.string.highlights_reply_topology_keyword_export,
             HighlightDestination("comments.reply_topology.enabled"))
+    )), ReleaseHighlightsBatch(7, listOf(
+        ReleaseHighlight("reply-topology-tree-explorer", HighlightKind.IMPROVED,
+            R.string.highlights_reply_topology_tree_explorer,
+            HighlightDestination("comments.reply_topology.enabled"))
     )))
     val currentRevision: Int get() = batches.maxOf { it.revision }
     val destinations get() = batches.sortedByDescending { it.revision }.flatMap { it.entries }

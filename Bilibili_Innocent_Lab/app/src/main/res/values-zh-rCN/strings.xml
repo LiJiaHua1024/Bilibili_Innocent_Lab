@@ -382,6 +382,7 @@
     <string name="hide_comment_section_tip">开启后，移除视频详情页的评论标签，简介等其他标签不受影响。重启哔哩哔哩后生效。</string>
     <string name="reply_topology_enabled">回复脉络图</string>
     <string name="highlights_reply_topology_keyword_export">回复脉络支持按作者或回复关键词筛选，保留上级回复关系，并可将当前可见的回复预览复制到剪贴板。</string>
+    <string name="highlights_reply_topology_tree_explorer">深层回复显示真实层级，可打开完整树状图自由拖动缩放，也可通过独立入口查看最近上级与直接回复。</string>
     <string name="reply_topology_enabled_tip">开启后，有回复的一级评论会显示“脉络”入口，可查看回复关系并定位评论；仅打开面板时加载数据。重启哔哩哔哩后生效。</string>
     <string name="remove_comment_search_links">关闭评论关键词搜索链接</string>
     <string name="remove_comment_search_links_tip">开启后，评论中的关键词不再跳转搜索，评论文字和表情保持不变。重启哔哩哔哩后生效。</string>

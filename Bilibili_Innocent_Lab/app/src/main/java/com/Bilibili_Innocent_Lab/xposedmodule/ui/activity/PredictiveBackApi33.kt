@@ -72,4 +72,14 @@ internal object PredictiveBackApi33 {
         (dispatcher as android.window.OnBackInvokedDispatcher)
             .unregisterOnBackInvokedCallback(callback as android.window.OnBackInvokedCallback)
     }
+
+    /** 宿主同窗口覆盖层使用该 View 所在的 dispatcher，兼容评论的独立 Dialog 窗口。 */
+    fun registerView(view: android.view.View, callback: Any): Any? {
+        val dispatcher = view.findOnBackInvokedDispatcher() ?: return null
+        dispatcher.registerOnBackInvokedCallback(
+            android.window.OnBackInvokedDispatcher.PRIORITY_DEFAULT,
+            callback as android.window.OnBackInvokedCallback
+        )
+        return dispatcher
+    }
 }
