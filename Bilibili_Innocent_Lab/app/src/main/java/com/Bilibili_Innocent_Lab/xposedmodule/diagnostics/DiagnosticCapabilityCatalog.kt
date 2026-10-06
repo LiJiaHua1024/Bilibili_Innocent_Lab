@@ -20,8 +20,10 @@ internal object DiagnosticCapabilityCatalog {
      * 客户端是按 "比我已知的版本更新" 做增量的，
      * VERSION 涨了却没有任何条目标在新版本上，增量就是空集（有测试钉住）。
      */
-    const val VERSION = 17
+    const val VERSION = 18
     val definitions = listOf(
+        DiagnosticCapabilityDefinition("host_video_cards", "host_video_cards", R.string.host_video_cards,
+            setOf("host.video_cards.enabled"), introducedCatalogVersion = 18),
         DiagnosticCapabilityDefinition("search_home_recommend_hidden", "search_home_recommend_hidden", R.string.hide_search_home_recommend, setOf("search.home_recommend.hidden"), introducedCatalogVersion = 4),
         DiagnosticCapabilityDefinition("player_interactive_legacy_follow", "player_interactive_overlay", R.string.diag_cap_player_interactive_legacy_follow, setOf("player.interactive_overlays.hidden"), "legacy/guide/clearAttention"),
         DiagnosticCapabilityDefinition("player_interactive_legacy_commands", "player_interactive_overlay", R.string.diag_cap_player_interactive_legacy_commands, setOf("player.interactive_overlays.hidden"), "legacy/guide/clearCommandDms"),
@@ -128,6 +130,8 @@ internal object DiagnosticCapabilityCatalog {
             "navigation.bottom_bar.hidden_rules",
             "navigation.bottom_bar.hidden_selectors",
             "host.bottom_bar.liquid_glass.enabled",
+            "host.bottom_bar.compact.enabled",
+            "host.bottom_bar.icon_only.enabled",
             "host.bottom_bar.touch_glow.enabled"
         )),
         DiagnosticCapabilityDefinition("player_default_quality", "player_default_quality", R.string.player_default_quality, setOf("player.default_quality.qn")),

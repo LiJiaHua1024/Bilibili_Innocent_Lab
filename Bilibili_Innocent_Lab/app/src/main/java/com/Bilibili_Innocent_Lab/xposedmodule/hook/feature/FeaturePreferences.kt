@@ -180,6 +180,7 @@ internal object FeaturePreferences {
     const val HOST_BOTTOM_BAR_COMPACT = "host_bottom_bar_compact"
     const val HOST_BOTTOM_BAR_ICON_ONLY = "host_bottom_bar_icon_only"
     const val HOST_BOTTOM_BAR_TOUCH_GLOW = "host_bottom_bar_touch_glow"
+    const val HOST_VIDEO_CARDS = "host_video_cards"
     const val HOST_TOP_BAR_LIQUID_GLASS = "host_top_bar_liquid_glass"
     const val HOST_TOP_BAR_TOUCH_GLOW = "host_top_bar_touch_glow"
     const val HOME_TAB_HIDDEN_SELECTORS = "home_tab_hidden_selectors"
