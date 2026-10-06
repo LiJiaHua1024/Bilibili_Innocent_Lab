@@ -441,13 +441,13 @@ class MainActivity : SkinnedActivity() {
     private var freeCopyDescEnabled = true
     private var freeCopyLightMode = false
     private var freeCopyAutoLight = false
-    private var hostBottomBarLiquidGlass = false
-    private var hostBottomBarTouchGlow = false
-    private var hostVideoCards = false
-    private var hostBottomBarCompact = false
-    private var hostBottomBarIconOnly = false
-    private var hostTopBarLiquidGlass = false
-    private var hostTopBarTouchGlow = false
+    internal var hostBottomBarLiquidGlass = false
+    internal var hostBottomBarTouchGlow = false
+    internal var hostVideoCards = false
+    internal var hostBottomBarCompact = false
+    internal var hostBottomBarIconOnly = false
+    internal var hostTopBarLiquidGlass = false
+    internal var hostTopBarTouchGlow = false
 
     /** 亮色开关二次确认进行中标志（防 setOnCheckedChangeListener 重入递归） */
     private var autoLightConfirmInProgress = false
@@ -4880,7 +4880,7 @@ class MainActivity : SkinnedActivity() {
 
     internal fun styleHomeControls(root: View) = stylePreparedSkinControls(root)
 
-    private fun bindFavoriteSwitch(
+    internal fun bindFavoriteSwitch(
         view: com.Bilibili_Innocent_Lab.xposedmodule.ui.view.MaterialSwitch,
         storageKey: String,
         directToggle: Boolean = true
@@ -8896,156 +8896,7 @@ class MainActivity : SkinnedActivity() {
             textColor = colorResource(R.color.colorTextDark)
             textSize = 12f
         }
-        MaterialSwitch(
-            lparams = LayoutParams(widthMatchParent = true) {
-                topMargin = 12.dp
-                bottomMargin = 5.dp
-            }
-        ) {
-            bindFavoriteSwitch(this, FeaturePreferences.HOST_BOTTOM_BAR_LIQUID_GLASS, directToggle = true)
-            text = stringResource(R.string.host_bottom_bar_liquid_glass)
-            isAllCaps = false
-            textColor = colorResource(R.color.colorTextGray)
-            textSize = 15f
-            isChecked = hostBottomBarLiquidGlass
-            setOnCheckedChangeListener { _, checked ->
-                hostBottomBarLiquidGlass = checked
-                runCatching {
-                    prefs().edit {
-                        putBoolean(
-                            FeaturePreferences.HOST_BOTTOM_BAR_LIQUID_GLASS,
-                            checked
-                        )
-                    }
-                }.onFailure { throwable ->
-                    Log.e(
-                        "BilibiliInnocentLab",
-                        "write host bottom bar liquid glass prefs failed",
-                        throwable
-                    )
-                }
-            }
-        }
-        TextView(
-            lparams = LayoutParams(widthMatchParent = true)
-        ) {
-            alpha = 0.6f
-            setLineSpacing(6f, 1f)
-            text = stringResource(R.string.host_bottom_bar_liquid_glass_tip)
-            textColor = colorResource(R.color.colorTextDark)
-            textSize = 12f
-        }
-        MaterialSwitch(
-            lparams = LayoutParams(widthMatchParent = true) {
-                topMargin = 12.dp
-                bottomMargin = 5.dp
-            }
-        ) {
-            bindFavoriteSwitch(this, FeaturePreferences.HOST_BOTTOM_BAR_COMPACT, directToggle = true)
-            text = stringResource(R.string.host_bottom_bar_compact)
-            isAllCaps = false
-            textColor = colorResource(R.color.colorTextGray)
-            textSize = 15f
-            isChecked = hostBottomBarCompact
-            setOnCheckedChangeListener { _, checked ->
-                hostBottomBarCompact = checked
-                runCatching {
-                    prefs().edit {
-                        putBoolean(
-                            FeaturePreferences.HOST_BOTTOM_BAR_COMPACT,
-                            checked
-                        )
-                    }
-                }.onFailure { throwable ->
-                    Log.e(
-                        "BilibiliInnocentLab",
-                        "write host bottom bar compact prefs failed",
-                        throwable
-                    )
-                }
-            }
-        }
-        TextView(lparams = LayoutParams(widthMatchParent = true)) {
-            alpha = 0.6f
-            text = stringResource(R.string.host_bottom_bar_compact_tip)
-            textColor = colorResource(R.color.colorTextDark)
-            textSize = 12f
-        }
-        MaterialSwitch(
-            lparams = LayoutParams(widthMatchParent = true) {
-                topMargin = 12.dp
-                bottomMargin = 5.dp
-            }
-        ) {
-            bindFavoriteSwitch(this, FeaturePreferences.HOST_BOTTOM_BAR_ICON_ONLY, directToggle = true)
-            text = stringResource(R.string.host_bottom_bar_icon_only)
-            isAllCaps = false
-            textColor = colorResource(R.color.colorTextGray)
-            textSize = 15f
-            isChecked = hostBottomBarIconOnly
-            setOnCheckedChangeListener { _, checked ->
-                hostBottomBarIconOnly = checked
-                runCatching {
-                    prefs().edit {
-                        putBoolean(
-                            FeaturePreferences.HOST_BOTTOM_BAR_ICON_ONLY,
-                            checked
-                        )
-                    }
-                }.onFailure { throwable ->
-                    Log.e(
-                        "BilibiliInnocentLab",
-                        "write host bottom bar icon_only prefs failed",
-                        throwable
-                    )
-                }
-            }
-        }
-        TextView(lparams = LayoutParams(widthMatchParent = true)) {
-            alpha = 0.6f
-            text = stringResource(R.string.host_bottom_bar_icon_only_tip)
-            textColor = colorResource(R.color.colorTextDark)
-            textSize = 12f
-        }
-        MaterialSwitch(
-            lparams = LayoutParams(widthMatchParent = true) {
-                topMargin = 12.dp
-                bottomMargin = 5.dp
-            }
-        ) {
-            bindFavoriteSwitch(this, FeaturePreferences.HOST_BOTTOM_BAR_TOUCH_GLOW, directToggle = true)
-            text = stringResource(R.string.host_bottom_bar_touch_glow)
-            isAllCaps = false
-            textColor = colorResource(R.color.colorTextGray)
-            textSize = 15f
-            isChecked = hostBottomBarTouchGlow
-            setOnCheckedChangeListener { _, checked ->
-                hostBottomBarTouchGlow = checked
-                runCatching {
-                    prefs().edit {
-                        putBoolean(
-                            FeaturePreferences.HOST_BOTTOM_BAR_TOUCH_GLOW,
-                            checked
-                        )
-                    }
-                }.onFailure { throwable ->
-                    Log.e(
-                        "BilibiliInnocentLab",
-                        "write host bottom bar touch glow prefs failed",
-                        throwable
-                    )
-                }
-            }
-        }
-        TextView(
-            lparams = LayoutParams(widthMatchParent = true)
-        ) {
-            alpha = 0.6f
-            setLineSpacing(6f, 1f)
-            text = stringResource(R.string.host_bottom_bar_touch_glow_tip)
-            textColor = colorResource(R.color.colorTextDark)
-            textSize = 12f
-        }
+        hostBottomBarAppearanceRows(this)
         TextView(
             lparams = LayoutParams(widthMatchParent = true) {
                 topMargin = AdvancedSubsectionStyle.TOP_MARGIN_DP.dp
@@ -9615,84 +9466,7 @@ class MainActivity : SkinnedActivity() {
             textColor = colorResource(R.color.colorTextDark)
             textSize = 12f
         }
-        MaterialSwitch(
-            lparams = LayoutParams(widthMatchParent = true) {
-                topMargin = 12.dp
-                bottomMargin = 5.dp
-            }
-        ) {
-            bindFavoriteSwitch(this, FeaturePreferences.HOST_TOP_BAR_LIQUID_GLASS, directToggle = true)
-            text = stringResource(R.string.host_top_bar_liquid_glass)
-            isAllCaps = false
-            textColor = colorResource(R.color.colorTextGray)
-            textSize = 15f
-            isChecked = hostTopBarLiquidGlass
-            setOnCheckedChangeListener { _, checked ->
-                hostTopBarLiquidGlass = checked
-                runCatching {
-                    prefs().edit {
-                        putBoolean(
-                            FeaturePreferences.HOST_TOP_BAR_LIQUID_GLASS,
-                            checked
-                        )
-                    }
-                }.onFailure { throwable ->
-                    Log.e(
-                        "BilibiliInnocentLab",
-                        "write host top bar liquid glass prefs failed",
-                        throwable
-                    )
-                }
-            }
-        }
-        TextView(
-            lparams = LayoutParams(widthMatchParent = true)
-        ) {
-            alpha = 0.6f
-            setLineSpacing(6f, 1f)
-            text = stringResource(R.string.host_top_bar_liquid_glass_tip)
-            textColor = colorResource(R.color.colorTextDark)
-            textSize = 12f
-        }
-        MaterialSwitch(
-            lparams = LayoutParams(widthMatchParent = true) {
-                topMargin = 12.dp
-                bottomMargin = 5.dp
-            }
-        ) {
-            bindFavoriteSwitch(this, FeaturePreferences.HOST_TOP_BAR_TOUCH_GLOW, directToggle = true)
-            text = stringResource(R.string.host_top_bar_touch_glow)
-            isAllCaps = false
-            textColor = colorResource(R.color.colorTextGray)
-            textSize = 15f
-            isChecked = hostTopBarTouchGlow
-            setOnCheckedChangeListener { _, checked ->
-                hostTopBarTouchGlow = checked
-                runCatching {
-                    prefs().edit {
-                        putBoolean(
-                            FeaturePreferences.HOST_TOP_BAR_TOUCH_GLOW,
-                            checked
-                        )
-                    }
-                }.onFailure { throwable ->
-                    Log.e(
-                        "BilibiliInnocentLab",
-                        "write host top bar touch glow prefs failed",
-                        throwable
-                    )
-                }
-            }
-        }
-        TextView(
-            lparams = LayoutParams(widthMatchParent = true)
-        ) {
-            alpha = 0.6f
-            setLineSpacing(6f, 1f)
-            text = stringResource(R.string.host_top_bar_touch_glow_tip)
-            textColor = colorResource(R.color.colorTextDark)
-            textSize = 12f
-        }
+        hostTopBarAppearanceRows(this)
         TextView(
             lparams = LayoutParams(widthMatchParent = true) {
                 topMargin = 12.dp
@@ -10148,31 +9922,7 @@ class MainActivity : SkinnedActivity() {
             textSize = 12f
             typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
         }
-        MaterialSwitch(
-            lparams = LayoutParams(widthMatchParent = true) {
-                topMargin = 12.dp
-                bottomMargin = 5.dp
-            }
-        ) {
-            bindFavoriteSwitch(this, FeaturePreferences.HOST_VIDEO_CARDS, directToggle = true)
-            text = stringResource(R.string.host_video_cards)
-            isAllCaps = false
-            textColor = colorResource(R.color.colorTextGray)
-            textSize = 15f
-            isChecked = hostVideoCards
-            setOnCheckedChangeListener { _, checked ->
-                hostVideoCards = checked
-                runCatching { prefs().edit { putBoolean(FeaturePreferences.HOST_VIDEO_CARDS, checked) } }
-                    .onFailure { Log.e("BilibiliInnocentLab", "write host video card prefs failed", it) }
-            }
-        }
-        TextView(lparams = LayoutParams(widthMatchParent = true)) {
-            alpha = 0.6f
-            setLineSpacing(6f, 1f)
-            text = stringResource(R.string.host_video_cards_tip)
-            textColor = colorResource(R.color.colorTextDark)
-            textSize = 12f
-        }
+        hostVideoCardAppearanceRows(this)
         MaterialSwitch(
             lparams = LayoutParams(widthMatchParent = true) {
                 bottomMargin = 5.dp
