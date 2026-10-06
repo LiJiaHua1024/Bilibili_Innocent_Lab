@@ -1282,12 +1282,14 @@ internal class HostLiquidSurfaceDrawable(
 
     override fun draw(canvas: Canvas) = drawSurface(canvas, callback as? View)
 
-    /** 触摸层比外壳高时，仍以宿主外壳的位置采样，避免磨砂内容随触摸容错区偏移。 */
-    fun drawForView(canvas: Canvas, reference: View) = drawSurface(canvas, reference)
+    /** 代画时使用可见层的局部坐标，采样完成也会刷新该层；外壳偏移与取景同步。 */
+    fun drawForView(canvas: Canvas, reference: View, offsetY: Float = 0f) =
+        drawSurface(canvas, reference, offsetY)
 
-    private fun drawSurface(canvas: Canvas, reference: View?) {
+    private fun drawSurface(canvas: Canvas, reference: View?, offsetY: Float = 0f) {
         rect.set(bounds)
         rect.inset(horizontalInset, verticalInset)
+        rect.offset(0f, offsetY)
         if (rect.isEmpty || !rect.left.isFinite() || !rect.top.isFinite() ||
             !rect.right.isFinite() || !rect.bottom.isFinite() || !radius.isFinite()
         ) return
