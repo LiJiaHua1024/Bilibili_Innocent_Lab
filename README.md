@@ -174,7 +174,7 @@ Bilibili Innocent Lab 是一个面向 Android 哔哩哔哩客户端的 Xposed/LS
 | 关闭客户端更新提醒 | 阻止哔哩哔哩客户端自身的更新提醒，不影响本模块检查 Stable 或 Preview 更新 |
 | 关闭青少年模式提醒 | 隐藏青少年模式提示页面，不修改青少年模式的开启状态、限制规则或系统设置 |
 | 显示完整数字 | 播放量、点赞数等计数优先显示完整数值，减少“万”“亿”等缩写；只处理已经适配的数字格式化入口 |
-| 视频卡片悬浮美化 | 为列表中的视频封面增加大圆角和极淡灰色柔影，增大双列间距及屏幕边缘留白；位于增强进阶设置，默认关闭，重启宿主后生效 |
+| 视频卡片悬浮美化 | 使用凝光引擎的轻量柔光卡片材质，为视频封面增加大圆角和极淡灰色柔影，增大双列间距及屏幕边缘留白；位于增强进阶设置，默认关闭，重启宿主后生效 |
 | 视频号显示为 AV 号 | 哔哩哔哩在同一处出口二选一地展示 AV 号或 BV 号，开启后固定显示 AV 号；正文里的 BV 链接仍可识别和点击 |
 
 #### 分享
@@ -761,6 +761,7 @@ SPDX-License-Identifier: GPL-3.0-only
 
 - [YukiHookAPI](https://github.com/HighCapable/YukiHookAPI)
 - [KavaRef](https://github.com/HighCapable/KavaRef)
+- [Lumen Coacervation Engine](https://github.com/jichuo1/LumenCoacervationEngine)（视频卡片柔光材质，Apache-2.0）
 - [BBZQ](https://github.com/HSSkyBoy/BBZQ)
 - Xposed / LSPosed 社区
 - Android 开源项目与相关开发文档

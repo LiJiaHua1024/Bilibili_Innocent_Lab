@@ -19,7 +19,8 @@ internal class HostVideoCardStyleFeatureInstaller(private val enabled: Boolean) 
             ?: return FeatureInstallResult.Skipped("missing-item-view")
         val firstHit = AtomicBoolean(false)
         val firstError = AtomicBoolean(false)
-        val style = HostVideoCardStyle(onApplied = {
+        val grid = HostVideoCardGridAccess.resolve(loader)
+        val style = HostVideoCardStyle(grid = grid, onApplied = {
             if (firstHit.compareAndSet(false, true)) {
                 environment.reportRuntimeEvidence(ID, FeatureRuntimeStage.APPLIED)
                 environment.logInfo("host_video_cards_applied", "[BIL] 视频卡片大圆角、柔影和留白已生效")
@@ -30,6 +31,18 @@ internal class HostVideoCardStyleFeatureInstaller(private val enabled: Boolean) 
             }
         })
         return runCatching {
+            if (grid != null) {
+                // assignSpans 已完成，直接参与宿主当前测量，避免布局后再重测整列表。
+                val measure = grid.measureChild
+                environment.registrar.exact("host_video_cards.measure", measure.declaringClass,
+                    measure.name, *measure.parameterTypes) {
+                    before {
+                        val manager = instance ?: return@before
+                        val root = argOrNull(0) as? View ?: return@before
+                        style.prepareMeasurement(manager, root)
+                    }
+                }
+            }
             // final bindViewHolder 统一覆盖各适配器，使用宿主 ClassLoader 的类型，避免跨加载器强转。
             environment.registrar.exact("host_video_cards.bind", adapter, "bindViewHolder", holder, Int::class.javaPrimitiveType!!) {
                 after {
@@ -39,8 +52,8 @@ internal class HostVideoCardStyleFeatureInstaller(private val enabled: Boolean) 
                     style.bind(root)
                 }
             }
-            environment.logInfo("host_video_cards_installed", "[BIL] 视频卡片美化安装成功")
-            FeatureInstallResult.Installed(1)
+            environment.logInfo("host_video_cards_installed", "[BIL] 视频卡片美化安装成功（测量前留白=${grid != null}）")
+            FeatureInstallResult.Installed(if (grid != null) 2 else 1, complete = grid != null)
         }.getOrElse {
             environment.logError("host_video_cards_error", "[BIL] 视频卡片美化安装失败: $it")
             FeatureInstallResult.Skipped("registration-failed")

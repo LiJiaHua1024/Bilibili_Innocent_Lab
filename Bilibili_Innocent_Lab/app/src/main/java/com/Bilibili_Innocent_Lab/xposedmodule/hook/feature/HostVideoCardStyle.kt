@@ -1,41 +1,60 @@
 package com.Bilibili_Innocent_Lab.xposedmodule.hook.feature
 
 import android.content.res.Configuration
-import android.graphics.Color
 import android.graphics.Outline
-import android.graphics.Path
-import android.graphics.RectF
-import android.graphics.drawable.GradientDrawable
-import android.os.Build
+import android.graphics.drawable.Drawable
+import android.graphics.drawable.ColorDrawable
+import android.graphics.drawable.LayerDrawable
+import android.util.SparseIntArray
 import android.util.TypedValue
 import android.view.View
 import android.view.ViewGroup
 import android.view.ViewOutlineProvider
 import android.widget.ImageView
 import android.widget.TextView
-import com.Bilibili_Innocent_Lab.xposedmodule.runtime.KavaMemberLookup
+import java.lang.ref.WeakReference
 import java.util.WeakHashMap
 
-internal object HostVideoCardStyleSpec {
-    fun coverRadius(width: Int, height: Int): Float = minOf(width, height).coerceAtLeast(0) * 0.22f
+/** 只处理宿主 RecyclerView 中有封面和标题的条目；不遍历 Activity 或播放器。 */
+internal class HostVideoCardStyle(
+    private val grid: HostVideoCardGridAccess?,
+    private val onApplied: () -> Unit,
+    private val onError: (Throwable) -> Unit
+) {
+    private class Cover(view: View) {
+        val view = WeakReference(view)
+        var width = -1
+        var height = -1
+    }
 
-    // 在宿主已有的 ItemDecoration 上增加留白，不替换其分区/全宽卡片装饰。
-    fun extraHorizontalDp(spanIndex: Int): Pair<Int, Int> =
-        if (spanIndex == 0) 14 to 7 else 7 to 14
-}
+    private class State(
+        val childCount: Int,
+        val covers: Array<Cover>,
+        val info: WeakReference<View>?,
+        val spacing: HostVideoCardSpacing
+    ) : ViewOutlineProvider() {
+        var surface: Drawable? = null
+        var surfaceRadius = -1f
+        val geometry = HostVideoCardGeometry()
+        var decorated = false
+        var color = 0
 
-/** 只处理宿主 RecyclerView 中有视频封面和标题的条目；不遍历 Activity 或播放器。 */
-internal class HostVideoCardStyle(private val onApplied: () -> Unit, private val onError: (Throwable) -> Unit) {
-    private data class State(
-        val left: Int, val top: Int, val right: Int, val bottom: Int,
-        var decorated: Boolean = false,
-        var topRadius: Float = 0f,
-        var bottomRadius: Float = 0f,
-        val surface: GradientDrawable = GradientDrawable()
-    )
+        fun updateGeometry(width: Int, height: Int, radius: Float): Boolean {
+            return geometry.update(width, height, radius)
+        }
 
+        override fun getOutline(view: View, outline: Outline) {
+            outline.setRoundRect(0, 0, view.width, view.height, geometry.radius)
+        }
+    }
+
+    // 值只弱引用子 View，避免 WeakHashMap 的值经 child.parent 反向持有 key。
     private val states = WeakHashMap<View, State>()
-    private val pendingLayouts = WeakHashMap<ViewGroup, Boolean>()
+    private val excluded = WeakHashMap<View, Int>()
+    private class ListShadow(val drawable: HostVideoCardShadow, val background: LayerDrawable)
+    private val listShadows = WeakHashMap<ViewGroup, ListShadow>()
+    private val resourceKinds = SparseIntArray()
+    private val recyclerTypes = HashMap<Class<*>, Boolean>()
     private val coverNames = setOf("cover_layout", "cover", "video_cover", "iv_cover", "cover_image", "image_cover", "cover_container", "thumbnail", "pic")
     private val titleNames = setOf("title", "title_layout", "video_title", "tv_title")
     private val coverOutline = object : ViewOutlineProvider() {
@@ -44,24 +63,9 @@ internal class HostVideoCardStyle(private val onApplied: () -> Unit, private val
                 HostVideoCardStyleSpec.coverRadius(view.width, view.height))
         }
     }
-    private val cardOutline = object : ViewOutlineProvider() {
-        private val path = Path()
-        private val bounds = RectF()
-        override fun getOutline(view: View, outline: Outline) {
-            val state = states[view] ?: return
-            if (Build.VERSION.SDK_INT >= 33) {
-                bounds.set(0f, 0f, view.width.toFloat(), view.height.toFloat())
-                path.rewind()
-                path.addRoundRect(bounds, cardRadii(state.topRadius, state.bottomRadius), Path.Direction.CW)
-                outline.setPath(path)
-            } else {
-                // 旧系统仅能裁切统一圆角；背景顶部仍匹配封面，底部沿用原生裁切。
-                outline.setRoundRect(0, 0, view.width, view.height, state.bottomRadius)
-            }
-        }
-    }
-    private val layoutListener = View.OnLayoutChangeListener { view, _, _, _, _, _, _, _, _ ->
-        safelyApply(view)
+    private val layoutListener = View.OnLayoutChangeListener { view, left, top, right, bottom, oldLeft, oldTop, oldRight, oldBottom ->
+        // 滚动只改变位置，跳过所有查找、反射、遍历和轮廓重建。
+        if (right - left != oldRight - oldLeft || bottom - top != oldBottom - oldTop) safelyApply(view)
     }
     private val attachListener = object : View.OnAttachStateChangeListener {
         override fun onViewAttachedToWindow(view: View) = safelyApply(view)
@@ -70,142 +74,195 @@ internal class HostVideoCardStyle(private val onApplied: () -> Unit, private val
 
     fun bind(root: View) {
         if (root !is ViewGroup) return
-        if (root !in states) {
-            // 评论、导航等列表不挂视觉监听器；绑定期已生成封面容器，即使尚未测量。
-            if (!hasCover(root, 0)) return
-            val margins = root.layoutParams as? ViewGroup.MarginLayoutParams
-            states[root] = State(margins?.leftMargin ?: 0, margins?.topMargin ?: 0,
-                margins?.rightMargin ?: 0, margins?.bottomMargin ?: 0)
-            root.addOnLayoutChangeListener(layoutListener)
-            root.addOnAttachStateChangeListener(attachListener)
+        var state = states[root]
+        if (state == null || state.childCount != root.childCount || !coversBelongTo(root, state)) {
+            if (state == null && excluded[root] == root.childCount) return
+            val discovered = discover(root, state?.spacing)
+            if (discovered == null) {
+                excluded[root] = root.childCount
+                return
+            }
+            if (state == null) {
+                root.addOnLayoutChangeListener(layoutListener)
+                root.addOnAttachStateChangeListener(attachListener)
+            }
+            state = discovered
+            states[root] = state
+            excluded.remove(root)
         }
+        // 字号和封面信息留白在绑定/首次测量前设置，布局回调不再修改 LayoutParams。
+        configureInfo(root, state)
         safelyApply(root)
     }
 
-    private fun safelyApply(root: View) {
-        // View 的生命周期回调不经过 Hook 框架的异常隔离。
-        runCatching { apply(root as? ViewGroup ?: return) }.onFailure(onError)
+    private fun coversBelongTo(root: ViewGroup, state: State): Boolean {
+        for (cached in state.covers) {
+            var parent = cached.view.get()?.parent ?: return false
+            var found = false
+            for (depth in 0..10) {
+                if (parent === root) { found = true; break }
+                parent = parent.parent ?: break
+            }
+            if (!found) return false
+        }
+        return true
     }
 
-    private fun apply(root: ViewGroup) {
-        val parent = root.parent as? ViewGroup ?: return
-        if (!isRecycler(parent.javaClass)) return
-        val covers = ArrayList<View>()
+    /** GridLayoutManager 已分配 span、尚未测量子项时调用；不发送 requestLayout。 */
+    fun prepareMeasurement(manager: Any, root: View) {
+        val state = states[root] ?: return
+        val params = root.layoutParams as? ViewGroup.MarginLayoutParams ?: return
+        val span = grid?.doubleColumnSpan(manager, params) ?: -1
+        val spacing = state.spacing
+        // 直接更新已被宿主持有的参数，原测量流程一次得到正确尺寸。
+        params.setMargins(spacing.left(span), spacing.top(span), spacing.right(span), spacing.bottom(span))
+    }
+
+    private fun discover(root: ViewGroup, previousSpacing: HostVideoCardSpacing?): State? {
+        val covers = ArrayList<Cover>(1)
         var hasTitle = false
+        var info: WeakReference<View>? = null
         fun visit(view: View, depth: Int) {
-            if (depth > 10) return
-            if (depth > 0 && isRecycler(view.javaClass)) return
-            val name = resourceName(view)
-            if (name in titleNames && (view is TextView || view is ViewGroup)) hasTitle = true
-            if (name in coverNames && (view is ImageView || view is ViewGroup)) {
-                covers += view
-                return // 容器负责裁切封面内的图片、渐变和角标，避免重复裁切。
+            if (depth > 10 || depth > 0 && isRecycler(view.javaClass)) return
+            when (resourceKind(view)) {
+                COVER -> if (view is ImageView || view is ViewGroup) {
+                    covers += Cover(view)
+                    return // 容器统一裁切图片、渐变和角标。
+                }
+                TITLE -> if (view is TextView || view is ViewGroup) hasTitle = true
+                INFO -> if (depth == 1) info = WeakReference(view)
             }
             if (view is ViewGroup) for (i in 0 until view.childCount) visit(view.getChildAt(i), depth + 1)
         }
         visit(root, 0)
-        if (!hasTitle || covers.isEmpty()) return
-        // 不改变 Story 竖屏播放器或全屏媒体容器。
-        val visibleCovers = covers.filter { it.width > 0 && it.height > 0 && it.height < parent.height * 0.7f }
-        if (visibleCovers.isEmpty()) return
-        for (cover in visibleCovers) {
-            cover.outlineProvider = coverOutline
-            cover.clipToOutline = true
-            cover.invalidateOutline()
-        }
-
-        val state = states[root] ?: return
-        val density = root.resources.displayMetrics.density
-        val cover = visibleCovers.singleOrNull()
-        val topRadius = if (cover != null && cover.left == 0 && cover.top == 0 && cover.width == root.width)
-            HostVideoCardStyleSpec.coverRadius(cover.width, cover.height) else 20f * density
-        val bottomRadius = 20f * density
-        if (!state.decorated || state.topRadius != topRadius || state.bottomRadius != bottomRadius) {
-            state.topRadius = topRadius
-            state.bottomRadius = bottomRadius
-            // 背景与阴影/裁切共用轮廓，封面顶部不会露出半径较小的白色卡片背景。
-            state.surface.cornerRadii = cardRadii(topRadius, bottomRadius)
-        }
-        // 首页播放数/时长是封面的兄弟节点，稍向内收，避免文字落进大圆角的空白。
-        for (i in 0 until root.childCount) {
-            val child = root.getChildAt(i)
-            if (resourceName(child) != "cover_bottom_info_container") continue
-            val infoParams = child.layoutParams as? ViewGroup.MarginLayoutParams ?: continue
-            val inset = (12f * density).toInt()
-            val bottomInset = (9f * density).toInt()
-            if (infoParams.leftMargin != inset || infoParams.rightMargin != inset || infoParams.bottomMargin < bottomInset) {
-                infoParams.leftMargin = inset
-                infoParams.rightMargin = inset
-                infoParams.bottomMargin = maxOf(infoParams.bottomMargin, bottomInset)
-                child.layoutParams = infoParams
-            }
-            // 略收紧封面信息字号，为缩窄后的双列保留播放数、弹幕数和时长。
-            if (child is ViewGroup) for (index in 0 until child.childCount) {
-                (child.getChildAt(index) as? TextView)?.setTextSize(TypedValue.COMPLEX_UNIT_SP, 13f)
-            }
-        }
-        val manager = call(parent, "getLayoutManager")
-        val spans = (manager?.let { call(it, "getSpanCount") } as? Int)
+        if (!hasTitle || covers.isEmpty()) return null
         val params = root.layoutParams as? ViewGroup.MarginLayoutParams
-        val spanIndex = params?.let { call(it, "getSpanIndex") } as? Int
-        val spanSize = params?.let { call(it, "getSpanSize") } as? Int
-        val doubleColumn = spans == 2 && spanSize == 1 && spanIndex in 0..1
-        if (params != null) {
-            val extra = if (doubleColumn) HostVideoCardStyleSpec.extraHorizontalDp(spanIndex!!) else 0 to 0
-            val left = state.left + (extra.first * density).toInt()
-            val right = state.right + (extra.second * density).toInt()
-            val top = state.top + if (doubleColumn) (5 * density).toInt() else 0
-            val bottom = state.bottom + if (doubleColumn) (12 * density).toInt() else 0
-            if (params.leftMargin != left || params.rightMargin != right ||
-                params.topMargin != top || params.bottomMargin != bottom) {
-                params.setMargins(left, top, right, bottom)
-                root.layoutParams = params
-                // RecyclerView 在滚动/布局中会吞掉子项的 requestLayout；退出本帧再重测，
-                // 避免新回收出来的条目要等下一次滚动才获得留白。同一列表只排一个任务。
-                if (pendingLayouts.put(parent, true) == null) parent.post {
-                    pendingLayouts.remove(parent)
-                    if (parent.isAttachedToWindow) parent.requestLayout()
-                }
-            }
-        }
+        val spacing = previousSpacing ?: HostVideoCardSpacing(params?.leftMargin ?: 0,
+            params?.topMargin ?: 0, params?.rightMargin ?: 0, params?.bottomMargin ?: 0,
+            root.resources.displayMetrics.density)
+        return State(root.childCount, covers.toTypedArray(), info, spacing)
+    }
 
+    private fun configureInfo(root: ViewGroup, state: State) {
+        val child = state.info?.get() ?: return
+        val params = child.layoutParams as? ViewGroup.MarginLayoutParams ?: return
+        val density = root.resources.displayMetrics.density
+        val inset = (12f * density).toInt()
+        val bottom = (9f * density).toInt()
+        if (params.leftMargin != inset || params.rightMargin != inset || params.bottomMargin < bottom) {
+            params.leftMargin = inset
+            params.rightMargin = inset
+            params.bottomMargin = maxOf(params.bottomMargin, bottom)
+            child.layoutParams = params
+        }
+        if (child is ViewGroup) for (i in 0 until child.childCount) {
+            val text = child.getChildAt(i) as? TextView ?: continue
+            val target = TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_SP, 12f, text.resources.displayMetrics)
+            if (text.textSize != target) text.setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f)
+        }
+    }
+
+    private fun safelyApply(view: View) {
+        val root = view as? ViewGroup ?: return
+        val state = states[root] ?: return
+        runCatching { apply(root, state) }.onFailure(onError)
+    }
+
+    private fun apply(root: ViewGroup, state: State) {
+        val parent = root.parent as? ViewGroup ?: return
+        if (!isRecycler(parent.javaClass)) return
+        var count = 0
+        var single: View? = null
+        for (cached in state.covers) {
+            val cover = cached.view.get() ?: continue
+            // 不改变 Story 竖屏播放器或全屏媒体容器。
+            if (cover.width <= 0 || cover.height <= 0 || cover.height >= parent.height * 0.7f) continue
+            count++
+            single = cover
+            val resized = cached.width != cover.width || cached.height != cover.height
+            cached.width = cover.width
+            cached.height = cover.height
+            val replaced = cover.outlineProvider !== coverOutline
+            if (replaced) cover.outlineProvider = coverOutline
+            if (!cover.clipToOutline) cover.clipToOutline = true
+            if (resized && !replaced) cover.invalidateOutline()
+        }
+        if (count == 0) return
+        val density = root.resources.displayMetrics.density
+        val radius = if (count == 1 && single != null && single.left == 0 && single.top == 0 && single.width == root.width)
+            HostVideoCardStyleSpec.coverRadius(single.width, single.height) else 20f * density
+        val resized = state.updateGeometry(root.width, root.height, radius)
+        val night = root.resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK == Configuration.UI_MODE_NIGHT_YES
+        val color = HostVideoCardSurface.color(night)
+        if (state.surface == null || state.surfaceRadius != radius || state.color != color) {
+            val surface = HostVideoCardSurface.create(root, radius, night) ?: return
+            state.color = color
+            state.surfaceRadius = radius
+            state.surface = surface
+        }
         if (!state.decorated) {
-            val night = root.resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK == Configuration.UI_MODE_NIGHT_YES
-            state.surface.setColor(if (night) Color.rgb(35, 35, 38) else Color.WHITE)
-            // Android 原生阴影由 RenderThread 绘制，滚动时不创建模糊位图或软件图层。
-            root.elevation = (if (Build.VERSION.SDK_INT >= 28) 8f else 3f) * density
-            if (Build.VERSION.SDK_INT >= 28) {
-                root.outlineAmbientShadowColor = Color.argb(18, 112, 112, 112)
-                root.outlineSpotShadowColor = Color.argb(24, 112, 112, 112)
-            }
+            // 柔影集中在列表底层复用纹理，避免每个条目再提交一份原生 elevation 阴影。
+            root.elevation = 0f
             state.decorated = true
             onApplied()
         }
+        shadowFor(parent).prepare(radius)
         if (root.background !== state.surface) root.background = state.surface
-        if (root.outlineProvider !== cardOutline) root.outlineProvider = cardOutline
-        root.clipToOutline = true
-        // 给阴影留出绘制空间，列表仍按自身窗口裁切，不跨到顶栏或底栏。
-        parent.clipChildren = false
-        root.invalidateOutline()
+        val replaced = root.outlineProvider !== state
+        if (replaced) root.outlineProvider = state
+        // 背景、裁切与缓存柔影共用半径，消除白耳朵并避免复杂 Path 裁切。
+        if (!root.clipToOutline) root.clipToOutline = true
+        if (parent.clipChildren) parent.clipChildren = false
+        if (resized && !replaced) root.invalidateOutline()
     }
 
-    private fun call(target: Any, name: String): Any? = runCatching {
-        KavaMemberLookup.inheritedMethodOrNull(target.javaClass, name)?.invoke(target)
-    }.getOrNull()
-
-    private fun resourceName(view: View): String = if (view.id == View.NO_ID) "" else
-        runCatching { view.resources.getResourceEntryName(view.id) }.getOrDefault("")
-
-    private fun cardRadii(top: Float, bottom: Float) =
-        floatArrayOf(top, top, top, top, bottom, bottom, bottom, bottom)
-
-    private fun hasCover(view: View, depth: Int): Boolean {
-        if (depth > 10) return false
-        if (depth > 0 && isRecycler(view.javaClass)) return false
-        if (resourceName(view) in coverNames && (view is ImageView || view is ViewGroup)) return true
-        return view is ViewGroup && (0 until view.childCount).any { hasCover(view.getChildAt(it), depth + 1) }
+    private fun shadowFor(parent: ViewGroup): HostVideoCardShadow {
+        val cached = listShadows[parent]
+        if (cached != null && parent.background === cached.background) return cached.drawable
+        val shadow = cached?.drawable ?: HostVideoCardShadow(parent) { view ->
+            val state = states[view]
+            if (state?.decorated == true) state.geometry.radius else -1f
+        }
+        val background = LayerDrawable(arrayOf(parent.background ?: ColorDrawable(0), shadow))
+        val left = parent.paddingLeft
+        val top = parent.paddingTop
+        val right = parent.paddingRight
+        val bottom = parent.paddingBottom
+        parent.background = background
+        parent.setPadding(left, top, right, bottom)
+        listShadows[parent] = ListShadow(shadow, background)
+        return shadow
     }
 
-    private fun isRecycler(type: Class<*>): Boolean =
-        generateSequence(type) { it.superclass }.any { it.name == "androidx.recyclerview.widget.RecyclerView" }
+    private fun resourceKind(view: View): Int {
+        val id = view.id
+        if (id == View.NO_ID) return OTHER
+        val cached = resourceKinds.get(id, -1)
+        if (cached >= 0) return cached
+        val name = runCatching { view.resources.getResourceEntryName(id) }.getOrDefault("")
+        val kind = when {
+            name in coverNames -> COVER
+            name in titleNames -> TITLE
+            name == "cover_bottom_info_container" -> INFO
+            else -> OTHER
+        }
+        resourceKinds.put(id, kind)
+        return kind
+    }
+
+    private fun isRecycler(type: Class<*>): Boolean = recyclerTypes.getOrPut(type) {
+        var current: Class<*>? = type
+        while (current != null) {
+            if (current.name == "androidx.recyclerview.widget.RecyclerView") return@getOrPut true
+            current = current.superclass
+        }
+        false
+    }
+
+    private companion object {
+        const val OTHER = 0
+        const val COVER = 1
+        const val TITLE = 2
+        const val INFO = 3
+    }
 }
