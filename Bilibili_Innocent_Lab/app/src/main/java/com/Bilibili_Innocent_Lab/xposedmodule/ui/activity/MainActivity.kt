@@ -433,6 +433,8 @@ class MainActivity : SkinnedActivity() {
     private var forceExternalBrowser = false
     private var systemMediaNotification = false
     private var splashAutoNight = false
+    private var brandSplashSkip = false
+    private var brandSplashCustom = false
     private var showBvAsAv = false
     private var purifySplashAds = false
     private var freeCopyEnabled = true
@@ -4416,6 +4418,8 @@ class MainActivity : SkinnedActivity() {
         forceExternalBrowser = uiSettings.bool(FeaturePreferences.FORCE_EXTERNAL_BROWSER)
         systemMediaNotification = uiSettings.bool(FeaturePreferences.SYSTEM_MEDIA_NOTIFICATION)
         splashAutoNight = uiSettings.bool(FeaturePreferences.SPLASH_AUTO_NIGHT)
+        brandSplashSkip = uiSettings.bool(FeaturePreferences.BRAND_SPLASH_SKIP)
+        brandSplashCustom = uiSettings.bool(FeaturePreferences.BRAND_SPLASH_CUSTOM)
         showBvAsAv = uiSettings.bool(FeaturePreferences.SHOW_BV_AS_AV)
         blockTeenagersModePrompt = uiSettings.bool(FeaturePreferences.BLOCK_TEENAGERS_MODE_PROMPT)
         purifySplashAds = uiSettings.bool(FeaturePreferences.PURIFY_SPLASH_ADS)
@@ -9721,6 +9725,52 @@ class MainActivity : SkinnedActivity() {
             textColor = monetColors.primary
             textSize = 12f
             typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+        }
+        MaterialSwitch(lparams = LayoutParams(widthMatchParent = true) { topMargin = 12.dp; bottomMargin = 5.dp }) {
+            bindFavoriteSwitch(this, FeaturePreferences.BRAND_SPLASH_SKIP, directToggle = true)
+            text = stringResource(R.string.brand_splash_skip)
+            isAllCaps = false
+            textColor = colorResource(R.color.colorTextGray)
+            textSize = 15f
+            isChecked = brandSplashSkip
+            setOnCheckedChangeListener { _, checked ->
+                runCatching { prefs().edit { putBoolean(FeaturePreferences.BRAND_SPLASH_SKIP, checked) } }
+                    .onSuccess { brandSplashSkip = checked }
+                    .onFailure { throwable ->
+                        Log.e("BilibiliInnocentLab", "write brand splash skip prefs failed", throwable)
+                        isChecked = brandSplashSkip
+                    }
+            }
+        }
+        TextView(lparams = LayoutParams(widthMatchParent = true)) {
+            alpha = 0.6f
+            setLineSpacing(6f, 1f)
+            text = stringResource(R.string.brand_splash_skip_tip)
+            textColor = colorResource(R.color.colorTextDark)
+            textSize = 12f
+        }
+        MaterialSwitch(lparams = LayoutParams(widthMatchParent = true) { topMargin = 12.dp; bottomMargin = 5.dp }) {
+            bindFavoriteSwitch(this, FeaturePreferences.BRAND_SPLASH_CUSTOM, directToggle = true)
+            text = stringResource(R.string.brand_splash_custom)
+            isAllCaps = false
+            textColor = colorResource(R.color.colorTextGray)
+            textSize = 15f
+            isChecked = brandSplashCustom
+            setOnCheckedChangeListener { _, checked ->
+                runCatching { prefs().edit { putBoolean(FeaturePreferences.BRAND_SPLASH_CUSTOM, checked) } }
+                    .onSuccess { brandSplashCustom = checked }
+                    .onFailure { throwable ->
+                        Log.e("BilibiliInnocentLab", "write brand splash custom prefs failed", throwable)
+                        isChecked = brandSplashCustom
+                    }
+            }
+        }
+        TextView(lparams = LayoutParams(widthMatchParent = true)) {
+            alpha = 0.6f
+            setLineSpacing(6f, 1f)
+            text = stringResource(R.string.brand_splash_custom_tip)
+            textColor = colorResource(R.color.colorTextDark)
+            textSize = 12f
         }
         MaterialSwitch(
             lparams = LayoutParams(widthMatchParent = true) {

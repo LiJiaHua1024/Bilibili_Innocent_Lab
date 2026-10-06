@@ -111,6 +111,8 @@ import com.Bilibili_Innocent_Lab.xposedmodule.hook.feature.StoryActionIcon
 import com.Bilibili_Innocent_Lab.xposedmodule.hook.feature.StoryActionIconsFeatureInstaller
 import com.Bilibili_Innocent_Lab.xposedmodule.hook.feature.SplashAdFeatureInstaller
 import com.Bilibili_Innocent_Lab.xposedmodule.hook.feature.SplashAutoNightFeatureInstaller
+import com.Bilibili_Innocent_Lab.xposedmodule.hook.feature.BrandSplashSkipFeatureInstaller
+import com.Bilibili_Innocent_Lab.xposedmodule.hook.feature.BrandSplashCustomFeatureInstaller
 import com.Bilibili_Innocent_Lab.xposedmodule.hook.feature.SystemMediaNotificationFeatureInstaller
 import com.Bilibili_Innocent_Lab.xposedmodule.hook.feature.PlayerQualityFeatureInstaller
 import com.Bilibili_Innocent_Lab.xposedmodule.hook.feature.PlayerCodecForceFeatureInstaller
@@ -3837,6 +3839,14 @@ class HookEntry : XposedModule() {
                             FeaturePreferences.SPLASH_AUTO_NIGHT,
                             false
                         )
+                    ),
+                    BrandSplashSkipFeatureInstaller(
+                        enabled = prefs.getBoolean(FeaturePreferences.BRAND_SPLASH_SKIP, false)
+                    ),
+                    BrandSplashCustomFeatureInstaller(
+                        enabled = prefs.getBoolean(FeaturePreferences.BRAND_SPLASH_CUSTOM, false),
+                        context = attachedContext,
+                        renderEnabled = !prefs.getBoolean(FeaturePreferences.BRAND_SPLASH_SKIP, false)
                     ),
                     BvToAvFeatureInstaller(
                         enabled = prefs.getBoolean(

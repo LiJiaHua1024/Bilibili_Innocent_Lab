@@ -232,6 +232,8 @@ internal object FeaturePreferences {
 
     /** 开屏页背景跟随系统深色模式。 */
     const val SPLASH_AUTO_NIGHT = "splash_auto_night"
+    const val BRAND_SPLASH_SKIP = "brand_splash_skip"
+    const val BRAND_SPLASH_CUSTOM = "brand_splash_custom"
 
     /** 直播间上下滑动切换房间。 */
     const val BLOCK_LIVE_ROOM_SWITCH = "block_live_room_switch"

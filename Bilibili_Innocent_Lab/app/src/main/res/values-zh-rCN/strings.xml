@@ -1202,4 +1202,8 @@
     <string name="hide_story_action_share">隐藏分享图标</string>
     <string name="hide_story_action_danmaku_toggle">隐藏弹幕开关</string>
     <string name="highlights_story_action_icons">竖屏流：右侧点赞、评论、投币、收藏、分享与弹幕开关可以逐个隐藏。</string>
+    <string name="brand_splash_skip">跳过品牌开屏</string>
+    <string name="brand_splash_skip_tip">跳过哔哩哔哩品牌展示，系统启动画面仍会显示。重启哔哩哔哩生效。</string>
+    <string name="brand_splash_custom">官方开屏自由选择</string>
+    <string name="brand_splash_custom_tip">在哔哩哔哩设置中选择已提供的官方开屏，支持大会员素材。素材需先下载完成；关闭跳过品牌开屏后显示。不包含数字藏品权益。重启哔哩哔哩生效。</string>
 </resources>

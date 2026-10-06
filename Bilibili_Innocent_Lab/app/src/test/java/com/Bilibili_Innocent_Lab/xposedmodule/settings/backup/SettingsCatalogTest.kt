@@ -1,6 +1,7 @@
 package com.Bilibili_Innocent_Lab.xposedmodule.settings.backup
 
 import com.Bilibili_Innocent_Lab.xposedmodule.hook.HookEntry
+import com.Bilibili_Innocent_Lab.xposedmodule.hook.feature.FeaturePreferences
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -130,11 +131,11 @@ class SettingsCatalogTest {
     }
 
     @Test
-    fun `catalog is a unique allowlist with 190 settings`() {
-        assertEquals(190, SettingsCatalog.specs.size)
-        assertEquals(190, SettingsCatalog.specs.map { it.id }.distinct().size)
-        assertEquals(190, SettingsCatalog.specs.map { it.storageKey }.distinct().size)
-        assertEquals(187, SettingsCatalog.specs.count { it.restorePolicy == RestorePolicy.AUTOMATIC })
+    fun `catalog is a unique allowlist with 192 settings`() {
+        assertEquals(192, SettingsCatalog.specs.size)
+        assertEquals(192, SettingsCatalog.specs.map { it.id }.distinct().size)
+        assertEquals(192, SettingsCatalog.specs.map { it.storageKey }.distinct().size)
+        assertEquals(189, SettingsCatalog.specs.count { it.restorePolicy == RestorePolicy.AUTOMATIC })
         assertEquals(3, SettingsCatalog.specs.count { it.restorePolicy == RestorePolicy.MANUAL })
         assertTrue(SettingsCatalog.specs.all { it.accepts(it.defaultValue) })
         assertTrue(SettingsCatalog.specs.all { it.id.matches(Regex("[a-z0-9][a-z0-9._-]{0,127}")) })
@@ -365,7 +366,7 @@ class SettingsCatalogTest {
         val expected = requireNotNull(javaClass.classLoader?.getResourceAsStream("settings-backup/catalog-v13.txt"))
             .bufferedReader().useLines { it.filter(String::isNotBlank).toList() }
         assertEquals(expected, SettingsCatalog.specs.filter { it.introducedCatalogVersion <= 13 }.map { it.id }.sorted())
-        assertEquals(37, SettingsCatalog.CATALOG_VERSION)
+        assertEquals(38, SettingsCatalog.CATALOG_VERSION)
         val added = SettingsCatalog.specs.filter { it.introducedCatalogVersion == 13 }
         assertEquals(6, added.size)
         assertTrue(added.all { it.restorePolicy == RestorePolicy.AUTOMATIC && ImportEffect.RESTART_BILIBILI in it.effects })
@@ -664,7 +665,7 @@ class SettingsCatalogTest {
 
     @Test
     fun `catalog types and manual roaming boundary are explicit`() {
-        assertEquals(126, SettingsCatalog.specs.count { it.type == SettingValueType.BOOLEAN })
+        assertEquals(128, SettingsCatalog.specs.count { it.type == SettingValueType.BOOLEAN })
         assertEquals(13, SettingsCatalog.specs.count { it.type == SettingValueType.INTEGER })
         assertEquals(51, SettingsCatalog.specs.count { it.type == SettingValueType.STRING })
 
@@ -773,6 +774,17 @@ class SettingsCatalogTest {
             SettingValue.Text(HookEntry.LOG_LEVEL_COMPLETE),
             logLevel.normalizeForBackup(SettingValue.Text("legacy-verbose"))
         )
+    }
+
+    @Test
+    fun `catalog v38 adds independent default off brand splash controls`() {
+        val expected = requireNotNull(javaClass.classLoader?.getResourceAsStream("settings-backup/catalog-v38.txt"))
+            .bufferedReader().useLines { it.filter(String::isNotBlank).toList() }
+        assertEquals(expected, SettingsCatalog.specs.map { it.id }.sorted())
+        val added = SettingsCatalog.specs.filter { it.introducedCatalogVersion == 38 }
+        assertEquals(setOf(FeaturePreferences.BRAND_SPLASH_SKIP, FeaturePreferences.BRAND_SPLASH_CUSTOM),
+            added.map { it.storageKey }.toSet())
+        assertTrue(added.all { it.defaultValue == SettingValue.Bool(false) && ImportEffect.RESTART_BILIBILI in it.effects })
     }
 
     @Test

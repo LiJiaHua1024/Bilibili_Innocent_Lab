@@ -20,7 +20,7 @@ internal object DiagnosticCapabilityCatalog {
      * 客户端是按 "比我已知的版本更新" 做增量的，
      * VERSION 涨了却没有任何条目标在新版本上，增量就是空集（有测试钉住）。
      */
-    const val VERSION = 17
+    const val VERSION = 18
     val definitions = listOf(
         DiagnosticCapabilityDefinition("search_home_recommend_hidden", "search_home_recommend_hidden", R.string.hide_search_home_recommend, setOf("search.home_recommend.hidden"), introducedCatalogVersion = 4),
         DiagnosticCapabilityDefinition("player_interactive_legacy_follow", "player_interactive_overlay", R.string.diag_cap_player_interactive_legacy_follow, setOf("player.interactive_overlays.hidden"), "legacy/guide/clearAttention"),
@@ -145,6 +145,10 @@ internal object DiagnosticCapabilityCatalog {
         DiagnosticCapabilityDefinition("comments_semantic_filter_enabled", "comment_filter", R.string.comment_semantic_filter, setOf("comments.semantic_filter.enabled", "comments.semantic_filter.rules", "comments.semantic_filter.source", "comments.semantic_filter.custom_rules"), introducedCatalogVersion = 16),
         DiagnosticCapabilityDefinition("splash_ad_purify", "splash_ad_purify", R.string.purify_splash_ads, setOf("splash.ads.purified")),
         DiagnosticCapabilityDefinition("splash_auto_night", "splash_auto_night", R.string.splash_auto_night, setOf("splash.auto_night.enabled")),
+        DiagnosticCapabilityDefinition("brand_splash_skip", "brand_splash_skip", R.string.brand_splash_skip,
+            setOf("splash.brand.skipped"), introducedCatalogVersion = 18),
+        DiagnosticCapabilityDefinition("brand_splash_custom", "brand_splash_custom", R.string.brand_splash_custom,
+            setOf("splash.custom_selection.enabled"), introducedCatalogVersion = 18),
         DiagnosticCapabilityDefinition("share_content_purified", "share_purify", R.string.purify_share_content, setOf("share.content.purified")),
         DiagnosticCapabilityDefinition("share_mini_program_direct_link", "share_purify", R.string.share_mini_program_direct_link, setOf("share.mini_program.direct_link")),
         DiagnosticCapabilityDefinition("external_browser", "external_browser", R.string.force_external_browser, setOf("links.external_browser.enabled")),

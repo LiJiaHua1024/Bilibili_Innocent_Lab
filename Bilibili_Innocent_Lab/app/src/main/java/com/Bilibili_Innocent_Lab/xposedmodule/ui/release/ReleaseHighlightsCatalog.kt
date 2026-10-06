@@ -225,6 +225,10 @@ internal object ReleaseHighlightsCatalog {
     // 批次 4（下一版）：Story 竖屏流右侧互动图标逐个隐藏。批次 3 已随 v1.2.0 发布，追加进去永远不会再弹，
     // 所以另开批次。六个图标共用一条：点赞为导航目标，其余五个按同一功能的配套项列入 alsoCovers。
     ReleaseHighlightsBatch(4, listOf(
+        ReleaseHighlight("brand-splash-skip", HighlightKind.NEW,
+            R.string.brand_splash_skip_tip, HighlightDestination("splash.brand.skipped")),
+        ReleaseHighlight("brand-splash-custom", HighlightKind.NEW,
+            R.string.brand_splash_custom_tip, HighlightDestination("splash.custom_selection.enabled")),
         ReleaseHighlight("story-action-icons", HighlightKind.NEW,
             R.string.highlights_story_action_icons,
             HighlightDestination("story.action.like.hidden",

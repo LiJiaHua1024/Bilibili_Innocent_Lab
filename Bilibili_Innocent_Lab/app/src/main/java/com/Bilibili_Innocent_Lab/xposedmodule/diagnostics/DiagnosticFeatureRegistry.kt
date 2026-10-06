@@ -192,6 +192,8 @@ internal object DiagnosticFeatureRegistry {
             DiagnosticFeatureCategory.GENERAL,
             runtimeEvidenceExpected = true
         ),
+        DiagnosticFeatureDescriptor("brand_splash_skip", DiagnosticFeatureCategory.GENERAL, runtimeEvidenceExpected = true),
+        DiagnosticFeatureDescriptor("brand_splash_custom", DiagnosticFeatureCategory.GENERAL, runtimeEvidenceExpected = true),
         DiagnosticFeatureDescriptor(
             "bv_to_av",
             DiagnosticFeatureCategory.GENERAL,

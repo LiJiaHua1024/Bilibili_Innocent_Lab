@@ -1202,4 +1202,8 @@
     <string name="hide_story_action_share">隱藏分享圖示</string>
     <string name="hide_story_action_danmaku_toggle">隱藏彈幕開關</string>
     <string name="highlights_story_action_icons">直向影片：右側按讚、留言、投幣、收藏、分享與彈幕開關可以逐個隱藏。</string>
+    <string name="brand_splash_skip">略過品牌開屏</string>
+    <string name="brand_splash_skip_tip">略過嗶哩嗶哩品牌展示，系統啟動畫面仍會顯示。重新啟動嗶哩嗶哩生效。</string>
+    <string name="brand_splash_custom">官方開屏自由選擇</string>
+    <string name="brand_splash_custom_tip">在嗶哩嗶哩設定中選擇已提供的官方開屏，支援大會員素材。素材需先下載完成；關閉略過品牌開屏後顯示。不包含數位藏品權益。重新啟動嗶哩嗶哩生效。</string>
 </resources>
