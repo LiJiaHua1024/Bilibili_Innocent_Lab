@@ -4,11 +4,6 @@ on:
   push:
     branches:
       - main
-    paths-ignore:
-      - '*.md'
-      - '**/*.md'
-      - 'README*'
-      - 'docs/**'
   workflow_dispatch:
 
 concurrency:
