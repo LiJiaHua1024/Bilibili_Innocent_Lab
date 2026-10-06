@@ -8,6 +8,7 @@ import com.Bilibili_Innocent_Lab.xposedmodule.ui.skin.engine.GlowChromeGlassApi3
 import android.graphics.Bitmap
 import android.animation.ValueAnimator
 import android.content.ComponentCallbacks2
+import android.content.Context
 import android.graphics.BitmapShader
 import android.graphics.Canvas
 import android.graphics.Color
@@ -29,6 +30,8 @@ import android.view.ViewTreeObserver
 import androidx.core.graphics.ColorUtils
 import androidx.core.graphics.createBitmap
 import com.Bilibili_Innocent_Lab.xposedmodule.ui.skin.background.AmbientBackdropScene
+import com.Bilibili_Innocent_Lab.xposedmodule.ui.skin.background.LiquidBackgroundMode
+import com.Bilibili_Innocent_Lab.xposedmodule.ui.skin.background.LiquidBackgroundStore
 import com.Bilibili_Innocent_Lab.xposedmodule.ui.skin.engine.GlowEngine
 import com.Bilibili_Innocent_Lab.xposedmodule.ui.skin.engine.GlowEngineCallbacks
 import com.Bilibili_Innocent_Lab.xposedmodule.ui.skin.model.SkinId
@@ -50,11 +53,18 @@ import kotlin.math.roundToInt
  * 静态部分只采窗口底图（不含文字、其他窗口）；悬浮/顶栏表面另由 [LiveBackdropSampler] 对宿主用
  * [bindContentSource] 指定的内容层做低分辨率透镜采样，让从胶囊下方穿过的内容被模糊与折射。
  */
-internal class FrostedMaterialRenderer(private val palette: MonetColors, private val density: Float) : GlowEngine {
+internal class FrostedMaterialRenderer(
+    private val palette: MonetColors,
+    private val density: Float,
+    backgroundContext: Context? = null
+) : GlowEngine {
     override val skin: SkinId get() = SkinId.MATERIAL_YOU
 
     private val dark = ColorUtils.calculateLuminance(palette.background) < .5
+    private val backgroundContext = backgroundContext?.applicationContext
     private var root: View? = null
+    /** 显示底图与可丢弃的模糊采样分开；内存降级不能抹掉用户背景。 */
+    private var rootBackdrop: Bitmap? = null
     private var frame: ModernBackdropFrame? = null
     private var sampleShader: BitmapShader? = null
     internal var revealFraction = 0f
@@ -124,12 +134,12 @@ internal class FrostedMaterialRenderer(private val palette: MonetColors, private
         view.background = object : Drawable() {
             private var drawingAlpha = 255
             override fun draw(canvas: Canvas) {
-                val current = frame
+                val current = rootBackdrop
                 rootPaint.color = ColorUtils.setAlphaComponent(palette.background, drawingAlpha)
                 canvas.drawRect(bounds, rootPaint)
                 if (current != null) {
                     rootPaint.alpha = (drawingAlpha * revealFraction).toInt()
-                    canvas.drawBitmap(current.original, null, bounds, rootPaint)
+                    canvas.drawBitmap(current, null, bounds, rootPaint)
                 }
             }
             override fun setAlpha(alpha: Int) { drawingAlpha = alpha.coerceIn(0, 255); invalidateSelf() }
@@ -155,9 +165,19 @@ internal class FrostedMaterialRenderer(private val palette: MonetColors, private
         val colors = palette
         val scale = density
         val completion = handler
+        val context = backgroundContext
+        // 返回已有页面或改变尺寸时重读配置；后台只接收本次不可变快照。
+        val config = context?.let { LiquidBackgroundStore.read(it).config }
+        val isDark = dark
         workerStarted = true
         work = worker.submit {
-            val result = runCatching { ModernBackdropFactory.create(colors, newWidth, newHeight, scale) }.getOrNull()
+            val result = runCatching {
+                ModernBackdropFactory.create(colors, newWidth, newHeight, scale) { targetWidth, targetHeight ->
+                    if (context == null || config?.mode != LiquidBackgroundMode.CUSTOM) null
+                    else LiquidBackgroundStore.decodeBackdrop(context, config, targetWidth, targetHeight,
+                        colors.background, isDark)
+                }
+            }.getOrNull()
             completion.post { recipient.get()?.acceptBackdrop(token, result) }
         }
     }
@@ -170,6 +190,7 @@ internal class FrostedMaterialRenderer(private val palette: MonetColors, private
             return // A readable neutral surface remains; retry only on resize or a later foreground session.
         }
         frame = result
+        rootBackdrop = result.original
         sampleShader = BitmapShader(result.blurred, Shader.TileMode.CLAMP, Shader.TileMode.CLAMP)
         samplePaint.shader = sampleShader
         revealAnimator?.cancel()
@@ -376,7 +397,14 @@ internal class FrostedMaterialRenderer(private val palette: MonetColors, private
         lifecycle.invalidate()
         windows.values.forEach { it.batch.clear() }
         work?.cancel(true); work = null
-        revealAnimator?.cancel(); revealAnimator = null; revealFraction = 0f
+        revealAnimator?.cancel(); revealAnimator = null
+        if (!lifecycle.canWork) {
+            rootBackdrop = null
+            revealFraction = 0f
+        } else if (rootBackdrop != null) {
+            // 前台只释放模糊与实时透镜，继续显示受同一像素预算约束的稳定底图。
+            revealFraction = 1f
+        }
         // Never recycle a bitmap that can still be referenced by a hardware display list.
         frame = null; sampleShader = null; samplePaint.shader = null
         live.releaseAll()
@@ -455,12 +483,18 @@ internal class FrostedMaterialLifecycle {
 private data class ModernBackdropFrame(val original: Bitmap, val blurred: Bitmap)
 
 private object ModernBackdropFactory {
-    fun create(palette: MonetColors, width: Int, height: Int, density: Float): ModernBackdropFrame {
+    fun create(
+        palette: MonetColors, width: Int, height: Int, density: Float,
+        customBackground: ((Int, Int) -> Bitmap?)? = null
+    ): ModernBackdropFrame {
         val (w, h) = ModernMaterialPolicy.sampleSize(width, height)
-        val original = createBitmap(w, h, Bitmap.Config.ARGB_8888)
-        val canvas = Canvas(original)
-        val dark = ColorUtils.calculateLuminance(palette.background) < .5
-        AmbientBackdropScene.paint(canvas, palette, w, h, dark)
+        // 自定义资产解码/哈希只在已有后台线程执行；失败只回退自动背景。
+        val original = runCatching { customBackground?.invoke(w, h) }.getOrNull()
+            ?: createBitmap(w, h, Bitmap.Config.ARGB_8888).also { bitmap ->
+                val dark = ColorUtils.calculateLuminance(palette.background) < .5
+                val canvas = Canvas(bitmap)
+                AmbientBackdropScene.paint(canvas, palette, w, h, dark)
+            }
         val pixels = IntArray(w * h)
         original.getPixels(pixels, 0, w, 0, 0, w, h)
         val blurredPixels = ModernBackdropBlur.blur(pixels, w, h, ModernMaterialPolicy.blurRadius(w, width, density))
