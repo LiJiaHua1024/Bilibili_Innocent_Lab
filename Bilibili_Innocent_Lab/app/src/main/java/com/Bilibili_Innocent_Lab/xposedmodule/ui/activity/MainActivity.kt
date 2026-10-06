@@ -2514,6 +2514,7 @@ class MainActivity : SkinnedActivity() {
                     coveredContent?.alpha = IconAnchoredMotionSpec.coveredParentAlpha(progress)
                 },
                 onExpanded = ::notifyExpanded,
+                onContentMoved = { notifyPreparedSkinPositionChanged() },
                 onClosed = {
                     dismissAfterFinalFrame(dialog) {
                         (pendingAnchoredAfterClose.getAndSet(null) ?: onBackDismiss).invoke()
