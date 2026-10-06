@@ -390,5 +390,6 @@ private fun MainActivity.channelSubtitleRes(): Int {
     return when (readUpdateChannel(prefs)) {
         GitHubReleaseChecker.UpdateChannel.STABLE -> R.string.update_channel_current_stable
         GitHubReleaseChecker.UpdateChannel.PREVIEW -> R.string.update_channel_current_preview
+        GitHubReleaseChecker.UpdateChannel.CANARY -> R.string.update_channel_current_canary
     }
 }

@@ -10,7 +10,8 @@ internal object UpdateChannelStore {
     private val runtimeKeys = listOf(
         "last_successful_check_ms",
         "last_successful_check_ms_stable",
-        "last_successful_check_ms_preview"
+        "last_successful_check_ms_preview",
+        "last_successful_check_ms_canary"
     )
 
     fun read(context: Context): GitHubReleaseChecker.UpdateChannel =

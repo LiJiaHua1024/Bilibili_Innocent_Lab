@@ -48,7 +48,7 @@ internal class ColdStartUpdateState {
         installedVersion: String
     ): Boolean {
         if (!isCurrentRequest(sequence) || channel != selectedChannel) return false
-        notice = if (GitHubReleaseChecker.compareVersions(release.tagName, installedVersion) ==
+        notice = if (GitHubReleaseChecker.compareVersions(release.tagName, installedVersion, channel) ==
             GitHubReleaseChecker.VersionRelation.REMOTE_NEWER) Notice(channel, release) else null
         return true
     }

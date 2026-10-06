@@ -1206,4 +1206,12 @@
     <string name="brand_splash_skip_tip">跳过哔哩哔哩品牌展示，系统启动画面仍会显示。重启哔哩哔哩生效。</string>
     <string name="brand_splash_custom">官方开屏自由选择</string>
     <string name="brand_splash_custom_tip">在哔哩哔哩设置中选择已提供的官方开屏，支持大会员素材。素材需先下载完成；关闭跳过品牌开屏后显示。不包含数字藏品权益。重启哔哩哔哩生效。</string>
+    <string name="update_channel_current_canary">当前：Canary 开发版</string>
+    <string name="update_channel_canary_title">Canary 开发版</string>
+    <string name="update_channel_canary_desc">接收 main 分支通过检查的 Actions 构建。更新较频繁，安装包同时推送到 Telegram 发布频道。</string>
+    <string name="update_checking_canary">正在检查 Canary 构建…</string>
+    <string name="update_latest_canary">当前已是最新可用 Canary 构建</string>
+    <string name="update_check_failed_canary">无法连接 GitHub 或备用镜像，或尚无可用 Canary 产物</string>
+    <string name="update_canary_actions">查看 Actions 构建</string>
+    <string name="update_canary_telegram">到 Telegram 获取 APK</string>
 </resources>

@@ -198,6 +198,7 @@ class MainActivity : SkinnedActivity() {
         /** 各渠道独立的成功检查时间，避免切换渠道后 24 小时节流误跳过新渠道检查。 */
         const val PREF_LAST_CHECK_STABLE = "last_successful_check_ms_stable"
         const val PREF_LAST_CHECK_PREVIEW = "last_successful_check_ms_preview"
+        const val PREF_LAST_CHECK_CANARY = "last_successful_check_ms_canary"
         const val FRAMEWORK_STATUS_SETTLE_MS = 1_500L
         const val MINE_COMPONENT_SNAPSHOT_STALE_MS = 7L * 24L * 60L * 60L * 1_000L
         const val SETTINGS_SEARCH_HIGHLIGHT_DELAY_MS = 240L
@@ -1943,21 +1944,25 @@ class MainActivity : SkinnedActivity() {
             if (prefs.contains(PREF_LAST_CHECK_STABLE)) PREF_LAST_CHECK_STABLE
             else PREF_LAST_SUCCESSFUL_UPDATE_CHECK
         GitHubReleaseChecker.UpdateChannel.PREVIEW -> PREF_LAST_CHECK_PREVIEW
+        GitHubReleaseChecker.UpdateChannel.CANARY -> PREF_LAST_CHECK_CANARY
     }
 
     private fun checkingToastRes(channel: GitHubReleaseChecker.UpdateChannel): Int = when (channel) {
         GitHubReleaseChecker.UpdateChannel.STABLE -> R.string.update_checking_stable
         GitHubReleaseChecker.UpdateChannel.PREVIEW -> R.string.update_checking_preview
+        GitHubReleaseChecker.UpdateChannel.CANARY -> R.string.update_checking_canary
     }
 
     private fun latestToastRes(channel: GitHubReleaseChecker.UpdateChannel): Int = when (channel) {
         GitHubReleaseChecker.UpdateChannel.STABLE -> R.string.update_latest_stable
         GitHubReleaseChecker.UpdateChannel.PREVIEW -> R.string.update_latest_preview
+        GitHubReleaseChecker.UpdateChannel.CANARY -> R.string.update_latest_canary
     }
 
     private fun failedToastRes(channel: GitHubReleaseChecker.UpdateChannel): Int = when (channel) {
         GitHubReleaseChecker.UpdateChannel.STABLE -> R.string.update_check_failed_stable
         GitHubReleaseChecker.UpdateChannel.PREVIEW -> R.string.update_check_failed_preview
+        GitHubReleaseChecker.UpdateChannel.CANARY -> R.string.update_check_failed_canary
     }
 
     /**
@@ -2055,7 +2060,7 @@ class MainActivity : SkinnedActivity() {
         release: GitHubReleaseChecker.ReleaseInfo,
         manual: Boolean
     ) {
-        when (GitHubReleaseChecker.compareVersions(release.tagName, BuildConfig.VERSION_NAME)) {
+        when (GitHubReleaseChecker.compareVersions(release.tagName, BuildConfig.VERSION_NAME, channel)) {
             GitHubReleaseChecker.VersionRelation.REMOTE_NEWER -> {
                 renderUpdateBadge()
                 if (manual) showUpdateDialogWhenIdle(channel, release)

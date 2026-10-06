@@ -60,7 +60,8 @@ object GitHubReleaseChecker {
     /** 更新渠道。STABLE 只接收正式 Release；PREVIEW 同时接收正式与 Alpha 并取最高版本。 */
     enum class UpdateChannel(val storageValue: String) {
         STABLE("stable"),
-        PREVIEW("preview");
+        PREVIEW("preview"),
+        CANARY("canary");
 
         companion object {
             /** 未知/损坏的持久化值一律回退 STABLE，保证旧版本升级后行为不变。 */
@@ -78,7 +79,9 @@ object GitHubReleaseChecker {
         /** true 表示该 Release 为预发布版本（Alpha），UI 需给出明确的预发布标识。 */
         val prerelease: Boolean,
         /** true 表示正文超过本地安全上限；UI 应保留“查看完整说明”入口。 */
-        val releaseNotesTruncated: Boolean = false
+        val releaseNotesTruncated: Boolean = false,
+        /** Canary 的来源为 Actions 构建，不是 GitHub Release。 */
+        val actionsBuild: Boolean = false
     )
 
     data class ReleaseDetailsDestination(
@@ -96,35 +99,37 @@ object GitHubReleaseChecker {
         val major: Long,
         val minor: Long,
         val patch: Long,
-        val alphaNumber: Long?
+        val alphaNumber: Long?,
+        val canaryNumber: Long? = null
     ) : Comparable<ReleaseVersion> {
 
-        val isStable: Boolean get() = alphaNumber == null
+        val isStable: Boolean get() = alphaNumber == null && canaryNumber == null
 
         override fun compareTo(other: ReleaseVersion): Int {
             major.compareTo(other.major).let { if (it != 0) return it }
             minor.compareTo(other.minor).let { if (it != 0) return it }
             patch.compareTo(other.patch).let { if (it != 0) return it }
-            val selfAlpha = alphaNumber ?: Long.MAX_VALUE
-            val otherAlpha = other.alphaNumber ?: Long.MAX_VALUE
-            return selfAlpha.compareTo(otherAlpha)
+            val selfTier = if (isStable) 2 else if (alphaNumber != null) 1 else 0
+            val otherTier = if (other.isStable) 2 else if (other.alphaNumber != null) 1 else 0
+            selfTier.compareTo(otherTier).let { if (it != 0) return it }
+            return (alphaNumber ?: canaryNumber ?: 0).compareTo(other.alphaNumber ?: other.canaryNumber ?: 0)
         }
 
         companion object {
-            private val TAG_REGEX = Regex("^v?(\\d+)\\.(\\d+)\\.(\\d+)(?:-alpha\\.(\\d+))?$")
+            private val TAG_REGEX = Regex("^v?(\\d+)\\.(\\d+)\\.(\\d+)(?:-(alpha|canary)\\.(\\d+))?$")
 
             /** beta/rc/无序号 Alpha/多段版本等非法标签一律返回 null（调用方忽略该 Release）。 */
             fun parse(value: String): ReleaseVersion? {
                 val match = TAG_REGEX.matchEntire(value.trim().trim('"')) ?: return null
-                val alpha = match.groupValues[4]
+                val stage = match.groupValues[4]
+                val number = match.groupValues[5].takeIf { it.isNotEmpty() }?.toLongOrNull()
+                if (stage.isNotEmpty() && number == null) return null
                 return ReleaseVersion(
                     major = match.groupValues[1].toLongOrNull() ?: return null,
                     minor = match.groupValues[2].toLongOrNull() ?: return null,
                     patch = match.groupValues[3].toLongOrNull() ?: return null,
-                    alphaNumber = when {
-                        alpha.isEmpty() -> null
-                        else -> alpha.toLongOrNull() ?: return null
-                    }
+                    alphaNumber = number.takeIf { stage == "alpha" },
+                    canaryNumber = number.takeIf { stage == "canary" }
                 )
             }
         }
@@ -141,6 +146,7 @@ object GitHubReleaseChecker {
     fun fetchLatestRelease(channel: UpdateChannel): ReleaseInfo = when (channel) {
         UpdateChannel.STABLE -> fetchWithFallback(RELEASE_ENDPOINTS, ::fetchLatestFromEndpoint)
         UpdateChannel.PREVIEW -> fetchWithFallback(PREVIEW_RELEASE_ENDPOINTS, ::fetchPreviewFromEndpoint)
+        UpdateChannel.CANARY -> CanaryBuildChecker.fetchLatest()
     }
 
     /** 兼容入口：等价于 STABLE 渠道。 */
@@ -160,6 +166,9 @@ object GitHubReleaseChecker {
         officialUrl: String,
         probeOfficial: (String) -> Unit
     ): ReleaseDetailsDestination {
+        if (runCatching { URL(officialUrl).path.startsWith("/jichuo1/Bilibili_Innocent_Lab/actions/runs/") }.getOrDefault(false)) {
+            return ReleaseDetailsDestination(CanaryBuildChecker.validateRunUrl(officialUrl), usesMirror = false)
+        }
         val validatedOfficial = validateGitHubUrl(officialUrl, "release page")
         return try {
             probeOfficial(validatedOfficial)
@@ -206,7 +215,7 @@ object GitHubReleaseChecker {
         parsePreviewReleases(fetchPayload(endpoint))
 
     @Throws(IOException::class)
-    private fun fetchPayload(endpoint: ReleaseEndpoint): String {
+    internal fun fetchPayload(endpoint: ReleaseEndpoint): String {
         val connection = (URL(endpoint.url).openConnection() as HttpURLConnection).apply {
             requestMethod = "GET"
             connectTimeout = endpoint.connectTimeoutMs
@@ -298,6 +307,7 @@ object GitHubReleaseChecker {
                 val tagName = json.optString("tag_name").trim()
                 if (tagName.isEmpty()) continue
                 val version = ReleaseVersion.parse(tagName) ?: continue
+                if (version.canaryNumber != null) continue // Alpha 渠道不接收 Canary。
                 val prerelease = json.optBoolean("prerelease")
                 // 标签与预发布标志必须互相印证：Stable 标签要求 prerelease=false，
                 // vX.Y.Z-alpha.N 标签要求 prerelease=true，不匹配的 Release 直接忽略。
@@ -374,10 +384,15 @@ object GitHubReleaseChecker {
      * 绝不猜测。Stable 渠道的"本地更高"分支依赖 [VersionRelation.LOCAL_NEWER]，
      * 用于避免 Alpha 用户切回稳定版后被提示降级安装。
      */
-    fun compareVersions(remoteTag: String, localVersion: String): VersionRelation? {
+    fun compareVersions(remoteTag: String, localVersion: String, channel: UpdateChannel = UpdateChannel.STABLE): VersionRelation? {
         val remote = ReleaseVersion.parse(remoteTag) ?: return null
         val local = ReleaseVersion.parse(localVersion) ?: return null
-        val comparison = remote.compareTo(local)
+        val sameBase = remote.major == local.major && remote.minor == local.minor && remote.patch == local.patch
+        // 用户主动选择 Canary 时，同基础版本允许从 Alpha 转入 Canary；Stable 始终优先。
+        val comparison = if (channel == UpdateChannel.CANARY && sameBase && !remote.isStable && !local.isStable &&
+            (remote.canaryNumber != null) != (local.canaryNumber != null)) {
+            if (remote.canaryNumber != null) 1 else -1
+        } else remote.compareTo(local)
         return when {
             comparison > 0 -> VersionRelation.REMOTE_NEWER
             comparison < 0 -> VersionRelation.LOCAL_NEWER

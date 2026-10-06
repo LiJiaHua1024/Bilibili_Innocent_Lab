@@ -121,6 +121,21 @@ internal fun MainActivity.showUpdateChannelDialog(
         ).apply { topMargin = (6 * density).toInt() }
     )
 
+    container.addView(
+        createGitHubMenuRow(
+            title = getString(R.string.update_channel_canary_title),
+            subtitle = getString(R.string.update_channel_canary_desc),
+            highlight = current == GitHubReleaseChecker.UpdateChannel.CANARY
+        ) {
+            closeCoveredParent()
+            dismissWithAnimation(dialog, container) {
+                applyUpdateChannel(GitHubReleaseChecker.UpdateChannel.CANARY)
+            }
+        },
+        NativeLinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
+            .apply { topMargin = (6 * density).toInt() }
+    )
+
     // 盖住 GitHub 面板时卡片被抬到父面板高度，多出的空档默认落在最后一行下面，"关闭"会浮在
     // 半空、和父面板那颗对不上（2026-09-24 用户报告"下面整个空着"）。与遥测说明面板同一做法：
     // weight 弹性占位把空档收到关闭行上面，关闭行贴着卡片底边；按钮与 GitHub 面板共用
@@ -333,7 +348,7 @@ internal fun MainActivity.showUpdateAvailableDialog(release: GitHubReleaseChecke
     )
     buttonRow.addView(
         NativeTextView(this).apply {
-            text = getString(R.string.update_details)
+            text = getString(if (release.actionsBuild) R.string.update_canary_actions else R.string.update_details)
             textColor = monetColors.primary
             textSize = 15f
             typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
@@ -360,7 +375,7 @@ internal fun MainActivity.showUpdateAvailableDialog(release: GitHubReleaseChecke
     )
     buttonRow.addView(
         NativeTextView(this).apply {
-            text = getString(R.string.update_now)
+            text = getString(if (release.actionsBuild) R.string.update_canary_telegram else R.string.update_now)
             textColor = monetColors.onPrimary
             textSize = 15f
             typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
@@ -392,7 +407,8 @@ internal fun MainActivity.showUpdateAvailableDialog(release: GitHubReleaseChecke
             isFocusable = true
             setOnClickListener {
                 dismissWithAnimation(dialog, container) {
-                    openExternalUrl(release.apkDownloadUrl ?: release.htmlUrl)
+                    openExternalUrl(if (release.actionsBuild) com.Bilibili_Innocent_Lab.xposedmodule.runtime.CanaryBuildChecker.TELEGRAM_CHANNEL_URL
+                        else release.apkDownloadUrl ?: release.htmlUrl)
                 }
             }
         },
