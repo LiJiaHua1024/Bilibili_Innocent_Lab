@@ -1220,12 +1220,12 @@
     <string name="brand_splash_custom_tip">Choose available official splash images in Bilibili settings, including VIP images. Download the image first. Disable Skip brand splash to display it. DLC purchases are unchanged. Restart Bilibili to apply.</string>
     <string name="update_channel_current_canary">Current: Canary</string>
     <string name="update_channel_canary_title">Canary development builds</string>
-    <string name="update_channel_canary_desc">Receives successful main-branch Canary builds from Actions. These builds change frequently; APKs are also delivered to the Telegram release channel.</string>
+    <string name="update_channel_canary_desc">Receives successful main-branch Canary builds. Get APKs from the Actions build page; the Telegram release channel only receives manually selected versions.</string>
     <string name="update_checking_canary">Checking Canary builds…</string>
     <string name="update_latest_canary">Already on the latest available Canary build</string>
     <string name="update_check_failed_canary">Cannot reach GitHub or the mirror, or no available Canary artifact was found</string>
-    <string name="update_canary_actions">View Actions build</string>
-    <string name="update_canary_telegram">Get APK on Telegram</string>
+    <string name="update_canary_actions">Actions APK</string>
+    <string name="update_canary_telegram">Telegram channel</string>
     <string name="host_bottom_bar_compact">Compact bottom bar</string>
     <string name="host_bottom_bar_compact_tip">Reduces the bottom bar height. Restart Bilibili to apply.</string>
     <string name="host_bottom_bar_icon_only">Icon-only bottom bar</string>

@@ -1220,12 +1220,12 @@
     <string name="brand_splash_custom_tip">在嗶哩嗶哩設定中選擇已提供的官方開屏，支援大會員素材。素材需先下載完成；關閉略過品牌開屏後顯示。不包含數位藏品權益。重新啟動嗶哩嗶哩生效。</string>
     <string name="update_channel_current_canary">目前：Canary 開發版</string>
     <string name="update_channel_canary_title">Canary 開發版</string>
-    <string name="update_channel_canary_desc">接收 main 分支通過檢查的 Actions 建置。更新較頻繁，安裝套件同時推送至 Telegram 發布頻道。</string>
+    <string name="update_channel_canary_desc">接收 main 分支通過檢查的 Actions 建置，安裝套件從建置頁取得。Telegram 發布頻道僅同步手動選定的版本。</string>
     <string name="update_checking_canary">正在檢查 Canary 建置…</string>
     <string name="update_latest_canary">目前已是最新可用 Canary 建置</string>
     <string name="update_check_failed_canary">無法連線 GitHub 或備用鏡像，或尚無可用 Canary 產物</string>
-    <string name="update_canary_actions">查看 Actions 建置</string>
-    <string name="update_canary_telegram">到 Telegram 取得 APK</string>
+    <string name="update_canary_actions">Actions 安裝套件</string>
+    <string name="update_canary_telegram">Telegram 頻道</string>
     <string name="host_bottom_bar_compact">小底部導覽列</string>
     <string name="host_bottom_bar_compact_tip">縮小底部導覽列高度，減少佔用空間。重新啟動嗶哩嗶哩後生效。</string>
     <string name="host_bottom_bar_icon_only">底部導覽列無字模式</string>

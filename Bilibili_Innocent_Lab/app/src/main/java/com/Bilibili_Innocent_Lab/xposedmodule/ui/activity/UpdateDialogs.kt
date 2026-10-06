@@ -348,7 +348,7 @@ internal fun MainActivity.showUpdateAvailableDialog(release: GitHubReleaseChecke
     )
     buttonRow.addView(
         NativeTextView(this).apply {
-            text = getString(if (release.actionsBuild) R.string.update_canary_actions else R.string.update_details)
+            text = getString(if (release.actionsBuild) R.string.update_canary_telegram else R.string.update_details)
             textColor = monetColors.primary
             textSize = 15f
             typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
@@ -364,7 +364,11 @@ internal fun MainActivity.showUpdateAvailableDialog(release: GitHubReleaseChecke
             isFocusable = true
             setOnClickListener {
                 dismissWithAnimation(dialog, container) {
-                    openReleaseDetailsWithFallback(release.htmlUrl)
+                    if (release.actionsBuild) {
+                        openExternalUrl(com.Bilibili_Innocent_Lab.xposedmodule.runtime.CanaryBuildChecker.TELEGRAM_CHANNEL_URL)
+                    } else {
+                        openReleaseDetailsWithFallback(release.htmlUrl)
+                    }
                 }
             }
         },
@@ -375,7 +379,7 @@ internal fun MainActivity.showUpdateAvailableDialog(release: GitHubReleaseChecke
     )
     buttonRow.addView(
         NativeTextView(this).apply {
-            text = getString(if (release.actionsBuild) R.string.update_canary_telegram else R.string.update_now)
+            text = getString(if (release.actionsBuild) R.string.update_canary_actions else R.string.update_now)
             textColor = monetColors.onPrimary
             textSize = 15f
             typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
@@ -407,7 +411,7 @@ internal fun MainActivity.showUpdateAvailableDialog(release: GitHubReleaseChecke
             isFocusable = true
             setOnClickListener {
                 dismissWithAnimation(dialog, container) {
-                    openExternalUrl(if (release.actionsBuild) com.Bilibili_Innocent_Lab.xposedmodule.runtime.CanaryBuildChecker.TELEGRAM_CHANNEL_URL
+                    openExternalUrl(if (release.actionsBuild) release.htmlUrl
                         else release.apkDownloadUrl ?: release.htmlUrl)
                 }
             }
