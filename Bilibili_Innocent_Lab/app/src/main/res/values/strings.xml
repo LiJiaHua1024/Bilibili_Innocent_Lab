@@ -259,7 +259,7 @@
     <string name="hide_dynamic_school_tab_tip">When enabled, hides the Campus tab while keeping the other tabs and their order. Restart Bilibili to apply.</string>
     <string name="prefer_dynamic_video_tab">Show the Video tab by default</string>
     <string name="prefer_dynamic_video_tab_tip">When enabled, the Dynamic page opens on the Video tab by default. Restart Bilibili to apply.</string>
-    <string name="number_display_settings">Appearance and numbers</string>
+    <string name="number_display_settings">Number display</string>
     <string name="show_full_numbers">Show full numbers</string>
     <string name="show_full_numbers_tip">When enabled, play counts, likes, and similar values prefer full numbers instead of abbreviated values. Restart Bilibili to apply.</string>
     <string name="prompt_purify_settings">Prompt pages</string>

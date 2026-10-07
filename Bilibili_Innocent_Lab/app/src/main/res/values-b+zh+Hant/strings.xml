@@ -272,7 +272,7 @@
     <string name="hide_dynamic_school_tab_tip">啟用後，隱藏動態頁面的「校園」分頁，其他分頁及順序不受影響。重新啟動 Bilibili 後生效。</string>
     <string name="prefer_dynamic_video_tab">預設顯示「影片」分頁</string>
     <string name="prefer_dynamic_video_tab_tip">啟用後，進入動態頁面時預設顯示「影片」分頁。重新啟動 Bilibili 後生效。</string>
-    <string name="number_display_settings">外觀與數字顯示</string>
+    <string name="number_display_settings">數字顯示</string>
     <string name="show_full_numbers">顯示完整數字</string>
     <string name="show_full_numbers_tip">啟用後，播放次數、按讚數等計數優先顯示完整數字，不再使用「萬／億」縮寫。重新啟動 Bilibili 後生效。</string>
     <string name="prompt_purify_settings">提示頁面</string>

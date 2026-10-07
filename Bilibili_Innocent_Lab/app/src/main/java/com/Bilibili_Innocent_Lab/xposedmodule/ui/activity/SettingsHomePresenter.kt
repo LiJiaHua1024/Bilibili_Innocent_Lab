@@ -40,6 +40,7 @@ internal class SettingsHomePresenter(
     private val originalContent: ViewGroup,
     private val purification: View?,
     private val enhancement: View?,
+    private val beautification: View?,
     private val activation: View?,
     private val floatingToolbar: View?,
     private val savedState: Bundle?,
@@ -61,10 +62,11 @@ internal class SettingsHomePresenter(
     private val backdropTarget = GlowBackdropTarget(activity)
     private var floatingChrome: GlowFloatingChrome? = null
     private var textChain: SettingsPageTextChain? = null
-    private val headings = ArrayList<View>(4)
+    private val pageCount = 5
+    private val headings = ArrayList<View>(pageCount)
     private var navigation: ModernNavigationBar? = null
-    private val contents = List(4) { LinearLayout(activity).apply { orientation = LinearLayout.VERTICAL } }
-    private val scrolls = List(4) { SettingsHomeScrollView(activity, ::userNavigated, navigationTouched).apply {
+    private val contents = List(pageCount) { LinearLayout(activity).apply { orientation = LinearLayout.VERTICAL } }
+    private val scrolls = List(pageCount) { SettingsHomeScrollView(activity, ::userNavigated, navigationTouched).apply {
         isFillViewport = true
         isVerticalScrollBarEnabled = false
         clipToPadding = false
@@ -125,19 +127,19 @@ internal class SettingsHomePresenter(
         val originalCards: List<View> = List(originalContent.childCount) { originalContent.child(it) }
         originalContent.removeAllViews()
         originalCards.forEach { card ->
-            val index = when (card) { purification -> 1; enhancement -> 2; else -> 3 }
+            val index = when (card) { purification -> 1; enhancement -> 2; beautification -> 3; else -> 4 }
             contents[index].addView(card)
         }
         if (activation != null) {
             activation.removeSelf()
-            contents[3].addView(activation, 0)
+            contents[4].addView(activation, 0)
         }
         shell.removeView(originalScroll)
 
         val titleIds = intArrayOf(R.string.settings_home_favorites, R.string.settings_home_purify,
-            R.string.settings_home_enhance, R.string.settings_home_module)
+            R.string.settings_home_enhance, R.string.settings_home_beautify, R.string.settings_home_module)
         val descriptionIds = intArrayOf(R.string.settings_home_favorites_hint, R.string.settings_home_purify_hint,
-            R.string.settings_home_enhance_hint, R.string.settings_home_module_hint)
+            R.string.settings_home_enhance_hint, R.string.settings_home_beautify_hint, R.string.settings_home_module_hint)
         val manage = TextView(activity).apply {
             text = activity.getString(R.string.settings_favorites_manage)
             textSize = 14f
@@ -199,7 +201,8 @@ internal class SettingsHomePresenter(
         shell.addView(pageLayer, LinearLayout.LayoutParams(-1, 0, 1f))
         // 底栏与顶部胶囊都是 pager 的兄弟，皮肤层可以安全地抓 pager 做透镜采样。
         skinContentSource(pager)
-        val icons = intArrayOf(R.drawable.ic_favorites, R.drawable.ic_purify, R.drawable.ic_enhancement, R.drawable.ic_science)
+        val icons = intArrayOf(R.drawable.ic_favorites, R.drawable.ic_purify, R.drawable.ic_enhancement,
+            R.drawable.ic_palette, R.drawable.ic_science)
         val dock = ModernNavigationBar(
             context = activity,
             titles = titleIds.map(activity::getString),
@@ -286,7 +289,7 @@ internal class SettingsHomePresenter(
         pager.onMotionStarted = { stretches.forEach(finishStretch) }
         textChain = SettingsPageTextChain(pager, headings)
         pager.onUserInteraction = { if (!revealingPage) userNavigated() }
-        val restored = savedState?.getInt("settings_home_page", 0)?.coerceIn(0, 3) ?: 0
+        val restored = savedState?.getInt("settings_home_page", 0)?.coerceIn(0, contents.lastIndex) ?: 0
         revealingPage = true
         try { pager.selectPage(restored, false) } finally { revealingPage = false }
         previousPage = restored

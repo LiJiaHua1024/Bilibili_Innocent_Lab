@@ -3,6 +3,7 @@ package com.Bilibili_Innocent_Lab.xposedmodule.hook.feature
 import com.Bilibili_Innocent_Lab.xposedmodule.contract.SourceContract
 import com.Bilibili_Innocent_Lab.xposedmodule.contract.after
 import com.Bilibili_Innocent_Lab.xposedmodule.contract.before
+import com.Bilibili_Innocent_Lab.xposedmodule.ui.activity.SettingsUiSource
 import org.junit.Assert.*
 import org.junit.Test
 
@@ -12,11 +13,10 @@ class BrandSplashWiringContractTest {
         assertTrue(hook.contains("BrandSplashSkipFeatureInstaller("))
         assertTrue(hook.contains("BrandSplashCustomFeatureInstaller("))
         assertTrue(hook.contains("renderEnabled = !prefs.getBoolean(FeaturePreferences.BRAND_SPLASH_SKIP, false)"))
-        val ui = SourceContract.read("ui/activity/MainActivity.kt")
-            .after("private fun Hikage.Performer<NativeLinearLayout.LayoutParams>.enhanceSystemCategory()")
-            .before("FeaturePreferences.SYSTEM_MEDIA_NOTIFICATION")
-        assertTrue(ui.contains("FeaturePreferences.BRAND_SPLASH_SKIP"))
-        assertTrue(ui.contains("FeaturePreferences.BRAND_SPLASH_CUSTOM"))
+        val system = SettingsUiSource.function("enhanceSystemCategory")
+        val appearance = SettingsUiSource.function("beautificationSettingsCard")
+        assertTrue(system.contains("FeaturePreferences.BRAND_SPLASH_SKIP"))
+        assertTrue(appearance.contains("FeaturePreferences.BRAND_SPLASH_CUSTOM"))
     }
 
     @Test fun originalDurationAndCompletionContractsStayUnmodifiedOutsideTheirPage() {
