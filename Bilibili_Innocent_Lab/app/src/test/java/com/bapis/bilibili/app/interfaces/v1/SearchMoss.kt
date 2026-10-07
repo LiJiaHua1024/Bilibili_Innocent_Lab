@@ -8,6 +8,12 @@ class DefaultWordsReply(val showRaw: String = "", val wordRaw: String = "", val 
     fun getShow() = showRaw
     fun getWord() = wordRaw
     fun getValue() = valueRaw
+    fun toByteArray(): ByteArray = java.io.ByteArrayOutputStream().use { output ->
+        java.io.DataOutputStream(output).use { stream ->
+            listOf(showRaw, wordRaw, valueRaw, route.toString(), failAt).forEach(stream::writeUTF)
+        }
+        output.toByteArray()
+    }
     class Builder(private val original: DefaultWordsReply) {
         private var show = original.showRaw
         private var word = original.wordRaw
@@ -17,7 +23,13 @@ class DefaultWordsReply(val showRaw: String = "", val wordRaw: String = "", val 
         fun clearValue() = apply { check(original.failAt != "value"); value = "" }
         fun build() = DefaultWordsReply(show, word, value, original.route)
     }
-    companion object { @JvmStatic fun newBuilder(original: DefaultWordsReply) = Builder(original) }
+    companion object {
+        @JvmStatic fun newBuilder(original: DefaultWordsReply) = Builder(original)
+        @JvmStatic fun parseFrom(bytes: ByteArray): DefaultWordsReply =
+            java.io.DataInputStream(java.io.ByteArrayInputStream(bytes)).use {
+                DefaultWordsReply(it.readUTF(), it.readUTF(), it.readUTF(), it.readUTF(), it.readUTF())
+            }
+    }
 }
 class SearchMoss {
     fun executeDefaultWords(request: DefaultWordsReq) = DefaultWordsReply(route = request)

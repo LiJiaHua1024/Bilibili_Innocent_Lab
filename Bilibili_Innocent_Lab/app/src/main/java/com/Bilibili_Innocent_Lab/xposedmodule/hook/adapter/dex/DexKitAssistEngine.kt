@@ -5,6 +5,7 @@ import org.luckypray.dexkit.query.enums.MatchType
 import org.luckypray.dexkit.query.enums.StringMatchType
 import java.lang.reflect.Method
 import java.lang.reflect.Modifier
+import com.Bilibili_Innocent_Lab.xposedmodule.hook.adapter.KotlinDefaultWordsLocator
 
 /**
  * DexKit 后台实现：只在常规 KavaRef 定位缺失时创建桥，并在每个代码 APK 查询后立即关闭。
@@ -121,6 +122,19 @@ internal object DexKitAssistEngine : DexAssistEngine {
                 returnType = COMMENT_ITEM_TYPE
                 modifiers(Modifier.STATIC, MatchType.Contains)
                 paramCount(COMMENT_MAPPER_MIN_PARAMS, COMMENT_MAPPER_MAX_PARAMS)
+            }
+        }
+
+        // 该泛型入口把服务与 RPC 描述符交给 Companion getter，不含服务名字符串。
+        // 真实方法体的引用常量 + 参数区间收窄；宿主 ClassLoader 再核对完整五参数 ABI。
+        DexAssistQuery.SEARCH_DEFAULT_WORDS_KOTLIN -> bridge.findMethod {
+            matcher {
+                returnType = "void"
+                paramCount(5)
+                addInvoke {
+                    name = KotlinDefaultWordsLocator.DESCRIPTOR_GETTER
+                    paramCount(0)
+                }
             }
         }
     }

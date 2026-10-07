@@ -8,6 +8,7 @@ import android.view.MenuInflater
 import android.view.View
 import android.widget.TextView
 import android.widget.Toast
+import com.Bilibili_Innocent_Lab.xposedmodule.hook.adapter.KotlinDefaultWordsLocator
 import com.Bilibili_Innocent_Lab.xposedmodule.hook.adapter.PgcAutoActivityPopupLocator
 import com.Bilibili_Innocent_Lab.xposedmodule.hook.adapter.dex.AtomicJsonCache
 import com.Bilibili_Innocent_Lab.xposedmodule.hook.adapter.dex.DexAssistAttemptGuard
@@ -294,9 +295,11 @@ object VersionAdapter {
          */
         val composeGameMenu: HookPoint?,
         val baseOnViewCreated: HookPoint?,
-        val defaultWordMethods: List<HookPoint>
+        val defaultWordMethods: List<HookPoint>,
+        val kotlinDefaultWords: HookPoint? = null
     ) {
         fun toJson(): JSONObject = JSONObject().apply {
+            kotlinDefaultWords?.let { put("kotlin_words", it.toJson()) }
             gameMenu?.let { put("game", it.toJson()) }
             composeGameMenu?.let { put("game_compose", it.toJson()) }
             baseOnViewCreated?.let { put("view", it.toJson()) }
@@ -316,7 +319,8 @@ object VersionAdapter {
                     defaultWordMethods = if (words == null) emptyList() else
                         (0 until words.length()).map {
                             HookPoint.fromJson(words.getJSONObject(it))
-                        }
+                        },
+                    kotlinDefaultWords = o.optJSONObject("kotlin_words")?.let(HookPoint::fromJson)
                 )
             }
         }
@@ -1903,7 +1907,8 @@ object VersionAdapter {
                         value.baseOnViewCreated?.let { point ->
                             point.isValid() && !point.viewField.isNullOrBlank()
                         } != false &&
-                        value.defaultWordMethods.all { it.isValid() }
+                        value.defaultWordMethods.all { it.isValid() } &&
+                        value.kotlinDefaultWords?.let { it.isValid() && it.paramClassNames?.size == 5 } != false
                 } != false &&
                 mineVip?.let { value ->
                     value.onResume.isValid() && !value.onResume.viewField.isNullOrBlank() &&
@@ -2888,6 +2893,9 @@ object VersionAdapter {
                     stored.state == AdaptState.FOUND && live.state != AdaptState.FOUND -> stored
                     id.startsWith(DEX_ASSIST_ID_PREFIX) &&
                         stored.state == AdaptState.FOUND -> stored
+                    id == KotlinDefaultWordsLocator.DIAGNOSTIC &&
+                        runtime.homeTopBar?.kotlinDefaultWords == null &&
+                        stored.state == AdaptState.MISSING -> stored
                     else -> live
                 }
             }
@@ -2905,7 +2913,9 @@ object VersionAdapter {
                 countdown = runtime.pause.countdown ?: cached.pause.countdown
             ),
             banner = runtime.banner ?: cached.banner,
-            homeTopBar = runtime.homeTopBar ?: cached.homeTopBar,
+            homeTopBar = runtime.homeTopBar?.let { live ->
+                live.copy(kotlinDefaultWords = live.kotlinDefaultWords ?: cached.homeTopBar?.kotlinDefaultWords)
+            } ?: cached.homeTopBar,
             mineVip = runtime.mineVip ?: cached.mineVip,
             blockUpdate = runtime.blockUpdate ?: cached.blockUpdate,
             dynamicTabs = runtime.dynamicTabs ?: cached.dynamicTabs,
@@ -3025,9 +3035,10 @@ object VersionAdapter {
         context: Context,
         classLoader: ClassLoader,
         resetTimestamp: Long,
-        callback: AdaptCallback?
+        callback: AdaptCallback?,
+        kotlinDefaultWordsEnabled: Boolean = false
     ) = ensureAdapted(
-        context, classLoader, resetTimestamp, callback, readStartupCache(context, resetTimestamp)
+        context, classLoader, resetTimestamp, callback, readStartupCache(context, resetTimestamp), kotlinDefaultWordsEnabled
     )
 
     internal fun ensureAdapted(
@@ -3035,7 +3046,8 @@ object VersionAdapter {
         classLoader: ClassLoader,
         resetTimestamp: Long,
         callback: AdaptCallback?,
-        startupCache: StartupCacheSnapshot
+        startupCache: StartupCacheSnapshot,
+        kotlinDefaultWordsEnabled: Boolean = false
     ) {
         // reset 不同意味着不是同一次安装快照，必须重新读取而不能复用已缓存的 null/旧结果。
         val startup = if (startupCache.resetTimestamp == resetTimestamp.coerceAtLeast(0L)) {
@@ -3050,7 +3062,15 @@ object VersionAdapter {
         val highCandidateExists = COMMENT_HIGH_CANDIDATES.any {
             KavaMemberLookup.hasClass(classLoader, it)
         }
-        val cached = startup.usableCache(highCandidateExists)
+        val cached = startup.usableCache(highCandidateExists)?.takeUnless { value ->
+            kotlinDefaultWordsEnabled && KotlinDefaultWordsLocator.refreshCache(
+                enabled = true,
+                applicable = KotlinDefaultWordsLocator.applicable(classLoader),
+                directFound = KotlinDefaultWordsLocator.direct(classLoader) != null,
+                cachedFound = value.homeTopBar?.kotlinDefaultWords != null,
+                attempted = value.diagnostics.any { it.id == KotlinDefaultWordsLocator.DIAGNOSTIC && it.state == AdaptState.MISSING }
+            )
+        }
         if (cached != null) {
             // 快路径命中：确保文件缓存存在（loadApp 阶段无 context 只读文件缓存；
             // prefs 命中但文件缺失时补写，避免下次启动 loadApp 回退内置候选）
@@ -3077,7 +3097,7 @@ object VersionAdapter {
                 // `adapt` 已自带 runCatching，但 writeCache 与日志不在其中；宿主进程内
                 // 线程的逃逸异常一律杀进程，整段必须过防波堤。
                 HostThreadGuard.run("adapter.adapt_worker") {
-                    result = runCatching { adapt(context, classLoader) }.getOrNull()
+                    result = runCatching { adapt(context, classLoader, kotlinDefaultWordsEnabled) }.getOrNull()
                     result?.let { adapted ->
                         // 写文件缓存（loadApp 快路径载体）；校验后原子替换，旧缓存不会被半截 JSON 覆盖。
                         if (!writeCache(adapted)) {
@@ -3242,7 +3262,8 @@ object VersionAdapter {
                     id = DEX_ASSIST_PLAYER_QUALITY_ID,
                     state = AdaptState.NOT_APPLICABLE,
                     detail = "quick-locate"
-                )
+                ),
+                AdaptDiagnostic(KotlinDefaultWordsLocator.DIAGNOSTIC, AdaptState.NOT_APPLICABLE, "quick-locate")
             )
         )
     }
@@ -3253,7 +3274,7 @@ object VersionAdapter {
      * 适配结果主要用于快路径签名（定位不到签名不影响运行期内置候选注册），
      * 避免「功能可用但报适配失败」的误导（8.90.2 实测）。
      */
-    private fun adapt(context: Context, loader: ClassLoader): AdaptResult? {
+    private fun adapt(context: Context, loader: ClassLoader, kotlinDefaultWordsEnabled: Boolean): AdaptResult? {
         val vc = biliVersionCode(context)
         val dexSource = runCatching {
             context.packageManager.getPackageInfo("tv.danmaku.bili", 0).applicationInfo
@@ -3263,7 +3284,9 @@ object VersionAdapter {
         val mine = locateMineEntry(loader)
         val pause = locatePausePoints(loader)
         val banner = locateBanner(loader)
-        val homeTopBar = locateHomeTopBar(loader)
+        var homeTopBar = locateHomeTopBar(loader)
+        val defaultWordsNeedsAssist = KotlinDefaultWordsLocator.needsQuery(kotlinDefaultWordsEnabled,
+            KotlinDefaultWordsLocator.applicable(loader), homeTopBar?.kotlinDefaultWords != null)
         val mineVip = locateMineVip(loader)
         val directBlockUpdate = locateBlockUpdate(loader)
         val directPlayerQuality = locateDefaultVideoQuality(loader)
@@ -3284,6 +3307,7 @@ object VersionAdapter {
                     if (directBlockUpdate == null) add(DexAssistQuery.BLOCK_UPDATE)
                     if (playerQualityNeedsAssist) add(DexAssistQuery.PLAYER_DEFAULT_QUALITY)
                     if (directTopologyOutcome.points == null) add(DexAssistQuery.COMMENT_REPLY_MAPPER)
+                    if (defaultWordsNeedsAssist) add(DexAssistQuery.SEARCH_DEFAULT_WORDS_KOTLIN)
                 }
             )
         }
@@ -3298,6 +3322,14 @@ object VersionAdapter {
                     detail = "block-update:not-required"
                 )
             )
+        }
+        val defaultWordsAssist = if (defaultWordsNeedsAssist) locateKotlinDefaultWordsByDex(dexAssist) else {
+            KotlinDefaultWordsDexAssist(null, AdaptDiagnostic(KotlinDefaultWordsLocator.DIAGNOSTIC,
+                AdaptState.NOT_APPLICABLE, if (!kotlinDefaultWordsEnabled) "feature-disabled" else "not-required"))
+        }
+        defaultWordsAssist.point?.let { point ->
+            homeTopBar = homeTopBar?.copy(kotlinDefaultWords = point)
+                ?: HomeTopBarPoints(null, null, null, emptyList(), point)
         }
         val blockUpdate = directBlockUpdate ?: blockUpdateAssist.point
         val dynamicTabs = locateDynamicTabs(loader)
@@ -3448,7 +3480,7 @@ object VersionAdapter {
                 commentTopologyOutcome.failureDetail, commentSection,
                 splashAds
             ) + protocolFingerprint.toDiagnostic() + blockUpdateAssist.diagnostic +
-                topologyAssist.diagnostic + playerQualityAssist.diagnostic,
+                topologyAssist.diagnostic + playerQualityAssist.diagnostic + defaultWordsAssist.diagnostic,
             dexSourceFingerprint = dexSource?.value ?: DEX_SOURCE_UNAVAILABLE
         )
     }
@@ -4231,6 +4263,21 @@ object VersionAdapter {
         }
         null
     }.getOrNull()
+
+    internal data class KotlinDefaultWordsDexAssist(val point: HookPoint?, val diagnostic: AdaptDiagnostic)
+
+    internal fun locateKotlinDefaultWordsByDex(session: DexAssistSession?): KotlinDefaultWordsDexAssist {
+        val result = session?.result(DexAssistQuery.SEARCH_DEFAULT_WORDS_KOTLIN)
+        val selected = (result as? DexAssistResult.Candidates)?.methods?.let(KotlinDefaultWordsLocator::select)
+        val reason = when (result) {
+            null -> "no-dex-source"
+            is DexAssistResult.Unavailable -> result.reason.name.lowercase()
+            is DexAssistResult.Candidates -> if (selected == null) "no-unique-verified-entry" else "verified"
+        }
+        return KotlinDefaultWordsDexAssist(selected?.let(KotlinDefaultWordsLocator::point),
+            AdaptDiagnostic(KotlinDefaultWordsLocator.DIAGNOSTIC,
+                if (selected == null) AdaptState.MISSING else AdaptState.FOUND, reason))
+    }
 
     private data class BlockUpdateDexAssist(
         val point: HookPoint?,
@@ -6628,12 +6675,13 @@ object VersionAdapter {
                 .map { it.toHookPoint() }
         }
 
+        val kotlinWords = KotlinDefaultWordsLocator.direct(loader)?.let(KotlinDefaultWordsLocator::point)
         if (gameMenu == null && composeGameMenu == null &&
-            baseOnViewCreated == null && defaultWordMethods.isEmpty()
+            baseOnViewCreated == null && defaultWordMethods.isEmpty() && kotlinWords == null
         ) {
             null
         } else {
-            HomeTopBarPoints(gameMenu, composeGameMenu, baseOnViewCreated, defaultWordMethods)
+            HomeTopBarPoints(gameMenu, composeGameMenu, baseOnViewCreated, defaultWordMethods, kotlinWords)
         }
     }.getOrNull()
 

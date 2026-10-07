@@ -153,13 +153,17 @@ internal class KotlinMossBridgeMembers private constructor(
          */
         fun callbackEntry(mossClass: Class<*>, name: String): Method? =
             KavaMemberLookup.declaredMethods(mossClass, makeAccessible = true) { method ->
-                val types = method.parameterTypes
-                method.name == name && !method.isStatic && method.returnType == Void.TYPE &&
-                    types.size == 5 && types[0] == classOf<Any>() &&
-                    types[1].name == SERIALIZATION_STRATEGY &&
-                    types[2].name == DESERIALIZATION_STRATEGY &&
-                    types[3].isInterface && types[4].name == PROTO_BUF
+                method.name == name && isCallbackEntry(method)
             }.singleOrNull()
+
+        /** 名字由常规定位或 DEX 语义定位决定；回调 ABI 的复核共用一份。 */
+        fun isCallbackEntry(method: Method): Boolean {
+            val types = method.parameterTypes
+            return !method.isStatic && method.returnType == Void.TYPE &&
+                types.size == 5 && types[0] == classOf<Any>() &&
+                types[1].name == SERIALIZATION_STRATEGY && types[2].name == DESERIALIZATION_STRATEGY &&
+                types[3].isInterface && types[4].name == PROTO_BUF
+        }
     }
 }
 

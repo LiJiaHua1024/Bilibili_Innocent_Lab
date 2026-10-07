@@ -42,7 +42,8 @@ internal object VersionAdapterContract {
      * 命中网络边界与包装层两个 owner、恒报歧义；默认画质新增兜底，且只命中稳定包装层
      * `PlayerSettingHelper` 时也会查。JSON 形状不变。
      */
-    const val RULE_VERSION = 65
+    /** 65 → 66：搜索默认词 K 回调增加语义 DEX 兜底及 home_top.kotlin_words 可选缓存键；外层 JSON 形状不变。 */
+    const val RULE_VERSION = 66
 
     /**
      * 51 → 52（2026-09-11，9.11.0(9110400) 适配）：

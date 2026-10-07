@@ -1,6 +1,7 @@
 package com.Bilibili_Innocent_Lab.xposedmodule.hook.feature
 
 import com.Bilibili_Innocent_Lab.xposedmodule.runtime.KavaMemberLookup
+import java.lang.reflect.Method
 import java.util.concurrent.atomic.AtomicBoolean
 
 /**
@@ -68,6 +69,8 @@ internal object KotlinMossChannel {
         transformRequest: ((Any) -> Any)? = null,
         /** 评论管线显式启用；其他 RPC 保持原代理与变换行为。 */
         shareUnchangedReply: Boolean = false,
+        /** 适配器缓存的 DEX 定位结果；传入前后都复核 ABI，不在这里做 DEX 查询。 */
+        resolvedEntry: Method? = null,
         transformJava: (Any) -> Any
     ): Boolean {
         fun skip(reason: String): Boolean {
@@ -75,9 +78,11 @@ internal object KotlinMossChannel {
             return false
         }
         val kotlinName = KotlinMossBridgeMembers.kotlinMossClassName(javaMossClassName) ?: return skip("no-kotlin-name")
-        val kotlinMoss = KavaMemberLookup.classOrNull(loader, kotlinName) ?: return skip("no-kotlin-moss")
+        if (resolvedEntry != null && !KotlinMossBridgeMembers.isCallbackEntry(resolvedEntry)) return skip("invalid-adapted-entry")
+        val kotlinMoss = resolvedEntry?.declaringClass ?: KavaMemberLookup.classOrNull(loader, kotlinName)
+            ?: return skip("no-kotlin-moss")
         val codec = KotlinMossBridgeMembers.JavaReplyCodec.resolve(javaReplyClass) ?: return skip("no-java-codec")
-        val entry = KotlinMossBridgeMembers.callbackEntry(kotlinMoss, rpc) ?: return skip("no-callback-entry")
+        val entry = resolvedEntry ?: KotlinMossBridgeMembers.callbackEntry(kotlinMoss, rpc) ?: return skip("no-callback-entry")
         val handlerClass = entry.parameterTypes[3]
         val requestCodec = javaRequestClass?.takeIf { transformRequest != null }
             ?.let { KotlinMossBridgeMembers.JavaReplyCodec.resolve(it) ?: return skip("no-java-request-codec") }

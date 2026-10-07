@@ -5040,7 +5040,8 @@ class HookEntry : XposedModule() {
                                 }
                             }
                         },
-                        startupCache = startupCache
+                        startupCache = startupCache,
+                        kotlinDefaultWordsEnabled = prefs.getBoolean(FeaturePreferences.HIDE_HOME_SEARCH_DEFAULT_WORD, false)
                     )
                 }.onFailure { throwable ->
                     logError(

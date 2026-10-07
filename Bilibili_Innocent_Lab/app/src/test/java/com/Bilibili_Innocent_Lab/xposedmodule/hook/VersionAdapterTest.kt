@@ -11,6 +11,30 @@ import org.junit.Test
 
 class VersionAdapterTest {
 
+    @Test fun `K default words optional point survives full cache validation and runtime merge`() {
+        val method = com.Bilibili_Innocent_Lab.xposedmodule.hook.feature.KotlinDefaultWordsTest.RenamedSearch::class.java
+            .declaredMethods.single { it.name == "x" }
+        val point = com.Bilibili_Innocent_Lab.xposedmodule.hook.adapter.KotlinDefaultWordsLocator.point(method)
+        val home = VersionAdapter.HomeTopBarPoints(null, null, null, emptyList(), point)
+        val cached = result().copy(homeTopBar = home)
+        assertEquals(home, VersionAdapter.AdaptResult.fromJson(cached.toJson())?.homeTopBar)
+        val live = cached.copy(homeTopBar = home.copy(kotlinDefaultWords = null))
+        assertEquals(point, VersionAdapter.mergeRuntimeWithCached(live, cached)?.homeTopBar?.kotlinDefaultWords)
+        assertNull(VersionAdapter.AdaptResult.fromJson(cached.toJson().apply {
+            getJSONObject("home_top").getJSONObject("kotlin_words").put("params", org.json.JSONArray(listOf("java.lang.Object")))
+        }))
+    }
+
+    @Test fun `cached K default words query failure remains observable in quick merge`() {
+        val id = com.Bilibili_Innocent_Lab.xposedmodule.hook.adapter.KotlinDefaultWordsLocator.DIAGNOSTIC
+        val cached = result().copy(diagnostics = listOf(VersionAdapter.AdaptDiagnostic(id,
+            VersionAdapter.AdaptState.MISSING, "no-match")))
+        val live = cached.copy(diagnostics = listOf(VersionAdapter.AdaptDiagnostic(id,
+            VersionAdapter.AdaptState.NOT_APPLICABLE, "quick-locate")))
+        assertEquals(VersionAdapter.AdaptState.MISSING,
+            VersionAdapter.mergeRuntimeWithCached(live, cached)?.diagnostics?.single { it.id == id }?.state)
+    }
+
     @Test
     fun `startup snapshot preserves reset version fingerprint and structural cache rejection`() {
         val cached = result()

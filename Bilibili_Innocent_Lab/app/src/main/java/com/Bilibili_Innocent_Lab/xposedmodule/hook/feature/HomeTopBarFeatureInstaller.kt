@@ -2,6 +2,7 @@ package com.Bilibili_Innocent_Lab.xposedmodule.hook.feature
 
 import android.widget.TextView
 import com.Bilibili_Innocent_Lab.xposedmodule.hook.VersionAdapter
+import com.Bilibili_Innocent_Lab.xposedmodule.hook.adapter.KotlinDefaultWordsLocator
 import com.Bilibili_Innocent_Lab.xposedmodule.runtime.KavaMemberLookup
 import com.highcapable.kavaref.extension.classOf
 import com.highcapable.kavaref.extension.isStatic
@@ -206,7 +207,16 @@ internal class HomeTopBarFeatureInstaller(
             searchProtocolReady = registered == 2 && protocol?.cleaner?.complete == true
         }
 
-        val ready = gameReady && searchViewReady && searchWordReady && searchProtocolReady
+        // 新版搜索仓库走 KSearchMoss.defaultWords；响应类也会混淆，复用请求实际携带的序列化器。
+        // 与原生两条入口并行；只有原开关开启且宿主含 K 通道时，才解析／自检／安装。
+        val kotlinSearchProtocol = if (hideSearchDefaultWord && environment.classLoader?.let {
+                points?.kotlinDefaultWords != null || KotlinDefaultWordsLocator.applicable(it)
+            } == true) installKotlinDefaultWords(environment) else null
+        installedCount += (kotlinSearchProtocol as? FeatureInstallResult.Installed)?.hookCount ?: 0
+        val kotlinSearchProtocolReady = kotlinSearchProtocol == null ||
+            kotlinSearchProtocol is FeatureInstallResult.Installed && kotlinSearchProtocol.complete
+
+        val ready = gameReady && searchViewReady && searchWordReady && searchProtocolReady && kotlinSearchProtocolReady
         // 分母按"这个宿主上确实存在的落点数"算，而不是固定 1：老宿主只有菜单层、
         // 放量后可能只有 Compose 层，固定分母会把正常情况报成缺失。
         val gameLayerTotal =
@@ -222,7 +232,8 @@ internal class HomeTopBarFeatureInstaller(
         if (hideSearchDefaultWord) environment.reportCapabilityCoverage(
             "home_top_bar_search_word_hidden", true,
             installedCount - gameLayerInstalled,
-            1 + points?.defaultWordMethods.orEmpty().size.coerceAtLeast(1) + if (searchMoss != null) 2 else 0
+            1 + points?.defaultWordMethods.orEmpty().size.coerceAtLeast(1) +
+                (if (searchMoss != null) 2 else 0) + (if (kotlinSearchProtocol != null) 1 else 0)
         )
         val summary = if (ready) {
             "success"
@@ -234,6 +245,7 @@ internal class HomeTopBarFeatureInstaller(
                 if (!searchViewReady) missing += "search-view"
                 if (!searchWordReady) missing += "search-word"
                 if (!searchProtocolReady) missing += "search-protocol"
+                if (!kotlinSearchProtocolReady) missing += "search-protocol-kotlin"
                 append(missing.joinToString(","))
             }
         }
@@ -253,6 +265,26 @@ internal class HomeTopBarFeatureInstaller(
         return FeatureInstallResult.Installed(installedCount)
     }
 
+    private fun installKotlinDefaultWords(environment: HookEnvironment): FeatureInstallResult {
+        val loader = environment.classLoader ?: return FeatureInstallResult.Skipped("missing-class-loader")
+        val reply = KavaMemberLookup.classOrNull(loader, DEFAULT_WORDS_REPLY_CLASS)
+            ?: return FeatureInstallResult.Skipped("missing-java-default-words")
+        val cleaner = SearchDefaultWordsCleaner.resolve(reply)
+            ?: return FeatureInstallResult.Skipped("missing-default-words-cleaner")
+        val members = KotlinMossChannel.prepare(environment, loader, "搜索默认词", "search_default_words_kmoss")
+            ?: return FeatureInstallResult.Skipped("kotlin-default-words-bridge-unavailable")
+        val installed = KotlinMossChannel.install(environment, loader, members,
+            javaMossClassName = SEARCH_MOSS_CLASS,
+            rpc = "defaultWords",
+            javaReplyClass = reply,
+            hookId = "home.top_bar.search_default_words.kotlin",
+            what = "搜索默认词", logKey = "search_default_words_kmoss",
+            resolvedEntry = points?.kotlinDefaultWords?.let { KotlinDefaultWordsLocator.resolve(loader, it) },
+            transformJava = { cleaner.clean(it, environment) })
+        return if (installed) FeatureInstallResult.Installed(1, complete = cleaner.complete)
+        else FeatureInstallResult.Skipped("kotlin-default-words-registration-failed")
+    }
+
     /**
      * 定位搜索默认词的协议边界。
      *
@@ -262,7 +294,7 @@ internal class HomeTopBarFeatureInstaller(
      */
     private fun resolveDefaultWordsBoundary(environment: HookEnvironment, moss: Class<*>): DefaultWordsBoundary? {
         val loader = environment.classLoader ?: return null
-        val reply = KavaMemberLookup.classOrNull(loader, "com.bapis.bilibili.app.interfaces.v1.DefaultWordsReply") ?: return null
+        val reply = KavaMemberLookup.classOrNull(loader, DEFAULT_WORDS_REPLY_CLASS) ?: return null
         val cleaner = SearchDefaultWordsCleaner.resolve(reply) ?: return null
         val methods = KavaMemberLookup.declaredMethods(moss, makeAccessible = true)
         val sync = methods.filter { !it.isStatic && it.name == DEFAULT_WORDS_METHOD &&
@@ -335,6 +367,7 @@ internal class HomeTopBarFeatureInstaller(
             action == GAME_MENU_ACTION || action.startsWith("$GAME_MENU_ACTION?")
         }
         private const val SEARCH_MOSS_CLASS = "com.bapis.bilibili.app.interfaces.v1.SearchMoss"
+        private const val DEFAULT_WORDS_REPLY_CLASS = "com.bapis.bilibili.app.interfaces.v1.DefaultWordsReply"
         private const val DEFAULT_WORDS_METHOD = "executeDefaultWords"
 
         /** 顶部菜单基类共用同一构建方法，只对配置对象中含游戏 action 的实例放行拦截。 */

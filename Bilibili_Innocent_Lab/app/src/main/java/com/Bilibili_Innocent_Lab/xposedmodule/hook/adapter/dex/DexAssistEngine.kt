@@ -30,7 +30,10 @@ internal enum class DexAssistQuery {
      * 每次混淆在单字母之间漂移；返回类型 `CommentItem` + 首参 `ReplyInfo` + `static` 是版本无关
      * 的强特征，且能由宿主 ClassLoader 完整复核，满足入目录条件。
      */
-    COMMENT_REPLY_MAPPER
+    COMMENT_REPLY_MAPPER,
+
+    /** 泛型五参数回调 + 方法体调用 getDefaultWordsMethod；不依赖入口 owner／方法的混淆名。 */
+    SEARCH_DEFAULT_WORDS_KOTLIN
 }
 
 internal sealed interface DexAssistResult {
