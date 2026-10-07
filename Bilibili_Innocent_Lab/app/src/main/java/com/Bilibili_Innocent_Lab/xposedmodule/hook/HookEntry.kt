@@ -60,6 +60,7 @@ import com.Bilibili_Innocent_Lab.xposedmodule.hook.feature.DanmakuPurifyFeatureI
 import com.Bilibili_Innocent_Lab.xposedmodule.hook.feature.DanmakuPurifyPolicy
 import com.Bilibili_Innocent_Lab.xposedmodule.hook.feature.DynamicPurifyFeatureInstaller
 import com.Bilibili_Innocent_Lab.xposedmodule.hook.feature.DynamicTabsFeatureInstaller
+import com.Bilibili_Innocent_Lab.xposedmodule.hook.feature.FollowFeedFeatureInstaller
 import com.Bilibili_Innocent_Lab.xposedmodule.hook.feature.SemanticJudge
 import com.Bilibili_Innocent_Lab.xposedmodule.hook.feature.SemanticSettings
 import com.Bilibili_Innocent_Lab.xposedmodule.hook.feature.SemanticDiskCleanup
@@ -3426,6 +3427,9 @@ class HookEntry : XposedModule() {
                     HostVideoCardStyleFeatureInstaller(
                         enabled = prefs.getBoolean(FeaturePreferences.HOST_VIDEO_CARDS, false),
                         radiusDp = prefs.getInt(FeaturePreferences.HOST_VIDEO_CARD_RADIUS_DP, -1)
+                    ),
+                    FollowFeedFeatureInstaller(
+                        enabled = prefs.getBoolean(FeaturePreferences.HOST_VIDEO_CARDS, false)
                     )
                 )
             )

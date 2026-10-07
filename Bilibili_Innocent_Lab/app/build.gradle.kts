@@ -359,6 +359,7 @@ dependencies {
     implementation(libs.androidx.constraintlayout)
     implementation(libs.androidx.recyclerview)
     implementation(libs.lumen.engine)
+    implementation(libs.lumen.motion)
 
     implementation(libs.material)
     // GitHub Release body is Markdown; render it as bounded native Spannable content.
