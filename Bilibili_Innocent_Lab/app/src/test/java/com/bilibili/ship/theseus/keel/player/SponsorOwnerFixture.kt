@@ -11,4 +11,6 @@ class TheseusKeelPlayer(@JvmField var current: SponsorPlayable? = null) {
         return null
     }
 }
-class `TheseusKeelPlayer$runPlayable$1`(val owner: TheseusKeelPlayer)
+class `TheseusKeelPlayer$runPlayable$1`(val owner: TheseusKeelPlayer) {
+    @JvmField var label = 0
+}

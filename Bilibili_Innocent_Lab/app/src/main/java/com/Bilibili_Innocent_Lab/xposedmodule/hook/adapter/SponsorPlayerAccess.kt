@@ -4,6 +4,7 @@ import com.Bilibili_Innocent_Lab.xposedmodule.hook.feature.sponsor.SponsorVideoI
 import com.Bilibili_Innocent_Lab.xposedmodule.runtime.KavaMemberLookup as Lookup
 import com.highcapable.kavaref.extension.classOf
 import java.lang.reflect.Constructor
+import java.lang.reflect.Field
 import java.lang.reflect.Method
 import java.lang.reflect.Modifier
 
@@ -11,7 +12,11 @@ import java.lang.reflect.Modifier
 internal class SponsorPlayerAccess private constructor(
     val run: Method,
     val wrapper: Constructor<*>,
+    val scope: Constructor<*>,
     val active: Method,
+    private val continuation: Class<*>,
+    private val continuationOwner: Field,
+    private val runLabel: Field,
     private val params: Method,
     private val bvid: Method,
     private val cid: Method,
@@ -33,9 +38,16 @@ internal class SponsorPlayerAccess private constructor(
     val progressObserver: Class<*>,
     val seekObserver: Class<*>,
     val stateObserver: Class<*>,
-    val releaseObserver: Class<*>,
-    val suspended: Any
+    val releaseObserver: Class<*>
 ) {
+    /** runPlayable 正常播放时保持挂起；只接受已激活的实参或 label=2 的播放续体。 */
+    fun bound(owner: Any, requested: Any?, resumed: Any?): Boolean = runCatching {
+        val current = active.invoke(owner) ?: return false
+        if (requested != null) current === requested
+        else resumed != null && continuation.isInstance(resumed) && continuationOwner.get(resumed) === owner &&
+            runLabel.getInt(resumed) == 2
+    }.getOrDefault(false)
+
     fun video(owner: Any): SponsorVideoId? = runCatching {
         val playable = active.invoke(owner) ?: return null
         val values = params.invoke(playable) ?: return null
@@ -48,10 +60,14 @@ internal class SponsorPlayerAccess private constructor(
         const val PARAMS_CLASS = "com.bilibili.app.gemini.base.player.GeminiCommonPlayableParams"
         const val CORE_CLASS = "tv.danmaku.biliplayerv2.service.IPlayerCoreService"
         const val WRAPPER_CLASS = "com.bilibili.ship.theseus.united.player.oldway.playercontainer.TheseusPlayerContainerProvider\$providePlayerContainer\$playerContainer\$1\$1\$1"
+        const val SCOPE_CLASS = "com.bilibili.ship.theseus.united.player.oldway.playercontainer.BadNetworkTipService"
         private const val FAMILY = "com.bilibili.ship.theseus.keel.player."
 
         fun resolve(loader: ClassLoader): SponsorPlayerAccess? = runCatching {
             val continuation = Lookup.classOrNull(loader, RUN_CLASS) ?: return null
+            val runLabel = Lookup.fieldOrNull(continuation, "label")?.takeIf {
+                !Modifier.isStatic(it.modifiers) && it.type == classOf<Int>()
+            } ?: return null
             val params = Lookup.classOrNull(loader, PARAMS_CLASS) ?: return null
             val core = Lookup.classOrNull(loader, CORE_CLASS)?.takeIf { it.isInterface } ?: return null
             val wrapper = Lookup.classOrNull(loader, WRAPPER_CLASS) ?: return null
@@ -65,9 +81,10 @@ internal class SponsorPlayerAccess private constructor(
                 method(seekObserver, "onSeekComplete", Void.TYPE, classOf<Long>()) == null ||
                 method(stateObserver, "onPlayerStateChanged", Void.TYPE, classOf<Int>()) == null ||
                 method(release, "onPlayerWillRelease", Void.TYPE) == null) return null
-            val owner = Lookup.declaredFields(continuation, true) {
+            val continuationOwner = Lookup.declaredFields(continuation, true) {
                 !Modifier.isStatic(it.modifiers) && it.type.name.startsWith(FAMILY) && it.type != continuation
-            }.singleOrNull()?.type ?: return null
+            }.singleOrNull() ?: return null
+            val owner = continuationOwner.type
             val run = Lookup.declaredMethods(owner, true) {
                 !Modifier.isStatic(it.modifiers) && it.returnType == classOf<Any>() && it.parameterCount == 2 &&
                     it.parameterTypes[0].isInterface && it.parameterTypes[0].name.startsWith(FAMILY) &&
@@ -83,15 +100,21 @@ internal class SponsorPlayerAccess private constructor(
                 it.parameterTypes.map(Class<*>::getName) == listOf(CORE_CLASS, owner.name, "kotlinx.coroutines.CoroutineScope")
             }.singleOrNull() ?: return null
             if (!core.isAssignableFrom(wrapper)) return null
+            // 与 owner 显式成对的宿主 Context；不按当前 Activity 猜测播放器归属。
+            val context = Lookup.classOrNull(loader, "android.content.Context") ?: return null
+            val scope = Lookup.classOrNull(loader, SCOPE_CLASS)?.let { cls ->
+                Lookup.declaredConstructors(cls, true) {
+                    !it.isSynthetic && it.parameterCount in 3..12 &&
+                        it.parameterTypes.take(3) == listOf(core, context, owner)
+                }.singleOrNull()
+            } ?: return null
             val business = Lookup.inheritedMethodOrNull(params, "getBizType")?.takeIf {
                 !Modifier.isStatic(it.modifiers) && it.returnType.isEnum
             } ?: return null
             val ugc = Lookup.fieldOrNull(business.returnType, "UGC")?.takeIf {
                 Modifier.isStatic(it.modifiers) && it.type == business.returnType
             }?.get(null) ?: return null
-            val suspended = Lookup.classOrNull(loader, "kotlin.coroutines.intrinsics.CoroutineSingletons")?.enumConstants
-                ?.singleOrNull { (it as? Enum<*>)?.name == "COROUTINE_SUSPENDED" } ?: return null
-            SponsorPlayerAccess(run, constructor, active, parameters,
+            SponsorPlayerAccess(run, constructor, scope, active, continuation, continuationOwner, runLabel, parameters,
                 method(params, "getBvId", classOf<String>()) ?: return null,
                 method(params, "getCid", classOf<Long>()) ?: return null,
                 method(params, "getAvid", classOf<Long>()) ?: return null, business, ugc,
@@ -107,7 +130,7 @@ internal class SponsorPlayerAccess private constructor(
                 method(core, "unregisterState", Void.TYPE, stateObserver) ?: return null,
                 method(core, "addPlayerReleaseObserver", Void.TYPE, release) ?: return null,
                 method(core, "removePlayerReleaseObserver", Void.TYPE, release) ?: return null,
-                progress, seekObserver, stateObserver, release, suspended)
+                progress, seekObserver, stateObserver, release)
         }.getOrNull()
 
         private fun method(owner: Class<*>, name: String, result: Class<*>, vararg parameters: Class<*>): Method? =

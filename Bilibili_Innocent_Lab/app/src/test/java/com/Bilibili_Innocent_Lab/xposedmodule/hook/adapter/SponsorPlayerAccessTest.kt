@@ -5,6 +5,7 @@ import com.bilibili.app.gemini.base.player.GeminiCommonPlayableParams
 import com.bilibili.app.gemini.base.player.SponsorBusiness
 import com.bilibili.ship.theseus.keel.player.SponsorPlayable
 import com.bilibili.ship.theseus.keel.player.TheseusKeelPlayer
+import com.bilibili.ship.theseus.keel.player.`TheseusKeelPlayer$runPlayable$1`
 import org.junit.Assert.*
 import org.junit.Test
 
@@ -17,6 +18,7 @@ class SponsorPlayerAccessTest {
 
     @Test fun inheritedBusinessGetterAndExactTwoArgumentSeekAreResolved() {
         val access = requireNotNull(SponsorPlayerAccess.resolve(loader))
+        assertEquals(7, access.scope.parameterCount)
         assertEquals(listOf(Int::class.javaPrimitiveType, Boolean::class.javaPrimitiveType), access.seek.parameterTypes.toList())
         assertEquals(SponsorVideoId("BV14741127BN", 1), access.video(TheseusKeelPlayer(playable())))
     }
@@ -45,5 +47,30 @@ class SponsorPlayerAccessTest {
             }
             assertNull(missing, SponsorPlayerAccess.resolve(incomplete))
         }
+    }
+
+    @Test fun seekGuardRequiresTheConcreteCoroutineCloneAndHostUnit() {
+        val player = requireNotNull(SponsorPlayerAccess.resolve(loader))
+        val seek = requireNotNull(SponsorSeekAccess.resolve(loader, player))
+        assertSame(Unit, seek.unit)
+        assertEquals("create", seek.create.name)
+        assertEquals("invokeSuspend", seek.invoke.name)
+        assertEquals(4, seek.constructor.parameterCount)
+    }
+
+    @Test fun activePlaybackCanBeBoundWhileRunPlayableIsSuspendedButNotWhileWaitingForItsMutex() {
+        val access = requireNotNull(SponsorPlayerAccess.resolve(loader))
+        val first = playable(); val next = playable(cid = 2)
+        val owner = TheseusKeelPlayer(first)
+        assertTrue(access.bound(owner, first, null))
+        assertFalse(access.bound(owner, next, null))
+        val resume = `TheseusKeelPlayer$runPlayable$1`(owner)
+        resume.label = 1
+        assertFalse(access.bound(owner, null, resume))
+        owner.current = next; resume.label = 2
+        assertTrue(access.bound(owner, null, resume))
+        assertFalse(access.bound(TheseusKeelPlayer(next), null, resume))
+        owner.current = null
+        assertFalse(access.bound(owner, null, resume))
     }
 }
