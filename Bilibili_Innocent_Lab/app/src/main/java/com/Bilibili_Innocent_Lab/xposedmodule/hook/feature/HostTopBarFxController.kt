@@ -559,22 +559,23 @@ internal object HostTopBarFxController {
         density: Float,
         spinnerTravelBase: Int = topPadding
     ) {
-        if (view is RecyclerView) {
-            if (view.paddingTop != topPadding || view.clipToPadding) {
+        // 宿主 RecyclerView 属于另一份 ClassLoader，连同其子类按继承链识别。
+        if (view is RecyclerView || generateSequence(view.javaClass as Class<*>) { it.superclass }
+                .any { it.simpleName == "RecyclerView" }) {
+            if (view.paddingTop != topPadding) {
+                val wasAtTop = !view.canScrollVertically(-1)
                 view.setPadding(view.paddingLeft, topPadding, view.paddingRight, view.paddingBottom)
-                view.clipToPadding = false
-            }
-            return
-        }
-        if (view.javaClass.simpleName.contains("RecyclerView")) {
-            val pt = view.paddingTop
-            if (pt != topPadding) {
-                view.setPadding(view.paddingLeft, topPadding, view.paddingRight, view.paddingBottom)
-                runCatching {
-                    val m = view.javaClass.getMethod("setClipToPadding", Boolean::class.javaPrimitiveType)
-                    m.invoke(view, false)
+                // setPadding 会保留已布局卡片的旧坐标。冷启动首项可能仍停在 0，
+                // 被误判为滚动了 topPadding，连带撤掉搜索区占位。仅原本在顶部时重建首项锚点。
+                if (wasAtTop) {
+                    if (view is RecyclerView) view.scrollToPosition(0)
+                    else runCatching {
+                        KavaMemberLookup.inheritedMethodOrNull(view.javaClass, "scrollToPosition",
+                            Int::class.javaPrimitiveType!!)?.invoke(view, 0)
+                    }
                 }
             }
+            (view as? ViewGroup)?.let { if (it.clipToPadding) it.clipToPadding = false }
             return
         }
         if (view.javaClass.simpleName.contains("SwipeRefreshLayout")) {
@@ -942,6 +943,8 @@ internal class HostTopFusionBinding private constructor(
             HostTopBarFxController.applyScrollPadding(list, basePadding, density, basePadding)
             if (list.paddingTop == basePadding) return false
         }
+        // padding/首项锚点在下一次布局才生效，不能用旧坐标更新停靠进度或画出遮挡帧。
+        if (list?.isLayoutRequested == true) return false
         listPosition?.edge()?.let { edge ->
             val range = minOf(HostTopFusionPolicy.DOCK_RANGE_DP * density, edge.firstRowExtent)
             dockingProgress = HostTopFusionPolicy.dockingProgress(edge.distance, range)

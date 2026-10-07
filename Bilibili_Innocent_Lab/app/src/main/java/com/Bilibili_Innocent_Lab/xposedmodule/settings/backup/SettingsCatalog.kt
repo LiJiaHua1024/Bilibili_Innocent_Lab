@@ -30,7 +30,7 @@ import com.Bilibili_Innocent_Lab.xposedmodule.settings.appearance.ModalBackdropB
 internal object SettingsCatalog {
     const val PRODUCT_ID = "bilibili-innocent-lab.settings"
     const val SCOPE_ID = "core-user-settings"
-    const val CATALOG_VERSION = 42
+    const val CATALOG_VERSION = 43
     const val ID_PLAYER_DEFAULT_SPEED = "player.default_speed.percent"
     const val ID_PLAYER_LONG_PRESS_SPEED = "player.long_press_speed.percent"
     const val ID_FREE_COPY_COMMENT = "free_copy.comment.enabled"
@@ -603,6 +603,14 @@ internal object SettingsCatalog {
             default = false,
             introducedCatalogVersion = 42
         ),
+        integer(
+            "host.video_cards.radius_dp",
+            FeaturePreferences.HOST_VIDEO_CARD_RADIUS_DP,
+            R.string.host_video_card_radius,
+            default = -1,
+            range = -1..40,
+            introducedCatalogVersion = 43
+        ),
         bool(
             "host.bottom_bar.compact.enabled",
             FeaturePreferences.HOST_BOTTOM_BAR_COMPACT,
@@ -892,7 +900,7 @@ internal object SettingsCatalog {
     val byStorageKey: Map<String, SettingSpec> = specs.associateBy(SettingSpec::storageKey)
 
     init {
-        check(specs.size == 199) { "Expected 199 catalog settings, found ${specs.size}" }
+        check(specs.size == 200) { "Expected 200 catalog settings, found ${specs.size}" }
         check(byId.size == specs.size) { "Duplicate logical setting id" }
         check(specs.map(SettingSpec::storageKey).distinct().size == specs.size) {
             "Duplicate settings storage key"

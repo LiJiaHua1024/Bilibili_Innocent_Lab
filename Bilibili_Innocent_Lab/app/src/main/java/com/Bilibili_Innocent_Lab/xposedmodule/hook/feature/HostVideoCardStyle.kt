@@ -19,6 +19,7 @@ import java.util.WeakHashMap
 internal class HostVideoCardStyle(
     private val grid: HostVideoCardGridAccess?,
     private val host: HostVideoCardHostAccess,
+    private val radiusDp: Int,
     private val onApplied: () -> Unit,
     private val onError: (Throwable) -> Unit
 ) {
@@ -65,7 +66,7 @@ internal class HostVideoCardStyle(
     private val coverOutline = object : ViewOutlineProvider() {
         override fun getOutline(view: View, outline: Outline) {
             outline.setRoundRect(0, 0, view.width, view.height,
-                HostVideoCardStyleSpec.coverRadius(view.width, view.height))
+                HostVideoCardStyleSpec.coverRadius(view.width, view.height, radiusDp, view.resources.displayMetrics.density))
         }
     }
     private val layoutListener = View.OnLayoutChangeListener { view, left, top, right, bottom, oldLeft, oldTop, oldRight, oldBottom ->
@@ -129,6 +130,7 @@ internal class HostVideoCardStyle(
 
     fun bind(root: View, feedback: Boolean = false) {
         if (root !is ViewGroup) return
+        if (isInPlayer(root)) return
         var state = states[root]
         if (state == null || state.feedback != feedback || state.childCount != root.childCount || !coversBelongTo(root, state)) {
             if (!feedback && state == null && excluded[root] == root.childCount) return
@@ -166,6 +168,7 @@ internal class HostVideoCardStyle(
     /** GridLayoutManager 已分配 span、尚未测量子项时调用；不发送 requestLayout。 */
     fun prepareMeasurement(manager: Any, root: View) {
         val state = states[root] ?: return
+        if (isInPlayer(root)) return
         val params = root.layoutParams as? ViewGroup.MarginLayoutParams ?: return
         val span = grid?.doubleColumnSpan(manager, params) ?: -1
         val spacing = state.spacing
@@ -176,10 +179,12 @@ internal class HostVideoCardStyle(
     private fun discover(root: ViewGroup, previousSpacing: HostVideoCardSpacing?, feedback: Boolean): State? {
         val covers = ArrayList<Cover>(1)
         var hasTitle = false
+        var playerContent = false
         var info: WeakReference<View>? = null
         fun visit(view: View, depth: Int) {
             if (depth > 10 || depth > 0 && isRecycler(view.javaClass)) return
             when (resourceKind(view)) {
+                PLAYER -> { playerContent = true; return }
                 COVER -> if (view is ImageView || view is ViewGroup) {
                     covers += Cover(view)
                     return // 容器统一裁切图片、渐变和角标。
@@ -191,7 +196,7 @@ internal class HostVideoCardStyle(
         }
         // 占位卡保留整卡裁切、柔影与双列留白，不修改反馈内容的内部布局。
         if (!feedback) visit(root, 0)
-        if (!feedback && (!hasTitle || covers.isEmpty())) return null
+        if (playerContent || !feedback && (!hasTitle || covers.isEmpty())) return null
         val params = root.layoutParams as? ViewGroup.MarginLayoutParams
         val spacing = previousSpacing ?: HostVideoCardSpacing(params?.leftMargin ?: 0,
             params?.topMargin ?: 0, params?.rightMargin ?: 0, params?.bottomMargin ?: 0,
@@ -243,6 +248,7 @@ internal class HostVideoCardStyle(
     private fun apply(root: ViewGroup, state: State, nightOverride: Boolean?) {
         val parent = root.parent as? ViewGroup ?: return
         if (!isRecycler(parent.javaClass)) return
+        if (isInPlayer(parent)) return
         var count = 0
         var single: View? = null
         for (cached in state.covers) {
@@ -264,7 +270,8 @@ internal class HostVideoCardStyle(
             cached.height = cover.height
             val outline = if (integrated) ViewOutlineProvider.BOUNDS else coverOutline
             val replaced = cover.outlineProvider !== outline
-            val nativeRadius = if (integrated) 0f else HostVideoCardStyleSpec.coverRadius(cover.width, cover.height)
+            val nativeRadius = if (integrated) 0f else HostVideoCardStyleSpec.coverRadius(
+                cover.width, cover.height, radiusDp, cover.resources.displayMetrics.density)
             if (cached.nativeRadius != nativeRadius || replaced) {
                 host.setCoverRadius(cover, nativeRadius)
                 cached.nativeRadius = nativeRadius
@@ -275,7 +282,8 @@ internal class HostVideoCardStyle(
         }
         val density = root.resources.displayMetrics.density
         val radius = if (integrated && single != null)
-            HostVideoCardStyleSpec.coverRadius(single.width, single.height) else 20f * density
+            HostVideoCardStyleSpec.coverRadius(single.width, single.height, radiusDp, density)
+            else HostVideoCardStyleSpec.cardRadius(root.width, root.height, radiusDp, density)
         val resized = state.updateGeometry(root.width, root.height, radius)
         val night = nightOverride ?: host.isNight(root.context)
         val color = HostVideoCardSurface.color(night)
@@ -332,6 +340,9 @@ internal class HostVideoCardStyle(
         if (cached >= 0) return cached
         val name = runCatching { view.resources.getResourceEntryName(id) }.getOrDefault("")
         val kind = when {
+            // 结束页卡片在 bind 时可能尚未挂到播放器；其进度占位 ViewStub 可提前识别。
+            name == "endpage_progess_root" || name == "endpage_progress_root" ||
+                name == "video_container" || name == "video_area" || name == "control_container" -> PLAYER
             name in coverNames -> COVER
             name in titleNames -> TITLE
             name == "cover_bottom_info_container" -> INFO
@@ -339,6 +350,17 @@ internal class HostVideoCardStyle(
         }
         resourceKinds.put(id, kind)
         return kind
+    }
+
+    /** 播放器结束页采用固定深色背景/浅色标题，不能套用页面卡片的主题表面。 */
+    private fun isInPlayer(view: View): Boolean {
+        var current: View? = view
+        while (current != null) {
+            if (resourceKind(current) == PLAYER ||
+                current.javaClass.name == "tv.danmaku.biliplayerimpl.controlcontainer.ControlContainer") return true
+            current = current.parent as? View
+        }
+        return false
     }
 
     private fun isRecycler(type: Class<*>): Boolean = recyclerTypes.getOrPut(type) {
@@ -355,5 +377,6 @@ internal class HostVideoCardStyle(
         const val COVER = 1
         const val TITLE = 2
         const val INFO = 3
+        const val PLAYER = 4
     }
 }

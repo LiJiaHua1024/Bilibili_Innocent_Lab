@@ -4,6 +4,7 @@ import android.graphics.Bitmap
 import android.graphics.Rect
 import android.content.ComponentName
 import android.os.SystemClock
+import android.os.Bundle
 import android.util.TypedValue
 import android.view.View
 import android.view.ViewGroup
@@ -42,6 +43,76 @@ import java.io.File
 /** 只操作菜单和搜索，绝不点击功能开关或自动接受条款。需要设备已有正常授权的模块配置。 */
 @RunWith(AndroidJUnit4::class)
 class SettingsOrganizationInstrumentedTest {
+    @Test
+    fun beautificationOwnsHostAppearanceAndRestoresNavigationWithoutChangingSettings() {
+        val appearanceTitles = listOf(
+            R.string.host_top_bar_liquid_glass, R.string.host_top_bar_touch_glow,
+            R.string.host_bottom_bar_liquid_glass, R.string.host_bottom_bar_touch_glow,
+            R.string.host_bottom_bar_compact, R.string.host_bottom_bar_icon_only,
+            R.string.host_video_cards, R.string.transparent_player_status_bar,
+            R.string.brand_splash_custom, R.string.splash_auto_night,
+            R.string.free_copy_auto_light, R.string.free_copy_light_mode
+        )
+        fun navigation(activity: MainActivity) = descendants(activity.window.decorView)
+            .filterIsInstance<ModernNavigationBar>().single()
+        fun select(activity: MainActivity, title: Int) {
+            descendants(navigation(activity)).single {
+                it.isClickable && it.contentDescription == activity.getString(title)
+            }.performClick()
+        }
+        fun page(activity: MainActivity): Int = Bundle().also {
+            requireNotNull(activity.settingsHome).saveState(it)
+        }.getInt("settings_home_page")
+        ActivityScenario.launch(MainActivity::class.java).use { scenario ->
+            SystemClock.sleep(900L)
+            var before = emptyMap<String, Pair<Boolean, Any>>()
+            scenario.onActivity { activity ->
+                before = preferences(activity)
+                val tabs = descendants(navigation(activity)).filter {
+                    it.isClickable && !it.contentDescription.isNullOrEmpty()
+                }.map { it.contentDescription.toString() }.toList()
+                assertEquals(listOf(
+                    R.string.settings_home_favorites, R.string.settings_home_purify,
+                    R.string.settings_home_enhance, R.string.settings_home_beautify,
+                    R.string.settings_home_module
+                ).map(activity::getString), tabs)
+                val targets = activity.collectSettingsSearchTargets()
+                val controls = appearanceTitles.map { title -> label(activity, title) }
+                val scroll = ancestors(controls.first()).filterIsInstance<NestedScrollView>().single()
+                controls.forEach { control ->
+                    assertTrue(ancestors(control).any { it === scroll })
+                    assertEquals(MainActivity.SettingsSearchSection.BEAUTIFICATION,
+                        targets.single { it.view === control }.section)
+                    assertEquals(1, requireNotNull(activity.settingsHome).entries.count { it.source === control })
+                }
+                select(activity, R.string.settings_home_beautify)
+            }
+            SystemClock.sleep(450L)
+            scenario.onActivity { assertEquals(3, page(it)) }
+            scenario.recreate()
+            SystemClock.sleep(900L)
+            scenario.onActivity { activity ->
+                assertEquals(3, page(activity))
+                select(activity, R.string.settings_home_module)
+            }
+            SystemClock.sleep(450L)
+            scenario.onActivity { activity ->
+                assertEquals(4, page(activity))
+                val target = activity.collectSettingsSearchTargets().single {
+                    it.view === label(activity, R.string.host_bottom_bar_compact)
+                }
+                activity.revealSettingsSearchTarget(target)
+            }
+            SystemClock.sleep(900L)
+            scenario.onActivity { activity ->
+                assertEquals(3, page(activity))
+                assertTrue(label(activity, R.string.host_bottom_bar_compact).isShown)
+                assertEquals(before, preferences(activity))
+            }
+            screenshot("beautification")
+        }
+    }
+
     private fun descendants(root: View): Sequence<View> = sequence {
         yield(root)
         if (root is ViewGroup) {
@@ -65,8 +136,16 @@ class SettingsOrganizationInstrumentedTest {
         return card.getChildAt(card.childCount - 1)
     }
 
-    private fun primary(activity: MainActivity, resource: Int): ViewGroup =
-        label(activity, resource).parent.parent as ViewGroup
+    private fun primary(activity: MainActivity, resource: Int): ViewGroup {
+        val menuTitle = when (resource) {
+            R.string.purify_settings -> R.string.purification_advanced_settings
+            R.string.enhancement_settings -> R.string.enhancement_advanced_settings
+            R.string.experimental_features -> R.string.experimental_appearance
+            else -> error("Unknown settings card: $resource")
+        }
+        // Hikage 会折叠无样式的标题容器，用实际菜单壳定位卡片。
+        return menu(activity, menuTitle).parent.parent as ViewGroup
+    }
 
     private fun preferences(activity: MainActivity): Map<String, Pair<Boolean, Any>> {
         val prefs = activity.modulePreferences()
@@ -221,11 +300,11 @@ class SettingsOrganizationInstrumentedTest {
                 assertEquals(reference.first, reference.second)
                 listOf(
                     R.string.home_vertical_open_detail, R.string.prefer_dynamic_video_tab,
-                    R.string.player_default_quality, R.string.transparent_player_status_bar,
+                    R.string.player_default_quality,
                     R.string.block_live_room_switch, R.string.live_room_double_tap_pause,
                     R.string.reply_topology_enabled, R.string.block_comment_quick_reply,
                     R.string.show_full_numbers, R.string.show_bv_as_av,
-                    R.string.splash_auto_night, R.string.system_media_notification,
+                    R.string.system_media_notification,
                     R.string.force_external_browser
                 ).forEach { title ->
                     assertEquals(activity.getString(title), reference,
@@ -278,9 +357,8 @@ class SettingsOrganizationInstrumentedTest {
                 ).forEach { assertTrue(ancestors(label(activity, it)).any { parent -> parent === purification }) }
                 listOf(
                     R.string.free_copy_enable, R.string.free_copy_desc_enable,
-                    R.string.free_copy_auto_light, R.string.free_copy_light_mode,
                     R.string.home_vertical_open_detail, R.string.prefer_dynamic_video_tab,
-                    R.string.player_default_quality, R.string.transparent_player_status_bar,
+                    R.string.player_default_quality,
                     R.string.reply_topology_enabled, R.string.block_comment_quick_reply,
                     R.string.show_full_numbers
                 ).forEach { assertTrue(ancestors(label(activity, it)).any { parent -> parent === enhancement }) }

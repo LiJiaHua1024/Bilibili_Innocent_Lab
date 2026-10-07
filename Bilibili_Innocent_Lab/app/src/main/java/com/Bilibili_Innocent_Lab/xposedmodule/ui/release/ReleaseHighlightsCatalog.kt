@@ -227,7 +227,7 @@ internal object ReleaseHighlightsCatalog {
             R.string.brand_splash_custom_tip, HighlightDestination("splash.custom_selection.enabled")),
         ReleaseHighlight("host-video-cards", HighlightKind.NEW,
             R.string.host_video_cards_tip,
-            HighlightDestination("host.video_cards.enabled")),
+            HighlightDestination("host.video_cards.enabled", alsoCovers = setOf("host.video_cards.radius_dp"))),
         ReleaseHighlight("story-action-icons", HighlightKind.NEW,
             R.string.highlights_story_action_icons,
             HighlightDestination("story.action.like.hidden",

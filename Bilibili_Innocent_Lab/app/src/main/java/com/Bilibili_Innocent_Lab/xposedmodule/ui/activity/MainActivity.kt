@@ -445,6 +445,7 @@ class MainActivity : SkinnedActivity() {
     internal var hostBottomBarLiquidGlass = false
     internal var hostBottomBarTouchGlow = false
     internal var hostVideoCards = false
+    internal var hostVideoCardRadiusDp = -1
     internal var hostBottomBarCompact = false
     internal var hostBottomBarIconOnly = false
     internal var hostTopBarLiquidGlass = false
@@ -459,7 +460,7 @@ class MainActivity : SkinnedActivity() {
     /** 手动亮色开关引用（自由复制区） */
     private var manualLightSwitch: com.Bilibili_Innocent_Lab.xposedmodule.ui.view.MaterialSwitch? = null
 
-    /** 自动跟随开关引用（增强栏的复制气泡外观） */
+    /** 自动跟随开关引用（美化栏的复制气泡外观） */
     private var autoLightSwitch: com.Bilibili_Innocent_Lab.xposedmodule.ui.view.MaterialSwitch? = null
 
     /** 手动亮色开关下方 tip 引用（动态动画切换文本） */
@@ -520,6 +521,7 @@ class MainActivity : SkinnedActivity() {
     /** 两个按用途拆分的进阶菜单，沿用同一属性动画。 */
     private var purificationSettingsRoot: View? = null
     private var enhancementSettingsRoot: View? = null
+    private var beautificationSettingsRoot: View? = null
     private var purificationAdvancedContent: View? = null
     private var purificationAdvancedChevron: View? = null
     private var purificationAdvancedExpanded = false
@@ -3725,6 +3727,7 @@ class MainActivity : SkinnedActivity() {
         PURIFICATION_ADVANCED,
         ENHANCEMENT,
         ENHANCEMENT_ADVANCED,
+        BEAUTIFICATION,
         EXPERIMENTAL,
         APPEARANCE,
         COMPATIBILITY;
@@ -3750,6 +3753,7 @@ class MainActivity : SkinnedActivity() {
                 SettingsSearchSection.PURIFICATION_ADVANCED -> R.string.purification_advanced_settings
                 SettingsSearchSection.ENHANCEMENT -> R.string.enhancement_settings
                 SettingsSearchSection.ENHANCEMENT_ADVANCED -> R.string.enhancement_advanced_settings
+                SettingsSearchSection.BEAUTIFICATION -> R.string.settings_home_beautify
                 SettingsSearchSection.EXPERIMENTAL -> R.string.experimental_features
                 SettingsSearchSection.APPEARANCE -> R.string.settings_search_section_appearance
                 SettingsSearchSection.COMPATIBILITY -> R.string.settings_search_section_compatibility
@@ -3811,6 +3815,7 @@ class MainActivity : SkinnedActivity() {
             val section = when (view) {
                 purificationSettingsRoot -> SettingsSearchSection.PURIFICATION
                 enhancementSettingsRoot -> SettingsSearchSection.ENHANCEMENT
+                beautificationSettingsRoot -> SettingsSearchSection.BEAUTIFICATION
                 purificationAdvancedContent -> SettingsSearchSection.PURIFICATION_ADVANCED
                 enhancementAdvancedContent -> SettingsSearchSection.ENHANCEMENT_ADVANCED
                 experimentalSettingsRoot -> SettingsSearchSection.EXPERIMENTAL
@@ -3954,6 +3959,7 @@ class MainActivity : SkinnedActivity() {
             SettingsSearchSection.GENERAL,
             SettingsSearchSection.PURIFICATION,
             SettingsSearchSection.ENHANCEMENT,
+            SettingsSearchSection.BEAUTIFICATION,
             SettingsSearchSection.EXPERIMENTAL -> Unit
         }
         if (target.section.isAdvanced) expandAdvancedCategoryContaining(target.view)
@@ -4140,6 +4146,7 @@ class MainActivity : SkinnedActivity() {
         compatibilityChevron = null
         purificationSettingsRoot = null
         enhancementSettingsRoot = null
+        beautificationSettingsRoot = null
         purificationAdvancedContent = null
         purificationAdvancedChevron = null
         enhancementAdvancedContent = null
@@ -4438,6 +4445,8 @@ class MainActivity : SkinnedActivity() {
         hostBottomBarLiquidGlass = uiSettings.bool(FeaturePreferences.HOST_BOTTOM_BAR_LIQUID_GLASS)
         hostBottomBarTouchGlow = uiSettings.bool(FeaturePreferences.HOST_BOTTOM_BAR_TOUCH_GLOW)
         hostVideoCards = uiSettings.bool(FeaturePreferences.HOST_VIDEO_CARDS)
+        hostVideoCardRadiusDp = com.Bilibili_Innocent_Lab.xposedmodule.hook.feature.HostVideoCardStyleSpec.normalizeRadius(
+            uiSettings.int(FeaturePreferences.HOST_VIDEO_CARD_RADIUS_DP))
         hostBottomBarCompact = uiSettings.bool(FeaturePreferences.HOST_BOTTOM_BAR_COMPACT)
         hostBottomBarIconOnly = uiSettings.bool(FeaturePreferences.HOST_BOTTOM_BAR_ICON_ONLY)
         hostTopBarLiquidGlass = uiSettings.bool(FeaturePreferences.HOST_TOP_BAR_LIQUID_GLASS)
@@ -4819,6 +4828,8 @@ class MainActivity : SkinnedActivity() {
                         Space(lparams = LayoutParams(height = 10.dp))
                         enhancementSettingsCard(uiSettings)
                         Space(lparams = LayoutParams(height = 10.dp))
+                        beautificationSettingsCard()
+                        Space(lparams = LayoutParams(height = 10.dp))
                         experimentalFeaturesCard(uiSettings)
                         Space(lparams = LayoutParams(height = 10.dp))
                         logSettingsCard()
@@ -4863,6 +4874,7 @@ class MainActivity : SkinnedActivity() {
             originalContent = content,
             purification = purificationSettingsRoot,
             enhancement = enhancementSettingsRoot,
+            beautification = beautificationSettingsRoot,
             activation = activationCardView,
             floatingToolbar = settingsFloatingToolbar,
             savedState = savedState,
@@ -4893,6 +4905,10 @@ class MainActivity : SkinnedActivity() {
         val id = SettingsCatalog.byStorageKey[storageKey]?.id ?: return
         view.settingId = id
         view.supportsFavoriteToggle = directToggle
+    }
+
+    internal fun bindSettingDestination(view: View, storageKey: String) {
+        SettingsCatalog.byStorageKey[storageKey]?.id?.let { settingsDestinations.bind(it, view) }
     }
 
     /** 设置备份入口卡片。 */
@@ -5348,7 +5364,7 @@ class MainActivity : SkinnedActivity() {
                     textSize = 12f
                 }
             }
-            // 自由复制：内容能力与气泡外观集中在增强主栏。
+            // 自由复制能力保留在增强栏，气泡外观由美化栏管理。
             TextView(
                 lparams = LayoutParams(widthMatchParent = true) {
                     bottomMargin = 4.dp
@@ -5440,17 +5456,210 @@ class MainActivity : SkinnedActivity() {
                 textColor = colorResource(R.color.colorTextDark)
                 textSize = 12f
             }
-            // 亮色模式开关（白底黑字气泡，适配亮色主题；同时控制评论与简介气泡）
-            TextView(
+            LinearLayout(
                 lparams = LayoutParams(widthMatchParent = true) {
                     topMargin = 14.dp
-                    bottomMargin = 4.dp
+                },
+                init = {
+                    orientation = LinearLayout.VERTICAL
+                    gravity = Gravity.CENTER or Gravity.START
+                    background = skinCardBackground(monetColors.surface, 12f)
+                    updatePadding(
+                        left = SettingsMenuSpacing.ADVANCED_SHELL_DP.dp,
+                        top = 5.dp,
+                        right = SettingsMenuSpacing.ADVANCED_SHELL_DP.dp,
+                        bottom = 5.dp
+                    )
                 }
             ) {
-                alpha = 0.7f
-                text = stringResource(R.string.free_copy_appearance_settings)
+                LinearLayout(
+                    lparams = LayoutParams(widthMatchParent = true),
+                    init = {
+                        gravity = Gravity.CENTER or Gravity.START
+                        updatePadding(vertical = 10.dp)
+                        setOnClickListener { toggleSecondaryMenu(SettingsSearchSection.ENHANCEMENT_ADVANCED) }
+                    }
+                ) {
+                    ImageView(
+                        lparams = LayoutParams(15.dp, 15.dp) {
+                            marginEnd = 10.dp
+                        }
+                    ) {
+                        setImageResource(R.drawable.ic_enhancement)
+                        imageTintList = stateColorResource(R.color.colorTextGray)
+                    }
+                    TextView(
+                        lparams = LayoutParams { weight = 1f }
+                    ) {
+                        alpha = 0.85f
+                        maxLines = 2
+                        text = stringResource(R.string.enhancement_advanced_settings)
+                        textColor = colorResource(R.color.colorTextGray)
+                        textSize = 12f
+                    }
+                    ImageView(
+                        lparams = LayoutParams(18.dp, 18.dp)
+                    ) {
+                        enhancementAdvancedChevron = this
+                        setImageResource(R.drawable.ic_chevron_down)
+                        imageTintList = stateColorResource(R.color.colorTextGray)
+                        alpha = 0.85f
+                    }
+                }
+                LinearLayout(
+                    lparams = LayoutParams(widthMatchParent = true),
+                    init = {
+                        orientation = LinearLayout.VERTICAL
+                        visibility = View.GONE
+                        enhancementAdvancedContent = this
+                        // 12dp 留白由共享分组构建器提供，此处不得重复叠加。
+                        updatePadding(bottom = 10.dp)
+                    }
+                ) {
+                    enhanceBrowsingCategory()
+                    enhancePlaybackCategory(uiSettings)
+                    enhanceLiveCategory()
+                    enhanceCommentsCategory()
+                    enhanceDisplayCategory()
+                    enhanceSystemCategory()
+                }
+            }
+        }
+    }
+
+    /** 宿主外观统一入口；复用原控件、偏好键及收藏监听器。 */
+    @com.highcapable.hikage.annotation.Hikagable
+    private fun Hikage.Performer<NativeLinearLayout.LayoutParams>.beautificationSettingsCard() {
+        LinearLayout(
+            lparams = LayoutParams(widthMatchParent = true) {
+                updateMargins(horizontal = 15.dp)
+            },
+            init = {
+                beautificationSettingsRoot = this
+                orientation = LinearLayout.VERTICAL
+                gravity = Gravity.CENTER or Gravity.START
+                background = skinCardBackground(monetColors.surfaceVariant)
+                updatePadding(left = 15.dp, top = 15.dp, right = 15.dp, bottom = 15.dp)
+            }
+        ) {
+            hostAppearanceHeading(R.string.host_appearance_top_bar)
+            hostTopBarAppearanceRows(this)
+            hostAppearanceHeading(R.string.host_appearance_bottom_bar)
+            hostBottomBarAppearanceRows(this)
+            hostAppearanceHeading(R.string.host_appearance_video_cards)
+            hostVideoCardAppearanceRows(this)
+            hostAppearanceHeading(R.string.host_appearance_player)
+            MaterialSwitch(
+                lparams = LayoutParams(widthMatchParent = true) {
+                    topMargin = 12.dp
+                    bottomMargin = 5.dp
+                }
+            ) {
+                bindFavoriteSwitch(this, FeaturePreferences.TRANSPARENT_PLAYER_STATUS_BAR, directToggle = true)
+                text = stringResource(R.string.transparent_player_status_bar)
+                isAllCaps = false
                 textColor = colorResource(R.color.colorTextGray)
-                textSize = 11f
+                textSize = 15f
+                isChecked = transparentPlayerStatusBar
+                setOnCheckedChangeListener { _, isChecked ->
+                    transparentPlayerStatusBar = isChecked
+                    runCatching {
+                        prefs().edit {
+                            putBoolean(
+                                FeaturePreferences.TRANSPARENT_PLAYER_STATUS_BAR,
+                                isChecked
+                            )
+                        }
+                    }.onFailure { t ->
+                        Log.e(
+                            "BilibiliInnocentLab",
+                            "write player status bar prefs failed",
+                            t
+                        )
+                    }
+                }
+            }
+            TextView(
+                lparams = LayoutParams(widthMatchParent = true)
+            ) {
+                alpha = 0.6f
+                setLineSpacing(6f, 1f)
+                text = stringResource(R.string.transparent_player_status_bar_tip)
+                textColor = colorResource(R.color.colorTextDark)
+                textSize = 12f
+            }
+            hostAppearanceHeading(R.string.host_appearance_splash)
+            MaterialSwitch(lparams = LayoutParams(widthMatchParent = true) { topMargin = 12.dp; bottomMargin = 5.dp }) {
+                bindFavoriteSwitch(this, FeaturePreferences.BRAND_SPLASH_CUSTOM, directToggle = true)
+                text = stringResource(R.string.brand_splash_custom)
+                isAllCaps = false
+                textColor = colorResource(R.color.colorTextGray)
+                textSize = 15f
+                isChecked = brandSplashCustom
+                setOnCheckedChangeListener { _, checked ->
+                    runCatching { prefs().edit { putBoolean(FeaturePreferences.BRAND_SPLASH_CUSTOM, checked) } }
+                        .onSuccess { brandSplashCustom = checked }
+                        .onFailure { throwable ->
+                            Log.e("BilibiliInnocentLab", "write brand splash custom prefs failed", throwable)
+                            isChecked = brandSplashCustom
+                        }
+                }
+            }
+            TextView(lparams = LayoutParams(widthMatchParent = true)) {
+                alpha = 0.6f
+                setLineSpacing(6f, 1f)
+                text = stringResource(R.string.brand_splash_custom_tip)
+                textColor = colorResource(R.color.colorTextDark)
+                textSize = 12f
+            }
+            MaterialSwitch(
+                lparams = LayoutParams(widthMatchParent = true) {
+                    topMargin = 12.dp
+                    bottomMargin = 5.dp
+                }
+            ) {
+                bindFavoriteSwitch(this, FeaturePreferences.SPLASH_AUTO_NIGHT, directToggle = true)
+                text = stringResource(R.string.splash_auto_night)
+                isAllCaps = false
+                textColor = colorResource(R.color.colorTextGray)
+                textSize = 15f
+                isChecked = splashAutoNight
+                setOnCheckedChangeListener { _, checked ->
+                    splashAutoNight = checked
+                    runCatching {
+                        prefs().edit {
+                            putBoolean(
+                                FeaturePreferences.SPLASH_AUTO_NIGHT,
+                                checked
+                            )
+                        }
+                    }.onFailure { throwable ->
+                        Log.e(
+                            "BilibiliInnocentLab",
+                            "write splash auto night prefs failed",
+                            throwable
+                        )
+                    }
+                }
+            }
+            TextView(
+                lparams = LayoutParams(widthMatchParent = true)
+            ) {
+                alpha = 0.6f
+                setLineSpacing(6f, 1f)
+                text = stringResource(R.string.splash_auto_night_tip)
+                textColor = colorResource(R.color.colorTextDark)
+                textSize = 12f
+            }
+            // 复制气泡外观同时控制评论与简介。
+            TextView(
+                lparams = LayoutParams(widthMatchParent = true) {
+                    topMargin = AdvancedSubsectionStyle.TOP_MARGIN_DP.dp
+                    bottomMargin = AdvancedSubsectionStyle.BOTTOM_MARGIN_DP.dp
+                }
+            ) {
+                text = stringResource(R.string.free_copy_appearance_settings)
+                applyAdvancedSubsectionStyle()
             }
             MaterialSwitch(
                 lparams = LayoutParams(widthMatchParent = true) {
@@ -5555,74 +5764,19 @@ class MainActivity : SkinnedActivity() {
                 textSize = 12f
                 lightModeTipView = this
             }
-            LinearLayout(
-                lparams = LayoutParams(widthMatchParent = true) {
-                    topMargin = 14.dp
-                },
-                init = {
-                    orientation = LinearLayout.VERTICAL
-                    gravity = Gravity.CENTER or Gravity.START
-                    background = skinCardBackground(monetColors.surface, 12f)
-                    updatePadding(
-                        left = SettingsMenuSpacing.ADVANCED_SHELL_DP.dp,
-                        top = 5.dp,
-                        right = SettingsMenuSpacing.ADVANCED_SHELL_DP.dp,
-                        bottom = 5.dp
-                    )
-                }
-            ) {
-                LinearLayout(
-                    lparams = LayoutParams(widthMatchParent = true),
-                    init = {
-                        gravity = Gravity.CENTER or Gravity.START
-                        updatePadding(vertical = 10.dp)
-                        setOnClickListener { toggleSecondaryMenu(SettingsSearchSection.ENHANCEMENT_ADVANCED) }
-                    }
-                ) {
-                    ImageView(
-                        lparams = LayoutParams(15.dp, 15.dp) {
-                            marginEnd = 10.dp
-                        }
-                    ) {
-                        setImageResource(R.drawable.ic_enhancement)
-                        imageTintList = stateColorResource(R.color.colorTextGray)
-                    }
-                    TextView(
-                        lparams = LayoutParams { weight = 1f }
-                    ) {
-                        alpha = 0.85f
-                        maxLines = 2
-                        text = stringResource(R.string.enhancement_advanced_settings)
-                        textColor = colorResource(R.color.colorTextGray)
-                        textSize = 12f
-                    }
-                    ImageView(
-                        lparams = LayoutParams(18.dp, 18.dp)
-                    ) {
-                        enhancementAdvancedChevron = this
-                        setImageResource(R.drawable.ic_chevron_down)
-                        imageTintList = stateColorResource(R.color.colorTextGray)
-                        alpha = 0.85f
-                    }
-                }
-                LinearLayout(
-                    lparams = LayoutParams(widthMatchParent = true),
-                    init = {
-                        orientation = LinearLayout.VERTICAL
-                        visibility = View.GONE
-                        enhancementAdvancedContent = this
-                        // 12dp 留白由共享分组构建器提供，此处不得重复叠加。
-                        updatePadding(bottom = 10.dp)
-                    }
-                ) {
-                    enhanceBrowsingCategory()
-                    enhancePlaybackCategory(uiSettings)
-                    enhanceLiveCategory()
-                    enhanceCommentsCategory()
-                    enhanceDisplayCategory()
-                    enhanceSystemCategory()
-                }
+        }
+    }
+
+    @com.highcapable.hikage.annotation.Hikagable
+    private fun Hikage.Performer<NativeLinearLayout.LayoutParams>.hostAppearanceHeading(@StringRes title: Int) {
+        TextView(
+            lparams = LayoutParams(widthMatchParent = true) {
+                topMargin = AdvancedSubsectionStyle.TOP_MARGIN_DP.dp
+                bottomMargin = AdvancedSubsectionStyle.BOTTOM_MARGIN_DP.dp
             }
+        ) {
+            text = stringResource(title)
+            applyAdvancedSubsectionStyle()
         }
     }
 
@@ -8901,7 +9055,6 @@ class MainActivity : SkinnedActivity() {
             textColor = colorResource(R.color.colorTextDark)
             textSize = 12f
         }
-        hostBottomBarAppearanceRows(this)
         TextView(
             lparams = LayoutParams(widthMatchParent = true) {
                 topMargin = AdvancedSubsectionStyle.TOP_MARGIN_DP.dp
@@ -9471,7 +9624,6 @@ class MainActivity : SkinnedActivity() {
             textColor = colorResource(R.color.colorTextDark)
             textSize = 12f
         }
-        hostTopBarAppearanceRows(this)
         TextView(
             lparams = LayoutParams(widthMatchParent = true) {
                 topMargin = 12.dp
@@ -9770,68 +9922,6 @@ class MainActivity : SkinnedActivity() {
             textColor = colorResource(R.color.colorTextDark)
             textSize = 12f
         }
-        MaterialSwitch(lparams = LayoutParams(widthMatchParent = true) { topMargin = 12.dp; bottomMargin = 5.dp }) {
-            bindFavoriteSwitch(this, FeaturePreferences.BRAND_SPLASH_CUSTOM, directToggle = true)
-            text = stringResource(R.string.brand_splash_custom)
-            isAllCaps = false
-            textColor = colorResource(R.color.colorTextGray)
-            textSize = 15f
-            isChecked = brandSplashCustom
-            setOnCheckedChangeListener { _, checked ->
-                runCatching { prefs().edit { putBoolean(FeaturePreferences.BRAND_SPLASH_CUSTOM, checked) } }
-                    .onSuccess { brandSplashCustom = checked }
-                    .onFailure { throwable ->
-                        Log.e("BilibiliInnocentLab", "write brand splash custom prefs failed", throwable)
-                        isChecked = brandSplashCustom
-                    }
-            }
-        }
-        TextView(lparams = LayoutParams(widthMatchParent = true)) {
-            alpha = 0.6f
-            setLineSpacing(6f, 1f)
-            text = stringResource(R.string.brand_splash_custom_tip)
-            textColor = colorResource(R.color.colorTextDark)
-            textSize = 12f
-        }
-        MaterialSwitch(
-            lparams = LayoutParams(widthMatchParent = true) {
-                topMargin = 12.dp
-                bottomMargin = 5.dp
-            }
-        ) {
-            bindFavoriteSwitch(this, FeaturePreferences.SPLASH_AUTO_NIGHT, directToggle = true)
-            text = stringResource(R.string.splash_auto_night)
-            isAllCaps = false
-            textColor = colorResource(R.color.colorTextGray)
-            textSize = 15f
-            isChecked = splashAutoNight
-            setOnCheckedChangeListener { _, checked ->
-                splashAutoNight = checked
-                runCatching {
-                    prefs().edit {
-                        putBoolean(
-                            FeaturePreferences.SPLASH_AUTO_NIGHT,
-                            checked
-                        )
-                    }
-                }.onFailure { throwable ->
-                    Log.e(
-                        "BilibiliInnocentLab",
-                        "write splash auto night prefs failed",
-                        throwable
-                    )
-                }
-            }
-        }
-        TextView(
-            lparams = LayoutParams(widthMatchParent = true)
-        ) {
-            alpha = 0.6f
-            setLineSpacing(6f, 1f)
-            text = stringResource(R.string.splash_auto_night_tip)
-            textColor = colorResource(R.color.colorTextDark)
-            textSize = 12f
-        }
         MaterialSwitch(
             lparams = LayoutParams(widthMatchParent = true) {
                 topMargin = 12.dp
@@ -9927,7 +10017,6 @@ class MainActivity : SkinnedActivity() {
             textSize = 12f
             typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
         }
-        hostVideoCardAppearanceRows(this)
         MaterialSwitch(
             lparams = LayoutParams(widthMatchParent = true) {
                 bottomMargin = 5.dp
@@ -10315,45 +10404,6 @@ class MainActivity : SkinnedActivity() {
                 textColor = colorResource(R.color.colorTextDark)
                 textSize = 12f
             }
-        }
-        MaterialSwitch(
-            lparams = LayoutParams(widthMatchParent = true) {
-                topMargin = 12.dp
-                bottomMargin = 5.dp
-            }
-        ) {
-            bindFavoriteSwitch(this, FeaturePreferences.TRANSPARENT_PLAYER_STATUS_BAR, directToggle = true)
-            text = stringResource(R.string.transparent_player_status_bar)
-            isAllCaps = false
-            textColor = colorResource(R.color.colorTextGray)
-            textSize = 15f
-            isChecked = transparentPlayerStatusBar
-            setOnCheckedChangeListener { _, isChecked ->
-                transparentPlayerStatusBar = isChecked
-                runCatching {
-                    prefs().edit {
-                        putBoolean(
-                            FeaturePreferences.TRANSPARENT_PLAYER_STATUS_BAR,
-                            isChecked
-                        )
-                    }
-                }.onFailure { t ->
-                    Log.e(
-                        "BilibiliInnocentLab",
-                        "write player status bar prefs failed",
-                        t
-                    )
-                }
-            }
-        }
-        TextView(
-            lparams = LayoutParams(widthMatchParent = true)
-        ) {
-            alpha = 0.6f
-            setLineSpacing(6f, 1f)
-            text = stringResource(R.string.transparent_player_status_bar_tip)
-            textColor = colorResource(R.color.colorTextDark)
-            textSize = 12f
         }
         TextView(
             lparams = LayoutParams(widthMatchParent = true) {

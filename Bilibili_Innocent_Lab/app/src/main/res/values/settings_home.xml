@@ -17,4 +17,11 @@
     <string name="settings_favorites_move_up">Move %1$s up</string>
     <string name="settings_favorites_move_down">Move %1$s down</string>
     <string name="settings_favorites_no_matches">No matching switches</string>
+    <string name="settings_home_beautify">Beautify</string>
+    <string name="settings_home_beautify_hint">Customize the look of Bilibili.</string>
+    <string name="host_appearance_top_bar">Top bar</string>
+    <string name="host_appearance_bottom_bar">Bottom bar</string>
+    <string name="host_appearance_video_cards">Video cards</string>
+    <string name="host_appearance_splash">Splash appearance</string>
+    <string name="host_appearance_player">Player appearance</string>
 </resources>

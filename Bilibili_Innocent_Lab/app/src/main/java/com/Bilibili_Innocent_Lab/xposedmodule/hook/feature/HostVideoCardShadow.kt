@@ -38,7 +38,7 @@ internal class HostVideoCardShadow(
 
     /** 在卡片首次就绪时生成；draw 热路径既不创建纹理，也不分配对象。 */
     fun prepare(radius: Float) {
-        val key = radius.roundToInt().coerceAtLeast(1)
+        val key = radius.roundToInt().coerceAtLeast(0)
         if (shadows.get(key) != null) return
         val blur = 8f * density
         val offset = 2f * density
@@ -78,7 +78,7 @@ internal class HostVideoCardShadow(
         for (i in 0 until parent.childCount) {
             val child = parent.getChildAt(i)
             val radius = radiusOf.radius(child)
-            if (radius <= 0f || child.alpha <= 0f || child.visibility != android.view.View.VISIBLE) continue
+            if (radius < 0f || child.alpha <= 0f || child.visibility != android.view.View.VISIBLE) continue
             val shadow = shadows.get(radius.roundToInt()) ?: continue
             val padding = shadow.padding
             val left = (child.left + child.translationX).roundToInt()
