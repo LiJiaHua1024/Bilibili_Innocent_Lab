@@ -17,4 +17,11 @@
     <string name="settings_favorites_move_up">上移%1$s</string>
     <string name="settings_favorites_move_down">下移%1$s</string>
     <string name="settings_favorites_no_matches">沒有符合的開關</string>
+    <string name="settings_home_beautify">美化</string>
+    <string name="settings_home_beautify_hint">讓嗶哩嗶哩更合眼緣</string>
+    <string name="host_appearance_top_bar">頂欄外觀</string>
+    <string name="host_appearance_bottom_bar">底欄外觀</string>
+    <string name="host_appearance_video_cards">影片卡片</string>
+    <string name="host_appearance_splash">開屏外觀</string>
+    <string name="host_appearance_player">播放器外觀</string>
 </resources>

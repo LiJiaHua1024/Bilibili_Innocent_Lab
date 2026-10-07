@@ -272,7 +272,7 @@
     <string name="hide_dynamic_school_tab_tip">开启后，隐藏动态页的“校园”标签，其他标签及顺序不受影响。重启哔哩哔哩后生效。</string>
     <string name="prefer_dynamic_video_tab">默认显示“视频”标签</string>
     <string name="prefer_dynamic_video_tab_tip">开启后，进入动态页时默认显示“视频”标签。重启哔哩哔哩后生效。</string>
-    <string name="number_display_settings">外观与数字显示</string>
+    <string name="number_display_settings">数字显示</string>
     <string name="show_full_numbers">显示完整数字</string>
     <string name="show_full_numbers_tip">开启后，播放量、点赞数等计数优先显示完整数字，不再使用“万/亿”缩写。重启哔哩哔哩后生效。</string>
     <string name="prompt_purify_settings">提示页面</string>
