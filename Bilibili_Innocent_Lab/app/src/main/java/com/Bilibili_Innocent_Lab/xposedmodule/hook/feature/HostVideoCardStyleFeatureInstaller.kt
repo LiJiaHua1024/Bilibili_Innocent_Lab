@@ -4,7 +4,10 @@ import android.view.View
 import com.Bilibili_Innocent_Lab.xposedmodule.runtime.KavaMemberLookup
 import java.util.concurrent.atomic.AtomicBoolean
 
-internal class HostVideoCardStyleFeatureInstaller(private val enabled: Boolean) : FeatureInstaller {
+internal class HostVideoCardStyleFeatureInstaller(
+    private val enabled: Boolean,
+    private val radiusDp: Int = HostVideoCardStyleSpec.DEFAULT_RADIUS
+) : FeatureInstaller {
     override val id = ID
 
     override fun install(environment: HookEnvironment): FeatureInstallResult {
@@ -21,7 +24,8 @@ internal class HostVideoCardStyleFeatureInstaller(private val enabled: Boolean) 
         val firstError = AtomicBoolean(false)
         val grid = HostVideoCardGridAccess.resolve(loader)
         val styleHost = HostVideoCardHostAccess(loader)
-        val style = HostVideoCardStyle(grid = grid, host = styleHost, onApplied = {
+        val style = HostVideoCardStyle(grid = grid, host = styleHost,
+            radiusDp = HostVideoCardStyleSpec.normalizeRadius(radiusDp), onApplied = {
             if (firstHit.compareAndSet(false, true)) {
                 environment.reportRuntimeEvidence(ID, FeatureRuntimeStage.APPLIED)
                 environment.logInfo("host_video_cards_applied", "[BIL] 视频卡片大圆角、柔影和留白已生效")

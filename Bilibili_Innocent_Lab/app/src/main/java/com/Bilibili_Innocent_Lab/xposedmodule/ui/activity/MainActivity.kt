@@ -445,6 +445,7 @@ class MainActivity : SkinnedActivity() {
     internal var hostBottomBarLiquidGlass = false
     internal var hostBottomBarTouchGlow = false
     internal var hostVideoCards = false
+    internal var hostVideoCardRadiusDp = -1
     internal var hostBottomBarCompact = false
     internal var hostBottomBarIconOnly = false
     internal var hostTopBarLiquidGlass = false
@@ -4438,6 +4439,8 @@ class MainActivity : SkinnedActivity() {
         hostBottomBarLiquidGlass = uiSettings.bool(FeaturePreferences.HOST_BOTTOM_BAR_LIQUID_GLASS)
         hostBottomBarTouchGlow = uiSettings.bool(FeaturePreferences.HOST_BOTTOM_BAR_TOUCH_GLOW)
         hostVideoCards = uiSettings.bool(FeaturePreferences.HOST_VIDEO_CARDS)
+        hostVideoCardRadiusDp = com.Bilibili_Innocent_Lab.xposedmodule.hook.feature.HostVideoCardStyleSpec.normalizeRadius(
+            uiSettings.int(FeaturePreferences.HOST_VIDEO_CARD_RADIUS_DP))
         hostBottomBarCompact = uiSettings.bool(FeaturePreferences.HOST_BOTTOM_BAR_COMPACT)
         hostBottomBarIconOnly = uiSettings.bool(FeaturePreferences.HOST_BOTTOM_BAR_ICON_ONLY)
         hostTopBarLiquidGlass = uiSettings.bool(FeaturePreferences.HOST_TOP_BAR_LIQUID_GLASS)
@@ -4893,6 +4896,10 @@ class MainActivity : SkinnedActivity() {
         val id = SettingsCatalog.byStorageKey[storageKey]?.id ?: return
         view.settingId = id
         view.supportsFavoriteToggle = directToggle
+    }
+
+    internal fun bindSettingDestination(view: View, storageKey: String) {
+        SettingsCatalog.byStorageKey[storageKey]?.id?.let { settingsDestinations.bind(it, view) }
     }
 
     /** 设置备份入口卡片。 */

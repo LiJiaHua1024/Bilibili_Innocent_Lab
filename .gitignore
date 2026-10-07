@@ -10,6 +10,9 @@ __pycache__/
 # Local tooling state
 .zcode/
 
+# Local agent instructions (machine-specific)
+/AGENTS.md
+
 # Android / IDE
 local.properties
 .idea/

@@ -1,7 +1,20 @@
 package com.Bilibili_Innocent_Lab.xposedmodule.hook.feature
 
 internal object HostVideoCardStyleSpec {
-    fun coverRadius(width: Int, height: Int): Float = minOf(width, height).coerceAtLeast(0) * 0.18f
+    const val DEFAULT_RADIUS = -1
+    const val MAX_RADIUS_DP = 40
+
+    fun normalizeRadius(value: Int): Int = if (value in 0..MAX_RADIUS_DP) value else DEFAULT_RADIUS
+
+    fun coverRadius(width: Int, height: Int, radiusDp: Int = DEFAULT_RADIUS, density: Float = 1f): Float {
+        val shortSide = minOf(width, height).coerceAtLeast(0)
+        return if (normalizeRadius(radiusDp) == DEFAULT_RADIUS) shortSide * 0.18f
+        else minOf(radiusDp * density, shortSide / 2f)
+    }
+
+    fun cardRadius(width: Int, height: Int, radiusDp: Int, density: Float): Float =
+        minOf((if (normalizeRadius(radiusDp) == DEFAULT_RADIUS) 20 else radiusDp) * density,
+            minOf(width, height).coerceAtLeast(0) / 2f)
 }
 
 /** 保存宿主原始留白，复用/换列时不叠加；非双列恢复原值。 */

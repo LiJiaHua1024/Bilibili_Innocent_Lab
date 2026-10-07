@@ -19,6 +19,7 @@ import java.util.WeakHashMap
 internal class HostVideoCardStyle(
     private val grid: HostVideoCardGridAccess?,
     private val host: HostVideoCardHostAccess,
+    private val radiusDp: Int,
     private val onApplied: () -> Unit,
     private val onError: (Throwable) -> Unit
 ) {
@@ -65,7 +66,7 @@ internal class HostVideoCardStyle(
     private val coverOutline = object : ViewOutlineProvider() {
         override fun getOutline(view: View, outline: Outline) {
             outline.setRoundRect(0, 0, view.width, view.height,
-                HostVideoCardStyleSpec.coverRadius(view.width, view.height))
+                HostVideoCardStyleSpec.coverRadius(view.width, view.height, radiusDp, view.resources.displayMetrics.density))
         }
     }
     private val layoutListener = View.OnLayoutChangeListener { view, left, top, right, bottom, oldLeft, oldTop, oldRight, oldBottom ->
@@ -264,7 +265,8 @@ internal class HostVideoCardStyle(
             cached.height = cover.height
             val outline = if (integrated) ViewOutlineProvider.BOUNDS else coverOutline
             val replaced = cover.outlineProvider !== outline
-            val nativeRadius = if (integrated) 0f else HostVideoCardStyleSpec.coverRadius(cover.width, cover.height)
+            val nativeRadius = if (integrated) 0f else HostVideoCardStyleSpec.coverRadius(
+                cover.width, cover.height, radiusDp, cover.resources.displayMetrics.density)
             if (cached.nativeRadius != nativeRadius || replaced) {
                 host.setCoverRadius(cover, nativeRadius)
                 cached.nativeRadius = nativeRadius
@@ -275,7 +277,8 @@ internal class HostVideoCardStyle(
         }
         val density = root.resources.displayMetrics.density
         val radius = if (integrated && single != null)
-            HostVideoCardStyleSpec.coverRadius(single.width, single.height) else 20f * density
+            HostVideoCardStyleSpec.coverRadius(single.width, single.height, radiusDp, density)
+            else HostVideoCardStyleSpec.cardRadius(root.width, root.height, radiusDp, density)
         val resized = state.updateGeometry(root.width, root.height, radius)
         val night = nightOverride ?: host.isNight(root.context)
         val color = HostVideoCardSurface.color(night)

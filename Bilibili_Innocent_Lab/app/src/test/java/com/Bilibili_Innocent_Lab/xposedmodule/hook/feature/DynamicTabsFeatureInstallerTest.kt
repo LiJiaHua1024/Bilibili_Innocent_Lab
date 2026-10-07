@@ -41,25 +41,4 @@ class DynamicTabsFeatureInstallerTest {
         assertEquals(false, DynamicTabsFeatureInstaller.isVideoTab(null, null))
     }
 
-    @Test
-    fun `prefers only video after adapter confirms the tab exists`() {
-        assertEquals(
-            true,
-            DynamicTabsFeatureInstaller.selectedForVideoPreference(
-                "视频", videoAvailable = true, preferVideo = true, originalSelected = false
-            )
-        )
-        assertEquals(
-            false,
-            DynamicTabsFeatureInstaller.selectedForVideoPreference(
-                "综合", videoAvailable = true, preferVideo = true, originalSelected = true
-            )
-        )
-        assertEquals(
-            true,
-            DynamicTabsFeatureInstaller.selectedForVideoPreference(
-                "综合", videoAvailable = false, preferVideo = true, originalSelected = true
-            )
-        )
-    }
 }

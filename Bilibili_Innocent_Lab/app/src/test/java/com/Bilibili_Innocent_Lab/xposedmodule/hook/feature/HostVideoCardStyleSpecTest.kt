@@ -6,6 +6,17 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class HostVideoCardStyleSpecTest {
+    @Test fun customRadiusUsesDensityAndFitsSmallCovers() {
+        assertEquals(18f, HostVideoCardStyleSpec.coverRadius(200, 100), 0.001f)
+        assertEquals(60f, HostVideoCardStyleSpec.cardRadius(200, 300, -1, 3f), 0f)
+        assertEquals(0f, HostVideoCardStyleSpec.coverRadius(200, 100, 0, 3f), 0f)
+        assertEquals(24f, HostVideoCardStyleSpec.coverRadius(200, 100, 8, 3f), 0f)
+        assertEquals(50f, HostVideoCardStyleSpec.coverRadius(200, 100, 40, 3f), 0f)
+        assertEquals(24f, HostVideoCardStyleSpec.cardRadius(200, 300, 8, 3f), 0f)
+        assertEquals(-1, HostVideoCardStyleSpec.normalizeRadius(-2))
+        assertEquals(-1, HostVideoCardStyleSpec.normalizeRadius(41))
+    }
+
     @Test fun recycledCardCanSwitchColumnsWithoutAccumulatingSpacing() {
         val spacing = HostVideoCardSpacing(3, 4, 5, 6, 2.75f)
         repeat(100) {

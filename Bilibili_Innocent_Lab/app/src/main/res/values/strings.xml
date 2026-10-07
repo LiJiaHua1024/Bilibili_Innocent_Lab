@@ -167,6 +167,10 @@
     <string name="custom_bottom_bar_hide_dialog_title">Hidden bottom-bar rules</string>
     <string name="custom_bottom_bar_hide_hint">Example: Dynamic, Mall</string>
     <string name="host_video_cards">Floating video cards</string>
+    <string name="host_video_card_radius">Video card corner radius</string>
+    <string name="host_video_card_radius_current">Video card corner radius: %1$s</string>
+    <string name="host_video_card_radius_default">Default</string>
+    <string name="host_video_card_radius_tip">Choose 0–40 dp; 0 uses square corners. Requires floating video cards. Restart Bilibili to apply.</string>
     <string name="host_video_cards_tip">Gives video covers large rounded corners and cards a subtle, soft gray shadow. Adds space between two-column cards and along the screen edges. Restart Bilibili to apply.</string>
     <string name="host_bottom_bar_liquid_glass">Floating bottom bar</string>
     <string name="host_bottom_bar_liquid_glass_tip">Turns Bilibili\'s bottom bar into a floating capsule and reveals the content beneath through a real-time sampled glass material, keeping a specular top edge. Slightly increases rendering load.</string>

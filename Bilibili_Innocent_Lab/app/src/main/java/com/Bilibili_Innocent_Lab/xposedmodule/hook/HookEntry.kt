@@ -3424,7 +3424,8 @@ class HookEntry : XposedModule() {
                         iconOnly = prefs.getBoolean(FeaturePreferences.HOST_BOTTOM_BAR_ICON_ONLY, false)
                     ),
                     HostVideoCardStyleFeatureInstaller(
-                        enabled = prefs.getBoolean(FeaturePreferences.HOST_VIDEO_CARDS, false)
+                        enabled = prefs.getBoolean(FeaturePreferences.HOST_VIDEO_CARDS, false),
+                        radiusDp = prefs.getInt(FeaturePreferences.HOST_VIDEO_CARD_RADIUS_DP, -1)
                     )
                 )
             )
