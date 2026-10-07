@@ -21,6 +21,7 @@ concurrency:
 permissions:
   contents: read
   actions: read
+  deployments: write
 
 jobs:
   sync:
@@ -34,6 +35,8 @@ jobs:
         uses: actions/checkout@v5
         with:
           ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
 
       - name: Require main and configured Telegram delivery
         env:
@@ -87,7 +90,19 @@ jobs:
             --expected-version-name "$VERSION_NAME" --expected-version-code "$VERSION_CODE" \
             --expected-cert-sha256 "$EXPECTED_CERT_SHA256"
 
+      - name: Generate complete notes since the last Telegram delivery
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ vars.TELEGRAM_RELEASE_CHAT_ID || '@Bilibili_Innocent_LabRelease' }}
+          BUILD_TAG: ${{ steps.package.outputs.release_tag }}
+          SOURCE_COMMIT: ${{ steps.package.outputs.source_commit }}
+        run: |
+          python3 .github/release-templates/prepare_telegram_notes.py \
+            --repo-root . --tag "$BUILD_TAG" --commit "$SOURCE_COMMIT" \
+            --channel "$TELEGRAM_CHAT_ID" --output "$RUNNER_TEMP/TELEGRAM_CHANGELOG.txt"
+
       - name: Send the selected Canary APK to Telegram
+        id: delivery
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ vars.TELEGRAM_RELEASE_CHAT_ID || '@Bilibili_Innocent_LabRelease' }}
@@ -106,5 +121,15 @@ jobs:
           python3 .github/release-templates/publish_telegram.py \
             --tag "$BUILD_TAG" --commit "$SOURCE_COMMIT" --source-url "$SOURCE_RUN_URL" \
             --apk "$PACKAGE_DIRECTORY/$APK_FILENAME" --build-info "$PACKAGE_DIRECTORY/BUILD_INFO.txt" \
-            --notes "$PACKAGE_DIRECTORY/CANARY_CHANGELOG.md" --summary "$GITHUB_STEP_SUMMARY" \
+            --notes "$RUNNER_TEMP/TELEGRAM_CHANGELOG.txt" --summary "$GITHUB_STEP_SUMMARY" \
+            --receipt "$RUNNER_TEMP/telegram-delivery.json" \
             "${delivery_args[@]}"
+
+      - name: Record the confirmed Telegram delivery source
+        if: success() && !inputs.dry_run
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          DELIVERY_RUN_URL: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          python3 .github/release-templates/telegram_delivery_state.py \
+            --receipt "$RUNNER_TEMP/telegram-delivery.json" --delivery-url "$DELIVERY_RUN_URL"

@@ -8,6 +8,7 @@ import json
 import os
 import re
 import sys
+import time
 import uuid
 from pathlib import Path
 from urllib.parse import urlsplit
@@ -44,13 +45,36 @@ def validate_identity(apk: Path, info: Path, tag: str, commit: str, source_url: 
     return digest
 
 def caption(tag: str, commit: str, digest: str, source_url: str, notes: str) -> str:
-    entries=[line[2:].strip() for line in notes.splitlines() if line.startswith("- ")][:4]
+    entries=[line[2:].strip() for line in notes.splitlines() if line.startswith("- ")]
     summary="\n".join("• "+entry for entry in entries)
     header=f"Bilibili Innocent Lab · Canary\n{tag}\n\n"
-    footer=f"\n\n源码：{commit[:8]}\nSHA-256：{digest}\n构建：{source_url}"
+    footer=f"\n\n完整更新记录见后续消息。\n源码：{commit[:8]}\nSHA-256：{digest}\n构建：{source_url}"
     # Telegram 字符预算按 UTF-16 计数，截断点不能切开代理对。
-    while len((header+summary+footer).encode("utf-16-le"))//2>1000:summary=summary[:-1]
+    budget=1000-len((header+footer).encode("utf-16-le"))//2
+    if budget < 0:raise DeliveryError("Canary caption identity exceeds its delivery budget")
+    summary=split_text(summary,budget)[0] if summary and budget else ""
     return header+summary+footer
+
+
+def split_text(text: str, budget: int = 3800) -> list[str]:
+    parts=[];chars=[];units=0;line_end=0
+    for char in text:
+        size=2 if ord(char)>0xFFFF else 1
+        if size>budget:raise DeliveryError("Telegram text budget cannot hold a Unicode character")
+        while units+size>budget:
+            end=line_end or len(chars)
+            parts.append("".join(chars[:end]));chars=chars[end:]
+            units=sum(2 if ord(value)>0xFFFF else 1 for value in chars);line_end=0
+        chars.append(char);units+=size
+        if char=="\n":line_end=len(chars)
+    if chars:parts.append("".join(chars))
+    return parts
+
+
+def announcement_messages(notes: str) -> list[str]:
+    if len(notes.encode("utf-8"))>256*1024:raise DeliveryError("Complete announcement exceeds the delivery budget")
+    parts=split_text(notes.rstrip())
+    return [f"完整更新记录（{index}/{len(parts)}）\n\n{part}" for index,part in enumerate(parts,1)]
 
 def multipart(fields: dict[str,str], apk: Path) -> tuple[bytes,str]:
     boundary="CanaryUpload"+uuid.uuid4().hex
@@ -69,7 +93,7 @@ class Telegram:
         self.token=token
 
     def call(self,method: str,fields: dict,apk: Path|None=None) -> dict:
-        if method not in ["getMe","getChat","getChatMember","sendDocument"]:raise DeliveryError("Unsupported Telegram operation")
+        if method not in ["getMe","getChat","getChatMember","sendDocument","sendMessage"]:raise DeliveryError("Unsupported Telegram operation")
         if apk is None:
             body=json.dumps(fields).encode();content_type="application/json"
         else:body,content_type=multipart(fields,apk)
@@ -89,7 +113,8 @@ class Telegram:
             raise DeliveryError("Telegram network/protocol failure; check delivery before retrying") from None
         finally:connection.close()
 
-def deliver(api: Telegram,chat: str,apk: Path,text: str) -> dict:
+def deliver(api: Telegram,chat: str,apk: Path,text: str,notes: str="") -> dict:
+    messages=announcement_messages(notes)
     if not re.fullmatch(r"@[A-Za-z][A-Za-z0-9_]{4,31}|-100\d+",chat):raise DeliveryError("Invalid Telegram channel ID")
     me=api.call("getMe",{});target=api.call("getChat",{"chat_id":chat})
     if target.get("type")!="channel":raise DeliveryError("Telegram destination must be a channel")
@@ -97,23 +122,43 @@ def deliver(api: Telegram,chat: str,apk: Path,text: str) -> dict:
     member=api.call("getChatMember",{"chat_id":target["id"],"user_id":me["id"]})
     if member.get("status")!="creator" and not (member.get("status")=="administrator" and member.get("can_post_messages") is True):
         raise DeliveryError("Bot needs channel administrator permission to post messages")
-    return api.call("sendDocument",{"chat_id":str(target["id"]),"caption":text},apk)
+    result=api.call("sendDocument",{"chat_id":str(target["id"]),"caption":text},apk)
+    if type(result.get("message_id")) is not int or result["message_id"]<=0:
+        raise DeliveryError("Telegram did not confirm the APK message identity")
+    message_ids=[]
+    for message in messages:
+        time.sleep(1)
+        sent=api.call("sendMessage",{"chat_id":str(target["id"]),"text":message,
+            "reply_parameters":{"message_id":result["message_id"]},
+            "link_preview_options":{"is_disabled":True}})
+        if type(sent.get("message_id")) is not int or sent["message_id"]<=0:
+            raise DeliveryError("Telegram did not confirm the announcement message identity")
+        message_ids.append(sent["message_id"])
+    return dict(result,chat_id=str(target["id"]),announcement_message_ids=message_ids)
 
 def main() -> int:
     parser=argparse.ArgumentParser()
     for name in ["tag","commit","source-url"]:parser.add_argument("--"+name,required=True)
     for name in ["apk","build-info","notes"]:parser.add_argument("--"+name,required=True,type=Path)
     parser.add_argument("--summary",type=Path)
+    parser.add_argument("--receipt",type=Path)
     parser.add_argument("--dry-run",action="store_true")
     args=parser.parse_args()
     try:
         digest=validate_identity(args.apk,args.build_info,args.tag,args.commit,args.source_url)
-        text=caption(args.tag,args.commit,digest,args.source_url,args.notes.read_text(encoding="utf-8"))
+        notes=args.notes.read_text(encoding="utf-8")
+        text=caption(args.tag,args.commit,digest,args.source_url,notes)
+        messages=announcement_messages(notes)
         token=os.environ.get("TELEGRAM_BOT_TOKEN","");chat=os.environ.get("TELEGRAM_CHAT_ID",DEFAULT_CHAT)
-        if args.dry_run:status="Validated Telegram payload; dry-run only"
-        elif not token:status="Telegram delivery not configured: add TELEGRAM_BOT_TOKEN and grant channel posting permission"
+        if args.dry_run:status=f"Validated Telegram payload and {len(messages)} complete announcement message(s); dry-run only"
+        elif not token:raise DeliveryError("Telegram delivery not configured: add TELEGRAM_BOT_TOKEN and grant channel posting permission")
         else:
-            result=deliver(Telegram(token),chat,args.apk,text)
+            result=deliver(Telegram(token),chat,args.apk,text,notes)
+            if args.receipt:
+                receipt={"delivery_complete":True,"channel":chat,"source_commit":args.commit,
+                    "release_tag":args.tag,"source_run_url":args.source_url,"chat_id":result["chat_id"],
+                    "document_message_id":result["message_id"],"announcement_message_ids":result["announcement_message_ids"]}
+                args.receipt.write_text(json.dumps(receipt,ensure_ascii=False),encoding="utf-8")
             status=f"Telegram delivered Canary APK, message ID {result['message_id']}"
         print(status)
         if args.summary:

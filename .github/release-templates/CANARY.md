@@ -29,7 +29,9 @@ Canary 每次 `main` 推送通过检查后，使用现有 Alpha 固定签名环�
 .\.github\release-templates\setup-telegram.ps1
 ```
 
-手动工作流核验所选产物及其签名后，Bot 先核对身份、目标频道和管理员权限，再直接上传匹配 SHA-256 的非 Debug 签名 APK。消息包含版本、简短变化、源码、文件哈希和所选构建的 Actions 链接。只有 APK 发到频道，R8 mapping 单独保留在 Actions。
+手动工作流核验所选产物及其签名后，以**上一次实际成功发布到同一 Telegram 频道的源码提交**为起点，重新生成截至所选构建源码的完整提交列表。范围不受本次 push、20 个提交、12 条日志或 4 条摘要限制；每个提交（包括维护和合并）都保留短 SHA，同名提交也分别列出。APK 附言保留版本、摘要、源码、文件哈希和 Actions 链接，完整公告随后作为关联 APK 的消息发送；超过 Telegram 长度限制时自动分条，不丢弃后面的条目。R8 mapping 单独保留在 Actions。
+
+只有 APK 和全部公告消息都成功发送后，工作流才将对应源码和消息回执保存为 `canary-telegram` GitHub Deployment，供下次发布计算范围。它使用 `GITHUB_TOKEN` 的 `deployments: write` 权限，不创建 Git Tag 或 GitHub Release；dry-run 和失败投递不会推进节点。首次采用该记录方式时，从旧手动工作流日志中识别实际投递结果，跳过 dry-run；完全没有历史投递时列出所选提交的完整历史。无法确认旧历史或完整公告超过 256 KiB 时明确失败，不退回只展示当前提交。
 
 没有令牌或 Telegram 投递失败时，手动工作流会失败，已验证的 Actions 安装包不受影响。发送超时可能已经投递，因此不自动重发，重跑前先检查频道；重复运行相同链接会再次发送该版本。
 
