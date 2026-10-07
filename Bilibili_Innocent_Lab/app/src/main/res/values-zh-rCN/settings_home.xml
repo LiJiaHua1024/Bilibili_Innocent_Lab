@@ -17,4 +17,11 @@
     <string name="settings_favorites_move_up">上移%1$s</string>
     <string name="settings_favorites_move_down">下移%1$s</string>
     <string name="settings_favorites_no_matches">没有匹配的开关</string>
+    <string name="settings_home_beautify">美化</string>
+    <string name="settings_home_beautify_hint">让哔哩哔哩更合眼缘</string>
+    <string name="host_appearance_top_bar">顶栏外观</string>
+    <string name="host_appearance_bottom_bar">底栏外观</string>
+    <string name="host_appearance_video_cards">视频卡片</string>
+    <string name="host_appearance_splash">开屏外观</string>
+    <string name="host_appearance_player">播放器外观</string>
 </resources>

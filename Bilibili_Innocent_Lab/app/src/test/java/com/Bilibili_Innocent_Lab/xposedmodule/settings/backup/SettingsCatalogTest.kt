@@ -8,6 +8,18 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class SettingsCatalogTest {
+    @Test fun `catalog v44 publishes two default off SponsorBlock settings without changing old backups`() {
+        val expected = requireNotNull(javaClass.classLoader?.getResourceAsStream("settings-backup/catalog-v44.txt"))
+            .bufferedReader().useLines { it.filter(String::isNotBlank).toList() }
+        assertEquals(expected, SettingsCatalog.specs.map { it.id }.sorted())
+        val added = SettingsCatalog.specs.filter { it.introducedCatalogVersion == 44 }
+        assertEquals(listOf("player.sponsorblock.automatic", "player.sponsorblock.enabled"), added.map { it.id }.sorted())
+        added.forEach {
+            assertEquals(SettingValue.Bool(false), it.defaultValue)
+            assertEquals(RestorePolicy.AUTOMATIC, it.restorePolicy)
+            assertTrue(ImportEffect.RESTART_BILIBILI in it.effects)
+        }
+    }
     @Test fun `catalog v23 adds the default off player end page filter`() {
         val expected=requireNotNull(javaClass.classLoader?.getResourceAsStream("settings-backup/catalog-v23.txt"))
             .bufferedReader().useLines { it.filter(String::isNotBlank).toList() }
@@ -131,11 +143,11 @@ class SettingsCatalogTest {
     }
 
     @Test
-    fun `catalog is a unique allowlist with 199 settings`() {
-        assertEquals(199, SettingsCatalog.specs.size)
-        assertEquals(199, SettingsCatalog.specs.map { it.id }.distinct().size)
-        assertEquals(199, SettingsCatalog.specs.map { it.storageKey }.distinct().size)
-        assertEquals(196, SettingsCatalog.specs.count { it.restorePolicy == RestorePolicy.AUTOMATIC })
+    fun `catalog is a unique allowlist with 202 settings`() {
+        assertEquals(202, SettingsCatalog.specs.size)
+        assertEquals(202, SettingsCatalog.specs.map { it.id }.distinct().size)
+        assertEquals(202, SettingsCatalog.specs.map { it.storageKey }.distinct().size)
+        assertEquals(199, SettingsCatalog.specs.count { it.restorePolicy == RestorePolicy.AUTOMATIC })
         assertEquals(3, SettingsCatalog.specs.count { it.restorePolicy == RestorePolicy.MANUAL })
         assertTrue(SettingsCatalog.specs.all { it.accepts(it.defaultValue) })
         assertTrue(SettingsCatalog.specs.all { it.id.matches(Regex("[a-z0-9][a-z0-9._-]{0,127}")) })
@@ -366,7 +378,7 @@ class SettingsCatalogTest {
         val expected = requireNotNull(javaClass.classLoader?.getResourceAsStream("settings-backup/catalog-v13.txt"))
             .bufferedReader().useLines { it.filter(String::isNotBlank).toList() }
         assertEquals(expected, SettingsCatalog.specs.filter { it.introducedCatalogVersion <= 13 }.map { it.id }.sorted())
-        assertEquals(42, SettingsCatalog.CATALOG_VERSION)
+        assertEquals(44, SettingsCatalog.CATALOG_VERSION)
         val added = SettingsCatalog.specs.filter { it.introducedCatalogVersion == 13 }
         assertEquals(6, added.size)
         assertTrue(added.all { it.restorePolicy == RestorePolicy.AUTOMATIC && ImportEffect.RESTART_BILIBILI in it.effects })
@@ -665,8 +677,8 @@ class SettingsCatalogTest {
 
     @Test
     fun `catalog types and manual roaming boundary are explicit`() {
-        assertEquals(135, SettingsCatalog.specs.count { it.type == SettingValueType.BOOLEAN })
-        assertEquals(13, SettingsCatalog.specs.count { it.type == SettingValueType.INTEGER })
+        assertEquals(137, SettingsCatalog.specs.count { it.type == SettingValueType.BOOLEAN })
+        assertEquals(14, SettingsCatalog.specs.count { it.type == SettingValueType.INTEGER })
         assertEquals(51, SettingsCatalog.specs.count { it.type == SettingValueType.STRING })
 
         val roaming = requireNotNull(SettingsCatalog.byId["compat.roaming.enabled"])
@@ -861,11 +873,25 @@ class SettingsCatalogTest {
     fun `catalog v42 adds one default off video card style setting`() {
         val expected = requireNotNull(javaClass.classLoader?.getResourceAsStream("settings-backup/catalog-v42.txt"))
             .bufferedReader().useLines { it.filter(String::isNotBlank).toList() }
-        assertEquals(expected, SettingsCatalog.specs.map { it.id }.sorted())
+        assertEquals(expected, SettingsCatalog.specs.filter { it.introducedCatalogVersion <= 42 }.map { it.id }.sorted())
         val added = SettingsCatalog.specs.single { it.introducedCatalogVersion == 42 }
         assertEquals("host.video_cards.enabled", added.id)
         assertEquals(FeaturePreferences.HOST_VIDEO_CARDS, added.storageKey)
         assertEquals(SettingValue.Bool(false), added.defaultValue)
+        assertEquals(RestorePolicy.AUTOMATIC, added.restorePolicy)
+        assertTrue(ImportEffect.RESTART_BILIBILI in added.effects)
+    }
+
+    @Test
+    fun `catalog v43 adds restorable video card radius with legacy default`() {
+        val expected = requireNotNull(javaClass.classLoader?.getResourceAsStream("settings-backup/catalog-v43.txt"))
+            .bufferedReader().useLines { it.filter(String::isNotBlank).toList() }
+        assertEquals(expected, SettingsCatalog.specs.filter { it.introducedCatalogVersion <= 43 }.map { it.id }.sorted())
+        val added = SettingsCatalog.specs.single { it.introducedCatalogVersion == 43 }
+        assertEquals("host.video_cards.radius_dp", added.id)
+        assertEquals(FeaturePreferences.HOST_VIDEO_CARD_RADIUS_DP, added.storageKey)
+        assertEquals(SettingValue.IntValue(-1), added.defaultValue)
+        assertEquals(-1..40, added.integerRange)
         assertEquals(RestorePolicy.AUTOMATIC, added.restorePolicy)
         assertTrue(ImportEffect.RESTART_BILIBILI in added.effects)
     }

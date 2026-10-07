@@ -372,6 +372,7 @@ internal object HostBottomBarFxController {
         // 3. 遍历每一个 Tab 项，确保 tab 高度铺满，且内部 normal_ll (包含图标与文字) 整体垂直居中
         for (i in 0 until container.childCount) {
             val tab = container.getChildAt(i) as? ViewGroup ?: continue
+            if (tab.visibility == View.GONE) continue
             if (tab.background != null) tab.background = null
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && tab.foreground != null) tab.foreground = null
             if (tab is FrameLayout && tab.foreground != null) tab.foreground = null
@@ -418,10 +419,29 @@ internal object HostBottomBarFxController {
                         }
                         if (nlpChanged) child.layoutParams = clp
                     }
+                    // 切页绑定会重新显示文字。pre-draw 中隐藏它以后，旧 measuredHeight
+                    // 仍包含文字；必须当帧重测，否则图标先按图文高度上移，下一帧才居中。
+                    val remeasured = config.iconOnly && child.isLayoutRequested && barHeight > 0
+                    if (remeasured) {
+                        val margins = clp as? ViewGroup.MarginLayoutParams
+                        val parentWidth = tab.width.takeIf { it > 0 } ?: tab.measuredWidth
+                        child.measure(
+                            ViewGroup.getChildMeasureSpec(
+                                View.MeasureSpec.makeMeasureSpec(parentWidth, View.MeasureSpec.EXACTLY),
+                                tab.paddingLeft + tab.paddingRight + (margins?.leftMargin ?: 0) + (margins?.rightMargin ?: 0),
+                                clp?.width ?: ViewGroup.LayoutParams.WRAP_CONTENT
+                            ),
+                            ViewGroup.getChildMeasureSpec(
+                                View.MeasureSpec.makeMeasureSpec(barHeight, View.MeasureSpec.EXACTLY),
+                                tab.paddingTop + tab.paddingBottom + (margins?.topMargin ?: 0) + (margins?.bottomMargin ?: 0),
+                                clp?.height ?: ViewGroup.LayoutParams.WRAP_CONTENT
+                            )
+                        )
+                    }
                     val ch = child.measuredHeight.takeIf { it > 0 } ?: child.height
                     if (barHeight > 0 && ch > 0) {
                         val targetTop = ((barHeight - ch) / 2f).roundToInt()
-                        if (child.top != targetTop || child.bottom != targetTop + ch) {
+                        if (remeasured || child.top != targetTop || child.bottom != targetTop + ch) {
                             child.layout(child.left, targetTop, child.right, targetTop + ch)
                         }
                     }
@@ -463,7 +483,10 @@ internal object HostBottomBarFxController {
         val parent = tabHost.parent as? ViewGroup
         val parentWidth = parent?.width?.takeIf { it > 0 } ?: tabHost.resources.displayMetrics.widthPixels
         val availableWidth = parentWidth - (parent?.paddingLeft ?: 0) - (parent?.paddingRight ?: 0)
-        return (config.horizontalMarginDp(availableWidth / density, container?.childCount ?: 5) * density).roundToInt()
+        val tabCount = container?.let { c ->
+            (0 until c.childCount).count { c.getChildAt(it).visibility != View.GONE }
+        } ?: 5
+        return (config.horizontalMarginDp(availableWidth / density, tabCount) * density).roundToInt()
     }
 
     /** Only hide labels inside normal tab content; badge and publish overlays remain intact. */
@@ -625,12 +648,15 @@ internal class HostBottomBarDockLayer(
     private val screenLoc = IntArray(2)
 
     private val rtl: Boolean get() = layoutDirection == LAYOUT_DIRECTION_RTL
-    private val count: Int get() = container?.childCount?.coerceIn(1, ModernNavigationMotion.MAX_ITEMS) ?: 5
+    private val tabSlots = HostBottomBarTabSlots()
+    private val participates: (Int) -> Boolean = { container?.getChildAt(it)?.visibility != View.GONE }
+    private val count: Int get() = tabSlots.count.coerceAtLeast(1)
     private val contentWidth: Float get() = (width - inset * 2f).coerceAtLeast(0f)
     private val slotWidth: Float get() = if (count > 0) contentWidth / count else 0f
 
     private val preDrawListener = ViewTreeObserver.OnPreDrawListener {
         if (disposed) return@OnPreDrawListener true
+        refreshTabSlots()
         refreshMaterial()
         // 宿主会在按压/切页/重建 tab 时重新挂上官方背景并重新布局：这里逐帧只做 O(items) 空判，
         // 命中才请求一次合并后的整树清理；不再每帧全树递归 + 资源名解析（快速切换掉帧的来源）。
@@ -640,7 +666,8 @@ internal class HostBottomBarDockLayer(
         val detected = detectSelectedTab()
         if (!touchActive && !indicatorSettling && detected != selectedIndex) {
             selectedIndex = detected
-            reboundTo(detected, scrubbed = false)
+            // 外部切页只同步透镜；再次 performClick 当前宿主页会触发刷新。
+            reboundTo(null, scrubbed = false)
         }
         true
     }
@@ -690,6 +717,7 @@ internal class HostBottomBarDockLayer(
         addView(glowView)
 
         // 初次加载对齐选中项
+        tabSlots.update(container?.childCount ?: 0, participates)
         val initial = detectSelectedTab()
         selectedIndex = initial
         pagerPosition = initial.toFloat()
@@ -697,6 +725,7 @@ internal class HostBottomBarDockLayer(
     }
 
     override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
+        refreshTabSlots(requestMeasure = false)
         val measuredW = MeasureSpec.getSize(widthMeasureSpec)
         val measuredH = MeasureSpec.getSize(heightMeasureSpec)
         setMeasuredDimension(measuredW, measuredH)
@@ -783,6 +812,8 @@ internal class HostBottomBarDockLayer(
     /** 统一触控手势处理 (完全对齐 ModernNavigationBar) */
     fun handleTouch(event: MotionEvent, tabIndex: Int = -1): Boolean {
         if (disposed || !isEnabled || width <= 0) return false
+        refreshTabSlots()
+        if (tabSlots.count == 0 || tabIndex >= 0 && tabSlots.slotOf(tabIndex) < 0) return false
         if (event.pointerCount > 1 || event.actionMasked == MotionEvent.ACTION_POINTER_DOWN) {
             ignorePointers = true
             cancelTouch()
@@ -820,7 +851,7 @@ internal class HostBottomBarDockLayer(
 
                 val selectedLeft = inset + ModernNavigationMotion.physicalSlot(displayedPosition, count, rtl) * slotWidth
                 val inSelection = localX >= selectedLeft && localX <= selectedLeft + slotWidth
-                val index = if (tabIndex in 0 until count) tabIndex
+                val index = if (tabIndex >= 0) tabSlots.slotOf(tabIndex)
                 else ModernNavigationMotion.indexAt(localX, contentWidth, inset, count, rtl)
 
                 gesture.begin(index, inSelection)
@@ -1026,8 +1057,9 @@ internal class HostBottomBarDockLayer(
     /** 返回是否激活页面；发布按钮只执行宿主动作，滑块随后回到原页面。 */
     private fun clickTab(index: Int): Boolean {
         val c = container ?: return false
-        if (index !in 0 until c.childCount) return false
-        val tab = c.getChildAt(index)
+        val hostIndex = tabSlots.hostIndex(index)
+        if (hostIndex !in 0 until c.childCount) return false
+        val tab = c.getChildAt(hostIndex)
         if (!tab.isShown || !tab.isEnabled) return false
         val publish = if (publishViewId != 0) tab.findViewById<View>(publishViewId) else null
         if (publish?.isShown == true) {
@@ -1057,11 +1089,21 @@ internal class HostBottomBarDockLayer(
 
     private fun detectSelectedTab(): Int {
         val c = container ?: return selectedIndex
-        for (i in 0 until c.childCount) {
-            val child = c.getChildAt(i)
-            if (child.isSelected || child.isActivated) return i
+        for (slot in 0 until tabSlots.count) {
+            val child = c.getChildAt(tabSlots.hostIndex(slot))
+            if (child.isSelected || child.isActivated) return slot
         }
-        return selectedIndex
+        return selectedIndex.coerceIn(0, count - 1)
+    }
+
+    private fun refreshTabSlots(requestMeasure: Boolean = true) {
+        if (!tabSlots.update(container?.childCount ?: 0, participates)) return
+        // 隐藏/重建可能发生在宿主单项绑定之后，不能延用旧手势和旧槽位宽度。
+        selectedIndex = detectSelectedTab()
+        pagerPosition = selectedIndex.toFloat()
+        resetInteraction()
+        selectionView.visibility = if (tabSlots.count == 0) View.INVISIBLE else View.VISIBLE
+        if (requestMeasure) requestLayout()
     }
 
     /** 交互态归零（对齐模块 ModernNavigationBar.resetInteraction）：尺寸变化与视图分离时必须回到静止姿态。 */

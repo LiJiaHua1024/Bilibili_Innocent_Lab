@@ -1,3 +1,4 @@
+import com.android.build.api.artifact.SingleArtifact
 import org.gradle.api.tasks.compile.JavaCompile
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 import org.jetbrains.kotlin.gradle.tasks.KotlinJvmCompile
@@ -64,6 +65,59 @@ hikage {
     }
 }
 
+// Library API migration hints are expensive on the large Kotlin/UAST source tree.
+// Keep the full gate unchanged; only the explicit local lintFast task excludes them.
+val fastLintSuggestionIds = setOf(
+    "ReplaceWithActivityExtension",
+    "ReplaceWithAndroidVersion",
+    "ReplaceWithApplicationExtension",
+    "ReplaceWithBackPressedExtension",
+    "ReplaceWithBitmapExtension",
+    "ReplaceWithBroadcastExtension",
+    "ReplaceWithClipboardExtension",
+    "ReplaceWithContextExtension",
+    "ReplaceWithCoroutinesExtension",
+    "ReplaceWithDrawableExtension",
+    "ReplaceWithFragmentExtension",
+    "ReplaceWithHandleOnWindowInsetsChanged",
+    "ReplaceWithIntentExtension",
+    "ReplaceWithKavaRefExtension",
+    "ReplaceWithLayoutInflaterExtension",
+    "ReplaceWithLifecycleExtension",
+    "ReplaceWithLifecycleOwnerExtension",
+    "ReplaceWithNotificationAction",
+    "ReplaceWithNotificationComponent",
+    "ReplaceWithRecyclerAdapterExtension",
+    "ReplaceWithRecyclerViewExtension",
+    "ReplaceWithResourcesExtension",
+    "ReplaceWithServiceExtension",
+    "ReplaceWithSystemBarsController",
+    "ReplaceWithTextViewExtension",
+    "ReplaceWithToastExtension",
+    "ReplaceWithViewBindingExtension",
+    "ReplaceWithViewExtension",
+    "ReplaceWithViewImeExtension",
+    "ReplaceWithViewOutlineProviderExtension",
+    "ReplaceWithViewTooltipTextCompatExtension",
+    "ReplaceWithViewWalkExtension"
+)
+val requestedTaskNames = gradle.startParameter.taskNames.map { it.substringAfterLast(':') }
+val fastLintRequested = requestedTaskNames.contains("lintFast")
+val fastLintCompanionTasks = setOf("lintFast", "assembleDebug", "assembleDebugAndroidTest", "testDebugUnitTest")
+val fullVerificationRequested = requestedTaskNames.any { it !in fastLintCompanionTasks }
+if (fastLintRequested && fullVerificationRequested) {
+    throw GradleException("Run lintFast separately from full lint/check/build gates.")
+}
+if (fastLintRequested) {
+    logger.lifecycle("Fast lint excludes 32 library API migration suggestions; run :app:lintDebug for the full gate.")
+}
+
+tasks.register("lintFast") {
+    group = "verification"
+    description = "Runs debug lint without library API migration hints; not a replacement for the full lint gate."
+    dependsOn("lintDebug")
+}
+
 android {
     namespace = gropify.project.app.packageName
     compileSdk = gropify.project.android.compileSdk
@@ -119,6 +173,9 @@ android {
         // 通信回退使用签名级 API 与稳定的隐藏接收器标志，调用点有异常兜底；
         // 仅基线化当前已审阅的 3 个位置，新增 Lint Error 仍必须阻断构建。
         baseline = file("lint-baseline.xml")
+        if (fastLintRequested) {
+            disable.addAll(fastLintSuggestionIds)
+        }
     }
 
     sourceSets {
@@ -127,6 +184,19 @@ android {
             // 单测任务；分层运行与反向查询见下方 innocentLab.testLayer / contractsFor。
             kotlin.directories.add("src/contractTest/java")
         }
+    }
+}
+
+androidComponents.onVariants(androidComponents.selector().withBuildType("debug")) { variant ->
+    val lintProfile = if (fastLintRequested) "fast" else "full"
+    val reportTaskName = if (fastLintRequested) "exportDebugFastLintReports" else "exportDebugFullLintReports"
+    val exportReports = tasks.register<Sync>(reportTaskName) {
+        from(variant.artifacts.get(SingleArtifact.LINT_HTML_REPORT))
+        from(variant.artifacts.get(SingleArtifact.LINT_XML_REPORT))
+        into(layout.buildDirectory.dir("reports/lint/$lintProfile"))
+    }
+    tasks.matching { it.name == "lintDebug" }.configureEach {
+        finalizedBy(exportReports)
     }
 }
 
@@ -208,6 +278,9 @@ tasks.register("contractsFor") {
 }
 
 gradle.taskGraph.whenReady {
+    if (!fastLintRequested && allTasks.any { it.project == project && it.name == "lintFast" }) {
+        throw GradleException("Request lintFast by its full task name, not an abbreviation or aggregate task.")
+    }
     val releasePackagingRequested = allTasks.any { task ->
         task.project == project &&
             (

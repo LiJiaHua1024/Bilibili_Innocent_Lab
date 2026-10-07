@@ -26,7 +26,7 @@ import com.highcapable.betterandroid.ui.extension.view.child
 import java.util.IdentityHashMap
 import kotlin.math.abs
 
-/** Four retained pages; only intersecting pages render, sharing the Activity's existing skin. */
+/** Retained pages; only intersecting pages render, sharing the Activity's existing skin. */
 internal class SettingsPagePager @JvmOverloads constructor(
     context: Context,
     attrs: AttributeSet? = null
@@ -83,7 +83,9 @@ internal class SettingsPagePager @JvmOverloads constructor(
 
     override fun onViewAdded(child: View) {
         super.onViewAdded(child)
-        require(childCount <= SettingsPageMotionPolicy.MAX_PAGES) { "SettingsPagePager supports at most four pages" }
+        require(childCount <= SettingsPageMotionPolicy.MAX_PAGES) {
+            "SettingsPagePager supports at most ${SettingsPageMotionPolicy.MAX_PAGES} pages"
+        }
         originalAccessibility[child] = child.importantForAccessibility
         originalVisibility[child] = child.visibility
         updatePageAccessibility()

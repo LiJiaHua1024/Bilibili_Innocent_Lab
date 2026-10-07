@@ -45,7 +45,7 @@ internal object SettingsPageUserNavigation {
 
 /** Page coordinates increase in reading order; pixels are converted only at the View boundary. */
 internal object SettingsPageMotionPolicy {
-    const val MAX_PAGES = 4
+    const val MAX_PAGES = 5
     const val EDGE_LIMIT = .18f
     private const val PAGE_THRESHOLD = .22f
     private const val FLING_THRESHOLD = .5f

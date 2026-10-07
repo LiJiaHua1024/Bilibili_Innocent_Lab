@@ -56,6 +56,7 @@ internal class DynamicTabsFeatureInstaller(
         val cityLogged = AtomicBoolean(false)
         val schoolLogged = AtomicBoolean(false)
         val videoPreferredLogged = AtomicBoolean(false)
+        val videoPreference = DynamicVideoTabPreference()
         var installedCount = 0
 
         val listInstalled = runCatching {
@@ -88,22 +89,6 @@ internal class DynamicTabsFeatureInstaller(
                         customViewGetter.invoke(tab) as? View
                     }.getOrNull() ?: return@before
                     val label = findTabLabel(customView) ?: return@before
-                    val originalSelected = args.getOrNull(1) as? Boolean ?: false
-                    val preferredSelected = selectedForVideoPreference(
-                        label = label,
-                        videoAvailable = videoAvailable.get(),
-                        preferVideo = preferVideo,
-                        originalSelected = originalSelected
-                    )
-                    if (preferredSelected != originalSelected) args[1] = preferredSelected
-                    if (preferredSelected && preferVideo && isVideoTab(label, null) &&
-                        videoPreferredLogged.compareAndSet(false, true)
-                    ) {
-                        environment.logInfo(
-                            "dynamic_tab_preferred_video",
-                            "[BIL] 动态页已将“视频”设为初始选中标签"
-                        )
-                    }
                     val hidden = hiddenKind(label, null, hideCity, hideSchool) ?: return@before
                     val selected = args.getOrNull(1) as? Boolean ?: false
                     if (selected) {
@@ -126,6 +111,24 @@ internal class DynamicTabsFeatureInstaller(
                             "[BIL] 已隐藏动态页标签“$label”"
                         )
                     }
+                }
+                after {
+                    val layout = instance as? View ?: return@after
+                    if (layout.javaClass.name != adapted.mediatorTabClassName ||
+                        !preferVideo || !videoAvailable.get()) return@after
+                    val tab = args.firstOrNull() ?: return@after
+                    val customView = runCatching { customViewGetter.invoke(tab) as? View }
+                        .getOrNull() ?: return@after
+                    if (!isVideoTab(findTabLabel(customView), null)) return@after
+                    videoPreference.schedule(layout, tab, onSelected = {
+                        if (videoPreferredLogged.compareAndSet(false, true)) {
+                            environment.logInfo("dynamic_tab_preferred_video",
+                                "[BIL] 动态页初始化完成后已切换到“视频”标签")
+                        }
+                    }, onError = {
+                        environment.logError("dynamic_tab_preferred_video_failed",
+                            "[BIL] 动态页默认视频切换失败: $it")
+                    })
                 }
             }
             installedCount += 1
@@ -192,17 +195,6 @@ internal class DynamicTabsFeatureInstaller(
 
         internal fun isVideoTab(title: String?, name: String?): Boolean =
             title?.trim() == "视频" || name?.trim()?.lowercase() == "video"
-
-        internal fun selectedForVideoPreference(
-            label: String?,
-            videoAvailable: Boolean,
-            preferVideo: Boolean,
-            originalSelected: Boolean
-        ): Boolean = if (preferVideo && videoAvailable) {
-            isVideoTab(label, null)
-        } else {
-            originalSelected
-        }
 
         private fun findTabLabel(root: View): String? {
             val pending = ArrayDeque<View>()

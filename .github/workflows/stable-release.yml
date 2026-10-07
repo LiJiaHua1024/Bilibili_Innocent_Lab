@@ -160,6 +160,7 @@ jobs:
       # 失败时直接看出是构建、行为测试、源码契约、Lint 还是混淆出了问题。
       # 构建成功后其余步骤都会运行（互不短路），一次拿到全部结果。
       # 行为测试 / 源码契约的划分见 app/build.gradle.kts 的 innocentLab.testLayer。
+      # 同一 job 保持相同 JDK/JVM 参数，复用守护进程；Lint 仍为完整门禁。
       - name: Build debug APK
         id: build
         working-directory: Bilibili_Innocent_Lab
@@ -170,7 +171,7 @@ jobs:
             "-Dorg.gradle.jvmargs=-Xmx6144m -Dfile.encoding=UTF-8" \
             "-Pproject.android.compileSdk=${CI_COMPILE_SDK}" \
             assembleDebug \
-            --console=plain --no-daemon
+            --console=plain --daemon
 
       - name: Unit tests (behavior)
         id: unit_tests
@@ -184,7 +185,7 @@ jobs:
             "-Pproject.android.compileSdk=${CI_COMPILE_SDK}" \
             -PinnocentLab.testLayer=unit \
             testDebugUnitTest \
-            --console=plain --no-daemon
+            --console=plain --daemon
 
       - name: Source contract tests
         id: contract_tests
@@ -198,7 +199,7 @@ jobs:
             "-Pproject.android.compileSdk=${CI_COMPILE_SDK}" \
             -PinnocentLab.testLayer=contract \
             testDebugUnitTest \
-            --console=plain --no-daemon
+            --console=plain --daemon
 
       - name: Lint
         id: lint
@@ -211,7 +212,7 @@ jobs:
             "-Dorg.gradle.jvmargs=-Xmx6144m -Dfile.encoding=UTF-8" \
             "-Pproject.android.compileSdk=${CI_COMPILE_SDK}" \
             lintDebug \
-            --console=plain --no-daemon
+            --console=plain --daemon
 
       - name: Validate Release minification
         id: minify
@@ -224,7 +225,7 @@ jobs:
             "-Dorg.gradle.jvmargs=-Xmx6144m -Dfile.encoding=UTF-8" \
             "-Pproject.android.compileSdk=${CI_COMPILE_SDK}" \
             minifyReleaseWithR8 \
-            --console=plain --no-daemon
+            --console=plain --daemon
 
       - name: Upload test and lint reports
         if: ${{ failure() }}

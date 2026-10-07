@@ -172,7 +172,7 @@ See [Settings organisation](docs/settings_organization.md) for the complete feat
 | Disable the client update prompt | Blocks the Bilibili client's own update reminder; it does not affect this module's Stable or Preview update checks |
 | Disable the teen mode prompt | Hides the teen mode notice page without changing teen mode's enabled state, restriction rules or system settings |
 | Show full numbers | Counts such as views and likes prefer the full value instead of abbreviations like "wan" and "yi"; only adapted number-formatting entry points are handled |
-| Floating video cards | Uses lightweight Lumen card surfaces with large rounded video covers, subtle soft gray shadows, and more space between two-column cards and along screen edges; available in advanced enhancement settings, off by default, requires restarting Bilibili |
+| Floating video cards | Uses lightweight Lumen card surfaces with rounded video covers, subtle soft gray shadows, and more space between two-column cards and along screen edges; corner radius can use the default or a custom 0–40dp value (0 for square corners); available in advanced enhancement settings, off by default, requires restarting Bilibili |
 | Show AV numbers instead of BV numbers | Bilibili shows either an AV number or a BV number at the same place; enabling this always shows the AV number. BV links in the body are still recognised and clickable |
 
 #### Sharing
@@ -466,21 +466,39 @@ Windows PowerShell:
 
 ```powershell
 cd Bilibili_Innocent_Lab
-.\gradlew.bat assembleDebug --console=plain --no-daemon
+.\gradlew.bat assembleDebug --console=plain --daemon
 ```
 
 Linux / macOS:
 
 ```bash
 cd Bilibili_Innocent_Lab
-./gradlew assembleDebug --console=plain --no-daemon
+./gradlew assembleDebug --console=plain --daemon
 ```
 
 **Run the JVM unit tests**
 
 ```powershell
-.\gradlew.bat testDebugUnitTest --console=plain --no-daemon
+.\gradlew.bat testDebugUnitTest --console=plain --daemon
 ```
+
+**Run lint**
+
+Use the fast check during local iteration:
+
+```powershell
+.\gradlew.bat :app:lintFast --console=plain --daemon
+```
+
+The fast check skips only an explicit list of 32 BetterAndroid / KavaRef API replacement suggestions. Test-source analysis and Android correctness, permission, API compatibility, and Hikage checks remain enabled. It does not replace the full gate. Before committing and in CI, run:
+
+```powershell
+.\gradlew.bat :app:lintDebug --console=plain --daemon
+```
+
+Fast reports are saved under `app/build/reports/lint/fast/`, and full reports under `app/build/reports/lint/full/`; both HTML files are named `lint-results-debug.html`. Use full task names. Only `assembleDebug`, `assembleDebugAndroidTest`, and `testDebugUnitTest` may accompany `lintFast`; run other tasks and full gates separately. On Linux / macOS, use `./gradlew` with the same tasks.
+
+Keep the JDK and JVM arguments consistent to reuse the Gradle daemon and task cache. Routine builds do not require `clean`. Add `--offline` when dependencies are cached; use `--no-daemon` as a fallback when a restricted environment blocks local process communication.
 
 **Verifying the artifact**
 

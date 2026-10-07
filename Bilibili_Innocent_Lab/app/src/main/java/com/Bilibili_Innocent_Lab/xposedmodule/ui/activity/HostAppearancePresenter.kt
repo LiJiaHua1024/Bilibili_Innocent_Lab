@@ -290,5 +290,21 @@ internal fun MainActivity.hostVideoCardAppearanceRows(
             textColor = colorResource(R.color.colorTextDark)
             textSize = 12f
         }
+        TextView(lparams = LayoutParams(widthMatchParent = true) { topMargin = 12.dp }) {
+            bindSettingDestination(this, FeaturePreferences.HOST_VIDEO_CARD_RADIUS_DP)
+            fun refresh() {
+                text = getString(R.string.host_video_card_radius_current,
+                    if (hostVideoCardRadiusDp < 0) getString(R.string.host_video_card_radius_default)
+                    else "${hostVideoCardRadiusDp} dp")
+            }
+            refresh()
+            textColor = colorResource(R.color.colorTextGray)
+            textSize = 15f
+            setPadding(0, 12.dp, 0, 12.dp)
+            background = selfRippleBackground(10f)
+            isClickable = true
+            isFocusable = true
+            setOnClickListener { showHostVideoCardRadiusDialog(this) { refresh() } }
+        }
     }
 }

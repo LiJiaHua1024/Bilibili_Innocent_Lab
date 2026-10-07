@@ -20,10 +20,12 @@ internal object DiagnosticCapabilityCatalog {
      * 客户端是按 "比我已知的版本更新" 做增量的，
      * VERSION 涨了却没有任何条目标在新版本上，增量就是空集（有测试钉住）。
      */
-    const val VERSION = 18
+    const val VERSION = 19
     val definitions = listOf(
+        DiagnosticCapabilityDefinition("sponsorblock", "sponsorblock", R.string.sponsorblock_enabled,
+            setOf("player.sponsorblock.enabled", "player.sponsorblock.automatic"), introducedCatalogVersion = 19),
         DiagnosticCapabilityDefinition("host_video_cards", "host_video_cards", R.string.host_video_cards,
-            setOf("host.video_cards.enabled"), introducedCatalogVersion = 18),
+            setOf("host.video_cards.enabled", "host.video_cards.radius_dp"), introducedCatalogVersion = 18),
         DiagnosticCapabilityDefinition("search_home_recommend_hidden", "search_home_recommend_hidden", R.string.hide_search_home_recommend, setOf("search.home_recommend.hidden"), introducedCatalogVersion = 4),
         DiagnosticCapabilityDefinition("player_interactive_legacy_follow", "player_interactive_overlay", R.string.diag_cap_player_interactive_legacy_follow, setOf("player.interactive_overlays.hidden"), "legacy/guide/clearAttention"),
         DiagnosticCapabilityDefinition("player_interactive_legacy_commands", "player_interactive_overlay", R.string.diag_cap_player_interactive_legacy_commands, setOf("player.interactive_overlays.hidden"), "legacy/guide/clearCommandDms"),

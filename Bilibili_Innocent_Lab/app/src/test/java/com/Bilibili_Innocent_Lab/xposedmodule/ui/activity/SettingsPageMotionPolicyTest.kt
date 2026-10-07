@@ -5,6 +5,20 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class SettingsPageMotionPolicyTest {
+    @Test fun fifthPageCanBeSelectedRenderedAndReachedWithoutCrossingTheEdge() {
+        assertEquals(4, SettingsPageMotionPolicy.selected(4, 5))
+        assertEquals(4, SettingsPageMotionPolicy.selected(99, 5))
+        assertEquals(listOf(3, 4), (0..4).filter {
+            SettingsPageMotionPolicy.isPageVisible(it, 3.5f, 5)
+        })
+        assertEquals(4, SettingsPageMotionPolicy.releasePage(3, 3.4f, 0f, 5))
+        assertEquals(4, SettingsPageMotionPolicy.releasePage(4, 5f, 2f, 5))
+        val events = mutableListOf<String>()
+        assertTrue(SettingsPageUserNavigation.request(3, 4, 5,
+            onUserInteraction = { events += "cancel" }, selectPage = { events += "select:$it" }))
+        assertEquals(listOf("cancel", "select:4"), events)
+    }
+
     @Test fun horizontalAccessibilityActionsFollowPhysicalDirectionInBothLayouts() {
         assertEquals(0, SettingsPageMotionPolicy.physicalPageTarget(1, -1, false))
         assertEquals(2, SettingsPageMotionPolicy.physicalPageTarget(1, 1, false))
@@ -36,7 +50,7 @@ class SettingsPageMotionPolicyTest {
 
     @Test fun edgeSamePageAndMissingPageNavigationNeverCancelAnExistingReveal() {
         for ((current, target, count) in listOf(Triple(0, -1, 4), Triple(3, 4, 4),
-            Triple(2, 2, 4), Triple(0, 0, 0), Triple(0, 1, 1), Triple(0, 4, 10))) {
+            Triple(2, 2, 4), Triple(0, 0, 0), Triple(0, 1, 1), Triple(0, SettingsPageMotionPolicy.MAX_PAGES, 10))) {
             var cancelled = 0
             var selected = 0
             assertFalse(SettingsPageUserNavigation.request(current, target, count,
@@ -236,7 +250,7 @@ class SettingsPageMotionPolicyTest {
         }
         assertEquals(2f, SettingsPageMotionContinuation(position, 2, 0f, 340L, 4).value(1f), 0f)
         assertEquals(0, SettingsPageMotionPolicy.selected(4, 0))
-        assertEquals(3, SettingsPageMotionPolicy.selected(99, 99))
+        assertEquals(SettingsPageMotionPolicy.MAX_PAGES - 1, SettingsPageMotionPolicy.selected(99, 99))
         assertEquals(180L, SettingsPageMotionPolicy.duration(1f, 1f))
         assertEquals(420L, SettingsPageMotionPolicy.duration(-1f, 99f))
     }

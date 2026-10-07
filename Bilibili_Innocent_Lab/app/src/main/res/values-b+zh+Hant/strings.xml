@@ -190,6 +190,10 @@
     <string name="custom_bottom_bar_hide_dialog_title">底部導覽列隱藏規則</string>
     <string name="custom_bottom_bar_hide_hint">例如：動態, 會員購</string>
     <string name="host_video_cards">影片卡片懸浮美化</string>
+    <string name="host_video_card_radius">影片卡片圓角</string>
+    <string name="host_video_card_radius_current">影片卡片圓角：%1$s</string>
+    <string name="host_video_card_radius_default">預設</string>
+    <string name="host_video_card_radius_tip">可選 0–40 dp，0 為直角。需開啟影片卡片懸浮美化，重新啟動嗶哩嗶哩後生效。</string>
     <string name="host_video_cards_tip">為影片封面增加大圓角，為卡片加入極淡的柔和灰色陰影，並加大雙欄間距及螢幕邊緣留白。重新啟動嗶哩嗶哩後生效。</string>
     <string name="host_bottom_bar_liquid_glass">底部導覽列懸浮膠囊</string>
     <string name="host_bottom_bar_liquid_glass_tip">將嗶哩嗶哩底部導覽列改為懸浮膠囊，並以即時取樣的玻璃材質透出下方內容，保留上緣高光；輕微提升渲染壓力。</string>
@@ -268,7 +272,7 @@
     <string name="hide_dynamic_school_tab_tip">啟用後，隱藏動態頁面的「校園」分頁，其他分頁及順序不受影響。重新啟動 Bilibili 後生效。</string>
     <string name="prefer_dynamic_video_tab">預設顯示「影片」分頁</string>
     <string name="prefer_dynamic_video_tab_tip">啟用後，進入動態頁面時預設顯示「影片」分頁。重新啟動 Bilibili 後生效。</string>
-    <string name="number_display_settings">外觀與數字顯示</string>
+    <string name="number_display_settings">數字顯示</string>
     <string name="show_full_numbers">顯示完整數字</string>
     <string name="show_full_numbers_tip">啟用後，播放次數、按讚數等計數優先顯示完整數字，不再使用「萬／億」縮寫。重新啟動 Bilibili 後生效。</string>
     <string name="prompt_purify_settings">提示頁面</string>
@@ -1230,4 +1234,9 @@
     <string name="host_bottom_bar_compact_tip">縮小底部導覽列高度，減少佔用空間。重新啟動嗶哩嗶哩後生效。</string>
     <string name="host_bottom_bar_icon_only">底部導覽列無字模式</string>
     <string name="host_bottom_bar_icon_only_tip">隱藏首頁、動態等標籤，僅保留圖示並垂直置中，同時縮減上下留白。可與小底部導覽列疊加使用，重新啟動嗶哩嗶哩後生效。</string>
+    <string name="sponsorblock_title">商單片段 · SponsorBlock</string>
+    <string name="highlights_sponsorblock">普通影片詳情頁可提示社群標註的商單片段，另可選擇自動略過並復原。預設關閉，開啟後會查詢 www.bsbsb.top 社群服務。</string>
+    <string name="sponsorblock_enabled">商單片段提示</string>
+    <string name="sponsorblock_automatic">自動略過商單片段</string>
+    <string name="sponsorblock_tip">開啟提示後，將使用影片編號的雜湊前綴查詢社群服務 www.bsbsb.top。僅支援普通影片詳情頁中的商單片段；自動略過須同時開啟提示，暫停和手動拖動優先。社群標註可能不準確，跳轉確認後 6 秒內可復原。不傳送投稿、投票或帳戶資料。修改後需重新啟動嗶哩嗶哩。</string>
 </resources>
