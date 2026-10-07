@@ -54,7 +54,7 @@ internal class SponsorBlockClient(private val version: String) : SponsorSegmentS
                     body.write(buffer, 0, count)
                 }
             }
-            return SponsorFetchResult.Available(SponsorSegmentParser.parse(body.toString(Charsets.UTF_8), video))
+            return SponsorFetchResult.Available(SponsorSegmentParser.parse(body.toString("UTF-8"), video))
         } catch (_: Exception) {
             return SponsorFetchResult.Unavailable("network-or-response")
         } finally {
