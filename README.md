@@ -474,21 +474,39 @@ Windows PowerShell：
 
 ```powershell
 cd Bilibili_Innocent_Lab
-.\gradlew.bat assembleDebug --console=plain --no-daemon
+.\gradlew.bat assembleDebug --console=plain --daemon
 ```
 
 Linux / macOS：
 
 ```bash
 cd Bilibili_Innocent_Lab
-./gradlew assembleDebug --console=plain --no-daemon
+./gradlew assembleDebug --console=plain --daemon
 ```
 
 **运行 JVM 单元测试**
 
 ```powershell
-.\gradlew.bat testDebugUnitTest --console=plain --no-daemon
+.\gradlew.bat testDebugUnitTest --console=plain --daemon
 ```
+
+**运行 Lint**
+
+日常迭代使用快速检查：
+
+```powershell
+.\gradlew.bat :app:lintFast --console=plain --daemon
+```
+
+快速检查仅跳过明确列出的 32 条 BetterAndroid / KavaRef API 替换建议，仍检查测试源码并保留 Android 正确性、权限、API 兼容性和 Hikage 规则。它不是完整门禁；提交前和 CI 使用完整检查：
+
+```powershell
+.\gradlew.bat :app:lintDebug --console=plain --daemon
+```
+
+快速报告保存到 `app/build/reports/lint/fast/`，完整报告保存到 `app/build/reports/lint/full/`，HTML 文件均为 `lint-results-debug.html`。使用完整任务名；`lintFast` 仅允许与 `assembleDebug`、`assembleDebugAndroidTest`、`testDebugUnitTest` 同时运行，其他任务和完整门禁分开执行。Linux / macOS 使用 `./gradlew` 执行相同任务。
+
+保持相同 JDK 和 JVM 参数可复用 Gradle 守护进程与任务缓存；日常构建不必执行 `clean`。缓存完整时可添加 `--offline`；受限环境无法建立本地进程通信时再改用 `--no-daemon`。
 
 **产物校验**
 

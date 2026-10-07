@@ -466,21 +466,39 @@ Windows PowerShell:
 
 ```powershell
 cd Bilibili_Innocent_Lab
-.\gradlew.bat assembleDebug --console=plain --no-daemon
+.\gradlew.bat assembleDebug --console=plain --daemon
 ```
 
 Linux / macOS:
 
 ```bash
 cd Bilibili_Innocent_Lab
-./gradlew assembleDebug --console=plain --no-daemon
+./gradlew assembleDebug --console=plain --daemon
 ```
 
 **Run the JVM unit tests**
 
 ```powershell
-.\gradlew.bat testDebugUnitTest --console=plain --no-daemon
+.\gradlew.bat testDebugUnitTest --console=plain --daemon
 ```
+
+**Run lint**
+
+Use the fast check during local iteration:
+
+```powershell
+.\gradlew.bat :app:lintFast --console=plain --daemon
+```
+
+The fast check skips only an explicit list of 32 BetterAndroid / KavaRef API replacement suggestions. Test-source analysis and Android correctness, permission, API compatibility, and Hikage checks remain enabled. It does not replace the full gate. Before committing and in CI, run:
+
+```powershell
+.\gradlew.bat :app:lintDebug --console=plain --daemon
+```
+
+Fast reports are saved under `app/build/reports/lint/fast/`, and full reports under `app/build/reports/lint/full/`; both HTML files are named `lint-results-debug.html`. Use full task names. Only `assembleDebug`, `assembleDebugAndroidTest`, and `testDebugUnitTest` may accompany `lintFast`; run other tasks and full gates separately. On Linux / macOS, use `./gradlew` with the same tasks.
+
+Keep the JDK and JVM arguments consistent to reuse the Gradle daemon and task cache. Routine builds do not require `clean`. Add `--offline` when dependencies are cached; use `--no-daemon` as a fallback when a restricted environment blocks local process communication.
 
 **Verifying the artifact**
 
