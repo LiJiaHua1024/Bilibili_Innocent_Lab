@@ -42,7 +42,9 @@ internal data class InjectedUiMessages(
      */
     val aiDeclaredBlockedHint: String,
     /** 连播里跳过了含 AI 生成声明的一集、继续播下一集时的回执。 */
-    val aiDeclaredPlaylistSkippedToast: String
+    val aiDeclaredPlaylistSkippedToast: String,
+    val sponsorSkip: String = "Skip sponsor segment",
+    val sponsorUndo: String = "Undo sponsor skip"
 )
 
 /**
@@ -310,7 +312,9 @@ internal object InjectedUiLocale {
         panelBlockRecordedToast = "已记下 %1\$s，对之后加载的推荐生效；在 Innocent_Lab 中确认后长期保留。",
         aiDeclaredRedirectToast = "已跳过含 AI 生成声明的视频，为你换成了相关视频",
         aiDeclaredBlockedHint = "该视频含 AI 生成声明，已由 Innocent_Lab 屏蔽",
-        aiDeclaredPlaylistSkippedToast = "已跳过含 AI 生成声明的视频，继续播放下一个"
+        aiDeclaredPlaylistSkippedToast = "已跳过含 AI 生成声明的视频，继续播放下一个",
+        sponsorSkip = "跳过商单片段",
+        sponsorUndo = "撤销商单跳过"
     )
 
     private val TRADITIONAL_CHINESE_MESSAGES = InjectedUiMessages(
@@ -327,7 +331,9 @@ internal object InjectedUiLocale {
         panelBlockRecordedToast = "已記下 %1\$s，對之後載入的推薦生效；在 Innocent_Lab 中確認後長期保留。",
         aiDeclaredRedirectToast = "已略過含 AI 生成聲明的影片，為你換成了相關影片",
         aiDeclaredBlockedHint = "此影片含 AI 生成聲明，已由 Innocent_Lab 封鎖",
-        aiDeclaredPlaylistSkippedToast = "已略過含 AI 生成聲明的影片，繼續播放下一部"
+        aiDeclaredPlaylistSkippedToast = "已略過含 AI 生成聲明的影片，繼續播放下一部",
+        sponsorSkip = "略過商單片段",
+        sponsorUndo = "復原商單略過"
     )
 
     private val TRADITIONAL_CHINESE_REGIONS = setOf("TW", "HK", "MO")

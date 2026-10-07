@@ -85,7 +85,7 @@ class ReleaseHighlightsTest {
         assertEquals(batches.size,batches.map { it.revision }.distinct().size)
         assertTrue(batches.all { it.revision > 0 })
         val entries = batches.flatMap { it.entries }
-        assertTrue(entries.size in 1..64)
+        assertTrue(entries.size in 1..ReleaseHighlightsCatalog.MAX_BUNDLED_ENTRIES)
         assertEquals(entries.size,entries.map { it.id }.distinct().size)
         entries.forEach { assertTrue(it.titleRes != 0); assertTrue(it.descriptionRes != 0) }
         val targets = entries.mapNotNull { it.destination }

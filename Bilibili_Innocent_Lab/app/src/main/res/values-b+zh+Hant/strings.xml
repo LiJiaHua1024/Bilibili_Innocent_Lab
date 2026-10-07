@@ -1234,4 +1234,9 @@
     <string name="host_bottom_bar_compact_tip">縮小底部導覽列高度，減少佔用空間。重新啟動嗶哩嗶哩後生效。</string>
     <string name="host_bottom_bar_icon_only">底部導覽列無字模式</string>
     <string name="host_bottom_bar_icon_only_tip">隱藏首頁、動態等標籤，僅保留圖示並垂直置中，同時縮減上下留白。可與小底部導覽列疊加使用，重新啟動嗶哩嗶哩後生效。</string>
+    <string name="sponsorblock_title">商單片段 · SponsorBlock</string>
+    <string name="highlights_sponsorblock">普通影片詳情頁可提示社群標註的商單片段，另可選擇自動略過並復原。預設關閉，開啟後會查詢 www.bsbsb.top 社群服務。</string>
+    <string name="sponsorblock_enabled">商單片段提示</string>
+    <string name="sponsorblock_automatic">自動略過商單片段</string>
+    <string name="sponsorblock_tip">開啟提示後，將使用影片編號的雜湊前綴查詢社群服務 www.bsbsb.top。僅支援普通影片詳情頁中的商單片段；自動略過須同時開啟提示，暫停和手動拖動優先。社群標註可能不準確，跳轉確認後 6 秒內可復原。不傳送投稿、投票或帳戶資料。修改後需重新啟動嗶哩嗶哩。</string>
 </resources>

@@ -1234,4 +1234,9 @@
     <string name="host_bottom_bar_compact_tip">缩小底栏高度，减少占用空间。重启哔哩哔哩后生效。</string>
     <string name="host_bottom_bar_icon_only">底栏无字模式</string>
     <string name="host_bottom_bar_icon_only_tip">隐藏首页、动态等标签，仅保留图标并上下居中，同时缩减上下留白。可与小底栏叠加使用，重启哔哩哔哩后生效。</string>
+    <string name="sponsorblock_title">商单片段 · SponsorBlock</string>
+    <string name="highlights_sponsorblock">普通视频详情页可提示社区标注的商单片段，另可选择自动跳过并撤销。默认关闭，开启后会查询 www.bsbsb.top 社区服务。</string>
+    <string name="sponsorblock_enabled">商单片段提示</string>
+    <string name="sponsorblock_automatic">自动跳过商单片段</string>
+    <string name="sponsorblock_tip">开启提示后，将使用视频编号的哈希前缀查询社区服务 www.bsbsb.top。仅支持普通视频详情页中的商单片段；自动跳过须同时开启提示，暂停和手动拖动优先。社区标注可能不准确，跳转确认后 6 秒内可撤销。不发送投稿、投票或账户数据。修改后需重启哔哩哔哩。</string>
 </resources>
