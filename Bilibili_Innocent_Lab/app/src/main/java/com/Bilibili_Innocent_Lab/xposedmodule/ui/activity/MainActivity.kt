@@ -10461,6 +10461,39 @@ class MainActivity : SkinnedActivity() {
             textColor = colorResource(R.color.colorTextDark)
             textSize = 12f
         }
+        TextView(lparams = LayoutParams(widthMatchParent = true) {
+            topMargin = AdvancedSubsectionStyle.TOP_MARGIN_DP.dp
+            bottomMargin = AdvancedSubsectionStyle.BOTTOM_MARGIN_DP.dp
+        }) {
+            text = stringResource(R.string.sponsorblock_title)
+            applyAdvancedSubsectionStyle()
+        }
+        listOf(FeaturePreferences.SPONSORBLOCK_ENABLED to R.string.sponsorblock_enabled,
+            FeaturePreferences.SPONSORBLOCK_AUTOMATIC to R.string.sponsorblock_automatic).forEach { (key, label) ->
+            MaterialSwitch(lparams = LayoutParams(widthMatchParent = true) {
+                topMargin = 12.dp
+                bottomMargin = 5.dp
+            }) {
+                bindFavoriteSwitch(this, key)
+                text = stringResource(label)
+                isAllCaps = false
+                textColor = colorResource(R.color.colorTextGray)
+                textSize = 15f
+                isChecked = uiSettings.bool(key)
+                setOnCheckedChangeListener { _, checked ->
+                    runCatching { prefs().edit { putBoolean(key, checked) } }.onFailure {
+                        Log.e("BilibiliInnocentLab", "write sponsorblock prefs failed", it)
+                    }
+                }
+            }
+        }
+        TextView(lparams = LayoutParams(widthMatchParent = true)) {
+            alpha = 0.6f
+            setLineSpacing(6f, 1f)
+            text = stringResource(R.string.sponsorblock_tip)
+            textColor = colorResource(R.color.colorTextDark)
+            textSize = 12f
+        }
     }
 
     /** 进阶增强 · ENHANCE_BROWSING 分类；标题即 marker，必须是本组第一个子控件。 */

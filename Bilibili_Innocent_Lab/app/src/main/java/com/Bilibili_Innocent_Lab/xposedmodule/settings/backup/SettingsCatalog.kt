@@ -30,7 +30,7 @@ import com.Bilibili_Innocent_Lab.xposedmodule.settings.appearance.ModalBackdropB
 internal object SettingsCatalog {
     const val PRODUCT_ID = "bilibili-innocent-lab.settings"
     const val SCOPE_ID = "core-user-settings"
-    const val CATALOG_VERSION = 42
+    const val CATALOG_VERSION = 43
     const val ID_PLAYER_DEFAULT_SPEED = "player.default_speed.percent"
     const val ID_PLAYER_LONG_PRESS_SPEED = "player.long_press_speed.percent"
     const val ID_FREE_COPY_COMMENT = "free_copy.comment.enabled"
@@ -728,6 +728,10 @@ internal object SettingsCatalog {
         integer(ID_PLAYER_DEFAULT_SPEED, FeaturePreferences.PLAYER_DEFAULT_SPEED_PERCENT,
             R.string.player_default_speed, default = PlayerSpeedConfig.FOLLOW_HOST,
             allowed = PlayerSpeedConfig.supportedPercents, introducedCatalogVersion = 13),
+        bool("player.sponsorblock.enabled", FeaturePreferences.SPONSORBLOCK_ENABLED,
+            R.string.sponsorblock_enabled, introducedCatalogVersion = 43),
+        bool("player.sponsorblock.automatic", FeaturePreferences.SPONSORBLOCK_AUTOMATIC,
+            R.string.sponsorblock_automatic, introducedCatalogVersion = 43),
 
         bool("comments.search_links.removed", FeaturePreferences.REMOVE_COMMENT_SEARCH_LINKS, R.string.remove_comment_search_links),
         bool("comments.empty_guide.removed", FeaturePreferences.REMOVE_COMMENT_EMPTY_GUIDE, R.string.remove_comment_empty_guide),
@@ -892,7 +896,7 @@ internal object SettingsCatalog {
     val byStorageKey: Map<String, SettingSpec> = specs.associateBy(SettingSpec::storageKey)
 
     init {
-        check(specs.size == 199) { "Expected 199 catalog settings, found ${specs.size}" }
+        check(specs.size == 201) { "Expected 201 catalog settings, found ${specs.size}" }
         check(byId.size == specs.size) { "Duplicate logical setting id" }
         check(specs.map(SettingSpec::storageKey).distinct().size == specs.size) {
             "Duplicate settings storage key"

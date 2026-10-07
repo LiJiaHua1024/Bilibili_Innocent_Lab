@@ -1230,4 +1230,9 @@
     <string name="host_bottom_bar_compact_tip">Reduces the bottom bar height. Restart Bilibili to apply.</string>
     <string name="host_bottom_bar_icon_only">Icon-only bottom bar</string>
     <string name="host_bottom_bar_icon_only_tip">Hides tab labels, centers icons vertically, and reduces vertical space. Can be combined with compact mode. Restart Bilibili to apply.</string>
+    <string name="sponsorblock_title">SponsorBlock</string>
+    <string name="highlights_sponsorblock">Ordinary video details can show community sponsor-segment prompts, with optional automatic skipping and undo. Disabled by default; enabling it queries www.bsbsb.top.</string>
+    <string name="sponsorblock_enabled">Sponsor segment prompts</string>
+    <string name="sponsorblock_automatic">Automatically skip sponsor segments</string>
+    <string name="sponsorblock_tip">Enable prompts to query the community service www.bsbsb.top using a video ID hash prefix. Only sponsor segments in ordinary video details are supported. Automatic skipping also requires prompts to be enabled; pause and manual scrubbing take priority. Community markings may be inaccurate. A confirmed skip can be undone for 6 seconds. No submissions, votes or account data are sent. Restart Bilibili after changing these settings.</string>
 </resources>

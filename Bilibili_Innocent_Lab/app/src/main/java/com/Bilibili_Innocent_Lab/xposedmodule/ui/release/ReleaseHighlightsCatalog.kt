@@ -7,7 +7,7 @@ import com.Bilibili_Innocent_Lab.xposedmodule.settings.backup.SettingsCatalog
 internal enum class HighlightKind { NEW, IMPROVED, FIXED }
 /**
  * [alsoCovers]：同一项功能附带的其它设置（例如 2–4 号来源的类型/地址/模型、四个过滤面各自的判定来源），
- * 显式逐个列出算作"已审阅"，不必每个都占一条亮点（总数有 64 条上限）。只用于覆盖审阅，不参与跳转。
+ * 显式逐个列出算作"已审阅"，不必每个都占一条亮点（完整历史仍有条数上限）。只用于覆盖审阅，不参与跳转。
  */
 internal data class HighlightDestination(
     val settingId: String,
@@ -39,6 +39,8 @@ internal object ReleaseHighlightsCatalog {
     // 注意以后改版本号都要改一下这个地方的版本号，下面这个REVIEWED，不然过不了ci
     const val REVIEWED_VERSION_CODE = 21
     const val SETTINGS_BASELINE_VERSION = 13
+    // 历史已达 64 项；新增功能时保留已有公告，目录继续以 96 项为硬上限。
+    const val MAX_BUNDLED_ENTRIES = 96
     val batches = listOf(ReleaseHighlightsBatch(1, listOf(
         ReleaseHighlight("player-end-page-recommend", HighlightKind.NEW,
             R.string.hide_player_end_page_recommend_tip,
@@ -250,6 +252,10 @@ internal object ReleaseHighlightsCatalog {
         ReleaseHighlight("reply-topology-tree-explorer", HighlightKind.IMPROVED,
             R.string.highlights_reply_topology_tree_explorer,
             HighlightDestination("comments.reply_topology.enabled"))
+    )), ReleaseHighlightsBatch(8, listOf(
+        ReleaseHighlight("sponsorblock", HighlightKind.NEW, R.string.highlights_sponsorblock,
+            HighlightDestination("player.sponsorblock.enabled",
+                alsoCovers = setOf("player.sponsorblock.automatic")))
     )))
     val currentRevision: Int get() = batches.maxOf { it.revision }
     val destinations get() = batches.sortedByDescending { it.revision }.flatMap { it.entries }
