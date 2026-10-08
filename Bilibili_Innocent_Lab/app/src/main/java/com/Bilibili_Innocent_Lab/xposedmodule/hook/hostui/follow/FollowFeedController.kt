@@ -10,6 +10,7 @@ import android.view.View
 import android.view.ViewGroup
 import android.view.ViewTreeObserver
 import android.widget.FrameLayout
+import android.widget.RelativeLayout
 import android.widget.TextView
 import com.lumen.coacervation.engine.host.LumenSurfaceBinding
 import com.lumen.coacervation.engine.host.LumenSurfaceBackend
@@ -44,6 +45,7 @@ internal class FollowFeedController(
     private val rows = WeakHashMap<View, RowState>()
     // 页面自身的 attach listener 持有生命周期；全局索引不能反向强持有 Activity。
     private val pages = WeakHashMap<View, WeakReference<Page>>()
+    private val personalChrome = WeakHashMap<View, WeakReference<FollowFeedPersonalChrome>>()
     private val rowAttach = object : View.OnAttachStateChangeListener {
         override fun onViewAttachedToWindow(view: View) { safely { attachRow(view) } }
         override fun onViewDetachedFromWindow(view: View) {
@@ -51,16 +53,19 @@ internal class FollowFeedController(
         }
     }
 
-    fun attach(root: View) = safely {
+    fun attach(root: View, personalFeed: Boolean = false) = safely {
         if (pages[root]?.get()?.closed == false) return@safely
-        val page = Page(root)
+        val page = Page(root, personalFeed)
         pages[root] = WeakReference(page)
         page.start()
     }
 
     fun close(root: View) { pages.remove(root)?.get()?.close() }
     fun pause(root: View) { pages[root]?.get()?.setLifecycleActive(false) }
-    fun resume(root: View) = safely { attach(root); pages[root]?.get()?.setLifecycleActive(true) }
+    fun resume(root: View, personalFeed: Boolean = false) = safely {
+        attach(root, personalFeed); pages[root]?.get()?.setLifecycleActive(true)
+    }
+    fun visibility(root: View, visible: Boolean) { pages[root]?.get()?.setUserVisible(visible) }
     fun headerPadding(root: View, requested: Int) = pages[root]?.get()?.headerPadding(requested) ?: requested
 
     fun bind(root: View, holder: Any, position: Int) = safely {
@@ -84,6 +89,16 @@ internal class FollowFeedController(
         val state = rows[root] ?: return false
         val identity = state.row?.identity ?: return false
         return root.parent === list && state.decorated && state.page.get()?.hasCardSurface(list, identity) == true
+    }
+
+    fun replacesPersonalSeparators(list: ViewGroup): Boolean {
+        val page = pageFor(list) ?: return false
+        if (!page.personalFeed || !page.isFeedList(list)) return false
+        // 原装饰器只画后续动态头部的分隔线；卡片承托完整时才撤掉它。
+        return list.childCount > 0 && (0 until list.childCount).all { index ->
+            val root = list.getChildAt(index)
+            rows[root]?.row != null && replacesModuleBackground(list, root)
+        }
     }
 
     fun childAttached(root: View) = safely {
@@ -207,7 +222,14 @@ internal class FollowFeedController(
 
     private inline fun safely(block: () -> Unit) { runCatching(block).onFailure(error) }
 
-    internal inner class Page(root: View) : AutoCloseable, View.OnAttachStateChangeListener, ViewTreeObserver.OnPreDrawListener {
+    private fun syncPersonalChrome(view: View, palette: LumenPalette) {
+        val window = view.rootView
+        val chrome = personalChrome[window]?.get()?.takeUnless { it.closed }
+            ?: FollowFeedPersonalChrome.create(window)?.also { personalChrome[window] = WeakReference(it) }
+        chrome?.updatePalette(palette)
+    }
+
+    internal inner class Page(root: View, val personalFeed: Boolean = false) : AutoCloseable, View.OnAttachStateChangeListener, ViewTreeObserver.OnPreDrawListener {
         private val root = WeakReference(root)
         private val theme = HostChromeTheme(root.context)
         private var colors = theme.read()
@@ -226,6 +248,7 @@ internal class FollowFeedController(
         private var themeReadAt = 0L
         private var paused = false
         private var lifecycleActive = true
+        private var userVisible = true
         private var selectionAttempted = false
         var closed = false
             private set
@@ -240,9 +263,14 @@ internal class FollowFeedController(
         }
         fun text(view: View, name: String): TextView? = find<View>(view, name) as? TextView
         fun group(view: View, name: String): ViewGroup? = find<View>(view, name) as? ViewGroup
-        fun isFeedList(view: ViewGroup): Boolean = view.id == ids.getOrPut("dy_list") {
-            view.resources.getIdentifier("dy_list", "id", view.context.packageName)
-        } && view.parent is FrameLayout && view.javaClass.name == "androidx.recyclerview.widget.RecyclerView"
+        fun isFeedList(view: ViewGroup): Boolean {
+            val name = if (personalFeed) "recycler" else "dy_list"
+            val id = ids.getOrPut(name) { view.resources.getIdentifier(name, "id", view.context.packageName) }
+            val supportedParent = if (personalFeed) view.parent === root.get() && view.parent is RelativeLayout
+                else view.parent is FrameLayout
+            return id != 0 && view.id == id && supportedParent &&
+                view.javaClass.name == "androidx.recyclerview.widget.RecyclerView"
+        }
 
         fun list(view: ViewGroup) { lists.getOrPut(view) { FeedList(view) } }
         fun hasCardSurface(list: ViewGroup, identity: Long) = !closed && !paused &&
@@ -270,6 +298,13 @@ internal class FollowFeedController(
         private fun applyPageColors(view: View) {
             edits.restore()
             edits.background(view, ColorDrawable(palette.background))
+            if (personalFeed) {
+                syncPersonalChrome(view, palette)
+                find<View>(view, "header_container")?.let { edits.background(it, ColorDrawable(palette.background)) }
+                text(view, "header")?.let { edits.text(it, palette.textPrimary) }
+                text(view, "sub_title")?.let { edits.text(it, palette.textSecondary) }
+                return
+            }
             find<View>(view, "dy_app_bar")?.let { edits.background(it, ColorDrawable(palette.background)) }
             var ancestor: View? = view
             repeat(12) {
@@ -294,8 +329,9 @@ internal class FollowFeedController(
         override fun onPreDraw(): Boolean {
             safely {
                 val view = root.get() ?: return@safely
-                if (!lifecycleActive || !view.isShown) { pause(); return@safely }
+                if (!lifecycleActive || !userVisible || !view.isShown) { pause(); return@safely }
                 if (paused) resume()
+                if (personalFeed) syncPersonalChrome(view, palette)
                 val now = SystemClock.uptimeMillis()
                 if (now - themeReadAt >= 250) {
                     themeReadAt = now
@@ -318,7 +354,7 @@ internal class FollowFeedController(
                     selection = FollowFeedSelection.create(it, session, palette)
                 }
                 selection?.sync(); selection?.resume()
-                if (compactHeaderSupported && !headerAttempted && selection != null) {
+                if (!personalFeed && compactHeaderSupported && !headerAttempted && selection != null) {
                     headerAttempted = true
                     header = FollowFeedHeader.create(view, requireNotNull(selection), palette)
                 }
@@ -360,7 +396,12 @@ internal class FollowFeedController(
 
         fun setLifecycleActive(active: Boolean) {
             lifecycleActive = active
-            if (active) resume() else pause()
+            if (active && userVisible) resume() else pause()
+        }
+
+        fun setUserVisible(visible: Boolean) {
+            userVisible = visible
+            if (visible && lifecycleActive) resume() else pause()
         }
 
         fun resume() {
@@ -394,7 +435,7 @@ internal class FollowFeedController(
 
         /** 表面只是列表的背景兄弟层；不拦截触摸，也不绘制自定义 Drawable。 */
         private inner class FeedList(private val list: ViewGroup) : AutoCloseable {
-            private val parent = list.parent as FrameLayout
+            private val parent = list.parent as ViewGroup
             private val layer = object : FrameLayout(list.context) {
                 override fun onLayout(changed: Boolean, l: Int, t: Int, r: Int, b: Int) = Unit
             }.apply {
@@ -407,6 +448,8 @@ internal class FollowFeedController(
             private var viewport: FollowFeedViewport? = null
             private val originalPadding = list.paddingBottom
             private var appliedPadding = originalPadding
+            private val originalTopPadding = list.paddingTop
+            private var appliedTopPadding = originalTopPadding
             private val panels = LinkedHashMap<Long, Panel>()
             private val location = IntArray(2)
             private var dock: WeakReference<View>? = null
@@ -437,7 +480,11 @@ internal class FollowFeedController(
             }
 
             init {
-                parent.addView(layer, parent.indexOfChild(list), FrameLayout.LayoutParams(-1, -1))
+                parent.addView(layer, parent.indexOfChild(list), ViewGroup.LayoutParams(-1, -1))
+                if (personalFeed) {
+                    appliedTopPadding = maxOf(originalTopPadding, dp(FollowFeedStyle.GAP_DP))
+                    list.setPadding(list.paddingLeft, appliedTopPadding, list.paddingRight, list.paddingBottom)
+                }
                 updatePalette()
             }
 
@@ -449,6 +496,11 @@ internal class FollowFeedController(
 
             fun update() {
                 if (!list.isShown || !list.isAttachedToWindow) { releasePanels(); return }
+                // UP 主页的标题与列表共享 RelativeLayout，卡片层只绘制列表视口。
+                if (personalFeed) {
+                    val bounds = Rect(list.left, list.top, list.right, list.bottom)
+                    if (layer.clipBounds != bounds) layer.clipBounds = bounds
+                }
                 if (header != null) {
                     if (viewport == null) viewport = root.get()?.let { FollowFeedViewport(list, it as ViewGroup) }
                     viewport?.sync(root.get()?.paddingTop ?: 0)
@@ -541,8 +593,9 @@ internal class FollowFeedController(
             override fun close() {
                 releasePanels(); viewport?.close(); viewport = null
                 parent.removeView(layer); listEdits.restore()
-                if (list.paddingBottom == appliedPadding)
-                    list.setPadding(list.paddingLeft, list.paddingTop, list.paddingRight, originalPadding)
+                list.setPadding(list.paddingLeft,
+                    if (list.paddingTop == appliedTopPadding) originalTopPadding else list.paddingTop,
+                    list.paddingRight, if (list.paddingBottom == appliedPadding) originalPadding else list.paddingBottom)
             }
         }
     }

@@ -4,6 +4,7 @@ import com.Bilibili_Innocent_Lab.xposedmodule.hook.hostui.common.HostChromeColor
 import com.Bilibili_Innocent_Lab.xposedmodule.hook.hostui.follow.FollowFeedController
 import com.Bilibili_Innocent_Lab.xposedmodule.hook.hostui.follow.FollowFeedHeader
 import com.Bilibili_Innocent_Lab.xposedmodule.hook.hostui.follow.FollowFeedHostAccess
+import com.Bilibili_Innocent_Lab.xposedmodule.hook.hostui.follow.FollowFeedPersonalChrome
 import com.Bilibili_Innocent_Lab.xposedmodule.hook.hostui.follow.FollowFeedSelection
 import com.Bilibili_Innocent_Lab.xposedmodule.hook.hostui.follow.FollowFeedStyle
 import com.Bilibili_Innocent_Lab.xposedmodule.hook.hostui.follow.FollowFeedViewEdits
@@ -17,6 +18,8 @@ import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.drawable.ColorDrawable
 import android.view.View
+import android.view.LayoutInflater
+import android.view.ViewGroup
 import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.TextView
@@ -59,6 +62,103 @@ class FollowFeedInstrumentedTest {
         assertNotNull(recycler.getDeclaredMethod("dispatchChildAttached", View::class.java))
         val mediator = host.classLoader.loadClass("com.bilibili.bplus.followinglist.home.mediator.MediatorFragment")
         assertEquals(Boolean::class.javaPrimitiveType, mediator.getDeclaredMethod("ye", Int::class.javaPrimitiveType).returnType)
+        val personal = host.classLoader.loadClass("com.bilibili.bplus.followinglist.quick.consume.VideoQuickConsumeFragment")
+        assertNotNull(personal.getDeclaredMethod("onViewCreated", View::class.java, android.os.Bundle::class.java))
+        assertNotNull(personal.getDeclaredMethod("onDestroyView"))
+        assertNotNull(personal.getDeclaredMethod("setUserVisibleCompat", Boolean::class.javaPrimitiveType))
+        assertNotNull(personal.getMethod("getUserVisibleHint"))
+        val separator = host.classLoader.loadClass("com.bilibili.bplus.followinglist.quick.consume.y0")
+        val state = host.classLoader.loadClass("androidx.recyclerview.widget.RecyclerView\$State")
+        assertEquals(Void.TYPE, separator.getDeclaredMethod("onDrawOver", Canvas::class.java, recycler, state).returnType)
+    }
+
+    @Test fun personalFeedAcceptsTheNativeLayoutAndRestoresItAcrossPageSwitches() = main { context ->
+        val host = context.createPackageContext("tv.danmaku.bili",
+            Context.CONTEXT_INCLUDE_CODE or Context.CONTEXT_IGNORE_SECURITY)
+        val bindingType = host.classLoader.loadClass("nr1.q")
+        val binding = bindingType.getMethod("inflate", LayoutInflater::class.java)
+            .invoke(null, LayoutInflater.from(host))
+        val page = bindingType.getMethod("getRoot").invoke(binding) as ViewGroup
+        val list = page.findViewById<ViewGroup>(host.resources.getIdentifier("recycler", "id", host.packageName))
+        val header = page.findViewById<View>(host.resources.getIdentifier("header_container", "id", host.packageName))
+        val originalChildren = page.childCount
+        val originalBackground = page.background
+        val originalHeader = header.background
+        val originalPadding = list.paddingTop
+        val controller = FollowFeedController(requireNotNull(FollowFeedHostAccess.resolve(host.classLoader)),
+            compactHeaderSupported = true, report = {}, error = { throw it })
+        // 首页模式不能把 UP 主页的通用 recycler ID 当成首页列表。
+        controller.attach(page)
+        assertEquals(originalChildren, page.childCount)
+        controller.close(page)
+        repeat(3) {
+            controller.attach(page, personalFeed = true)
+            assertEquals(originalChildren + 1, page.childCount)
+            val layer = page.getChildAt(page.indexOfChild(list) - 1)
+            assertTrue(layer is FrameLayout)
+            assertFalse(layer.isClickable)
+            assertEquals(maxOf(originalPadding,
+                (FollowFeedStyle.GAP_DP * host.resources.displayMetrics.density).toInt()), list.paddingTop)
+            assertEquals((page.background as ColorDrawable).color, (header.background as ColorDrawable).color)
+            controller.attach(page, personalFeed = true)
+            controller.visibility(page, false)
+            controller.pause(page)
+            controller.resume(page, personalFeed = true)
+            controller.visibility(page, true)
+            assertEquals(originalChildren + 1, page.childCount)
+            controller.close(page)
+            assertEquals(originalChildren, page.childCount)
+            assertEquals(originalPadding, list.paddingTop)
+            assertSame(originalBackground, page.background)
+            assertSame(originalHeader, header.background)
+        }
+    }
+
+    @Test fun nativePersonalArrowMatchesPagePaletteAndRestoresItsOriginalShape() = main { context ->
+        val host = context.createPackageContext("tv.danmaku.bili",
+            Context.CONTEXT_INCLUDE_CODE or Context.CONTEXT_IGNORE_SECURITY)
+        val layout = host.classLoader.loadClass("ir1.k").getField("d").getInt(null)
+        val root = LayoutInflater.from(host).inflate(layout, null)
+        val arrow = root.findViewById<View>(host.resources.getIdentifier("dy_arrow", "id", host.packageName))
+        val original = requireNotNull(arrow.background)
+        val sibling = requireNotNull(original.constantState).newDrawable(host.resources)
+        fun render(drawable: android.graphics.drawable.Drawable): Bitmap {
+            val bitmap = Bitmap.createBitmap(47, 47, Bitmap.Config.ARGB_8888)
+            drawable.setBounds(0, 0, 47, 47)
+            drawable.draw(Canvas(bitmap))
+            return bitmap
+        }
+        val reference = render(original)
+        // 三角形的包围盒中心可能透明；取原图中实际不透明的像素验证配色。
+        val sample = (0 until 47 * 47).first { Color.alpha(reference.getPixel(it % 47, it / 47)) == 255 }
+        val originalPixel = reference.getPixel(sample % 47, sample / 47)
+        fun assertColor(drawable: android.graphics.drawable.Drawable, expected: Int) {
+            val bitmap = render(drawable)
+            assertEquals(expected, bitmap.getPixel(sample % 47, sample / 47))
+            for (y in 0 until 47) for (x in 0 until 47)
+                assertEquals(Color.alpha(reference.getPixel(x, y)), Color.alpha(bitmap.getPixel(x, y)))
+            bitmap.recycle()
+        }
+        val chrome = requireNotNull(FollowFeedPersonalChrome.create(root))
+        for (dark in listOf(false, true, false)) {
+            val palette = FollowFeedStyle.palette(HostChromeColors(dark, Color.BLUE))
+            chrome.updatePalette(palette)
+            assertColor(requireNotNull(arrow.background), palette.background)
+            assertColor(sibling, originalPixel)
+            val installed = arrow.background
+            chrome.updatePalette(palette)
+            assertSame(installed, arrow.background)
+            // 宿主主题刷新可能重新设置原 drawable；下一帧仍应恢复为页面底色。
+            arrow.background = requireNotNull(original.constantState).newDrawable(host.resources)
+            chrome.updatePalette(palette)
+            assertColor(requireNotNull(arrow.background), palette.background)
+        }
+        val lastNative = requireNotNull(original.constantState).newDrawable(host.resources)
+        arrow.background = lastNative
+        chrome.onViewDetachedFromWindow(root)
+        assertTrue(chrome.closed)
+        assertSame(lastNative, arrow.background)
+        reference.recycle()
     }
 
     @Test fun realStaticPixelsAreOpaqueAndHaveNoCaptureBackend() = main { context ->
