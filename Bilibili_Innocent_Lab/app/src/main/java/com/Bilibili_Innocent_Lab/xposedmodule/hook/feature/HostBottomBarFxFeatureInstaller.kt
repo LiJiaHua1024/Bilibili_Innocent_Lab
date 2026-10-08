@@ -2,6 +2,8 @@ package com.Bilibili_Innocent_Lab.xposedmodule.hook.feature
 
 import com.Bilibili_Innocent_Lab.xposedmodule.hook.hostui.bottom.HostBottomBarFxConfig
 import com.Bilibili_Innocent_Lab.xposedmodule.hook.hostui.bottom.HostBottomBarFxController
+import com.Bilibili_Innocent_Lab.xposedmodule.settings.appearance.HostChromeAppearance
+import com.Bilibili_Innocent_Lab.xposedmodule.settings.appearance.HostGlassRenderer
 
 import android.view.ViewGroup
 import com.Bilibili_Innocent_Lab.xposedmodule.hook.VersionAdapter
@@ -16,7 +18,8 @@ internal class HostBottomBarFxFeatureInstaller(
     private val touchGlow: Boolean,
     private val points: VersionAdapter.BottomBarPoints?,
     private val compact: Boolean = false,
-    private val iconOnly: Boolean = false
+    private val iconOnly: Boolean = false,
+    private val appearance: HostChromeAppearance = HostChromeAppearance(renderer = HostGlassRenderer.SOFTWARE)
 ) : FeatureInstaller {
 
     override val id: String = ID
@@ -39,7 +42,8 @@ internal class HostBottomBarFxFeatureInstaller(
             liquidGlass = liquidGlass,
             touchGlow = touchGlow,
             compact = compact,
-            iconOnly = iconOnly
+            iconOnly = iconOnly,
+            appearance = appearance
         )
 
         return runCatching {
@@ -51,7 +55,7 @@ internal class HostBottomBarFxFeatureInstaller(
                         environment.reportRuntimeEvidence(ID, FeatureRuntimeStage.APPLIED)
                         environment.logInfo(
                             "host_bottom_bar_fx_hit",
-                            "[BIL] 宿主底栏视觉增强生效(liquidGlass=$liquidGlass, touchGlow=$touchGlow)"
+                            "[BIL] 宿主底栏视觉增强生效(liquidGlass=$liquidGlass, touchGlow=$touchGlow, appearance=$appearance)"
                         )
                     }
                 }

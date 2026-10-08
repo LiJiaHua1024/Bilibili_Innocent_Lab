@@ -2753,7 +2753,13 @@ class HookEntry : XposedModule() {
                             FeaturePreferences.HOST_TOP_BAR_TOUCH_GLOW,
                             false
                         ),
-                        points = hostAdaptResult?.homeTopBar
+                        points = hostAdaptResult?.homeTopBar,
+                        appearance = com.Bilibili_Innocent_Lab.xposedmodule.settings.appearance.HostChromeAppearance.read(
+                            prefs.getString(FeaturePreferences.HOST_TOP_BAR_GLASS_MATERIAL, "soft"),
+                            prefs.getString(FeaturePreferences.HOST_TOP_BAR_GLASS_RENDERER, "legacy"),
+                            bottom = false,
+                            enabled = prefs.getBoolean(FeaturePreferences.HOST_TOP_BAR_LIQUID_GLASS, false)
+                        )
                     )
                 )
             )
@@ -3099,7 +3105,13 @@ class HookEntry : XposedModule() {
                         ),
                         points = hostAdaptResult?.bottomBar,
                         compact = prefs.getBoolean(FeaturePreferences.HOST_BOTTOM_BAR_COMPACT, false),
-                        iconOnly = prefs.getBoolean(FeaturePreferences.HOST_BOTTOM_BAR_ICON_ONLY, false)
+                        iconOnly = prefs.getBoolean(FeaturePreferences.HOST_BOTTOM_BAR_ICON_ONLY, false),
+                        appearance = com.Bilibili_Innocent_Lab.xposedmodule.settings.appearance.HostChromeAppearance.read(
+                            prefs.getString(FeaturePreferences.HOST_BOTTOM_BAR_GLASS_MATERIAL, "soft"),
+                            prefs.getString(FeaturePreferences.HOST_BOTTOM_BAR_GLASS_RENDERER, "legacy"),
+                            bottom = true,
+                            enabled = prefs.getBoolean(FeaturePreferences.HOST_BOTTOM_BAR_LIQUID_GLASS, false)
+                        )
                     ),
                     HostVideoCardStyleFeatureInstaller(
                         enabled = prefs.getBoolean(FeaturePreferences.HOST_VIDEO_CARDS, false),

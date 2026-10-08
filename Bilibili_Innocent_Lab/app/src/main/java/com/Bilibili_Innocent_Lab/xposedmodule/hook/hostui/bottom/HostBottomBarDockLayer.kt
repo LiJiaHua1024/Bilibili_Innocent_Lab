@@ -126,7 +126,7 @@ internal class HostBottomBarDockLayer(
         val changed = colors != materialColors
         backdrop?.updatePalette(colors)
         if (config.liquidGlass && (changed || backdrop?.owns(tabHost) != true)) {
-            backdrop?.surface(tabHost, HostSurfaceStyle.floating(colors.dark, config.heightDp / 2f))
+            backdrop?.floating(tabHost, colors.dark, config.heightDp / 2f)
         }
         if (config.liquidGlass && (changed || backdrop?.owns(selectionView) != true)) {
             backdrop?.surface(selectionView, HostSurfaceStyle.selection(colors.dark))

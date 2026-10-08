@@ -1,11 +1,15 @@
 package com.Bilibili_Innocent_Lab.xposedmodule.hook.hostui.bottom
 
+import com.Bilibili_Innocent_Lab.xposedmodule.settings.appearance.HostChromeAppearance
+import com.Bilibili_Innocent_Lab.xposedmodule.settings.appearance.HostGlassRenderer
+
 /** 配置项参数 */
 internal data class HostBottomBarFxConfig(
     val liquidGlass: Boolean = true,
     val touchGlow: Boolean = true,
     val compact: Boolean = false,
-    val iconOnly: Boolean = false
+    val iconOnly: Boolean = false,
+    val appearance: HostChromeAppearance = HostChromeAppearance(renderer = HostGlassRenderer.SOFTWARE)
 ) {
     val heightDp: Float
         get() = when {

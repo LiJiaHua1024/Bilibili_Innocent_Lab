@@ -6,6 +6,7 @@ import com.Bilibili_Innocent_Lab.xposedmodule.hook.hostui.common.HostDockLayer
 import com.Bilibili_Innocent_Lab.xposedmodule.hook.hostui.common.HostGlowView
 import com.Bilibili_Innocent_Lab.xposedmodule.hook.hostui.common.HostSurfaceScope
 import com.Bilibili_Innocent_Lab.xposedmodule.hook.hostui.common.HostSurfaceStyle
+import com.Bilibili_Innocent_Lab.xposedmodule.settings.appearance.HostChromeAppearance
 
 import android.annotation.SuppressLint
 import android.graphics.Outline
@@ -30,7 +31,8 @@ import kotlin.math.roundToInt
 /** 宿主顶栏视觉增强配置 */
 internal data class HostTopBarFxConfig(
     val liquidGlass: Boolean = true,
-    val touchGlow: Boolean = true
+    val touchGlow: Boolean = true,
+    val appearance: HostChromeAppearance = HostChromeAppearance()
 )
 
 /** 保留原生分类与搜索区；引擎表面、触控柔光、收岛和状态栏融合分别装配。 */
@@ -86,14 +88,14 @@ internal object HostTopBarFxController {
         val marginV = (MARGIN_V_DP * density).roundToInt()
 
         // 1. 悬浮胶囊几何形态与 Liquid Glass 外壳背景
-        val backdrop = if (config.liquidGlass) HostSurfaceScope(topBarDock, colors) else null
+        val backdrop = if (config.liquidGlass) HostSurfaceScope(topBarDock, colors, appearance = config.appearance) else null
         var materialColors = colors
 
         fun updateSurfaceDrawable(force: Boolean = false, current: HostChromeColors = theme.read()) {
             if (!config.liquidGlass) return
             backdrop?.updatePalette(current)
             if (force || backdrop?.owns(topBarDock) != true || current != materialColors) {
-                backdrop?.surface(topBarDock, HostSurfaceStyle.floating(current.dark, BAR_HEIGHT_DP / 2f))
+                backdrop?.floating(topBarDock, current.dark, BAR_HEIGHT_DP / 2f)
             }
         }
         if (config.liquidGlass) {

@@ -228,8 +228,8 @@ internal class HostTopIslandBinding private constructor(
         shell.translationZ = 11f * density
         shell.importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
         shell.visibility = View.INVISIBLE
-        backdrop?.surface(shell, HostSurfaceStyle.floating(HostChromeTheme(dock.context).read().dark,
-            (dock.height / density / 2f).coerceAtLeast(22f)))
+        backdrop?.floating(shell, HostChromeTheme(dock.context).read().dark,
+            (dock.height / density / 2f).coerceAtLeast(22f))
         // 让宿主生成 LayoutParams，避免模块和宿主的 ConstraintLayout ClassLoader 不同。
         parent.addView(input)
         val lp = input.layoutParams
@@ -324,8 +324,7 @@ internal class HostTopIslandBinding private constructor(
 
     fun updateMaterial(colors: HostChromeColors) {
         recolor(colors.accent)
-        backdrop?.surface(shell, HostSurfaceStyle.floating(colors.dark,
-            (dock.height / density / 2f).coerceAtLeast(22f)))
+        backdrop?.floating(shell, colors.dark, (dock.height / density / 2f).coerceAtLeast(22f))
     }
 
     private fun updatePageAction(force: Boolean = false) {

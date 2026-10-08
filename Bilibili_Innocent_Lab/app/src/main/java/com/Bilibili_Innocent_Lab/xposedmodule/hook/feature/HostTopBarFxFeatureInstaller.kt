@@ -2,6 +2,7 @@ package com.Bilibili_Innocent_Lab.xposedmodule.hook.feature
 
 import com.Bilibili_Innocent_Lab.xposedmodule.hook.hostui.top.HostTopBarFxConfig
 import com.Bilibili_Innocent_Lab.xposedmodule.hook.hostui.top.HostTopBarFxController
+import com.Bilibili_Innocent_Lab.xposedmodule.settings.appearance.HostChromeAppearance
 
 import android.view.ViewGroup
 import com.Bilibili_Innocent_Lab.xposedmodule.hook.VersionAdapter
@@ -15,7 +16,8 @@ import java.util.concurrent.atomic.AtomicBoolean
 internal class HostTopBarFxFeatureInstaller(
     private val liquidGlass: Boolean,
     private val touchGlow: Boolean,
-    private val points: VersionAdapter.HomeTopBarPoints?
+    private val points: VersionAdapter.HomeTopBarPoints?,
+    private val appearance: HostChromeAppearance = HostChromeAppearance()
 ) : FeatureInstaller {
 
     override val id: String = ID
@@ -36,7 +38,8 @@ internal class HostTopBarFxFeatureInstaller(
         val firstHit = AtomicBoolean(false)
         val config = HostTopBarFxConfig(
             liquidGlass = liquidGlass,
-            touchGlow = touchGlow
+            touchGlow = touchGlow,
+            appearance = appearance
         )
 
         return runCatching {
@@ -49,7 +52,7 @@ internal class HostTopBarFxFeatureInstaller(
                         environment.reportRuntimeEvidence(ID, FeatureRuntimeStage.APPLIED)
                         environment.logInfo(
                             "host_top_bar_fx_hit",
-                            "[BIL] 宿主顶栏视觉增强生效(liquidGlass=$liquidGlass, touchGlow=$touchGlow)"
+                            "[BIL] 宿主顶栏视觉增强生效(liquidGlass=$liquidGlass, touchGlow=$touchGlow, appearance=$appearance)"
                         )
                     }
                 }

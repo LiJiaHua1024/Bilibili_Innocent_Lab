@@ -2,6 +2,9 @@ package com.Bilibili_Innocent_Lab.xposedmodule.hook.hostui.common
 
 import android.graphics.drawable.Drawable
 import android.view.View
+import android.os.Build
+import com.Bilibili_Innocent_Lab.xposedmodule.settings.appearance.HostChromeAppearance
+import com.Bilibili_Innocent_Lab.xposedmodule.settings.appearance.HostGlassRenderer
 import com.lumen.coacervation.engine.host.LumenSurfaceBinding
 import com.lumen.coacervation.engine.host.LumenSurfaceBackend
 import com.lumen.coacervation.engine.host.LumenSurfaceDiagnostics
@@ -17,7 +20,8 @@ import java.util.WeakHashMap
  * detach 关闭全部资源，重新 attach 重建绑定；主题变化只更新配色。
  */
 internal class HostSurfaceScope(anchor: View, colors: HostChromeColors,
-    private val samplingBackend: LumenSurfaceBackend = LumenSurfaceBackend.AUTO) {
+    private val samplingBackend: LumenSurfaceBackend = LumenSurfaceBackend.AUTO,
+    private val appearance: HostChromeAppearance = HostChromeAppearance()) {
     private class Surface(var options: LumenSurfaceOptions) {
         var binding: LumenSurfaceBinding? = null
         var background: Drawable? = null
@@ -62,6 +66,9 @@ internal class HostSurfaceScope(anchor: View, colors: HostChromeColors,
             } else bind(view, existing)
         }
     }
+
+    fun floating(view: View, dark: Boolean, radiusDp: Float) =
+        surface(view, HostSurfaceStyle.floating(dark, radiusDp, appearance.compatible(Build.VERSION.SDK_INT)))
 
     fun owns(view: View): Boolean = surfaces[view]?.let {
         it.binding?.isBound == true && view.background === it.background
@@ -125,8 +132,13 @@ internal class HostSurfaceScope(anchor: View, colors: HostChromeColors,
 
     fun onVisualMovement() = session?.notifyPositionChanged() ?: Unit
 
-    private fun effectiveOptions(options: LumenSurfaceOptions) = if (samplingBackend == LumenSurfaceBackend.AUTO) options
-        else options.copy(sampling = options.sampling.copy(backend = samplingBackend))
+    private fun effectiveOptions(options: LumenSurfaceOptions): LumenSurfaceOptions {
+        val backend = if (samplingBackend != LumenSurfaceBackend.AUTO) samplingBackend
+            else if (appearance.compatible(Build.VERSION.SDK_INT).effectiveRenderer == HostGlassRenderer.SOFTWARE)
+                LumenSurfaceBackend.SOFTWARE else options.sampling.backend
+        return if (backend == options.sampling.backend) options
+            else options.copy(sampling = options.sampling.copy(backend = backend))
+    }
 
     fun diagnostics(): LumenSurfaceDiagnostics? = session?.diagnostics()
 

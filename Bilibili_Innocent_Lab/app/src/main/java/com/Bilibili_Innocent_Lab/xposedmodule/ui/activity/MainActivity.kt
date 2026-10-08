@@ -445,12 +445,14 @@ class MainActivity : SkinnedActivity() {
     private var freeCopyLightMode = false
     private var freeCopyAutoLight = false
     internal var hostBottomBarLiquidGlass = false
+    internal var hostBottomBarGlassAppearance = com.Bilibili_Innocent_Lab.xposedmodule.settings.appearance.HostChromeAppearance()
     internal var hostBottomBarTouchGlow = false
     internal var hostVideoCards = false
     internal var hostVideoCardRadiusDp = -1
     internal var hostBottomBarCompact = false
     internal var hostBottomBarIconOnly = false
     internal var hostTopBarLiquidGlass = false
+    internal var hostTopBarGlassAppearance = com.Bilibili_Innocent_Lab.xposedmodule.settings.appearance.HostChromeAppearance()
     internal var hostTopBarTouchGlow = false
 
     /** 亮色开关二次确认进行中标志（防 setOnCheckedChangeListener 重入递归） */
@@ -4445,6 +4447,10 @@ class MainActivity : SkinnedActivity() {
         blockTeenagersModePrompt = uiSettings.bool(FeaturePreferences.BLOCK_TEENAGERS_MODE_PROMPT)
         purifySplashAds = uiSettings.bool(FeaturePreferences.PURIFY_SPLASH_ADS)
         hostBottomBarLiquidGlass = uiSettings.bool(FeaturePreferences.HOST_BOTTOM_BAR_LIQUID_GLASS)
+        hostBottomBarGlassAppearance = com.Bilibili_Innocent_Lab.xposedmodule.settings.appearance.HostChromeAppearance.read(
+            uiSettings.string(FeaturePreferences.HOST_BOTTOM_BAR_GLASS_MATERIAL),
+            uiSettings.string(FeaturePreferences.HOST_BOTTOM_BAR_GLASS_RENDERER),
+            bottom = true, enabled = hostBottomBarLiquidGlass)
         hostBottomBarTouchGlow = uiSettings.bool(FeaturePreferences.HOST_BOTTOM_BAR_TOUCH_GLOW)
         hostVideoCards = uiSettings.bool(FeaturePreferences.HOST_VIDEO_CARDS)
         hostVideoCardRadiusDp = com.Bilibili_Innocent_Lab.xposedmodule.hook.hostui.cards.HostVideoCardStyleSpec.normalizeRadius(
@@ -4452,6 +4458,10 @@ class MainActivity : SkinnedActivity() {
         hostBottomBarCompact = uiSettings.bool(FeaturePreferences.HOST_BOTTOM_BAR_COMPACT)
         hostBottomBarIconOnly = uiSettings.bool(FeaturePreferences.HOST_BOTTOM_BAR_ICON_ONLY)
         hostTopBarLiquidGlass = uiSettings.bool(FeaturePreferences.HOST_TOP_BAR_LIQUID_GLASS)
+        hostTopBarGlassAppearance = com.Bilibili_Innocent_Lab.xposedmodule.settings.appearance.HostChromeAppearance.read(
+            uiSettings.string(FeaturePreferences.HOST_TOP_BAR_GLASS_MATERIAL),
+            uiSettings.string(FeaturePreferences.HOST_TOP_BAR_GLASS_RENDERER),
+            bottom = false, enabled = hostTopBarLiquidGlass)
         hostTopBarTouchGlow = uiSettings.bool(FeaturePreferences.HOST_TOP_BAR_TOUCH_GLOW)
         merchAdEnabled = uiSettings.bool(HookEntry.PREF_MERCH_ENABLED)
         freeCopyEnabled = uiSettings.bool(HookEntry.PREF_FREE_COPY_ENABLED)

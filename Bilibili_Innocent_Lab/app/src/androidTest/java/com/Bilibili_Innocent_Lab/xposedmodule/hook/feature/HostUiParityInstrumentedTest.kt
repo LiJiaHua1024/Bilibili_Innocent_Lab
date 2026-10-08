@@ -74,15 +74,21 @@ class HostUiParityInstrumentedTest {
     }
 
     @Test fun explicitEdgeColorsRoundTripWhileOriginalPresetsKeepDefaultStroke() {
-        val colors = LumenSurfaceOptions(edgeTopColor = 0x8CFFFFFF.toInt(), edgeBottomColor = 0x20FFFFFF, backdropOpacity = .5f)
+        val colors = LumenSurfaceOptions(edgeTopColor = 0x8CFFFFFF.toInt(), edgeBottomColor = 0x20FFFFFF, backdropOpacity = .5f,
+            sampling = com.lumen.coacervation.engine.host.LumenSurfaceSampling(blurRadiusDp = 17f, softwareBlurRadiusDp = 10f,
+                fadeCurve = com.lumen.coacervation.engine.host.LumenSurfaceFadeCurve.LINEAR))
         val restored = LumenEffectPreset.fromJson(LumenEffectPreset(surface = colors).toJson()).surface
         assertEquals(colors.edgeTopColor, restored.edgeTopColor)
         assertEquals(colors.edgeBottomColor, restored.edgeBottomColor)
         assertEquals(.5f, restored.backdropOpacity, 0f)
+        assertEquals(17f, restored.sampling.blurRadiusDp, 0f)
+        assertEquals(10f, requireNotNull(restored.sampling.softwareBlurRadiusDp), 0f)
+        assertEquals(colors.sampling.fadeCurve, restored.sampling.fadeCurve)
         val original = LumenEffectPreset.fromJson(LumenEffectPreset().toJson()).surface
         assertNull(original.edgeTopColor)
         assertNull(original.edgeBottomColor)
         assertEquals(1f, original.backdropOpacity, 0f)
+        assertNull(original.sampling.softwareBlurRadiusDp)
     }
 
     @Test fun darkChromeCompensatesBrightContentAndReleasesItsProbe() {

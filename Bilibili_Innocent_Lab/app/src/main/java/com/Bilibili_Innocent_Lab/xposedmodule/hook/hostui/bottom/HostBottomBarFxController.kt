@@ -57,7 +57,7 @@ internal object HostBottomBarFxController {
         val inset = HostNavigationMotion.INSET_DP * density
 
         // 2. 悬浮胶囊几何形态与 Liquid Glass 外壳背景
-        val backdrop = if (config.liquidGlass) HostSurfaceScope(tabHost, colors) else null
+        val backdrop = if (config.liquidGlass) HostSurfaceScope(tabHost, colors, appearance = config.appearance) else null
         if (config.liquidGlass || config.compact || config.iconOnly) {
             val lp = tabHost.layoutParams
             if (lp != null) {
@@ -88,7 +88,7 @@ internal object HostBottomBarFxController {
             tabHost.elevation = 0f
 
             // 应用模块浮动底栏原版 Liquid Glass 材质：常量色罩 + 实时透镜采样（模糊/折射底下的内容）
-            backdrop?.surface(tabHost, HostSurfaceStyle.floating(isDark, config.heightDp / 2f))
+            backdrop?.floating(tabHost, isDark, config.heightDp / 2f)
         }
 
         val insetH = inset.roundToInt()
