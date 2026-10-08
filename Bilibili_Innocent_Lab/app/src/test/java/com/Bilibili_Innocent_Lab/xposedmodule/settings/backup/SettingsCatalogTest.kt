@@ -8,10 +8,35 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class SettingsCatalogTest {
+    @Test fun `catalog v45 adds four optional sources without backing up their keys`() {
+        val expected = requireNotNull(javaClass.classLoader?.getResourceAsStream("settings-backup/catalog-v45.txt"))
+            .bufferedReader().useLines { it.filter(String::isNotBlank).toList() }
+        assertEquals(expected, SettingsCatalog.specs.filter { it.introducedCatalogVersion <= 45 }.map { it.id }.sorted())
+        val added = SettingsCatalog.specs.filter { it.introducedCatalogVersion == 45 }
+        assertEquals(12, added.size)
+        added.forEach {
+            assertEquals(SettingValueType.STRING, it.type)
+            assertEquals(SettingValue.Text(if (it.id.endsWith(".provider")) "jev" else ""), it.defaultValue)
+            assertEquals(RestorePolicy.AUTOMATIC, it.restorePolicy)
+            assertTrue(ImportEffect.RESTART_BILIBILI in it.effects)
+        }
+        (1..8).forEach { index ->
+            val key = com.Bilibili_Innocent_Lab.xposedmodule.settings.remote.RemoteHookConfigContract.semanticApiKey(index)
+            assertTrue(SettingsCatalog.specs.none { it.storageKey == key })
+            val (provider, endpoint, model) = FeaturePreferences.semanticSourceKeys(index)
+            listOf(provider, endpoint, model).forEach { storage -> assertTrue(SettingsCatalog.specs.any { it.storageKey == storage }) }
+        }
+        listOf(SettingsCatalog.ID_DYNAMIC_SEMANTIC_SOURCE, SettingsCatalog.ID_DANMAKU_SEMANTIC_SOURCE,
+            SettingsCatalog.ID_COMMENT_SEMANTIC_SOURCE, SettingsCatalog.ID_VIDEO_SEMANTIC_SOURCE).forEach { id ->
+            (1..8).forEach { assertTrue(SettingsCatalog.byId.getValue(id).accepts(SettingValue.Text(it.toString()))) }
+            assertFalse(SettingsCatalog.byId.getValue(id).accepts(SettingValue.Text("9")))
+        }
+    }
+
     @Test fun `catalog v44 publishes two default off SponsorBlock settings without changing old backups`() {
         val expected = requireNotNull(javaClass.classLoader?.getResourceAsStream("settings-backup/catalog-v44.txt"))
             .bufferedReader().useLines { it.filter(String::isNotBlank).toList() }
-        assertEquals(expected, SettingsCatalog.specs.map { it.id }.sorted())
+        assertEquals(expected, SettingsCatalog.specs.filter { it.introducedCatalogVersion <= 44 }.map { it.id }.sorted())
         val added = SettingsCatalog.specs.filter { it.introducedCatalogVersion == 44 }
         assertEquals(listOf("player.sponsorblock.automatic", "player.sponsorblock.enabled"), added.map { it.id }.sorted())
         added.forEach {
@@ -143,11 +168,11 @@ class SettingsCatalogTest {
     }
 
     @Test
-    fun `catalog is a unique allowlist with 202 settings`() {
-        assertEquals(202, SettingsCatalog.specs.size)
-        assertEquals(202, SettingsCatalog.specs.map { it.id }.distinct().size)
-        assertEquals(202, SettingsCatalog.specs.map { it.storageKey }.distinct().size)
-        assertEquals(199, SettingsCatalog.specs.count { it.restorePolicy == RestorePolicy.AUTOMATIC })
+    fun `catalog is a unique allowlist with 214 settings`() {
+        assertEquals(214, SettingsCatalog.specs.size)
+        assertEquals(214, SettingsCatalog.specs.map { it.id }.distinct().size)
+        assertEquals(214, SettingsCatalog.specs.map { it.storageKey }.distinct().size)
+        assertEquals(211, SettingsCatalog.specs.count { it.restorePolicy == RestorePolicy.AUTOMATIC })
         assertEquals(3, SettingsCatalog.specs.count { it.restorePolicy == RestorePolicy.MANUAL })
         assertTrue(SettingsCatalog.specs.all { it.accepts(it.defaultValue) })
         assertTrue(SettingsCatalog.specs.all { it.id.matches(Regex("[a-z0-9][a-z0-9._-]{0,127}")) })
@@ -378,7 +403,7 @@ class SettingsCatalogTest {
         val expected = requireNotNull(javaClass.classLoader?.getResourceAsStream("settings-backup/catalog-v13.txt"))
             .bufferedReader().useLines { it.filter(String::isNotBlank).toList() }
         assertEquals(expected, SettingsCatalog.specs.filter { it.introducedCatalogVersion <= 13 }.map { it.id }.sorted())
-        assertEquals(44, SettingsCatalog.CATALOG_VERSION)
+        assertEquals(45, SettingsCatalog.CATALOG_VERSION)
         val added = SettingsCatalog.specs.filter { it.introducedCatalogVersion == 13 }
         assertEquals(6, added.size)
         assertTrue(added.all { it.restorePolicy == RestorePolicy.AUTOMATIC && ImportEffect.RESTART_BILIBILI in it.effects })
@@ -670,7 +695,7 @@ class SettingsCatalogTest {
         assertTrue(added.keys.none { it.contains("api_key") }) // Key 不进目录与备份
         val route = added.getValue(SettingsCatalog.ID_COMMENT_SEMANTIC_SOURCE)
         assertEquals(SettingValue.Text("auto"), route.defaultValue)
-        assertEquals(setOf("auto", "1", "2", "3", "4"), route.allowedStrings)
+        assertEquals(setOf("auto", "1", "2", "3", "4", "5", "6", "7", "8"), route.allowedStrings)
         assertEquals(SettingValue.Text("jev"), added.getValue("compat.semantic_source.3.provider").defaultValue)
         assertFalse(added.getValue(SettingsCatalog.ID_SEMANTIC_JEV_GUIDANCE).accepts(SettingValue.Text("x".repeat(1_001))))
     }
@@ -679,7 +704,7 @@ class SettingsCatalogTest {
     fun `catalog types and manual roaming boundary are explicit`() {
         assertEquals(137, SettingsCatalog.specs.count { it.type == SettingValueType.BOOLEAN })
         assertEquals(14, SettingsCatalog.specs.count { it.type == SettingValueType.INTEGER })
-        assertEquals(51, SettingsCatalog.specs.count { it.type == SettingValueType.STRING })
+        assertEquals(63, SettingsCatalog.specs.count { it.type == SettingValueType.STRING })
 
         val roaming = requireNotNull(SettingsCatalog.byId["compat.roaming.enabled"])
         assertEquals(RestorePolicy.MANUAL, roaming.restorePolicy)

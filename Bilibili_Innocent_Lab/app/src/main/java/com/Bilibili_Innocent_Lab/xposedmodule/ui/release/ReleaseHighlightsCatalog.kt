@@ -2,6 +2,7 @@ package com.Bilibili_Innocent_Lab.xposedmodule.ui.release
 
 import com.Bilibili_Innocent_Lab.xposedmodule.R
 import com.Bilibili_Innocent_Lab.xposedmodule.hook.feature.SemanticSurface
+import com.Bilibili_Innocent_Lab.xposedmodule.hook.feature.SemanticSource
 import com.Bilibili_Innocent_Lab.xposedmodule.settings.backup.SettingsCatalog
 
 internal enum class HighlightKind { NEW, IMPROVED, FIXED }
@@ -256,6 +257,12 @@ internal object ReleaseHighlightsCatalog {
         ReleaseHighlight("sponsorblock", HighlightKind.NEW, R.string.highlights_sponsorblock,
             HighlightDestination("player.sponsorblock.enabled",
                 alsoCovers = setOf("player.sponsorblock.automatic")))
+    )), ReleaseHighlightsBatch(9, listOf(
+        ReleaseHighlight("semantic-eight-sources", HighlightKind.IMPROVED, R.string.highlights_semantic_eight_sources,
+            HighlightDestination(SettingsCatalog.ID_SEMANTIC_SOURCES,
+                alsoCovers = (5..SemanticSource.MAX_SOURCES).flatMap { index ->
+                    listOf("provider", "endpoint", "model").map { "compat.semantic_source.$index.$it" }
+                }.toSet()))
     )))
     val currentRevision: Int get() = batches.maxOf { it.revision }
     val destinations get() = batches.sortedByDescending { it.revision }.flatMap { it.entries }

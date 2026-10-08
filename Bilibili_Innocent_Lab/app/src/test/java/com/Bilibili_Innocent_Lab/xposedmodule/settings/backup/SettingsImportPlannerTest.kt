@@ -6,6 +6,23 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class SettingsImportPlannerTest {
+    @Test fun `older backups preserve all four newly added source configurations`() {
+        val specs = SettingsCatalog.specs.filter { it.introducedCatalogVersion == 45 }
+        val current = snapshot(*specs.map { spec ->
+            spec to StoredSetting(true, SettingValue.Text(when {
+                spec.id.endsWith(".provider") -> "openai"
+                spec.id.endsWith(".endpoint") -> "https://api.example.com/v1"
+                else -> "existing-model"
+            }))
+        }.toTypedArray())
+        for (version in 1..44) {
+            val plan = SettingsImportPlanner(specs, 45).plan(document(version, emptyList()), current)
+            assertEquals(12, plan.entries.size)
+            assertTrue(plan.entries.all { it.status == ImportStatus.NEW_IN_CURRENT })
+            assertTrue(plan.writes.isEmpty())
+        }
+    }
+
     @Test fun `old backups preserve search home preference`() {
         val spec = SettingsCatalog.byId.getValue("search.home_recommend.hidden")
         val current = snapshot(spec to StoredSetting(true,SettingValue.Bool(true)))

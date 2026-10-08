@@ -73,7 +73,11 @@ class RemoteHookConfigContractTest {
         assertTrue(RemoteHookConfigContract.decode(encoded - FeaturePreferences.PLAYER_DEFAULT_SPEED_PERCENT)
             is RemoteHookConfigDecodeResult.Invalid)
         assertEquals("jev-test-key", snapshot.values[RemoteHookConfigContract.KEY_SEMANTIC_JEV_API_KEY])
-        assertEquals(SettingsCatalog.specs.size + 6, snapshot.values.size)
+        // 目录外只有两个运行时修订字段和每个来源的凭据，不能遗漏或多导出其它偏好。
+        val runtimeKeys = setOf(RemoteHookConfigContract.KEY_FREE_COPY_CONFIG_REVISION,
+            RemoteHookConfigContract.KEY_ADAPTER_RESET_TIMESTAMP) + RemoteHookConfigContract.SEMANTIC_API_KEYS
+        assertEquals(runtimeKeys, snapshot.values.keys - SettingsCatalog.specs.map { it.storageKey }.toSet())
+        assertEquals(SettingsCatalog.specs.size + 2 + RemoteHookConfigContract.SEMANTIC_API_KEYS.size, snapshot.values.size)
     }
 
     /** JEV API Key：随 hook_config 下发且受摘要保护，但不是目录项（不进备份），超长/非字符串按未配置处理。 */
@@ -205,10 +209,10 @@ class RemoteHookConfigContractTest {
         )
     }
 
-    /** 2–4 号判定来源的 Key 与 1 号同等对待：签名保护、不进目录、超长按未配置。 */
+    /** 2–8 号判定来源的 Key 与 1 号同等对待：签名保护、不进目录、超长按未配置。 */
     @Test
     fun `extra semantic source keys are signed runtime credentials too`() {
-        assertEquals(4, RemoteHookConfigContract.SEMANTIC_API_KEYS.size)
+        assertEquals(8, RemoteHookConfigContract.SEMANTIC_API_KEYS.size)
         assertEquals(RemoteHookConfigContract.KEY_SEMANTIC_JEV_API_KEY, RemoteHookConfigContract.semanticApiKey(1))
         RemoteHookConfigContract.SEMANTIC_API_KEYS.drop(1).forEach { key ->
             assertTrue(key in RemoteHookConfigContract.hookValueKeys)

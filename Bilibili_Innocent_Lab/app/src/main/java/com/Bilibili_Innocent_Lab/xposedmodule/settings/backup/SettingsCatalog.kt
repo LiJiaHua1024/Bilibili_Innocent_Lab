@@ -30,7 +30,7 @@ import com.Bilibili_Innocent_Lab.xposedmodule.settings.appearance.ModalBackdropB
 internal object SettingsCatalog {
     const val PRODUCT_ID = "bilibili-innocent-lab.settings"
     const val SCOPE_ID = "core-user-settings"
-    const val CATALOG_VERSION = 44
+    const val CATALOG_VERSION = 45
     const val ID_PLAYER_DEFAULT_SPEED = "player.default_speed.percent"
     const val ID_PLAYER_LONG_PRESS_SPEED = "player.long_press_speed.percent"
     const val ID_FREE_COPY_COMMENT = "free_copy.comment.enabled"
@@ -223,6 +223,31 @@ internal object SettingsCatalog {
             maxStringLength = SemanticJudge.MAX_ENDPOINT_LENGTH, introducedCatalogVersion = 36),
         text("compat.semantic_source.4.model", FeaturePreferences.SEMANTIC_SOURCE_4_MODEL, R.string.semantic_source_4_label,
             maxStringLength = SemanticBackend.MAX_MODEL_LENGTH, introducedCatalogVersion = 36),
+        // v45：扩展到 8 个来源；新来源默认无凭据，不会自行启用。
+        text("compat.semantic_source.5.provider", FeaturePreferences.SEMANTIC_SOURCE_5_PROVIDER, R.string.semantic_source_5_label,
+            default = SemanticBackend.JEV, allowed = SemanticBackend.IDS, introducedCatalogVersion = 45),
+        text("compat.semantic_source.5.endpoint", FeaturePreferences.SEMANTIC_SOURCE_5_ENDPOINT, R.string.semantic_source_5_label,
+            maxStringLength = SemanticJudge.MAX_ENDPOINT_LENGTH, introducedCatalogVersion = 45),
+        text("compat.semantic_source.5.model", FeaturePreferences.SEMANTIC_SOURCE_5_MODEL, R.string.semantic_source_5_label,
+            maxStringLength = SemanticBackend.MAX_MODEL_LENGTH, introducedCatalogVersion = 45),
+        text("compat.semantic_source.6.provider", FeaturePreferences.SEMANTIC_SOURCE_6_PROVIDER, R.string.semantic_source_6_label,
+            default = SemanticBackend.JEV, allowed = SemanticBackend.IDS, introducedCatalogVersion = 45),
+        text("compat.semantic_source.6.endpoint", FeaturePreferences.SEMANTIC_SOURCE_6_ENDPOINT, R.string.semantic_source_6_label,
+            maxStringLength = SemanticJudge.MAX_ENDPOINT_LENGTH, introducedCatalogVersion = 45),
+        text("compat.semantic_source.6.model", FeaturePreferences.SEMANTIC_SOURCE_6_MODEL, R.string.semantic_source_6_label,
+            maxStringLength = SemanticBackend.MAX_MODEL_LENGTH, introducedCatalogVersion = 45),
+        text("compat.semantic_source.7.provider", FeaturePreferences.SEMANTIC_SOURCE_7_PROVIDER, R.string.semantic_source_7_label,
+            default = SemanticBackend.JEV, allowed = SemanticBackend.IDS, introducedCatalogVersion = 45),
+        text("compat.semantic_source.7.endpoint", FeaturePreferences.SEMANTIC_SOURCE_7_ENDPOINT, R.string.semantic_source_7_label,
+            maxStringLength = SemanticJudge.MAX_ENDPOINT_LENGTH, introducedCatalogVersion = 45),
+        text("compat.semantic_source.7.model", FeaturePreferences.SEMANTIC_SOURCE_7_MODEL, R.string.semantic_source_7_label,
+            maxStringLength = SemanticBackend.MAX_MODEL_LENGTH, introducedCatalogVersion = 45),
+        text("compat.semantic_source.8.provider", FeaturePreferences.SEMANTIC_SOURCE_8_PROVIDER, R.string.semantic_source_8_label,
+            default = SemanticBackend.JEV, allowed = SemanticBackend.IDS, introducedCatalogVersion = 45),
+        text("compat.semantic_source.8.endpoint", FeaturePreferences.SEMANTIC_SOURCE_8_ENDPOINT, R.string.semantic_source_8_label,
+            maxStringLength = SemanticJudge.MAX_ENDPOINT_LENGTH, introducedCatalogVersion = 45),
+        text("compat.semantic_source.8.model", FeaturePreferences.SEMANTIC_SOURCE_8_MODEL, R.string.semantic_source_8_label,
+            maxStringLength = SemanticBackend.MAX_MODEL_LENGTH, introducedCatalogVersion = 45),
         text(ID_DYNAMIC_SEMANTIC_SOURCE, FeaturePreferences.DYNAMIC_SEMANTIC_FILTER_SOURCE, R.string.semantic_route_title,
             default = SemanticRoute.AUTO, allowed = SemanticRoute.IDS, introducedCatalogVersion = 36),
         text(ID_DANMAKU_SEMANTIC_SOURCE, FeaturePreferences.DANMAKU_SEMANTIC_FILTER_SOURCE, R.string.semantic_route_title,
@@ -904,7 +929,7 @@ internal object SettingsCatalog {
     val byStorageKey: Map<String, SettingSpec> = specs.associateBy(SettingSpec::storageKey)
 
     init {
-        check(specs.size == 202) { "Expected 202 catalog settings, found ${specs.size}" }
+        check(specs.size == 214) { "Expected 214 catalog settings, found ${specs.size}" }
         check(byId.size == specs.size) { "Duplicate logical setting id" }
         check(specs.map(SettingSpec::storageKey).distinct().size == specs.size) {
             "Duplicate settings storage key"

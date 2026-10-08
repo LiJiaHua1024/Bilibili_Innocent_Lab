@@ -64,17 +64,25 @@ internal object RemoteHookConfigContract {
     const val KEY_SEMANTIC_JEV_API_KEY = "semantic_jev_api_key"
     const val MAX_SEMANTIC_JEV_API_KEY_LENGTH = 512
 
-    /** 2–4 号判定来源的 Key；与 1 号同样是签名保护的运行时凭据，不进目录、备份与诊断。 */
+    /** 2–8 号判定来源的 Key；与 1 号同样是签名保护的运行时凭据，不进目录、备份与诊断。 */
     const val KEY_SEMANTIC_SOURCE_2_API_KEY = "semantic_source_2_api_key"
     const val KEY_SEMANTIC_SOURCE_3_API_KEY = "semantic_source_3_api_key"
     const val KEY_SEMANTIC_SOURCE_4_API_KEY = "semantic_source_4_api_key"
+    const val KEY_SEMANTIC_SOURCE_5_API_KEY = "semantic_source_5_api_key"
+    const val KEY_SEMANTIC_SOURCE_6_API_KEY = "semantic_source_6_api_key"
+    const val KEY_SEMANTIC_SOURCE_7_API_KEY = "semantic_source_7_api_key"
+    const val KEY_SEMANTIC_SOURCE_8_API_KEY = "semantic_source_8_api_key"
 
     /** 来源编号（1 起）→ Key 的键；按编号排好，签名与校验按这个顺序。 */
     val SEMANTIC_API_KEYS: List<String> = listOf(
         KEY_SEMANTIC_JEV_API_KEY,
         KEY_SEMANTIC_SOURCE_2_API_KEY,
         KEY_SEMANTIC_SOURCE_3_API_KEY,
-        KEY_SEMANTIC_SOURCE_4_API_KEY
+        KEY_SEMANTIC_SOURCE_4_API_KEY,
+        KEY_SEMANTIC_SOURCE_5_API_KEY,
+        KEY_SEMANTIC_SOURCE_6_API_KEY,
+        KEY_SEMANTIC_SOURCE_7_API_KEY,
+        KEY_SEMANTIC_SOURCE_8_API_KEY
     )
 
     fun semanticApiKey(index: Int): String = SEMANTIC_API_KEYS[index - 1]

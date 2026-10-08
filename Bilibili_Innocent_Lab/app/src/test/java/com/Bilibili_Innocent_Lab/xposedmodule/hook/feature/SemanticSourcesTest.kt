@@ -48,6 +48,85 @@ class SemanticSourcesTest {
         transport = transport, sourcePool = pool, sourceRoute = route, guidance = guidance)
 
     @Test
+    fun `all eight configured sources survive settings and source eight can be fixed`() {
+        val extras = (2..8).map(::source)
+        val settings = requireNotNull(SemanticSettings.from("key1", "", "", false, extraSources = extras))
+        assertEquals((1..8).toList(), settings.sources.map { it.index })
+        assertEquals(listOf(8), SemanticRoute.resolve("8", settings.sources).map { it.index })
+        assertEquals(settings.sources, SemanticRoute.resolve("9", settings.sources))
+        assertEquals(setOf("auto") + (1..8).map(Int::toString), SemanticRoute.IDS)
+        val called = mutableListOf<String>()
+        judge(settings.pool, route = SemanticRoute.resolve("8", settings.sources)) { body, key, _ ->
+            called += key
+            200 to answers(body)
+        }.evaluate(listOf("八号来源"), SemanticMode.WAIT)
+        assertEquals(listOf("key8"), called)
+    }
+
+    @Test
+    fun `invalid source indices and incomplete configurations never enter routing`() {
+        listOf(-1, 0, 9, Int.MAX_VALUE).forEach { index ->
+            assertNull(SemanticSource.from(index, "key", "", SemanticBackend.JEV, ""))
+        }
+        assertNull(SemanticSource.from(8, "", "", SemanticBackend.JEV, ""))
+        assertNull(SemanticSource.from(8, "key", "https://api.example.com", SemanticBackend.OPENAI, ""))
+        assertNull(SemanticSource.from(8, "key", "not a URL", SemanticBackend.OPENAI, "model"))
+        val valid = listOf(source(2), source(7))
+        assertEquals(valid, SemanticRoute.resolve("8", valid))
+    }
+
+    @Test
+    fun `sequential initial requests reach all eight sources despite fast first response`() {
+        val pool = SemanticSourcePool((1..8).map(::source))
+        val slots = pool.slotsFor(pool.sources)
+        val used = (1..8).map {
+            val slot = requireNotNull(pool.acquire(slots, 0L))
+            slot.recordLatency(1)
+            pool.release(slot)
+            slot.source.index
+        }
+        assertEquals((1..8).toList(), used)
+        assertTrue(slots.all { it.inFlight.get() == 0 })
+    }
+
+    @Test
+    fun `idle source gets a bounded reprobe without expanding concurrent work`() {
+        val pool = SemanticSourcePool((1..8).map(::source))
+        val slots = pool.slotsFor(pool.sources)
+        repeat(8) {
+            val slot = requireNotNull(pool.acquire(slots, 0L))
+            slot.latencyMs = if (slot.source.index == 1) 1.0 else 10_000.0
+            pool.release(slot)
+        }
+        val used = (1..(SemanticSourcePool.REPROBE_AFTER.toInt() + 8)).map {
+            val slot = requireNotNull(pool.acquire(slots, 0L))
+            assertEquals(1, slots.sumOf { it.inFlight.get() })
+            pool.release(slot)
+            slot.source.index
+        }
+        assertEquals((1..8).toSet(), used.toSet())
+        assertTrue(used.count { it == 1 } > used.size / 2)
+    }
+
+    @Test
+    fun `eight source balancing always respects cooldown exclusions and fixed routes`() {
+        val pool = SemanticSourcePool((1..8).map(::source))
+        val slots = pool.slotsFor(pool.sources)
+        slots.take(7).forEach { it.holdUntil(100, 0) }
+        val eighth = requireNotNull(pool.acquire(slots, 0L))
+        assertEquals(8, eighth.source.index)
+        pool.release(eighth)
+        assertNull(pool.acquire(slots, 0L, exclude = setOf(eighth)))
+        eighth.holdUntil(100, 0)
+        assertNull(pool.acquire(slots, 0L))
+        val fixed = pool.slotsFor(SemanticRoute.resolve("8", pool.sources))
+        assertNull(pool.acquire(fixed, 50L))
+        val recovered = requireNotNull(pool.acquire(fixed, 100L))
+        assertEquals(8, recovered.source.index)
+        pool.release(recovered)
+    }
+
+    @Test
     fun `settings keep source one from the legacy keys and add valid extra sources`() {
         val extra = listOfNotNull(
             SemanticSource.from(2, "k2", "https://api.deepseek.com", SemanticBackend.OPENAI, "deepseek-chat"),
@@ -101,8 +180,7 @@ class SemanticSourcesTest {
     fun `untried sources are all used when chunks run in parallel`() {
         val pool = SemanticSourcePool(listOf(source(1), source(2), source(3)))
         val used = mutableListOf<String>()
-        // 顺序执行时各来源估计相同：按编号先用 1 号，1 号记下耗时后仍是 1 号最快——
-        // 所以这里模拟"在途"：每个请求进行中占住一个来源。
+        // 并发时选中和占用也必须原子完成，不能让多个分批挤到同一未探测来源。
         val gate = java.util.concurrent.CountDownLatch(1)
         val started = java.util.concurrent.CountDownLatch(3)
         val executor = java.util.concurrent.Executors.newFixedThreadPool(3)
@@ -362,9 +440,11 @@ class SemanticSourcesTest {
         assertEquals(2, SemanticJudge.networkThreads(1))
         assertEquals(4, SemanticJudge.networkThreads(2))
         assertEquals(6, SemanticJudge.networkThreads(4))
+        assertEquals(6, SemanticJudge.networkThreads(8))
         assertEquals(4, SemanticJudge.waitThreads(1))
         assertEquals(6, SemanticJudge.waitThreads(2))
         assertEquals(8, SemanticJudge.waitThreads(4))
+        assertEquals(8, SemanticJudge.waitThreads(8))
     }
 
     @Test
