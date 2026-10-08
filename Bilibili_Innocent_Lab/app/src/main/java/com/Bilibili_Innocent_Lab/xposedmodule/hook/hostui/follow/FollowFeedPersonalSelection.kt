@@ -32,7 +32,7 @@ internal class FollowFeedPersonalSelection private constructor(
         setColor(Color.TRANSPARENT)
     }
 
-    fun sync(palette: LumenPalette) {
+    fun sync(palette: LumenPalette): Boolean {
         val recycler = list.get() ?: return clear()
         val nativeAdapter = adapter.invoke(recycler) ?: return clear()
         if (!target.declaringClass.isInstance(nativeAdapter)) return clear()
@@ -60,14 +60,16 @@ internal class FollowFeedPersonalSelection private constructor(
             view.overlay.add(ring)
             selected = WeakReference(view)
         }
+        return true
     }
 
-    private fun clear() {
+    private fun clear(): Boolean {
         selected.get()?.overlay?.remove(ring)
         selected.clear()
+        return false
     }
 
-    override fun close() = clear()
+    override fun close() { clear() }
 
     companion object {
         fun create(list: ViewGroup): FollowFeedPersonalSelection? = runCatching {

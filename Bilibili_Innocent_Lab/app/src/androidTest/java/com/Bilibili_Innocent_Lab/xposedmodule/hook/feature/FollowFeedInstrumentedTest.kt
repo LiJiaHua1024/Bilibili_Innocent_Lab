@@ -125,7 +125,7 @@ class FollowFeedInstrumentedTest {
         }
     }
 
-    @Test fun nativePersonalArrowYieldsToAvatarRingWithoutMutatingSharedDrawables() = main { context ->
+    @Test fun nativePersonalArrowSurvivesAnUnavailableRingWithoutMutatingSharedDrawables() = main { context ->
         val host = context.createPackageContext("tv.danmaku.bili",
             Context.CONTEXT_INCLUDE_CODE or Context.CONTEXT_IGNORE_SECURITY)
         val layout = host.classLoader.loadClass("ir1.k").getField("d").getInt(null)
@@ -150,25 +150,21 @@ class FollowFeedInstrumentedTest {
                 assertEquals(Color.alpha(reference.getPixel(x, y)), Color.alpha(bitmap.getPixel(x, y)))
             bitmap.recycle()
         }
-        fun assertInvisible(drawable: android.graphics.drawable.Drawable) {
-            val bitmap = render(drawable)
-            for (y in 0 until 47) for (x in 0 until 47)
-                assertEquals(0, Color.alpha(bitmap.getPixel(x, y)))
-            bitmap.recycle()
-        }
         val chrome = requireNotNull(FollowFeedPersonalChrome.create(root))
         for (dark in listOf(false, true, false)) {
             val palette = FollowFeedStyle.palette(HostChromeColors(dark, Color.BLUE))
+            val native = arrow.background
             chrome.updatePalette(palette)
-            assertInvisible(requireNotNull(arrow.background))
+            assertSame(native, arrow.background)
+            assertColor(requireNotNull(arrow.background), originalPixel)
             assertColor(sibling, originalPixel)
             val installed = arrow.background
             chrome.updatePalette(palette)
             assertSame(installed, arrow.background)
-            // 宿主主题刷新可能重设原 drawable；下一帧仍应隐藏箭头，避免遮住外圈。
+            // 宿主主题刷新也不能让未知 Adapter 丢失原生选中提示。
             arrow.background = requireNotNull(original.constantState).newDrawable(host.resources)
             chrome.updatePalette(palette)
-            assertInvisible(requireNotNull(arrow.background))
+            assertColor(requireNotNull(arrow.background), originalPixel)
         }
         val lastNative = requireNotNull(original.constantState).newDrawable(host.resources)
         arrow.background = lastNative
@@ -179,7 +175,11 @@ class FollowFeedInstrumentedTest {
     }
 
     class NativeAuthorAdapter(var actual: Int = -1) {
-        fun getTarget() = actual
+        var failing = false
+        fun getTarget(): Int {
+            check(!failing) { "host selection unavailable" }
+            return actual
+        }
     }
 
     class NativeAuthorHolder(@JvmField val itemView: View)
@@ -242,9 +242,11 @@ class FollowFeedInstrumentedTest {
         val chrome = requireNotNull(FollowFeedPersonalChrome.create(root))
         assertNull(FollowFeedPersonalSelection.create(authors)) // Adapter 尚未准备好。
         chrome.updatePalette(light)
+        assertSame(originalArrow, arrow.background)
         val adapter = NativeAuthorAdapter(0)
         authors.nativeAdapter = adapter
         chrome.updatePalette(light)
+        assertNotSame(originalArrow, arrow.background)
         assertTrue(count(first, light.primary) > 100)
         assertEquals(0, count(second, light.primary))
         repeat(5) { chrome.updatePalette(light) }
@@ -261,14 +263,23 @@ class FollowFeedInstrumentedTest {
         avatar.visibility = View.INVISIBLE
         chrome.updatePalette(dark)
         assertEquals(0, count(first, dark.primary))
+        assertSame(originalArrow, arrow.background)
         avatar.visibility = View.VISIBLE
         chrome.updatePalette(dark)
         assertTrue(count(first, dark.primary) > 100)
         adapter.actual = -1
         chrome.updatePalette(dark)
         assertEquals(0, count(first, dark.primary))
+        assertSame(originalArrow, arrow.background)
         adapter.actual = 2
         chrome.updatePalette(dark)
+        adapter.failing = true
+        assertTrue(runCatching { chrome.updatePalette(dark) }.isFailure)
+        assertSame(originalArrow, arrow.background)
+        assertEquals(0, count(first, dark.primary))
+        adapter.failing = false
+        chrome.updatePalette(dark)
+        assertTrue(count(first, dark.primary) > 100)
         first.performClick()
         assertEquals(1, clicks)
         assertSame(originalBackground, avatar.background)

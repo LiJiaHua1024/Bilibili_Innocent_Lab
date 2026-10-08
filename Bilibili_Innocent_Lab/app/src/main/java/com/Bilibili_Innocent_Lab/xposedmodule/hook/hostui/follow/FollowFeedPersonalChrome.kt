@@ -25,15 +25,25 @@ internal class FollowFeedPersonalChrome private constructor(root: View, arrow: V
     fun updatePalette(palette: LumenPalette) {
         if (closed) return
         val view = arrow.get() ?: return
+        // Adapter 初始化延迟、未知契约或选中项离屏时，保留宿主自己的选中提示。
+        val ringReady = try {
+            if (selection == null) authors.get()?.let { selection = FollowFeedPersonalSelection.create(it) }
+            selection?.sync(palette) == true
+        } catch (failure: Throwable) {
+            selection?.close(); selection = null
+            edits.restore(); installed = null
+            throw failure // 页面边界负责记录异常；恢复箭头后再交给其保护策略。
+        }
+        if (!ringReady) {
+            edits.restore(); installed = null
+            return
+        }
         if (view.background !== installed) {
             edits.restore()
             // 选中状态由头像外圈承接；同底色的实心箭头仍会遮住收起后的外圈底部。
             edits.backgroundTint(view, ColorStateList.valueOf(Color.TRANSPARENT))
             installed = view.background
         }
-        // Fragment 接入可能早于头像 Adapter 初始化，待宿主准备好再解析契约。
-        if (selection == null) authors.get()?.let { selection = FollowFeedPersonalSelection.create(it) }
-        selection?.sync(palette)
     }
 
     override fun onViewAttachedToWindow(v: View) = Unit
