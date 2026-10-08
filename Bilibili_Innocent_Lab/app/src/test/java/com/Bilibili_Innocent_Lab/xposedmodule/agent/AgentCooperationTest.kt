@@ -7,6 +7,24 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class AgentCooperationTest {
+    @Test fun `model request metrics preserve planning when a log observer fails`() {
+        val planner = source(1)
+        val updates = mutableListOf<AgentRequestUpdate>()
+        var tick = 1000L
+        val transport = AgentHttpTransport { _, _, _, _ -> tick += 45; chatResponse("", call = true) }
+        val models = AgentCooperation(listOf(planner), mapOf(planner.fingerprint to caps(tools = true)),
+            AgentRoutePolicy(setOf(1)), goal, false, { 5000 }, { false }, {}, { tick },
+            AgentModelClient(transport), AgentDecisionClient(transport), AgentHealthRegistry(), requestEvent = {
+                updates += it
+                if (it.status == AgentRequestStatus.STARTED) throw IllegalStateException("observer_failed")
+            })
+        val turn = models.next(AgentConversation(AgentToolCatalog.SYSTEM, goal))
+        assertEquals("search_videos", turn.toolCalls.single().name)
+        assertEquals(listOf(AgentRequestStatus.STARTED, AgentRequestStatus.SUCCEEDED), updates.map { it.status })
+        assertEquals(45L, updates.last().durationMs)
+        assertTrue(updates.all { it.role == AgentModelRole.PLANNER && it.source == 1 })
+    }
+
     private val image = "data:image/jpeg;base64,YWJj"
     private val goal = "帮我找到黑神话悟空官方演示"
     private fun source(index: Int, decision: Boolean = false) = AgentModelSource(index,

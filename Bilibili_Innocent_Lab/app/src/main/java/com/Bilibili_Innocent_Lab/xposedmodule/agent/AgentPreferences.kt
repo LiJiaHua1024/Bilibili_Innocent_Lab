@@ -60,6 +60,12 @@ internal object AgentPreferences {
     fun fixed(context: Context): Int? = context.getSharedPreferences(FILE, Context.MODE_PRIVATE)
         .getInt("fixed", 0).takeIf { it in 1..SemanticSource.MAX_SOURCES }
     fun visionAllowed(context: Context) = context.getSharedPreferences(FILE, Context.MODE_PRIVATE).getBoolean("vision", false)
+    fun islandAllowed(context: Context) = context.getSharedPreferences(FILE, Context.MODE_PRIVATE).getBoolean("island", true)
+    @SuppressLint("UseKtx")
+    fun saveIsland(context: Context, enabled: Boolean): Boolean {
+        val store = context.getSharedPreferences(FILE, Context.MODE_PRIVATE)
+        return writeEnabled(islandAllowed(context), enabled) { store.edit().putBoolean("island", it).commit() }
+    }
     fun fallbackAllowed(context: Context) = context.getSharedPreferences(FILE, Context.MODE_PRIVATE).getBoolean("fallback", false)
     fun limits(context: Context): AgentTaskLimits {
         val store = context.getSharedPreferences(FILE, Context.MODE_PRIVATE)

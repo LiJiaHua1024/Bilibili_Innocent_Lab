@@ -5,6 +5,10 @@ import org.json.JSONArray
 import org.json.JSONObject
 import java.security.MessageDigest
 
+internal enum class AgentRequestStatus { STARTED, SUCCEEDED, FAILED, FALLBACK, CACHE_HIT }
+internal data class AgentRequestUpdate(val role: AgentModelRole, val source: Int, val status: AgentRequestStatus,
+    val durationMs: Long = 0, val usage: AgentModelUsage? = null, val error: AgentModelException.Reason? = null, val httpStatus: Int? = null)
+
 /** 模型协作只传有界证据。模型可以建议，宿主动作仍由 Controller 和宿主各自校验。 */
 internal class AgentCooperation(
     private val sources: List<AgentModelSource>,
@@ -18,7 +22,8 @@ internal class AgentCooperation(
     private val elapsed: () -> Long,
     private val chat: AgentModelClient = AgentModelRuntime.chatClient,
     private val decisions: AgentDecisionClient = AgentModelRuntime.decisionClient,
-    health: AgentHealthRegistry = AgentModelRuntime.health
+    health: AgentHealthRegistry = AgentModelRuntime.health,
+    private val requestEvent: (AgentRequestUpdate) -> Unit = {}
 ) {
     private val router = AgentSourceRouter(sources, caps, health)
     private val actions = AgentDecisionActions(goal, elapsed)
@@ -145,14 +150,24 @@ internal class AgentCooperation(
                 val timeout = checkpoint() // 每个来源尝试前续租，8源回退也不会超出租期。
                 sourceChanged(lease.source.index)
                 val started = elapsed()
+                emit(AgentRequestUpdate(role, lease.source.index, AgentRequestStatus.STARTED))
                 try {
                     val result = block(lease.source, timeout)
+                    val cacheHit = result is JSONObject && result.optBoolean("cache_hit")
+                    val usage = when (result) { is AgentModelTurn -> result.usage; is AgentDecisionSelection -> result.usage; else -> null }
                     if (result is JSONObject && result.optBoolean("cache_hit")) lease.close()
                     else lease.succeed(elapsed() - started)
-                    if (accept(result)) return result
+                    if (accept(result)) {
+                        emit(AgentRequestUpdate(role, lease.source.index, if (cacheHit) AgentRequestStatus.CACHE_HIT else AgentRequestStatus.SUCCEEDED,
+                            (elapsed() - started).coerceAtLeast(0), usage))
+                        return result
+                    }
+                    emit(AgentRequestUpdate(role, lease.source.index, AgentRequestStatus.FALLBACK, (elapsed() - started).coerceAtLeast(0), usage))
                     uncertain = result
                     excluded += lease.source.fingerprint // 质量不足时换“眼睛”，不惩罚提供者健康。
                 } catch (error: AgentModelException) {
+                    emit(AgentRequestUpdate(role, lease.source.index, AgentRequestStatus.FAILED, (elapsed() - started).coerceAtLeast(0),
+                        error = error.reason, httpStatus = error.status))
                     failure = error
                     excluded += lease.source.fingerprint
                     lease.fail(System.currentTimeMillis(), error.retryAfterMs, error)
@@ -166,6 +181,7 @@ internal class AgentCooperation(
     }
 
     fun clear() = cache.clear()
+    private fun emit(update: AgentRequestUpdate) { runCatching { requestEvent(update) } }
     private fun digest(value: String): String = MessageDigest.getInstance("SHA-256").digest(value.toByteArray(Charsets.UTF_8))
         .joinToString("") { "%02x".format(it.toInt() and 255) }
 }

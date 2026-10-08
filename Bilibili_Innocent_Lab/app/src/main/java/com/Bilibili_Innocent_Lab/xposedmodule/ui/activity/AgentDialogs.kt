@@ -1,6 +1,9 @@
 package com.Bilibili_Innocent_Lab.xposedmodule.ui.activity
 
 import android.app.Dialog
+import android.content.Intent
+import android.net.Uri
+import android.provider.Settings
 import android.annotation.SuppressLint
 import android.graphics.Typeface
 import android.text.InputFilter
@@ -20,6 +23,7 @@ import com.Bilibili_Innocent_Lab.xposedmodule.agent.AgentTaskState
 import com.Bilibili_Innocent_Lab.xposedmodule.agent.AgentTaskLimits
 import com.Bilibili_Innocent_Lab.xposedmodule.agent.AgentVisionChallenge
 import com.Bilibili_Innocent_Lab.xposedmodule.agent.AgentWire
+import com.Bilibili_Innocent_Lab.xposedmodule.agent.ui.AgentStatusText
 import com.Bilibili_Innocent_Lab.xposedmodule.agent.model.AgentCapabilityProbe
 import com.Bilibili_Innocent_Lab.xposedmodule.agent.model.AgentModelRuntime
 import com.Bilibili_Innocent_Lab.xposedmodule.agent.model.AgentDecisionProbe
@@ -83,6 +87,27 @@ internal fun MainActivity.showAgentDialog(anchor: View? = null) {
         }
     }
     body.addView(enabled)
+    var restoringIsland = false
+    body.addView(CheckBox(this).apply {
+        text = getString(R.string.agent_island_enable); textColor = getColor(R.color.colorTextDark)
+        isChecked = AgentPreferences.islandAllowed(activity)
+        setOnCheckedChangeListener { button, checked ->
+            if (restoringIsland) return@setOnCheckedChangeListener
+            val previous = AgentPreferences.islandAllowed(activity)
+            if (!AgentPreferences.saveIsland(activity, checked)) {
+                restoringIsland = true; button.isChecked = previous; restoringIsland = false
+                toast(getString(R.string.agent_save_failed))
+            }
+        }
+    }.also(taskInputs::add))
+    label(getString(R.string.agent_island_help), true)
+    body.addView(createTermsActionButton(getString(R.string.agent_island_permission), filled = false) {
+        runCatching { startActivity(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:$packageName"))) }
+            .onFailure { toast(getString(R.string.agent_island_permission_failed)) }
+    }.also(taskInputs::add), LinearLayout.LayoutParams(-1, -2))
+    body.addView(createTermsActionButton(getString(R.string.agent_logs_title), filled = false) {
+        dismissWithAnimation(dialog, container) { showAgentLogsDialog(anchor) }
+    }, LinearLayout.LayoutParams(-1, -2))
     body.addView(createTermsActionButton(getString(R.string.agent_configure_sources), filled = false) {
         dismissWithAnimation(dialog, container) { showSemanticJevSettingsDialog(anchor) {} }
     }.also(taskInputs::add), LinearLayout.LayoutParams(-1, -2))
@@ -193,21 +218,7 @@ internal fun MainActivity.showAgentDialog(anchor: View? = null) {
     val status = label("", true).apply { setTextIsSelectable(true) }
     val render: (AgentTaskState) -> Unit = { state ->
         taskInputs.forEach { it.isEnabled = !state.running }
-        val stage = getString(when (state.phase) {
-            "idle" -> R.string.agent_idle
-            "connecting" -> R.string.agent_connecting
-            "thinking" -> R.string.agent_thinking
-            "search_videos" -> R.string.agent_searching
-            "get_video_details" -> R.string.agent_reading_details
-            "open_video" -> R.string.agent_opening
-            "inspect_screen" -> R.string.agent_inspecting
-            "get_host_state" -> R.string.agent_reading_state
-            "finished" -> R.string.agent_finished
-            "cancelled" -> R.string.agent_cancelled
-            "stopping" -> R.string.agent_stopping
-            "limited" -> R.string.agent_limited
-            else -> R.string.agent_failed
-        })
+        val stage = AgentStatusText.tip(activity, state)
         status.text = buildString {
             append(stage)
             if (state.step > 0) append(getString(R.string.agent_steps, state.step,

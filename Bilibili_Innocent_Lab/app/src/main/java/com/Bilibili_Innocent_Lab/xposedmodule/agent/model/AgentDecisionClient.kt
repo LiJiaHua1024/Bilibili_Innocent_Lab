@@ -19,7 +19,8 @@ internal data class AgentDecisionResult(
 internal data class AgentDecisionSelection(
     val choice: String?,
     val answers: JSONObject,
-    val provenance: String
+    val provenance: String,
+    val usage: AgentModelUsage? = null
 ) {
     override fun toString(): String = "AgentDecisionSelection(selected=${choice != null}, provenance=$provenance)"
 }
@@ -142,7 +143,7 @@ internal class AgentDecisionClient(
                 val result = request(source, safeState, questions, imageDataUrl, shape, deadline, cancelled)
                 synchronized(this) { learned[cacheKey] = Learned(shape, clock()) }
                 return AgentDecisionSelection(selectionOf(result, options.keys), result.answers,
-                    "decisions:${shape.format}:${if (imageDataUrl != null) "image" else if (shape.textState) "text" else "object"}")
+                    "decisions:${shape.format}:${if (imageDataUrl != null) "image" else if (shape.textState) "text" else "object"}", result.usage)
             } catch (error: AgentModelException) {
                 if (!shapeRejected(error)) throw error
                 last = error

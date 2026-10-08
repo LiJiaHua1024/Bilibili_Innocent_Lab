@@ -5,13 +5,17 @@ import android.content.Intent
 import android.os.Binder
 import android.os.IBinder
 import android.os.Parcel
+import com.Bilibili_Innocent_Lab.xposedmodule.agent.ui.AgentIslandOverlay
 
 /** 用户启动的短任务：宿主前台任务绑定保持模块生命周期，既不常驻也不自动恢复目标。 */
 class AgentSessionService : Service() {
     private var ownerTaskId: String? = null
+    private var island: AgentIslandOverlay? = null
     override fun onCreate() {
         super.onCreate()
         ownerTaskId = AgentController.currentTaskId()
+        AgentExecutionLogStore.initialize(applicationContext)
+        island = runCatching { AgentIslandOverlay(this) }.getOrNull()
     }
     private val endpoint = object : Binder() {
         override fun onTransact(code: Int, data: Parcel, reply: Parcel?, flags: Int): Boolean {
@@ -35,6 +39,8 @@ class AgentSessionService : Service() {
         return START_NOT_STICKY
     }
     override fun onDestroy() {
+        island?.close(); island = null
+        AgentExecutionLogStore.flush()
         ownerTaskId?.takeIf(AgentController::owns)?.let {
             val accessibility = getSystemService(ACCESSIBILITY_SERVICE) as? android.view.accessibility.AccessibilityManager
             AgentController.cancel(this, if (accessibility?.isEnabled != false) "accessibility_control_unverified" else "service_stopped")

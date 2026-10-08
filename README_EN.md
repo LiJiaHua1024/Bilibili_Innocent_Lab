@@ -109,6 +109,20 @@ death. Bounded conversation rounds, historical summaries and task-local detail/v
 observation time without retaining images or replacing current authorization. Arbitrary coordinates, shell, account writes and
 payments are unavailable.
 
+An optional Agent status island shows the module icon and animated operating state. Expand it for
+the current action tip, then open the execution log. Grant Android display-over-other-apps permission
+in task settings; without it, task execution remains available. The public overlay stays below system
+bars. Narrow centered cutouts align the two sides to the camera horizontal projection; edge holes,
+notches, landscape and unavailable cutout data use a safe centered fallback. Ordinary apps cannot
+guarantee placement around a physical camera inside the system status bar.
+During a task, logs use a separate non-focusable overlay and stay outside the host PixelCopy surface.
+Afterward, use the module settings log entry; switching activities still invokes existing takeover rules.
+Private logs store only stages, source numbers, roles, timing, outcomes, token counts and cache flags,
+never goals, keys, images, reasoning or raw replies. Four tasks, 256 events per task and a 64 KiB total
+budget bound retention, with visible omission counts. Interrupted tasks are recorded without replay.
+The small status view refreshes at most 20 fps; screen-off, lock, permission revocation and task closure
+remove its window and animation.
+
 Search RPC results are distinguished from visible results. Activity launch arguments do not prove
 playback, and publisher verification does not by itself establish an official original source. Retest
 after changing an endpoint, model or key; the module uses capability proofs for 24 hours. Existing

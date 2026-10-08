@@ -13,6 +13,7 @@ import android.os.SystemClock
 import com.Bilibili_Innocent_Lab.xposedmodule.agent.model.AgentModelException
 import com.Bilibili_Innocent_Lab.xposedmodule.agent.model.AgentModelSource
 import com.Bilibili_Innocent_Lab.xposedmodule.agent.model.AgentRoutePolicy
+import com.Bilibili_Innocent_Lab.xposedmodule.agent.model.AgentModelRole
 import com.Bilibili_Innocent_Lab.xposedmodule.settings.prefs
 import com.Bilibili_Innocent_Lab.xposedmodule.settings.terms.UserTermsConsentStore
 import com.Bilibili_Innocent_Lab.xposedmodule.settings.terms.UserTermsAuthorizationCoordinator
@@ -33,7 +34,7 @@ import com.highcapable.kavaref.extension.classOf
 
 internal data class AgentTaskState(val running: Boolean = false, val phase: String = "idle", val step: Long = 0,
                                    val source: Int = 0, val detail: String = "", val observations: Long = 0,
-                                   val maximumSteps: Long = AgentWire.MAX_STEPS.toLong())
+                                   val maximumSteps: Long = AgentWire.MAX_STEPS.toLong(), val role: AgentModelRole? = null)
 
 /** 所有模型请求在模块进程串行执行。状态与对话只在内存，进程回收后不会自动恢复或重放动作。 */
 internal object AgentController {
@@ -55,6 +56,12 @@ internal object AgentController {
     private val cancellations = ThreadPoolExecutor(1, 1, 0L, TimeUnit.MILLISECONDS, ArrayBlockingQueue<Runnable>(1),
         { Thread(it, "BIL-AgentCancel").apply { isDaemon = true } }, ThreadPoolExecutor.AbortPolicy())
     private val observers = CopyOnWriteArraySet<(AgentTaskState) -> Unit>()
+    private val notificationPending = AtomicBoolean()
+    private val notification = Runnable {
+        notificationPending.set(false)
+        val current = state
+        observers.forEach { runCatching { it(current) } }
+    }
     @Volatile private var active: Task? = null
     @Volatile var state = AgentTaskState()
         private set
@@ -82,6 +89,8 @@ internal object AgentController {
         val policy = AgentRoutePolicy(sources.mapTo(linkedSetOf()) { it.index }, fixed, fallback)
         val app = context.applicationContext as? Application ?: return "not_authorized"
         val task = Task(app, goal.trim(), sources, policy, allowVision, limits)
+        AgentExecutionLogStore.initialize(app)
+        AgentExecutionLogStore.begin(task.id)
         active = task
         return try {
             app.startService(Intent(app, classOf<AgentSessionService>()))
@@ -96,6 +105,7 @@ internal object AgentController {
             active = null
             app.stopService(Intent(app, classOf<AgentSessionService>()))
             state = AgentTaskState(phase = "failed", detail = "host_launch_failed")
+            AgentExecutionLogStore.finish(task.id, AgentLogStatus.FAILED, reason = AgentLogReason.HOST_UNAVAILABLE)
             notifyObservers()
             "host_launch_failed"
         }
@@ -108,12 +118,13 @@ internal object AgentController {
         task.future?.cancel(true)
         worker.purge()
         state = state.copy(running = true, phase = "stopping", detail = reason)
+        AgentTaskLog.state(task.id, state)
         notifyObservers()
         runCatching { cancellations.execute {
             try {
                 AgentHostClient.request(task.id, task.sequence.incrementAndGet(), SystemClock.elapsedRealtime() + 3_000, "cancel")
-            } finally { completeClose(context.applicationContext, task, AgentTaskState(phase = "cancelled", detail = reason)) }
-        } }.onFailure { completeClose(context.applicationContext, task, AgentTaskState(phase = "cancelled", detail = reason)) }
+            } finally { completeClose(context.applicationContext, task, state.copy(running = false, phase = "cancelled", detail = reason)) }
+        } }.onFailure { completeClose(context.applicationContext, task, state.copy(running = false, phase = "cancelled", detail = reason)) }
     }
 
     private fun run(context: Context, task: Task) {
@@ -148,7 +159,15 @@ internal object AgentController {
             val models = AgentCooperation(task.sources, capabilities, task.route, task.goal, canSee,
                 checkpoint = { renew(task); (task.deadline(30_000) - SystemClock.elapsedRealtime()).coerceIn(1, 30_000).toInt() },
                 cancelled = task::stopped, sourceChanged = { index -> publish(task, AgentTaskState(true, "thinking", steps, index,
-                    observations = observed, maximumSteps = task.limits.maximumSteps)) }, elapsed = SystemClock::elapsedRealtime).also { cooperation = it }
+                    observations = observed, maximumSteps = task.limits.maximumSteps)) }, elapsed = SystemClock::elapsedRealtime,
+                requestEvent = { update ->
+                    if (active === task && !task.cancelled.get()) {
+                        if (update.status == AgentRequestStatus.STARTED) publish(task, AgentTaskState(true,
+                            when (update.role) { AgentModelRole.PLANNER -> "waiting_response"; AgentModelRole.VISION -> "analyzing_image"; AgentModelRole.DECISION -> "reviewing" },
+                            steps, update.source, observations = observed, role = update.role), recordLog = false)
+                        AgentTaskLog.model(task.id, update, steps, observed)
+                    }
+                }).also { cooperation = it }
             var previousOperation = ""
             var repeatedFailures = 0
             while (!task.stopped() && task.limits.allowsStep(steps)) {
@@ -168,7 +187,9 @@ internal object AgentController {
                 check(history.acceptCallId(call.id)) { "duplicate_tool_call" }
                 check(AgentToolCatalog.valid(call.name, call.arguments, canSee)) { "invalid_tool_arguments" }
                 steps++
-                publish(task, AgentTaskState(true, call.name, steps, observations = observed))
+                val planner = task.sources.firstOrNull { it.fingerprint == models.plannerFingerprint }
+                publish(task, AgentTaskState(true, call.name, steps, source = planner?.index ?: 0, observations = observed,
+                    role = if (planner?.protocol == com.Bilibili_Innocent_Lab.xposedmodule.agent.model.AgentSourceProtocol.DECISIONS) AgentModelRole.DECISION else AgentModelRole.PLANNER))
                 renew(task)
                 val response = host(task, call.name, call.arguments)
                 check(response.optString("error") !in setOf("task_inactive", "closed_task", "task_budget_exhausted", "host_disconnected")) { "task_inactive" }
@@ -232,7 +253,10 @@ internal object AgentController {
 
     private fun host(task: Task, operation: String, args: JSONObject = JSONObject()): JSONObject {
         check(authorized(task)) { "not_authorized" }
-        return AgentHostClient.request(task.id, task.sequence.incrementAndGet(), task.deadline(AgentWire.IPC_TIMEOUT_MS), operation, args, task::stopped)
+        val started = SystemClock.elapsedRealtime()
+        return AgentHostClient.request(task.id, task.sequence.incrementAndGet(), task.deadline(AgentWire.IPC_TIMEOUT_MS), operation, args, task::stopped).also {
+            AgentTaskLog.host(task.id, operation, it, (SystemClock.elapsedRealtime() - started).coerceAtLeast(0), state)
+        }
     }
 
     private fun leaseUntil(task: Task): Long = task.deadline(AgentWire.MAX_LEASE_MS)
@@ -249,14 +273,17 @@ internal object AgentController {
                 state = (finalState ?: if (task.cancelled.get()) AgentTaskState(phase = "cancelled", detail = state.detail)
                     else state).copy(running = false, maximumSteps = task.limits.maximumSteps)
                 active = null
+                AgentTaskLog.state(task.id, state)
                 context.stopService(Intent(context, classOf<AgentSessionService>()))
                 notifyObservers()
             }
         }
     }
 
-    private fun publish(task: Task, next: AgentTaskState) { if (active === task && !task.cancelled.get()) {
-        state = next.copy(maximumSteps = task.limits.maximumSteps); notifyObservers()
+    private fun publish(task: Task, next: AgentTaskState, recordLog: Boolean = true) { if (active === task && !task.cancelled.get()) {
+        state = next.copy(maximumSteps = task.limits.maximumSteps)
+        if (recordLog) AgentTaskLog.state(task.id, state)
+        notifyObservers()
     } }
-    private fun notifyObservers() { main.post { val current = state; observers.forEach { runCatching { it(current) } } } }
+    private fun notifyObservers() { if (observers.isNotEmpty() && notificationPending.compareAndSet(false, true)) main.post(notification) }
 }
