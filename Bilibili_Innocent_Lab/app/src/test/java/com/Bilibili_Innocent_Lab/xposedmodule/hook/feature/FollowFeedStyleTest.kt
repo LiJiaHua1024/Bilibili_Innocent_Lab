@@ -68,6 +68,13 @@ class FollowFeedStyleTest {
             assertNotEquals(palette.textPrimary, palette.surface)
             assertNotEquals(palette.textSecondary, palette.surface)
             assertEquals(palette.surfaceVariant, FollowFeedStyle.track(palette).color)
+            val reference = FollowFeedStyle.reference(palette)
+            assertEquals(palette.surfaceVariant, reference.color)
+            assertNotEquals(palette.surface, reference.color)
+            assertEquals(LumenSurfaceMaterial.STATIC, reference.material)
+            assertFalse(reference.sampling.enabled)
+            assertTrue(reference.edgeEnabled)
+            assertTrue(reference.radiusDp < FollowFeedStyle.card().radiusDp)
         }
     }
 
