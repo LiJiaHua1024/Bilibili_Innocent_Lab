@@ -21,6 +21,7 @@ internal fun MainActivity.hostBottomBarAppearanceRows(
     performer: Hikage.Performer<NativeLinearLayout.LayoutParams>
 ) {
     with(performer) {
+        var refreshGlassSettings: () -> Unit = {}
         MaterialSwitch(
             lparams = LayoutParams(widthMatchParent = true) {
                 topMargin = 12.dp
@@ -41,6 +42,8 @@ internal fun MainActivity.hostBottomBarAppearanceRows(
                             FeaturePreferences.HOST_BOTTOM_BAR_LIQUID_GLASS,
                             checked
                         )
+                        putString(FeaturePreferences.HOST_BOTTOM_BAR_GLASS_MATERIAL, hostBottomBarGlassAppearance.material.value)
+                        putString(FeaturePreferences.HOST_BOTTOM_BAR_GLASS_RENDERER, hostBottomBarGlassAppearance.renderer.value)
                     }
                 }.onFailure { throwable ->
                     Log.e(
@@ -49,6 +52,7 @@ internal fun MainActivity.hostBottomBarAppearanceRows(
                         throwable
                     )
                 }
+                refreshGlassSettings()
             }
         }
         TextView(
@@ -60,6 +64,7 @@ internal fun MainActivity.hostBottomBarAppearanceRows(
             textColor = colorResource(R.color.colorTextDark)
             textSize = 12f
         }
+        refreshGlassSettings = hostGlassConfigurationRows(this, bottom = true)
         MaterialSwitch(
             lparams = LayoutParams(widthMatchParent = true) {
                 topMargin = 12.dp
@@ -179,6 +184,7 @@ internal fun MainActivity.hostTopBarAppearanceRows(
     performer: Hikage.Performer<NativeLinearLayout.LayoutParams>
 ) {
     with(performer) {
+        var refreshGlassSettings: () -> Unit = {}
         MaterialSwitch(
             lparams = LayoutParams(widthMatchParent = true) {
                 topMargin = 12.dp
@@ -199,6 +205,8 @@ internal fun MainActivity.hostTopBarAppearanceRows(
                             FeaturePreferences.HOST_TOP_BAR_LIQUID_GLASS,
                             checked
                         )
+                        putString(FeaturePreferences.HOST_TOP_BAR_GLASS_MATERIAL, hostTopBarGlassAppearance.material.value)
+                        putString(FeaturePreferences.HOST_TOP_BAR_GLASS_RENDERER, hostTopBarGlassAppearance.renderer.value)
                     }
                 }.onFailure { throwable ->
                     Log.e(
@@ -207,6 +215,7 @@ internal fun MainActivity.hostTopBarAppearanceRows(
                         throwable
                     )
                 }
+                refreshGlassSettings()
             }
         }
         TextView(
@@ -218,6 +227,7 @@ internal fun MainActivity.hostTopBarAppearanceRows(
             textColor = colorResource(R.color.colorTextDark)
             textSize = 12f
         }
+        refreshGlassSettings = hostGlassConfigurationRows(this, bottom = false)
         MaterialSwitch(
             lparams = LayoutParams(widthMatchParent = true) {
                 topMargin = 12.dp

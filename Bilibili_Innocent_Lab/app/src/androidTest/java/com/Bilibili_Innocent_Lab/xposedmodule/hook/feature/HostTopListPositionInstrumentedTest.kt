@@ -1,5 +1,9 @@
 package com.Bilibili_Innocent_Lab.xposedmodule.hook.feature
 
+import com.Bilibili_Innocent_Lab.xposedmodule.hook.hostui.common.HostChromeColors
+import com.Bilibili_Innocent_Lab.xposedmodule.hook.hostui.top.HostTopListPosition
+import com.Bilibili_Innocent_Lab.xposedmodule.hook.hostui.top.HostTopStatusFusionView
+
 import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.view.View
@@ -8,8 +12,7 @@ import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
-import com.Bilibili_Innocent_Lab.xposedmodule.ui.skin.material.ModernMaterialPolicy
-import com.Bilibili_Innocent_Lab.xposedmodule.ui.skin.model.SurfaceRole
+import com.Bilibili_Innocent_Lab.xposedmodule.hook.hostui.common.HostSurfaceScope
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -52,11 +55,14 @@ class HostTopListPositionInstrumentedTest {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         instrumentation.runOnMainSync {
             val colors = HostChromeColors(false, 0xFFFF6699.toInt())
+            val scope = HostSurfaceScope(View(instrumentation.targetContext), colors)
             val band = HostTopStatusFusionView(instrumentation.targetContext, 1f, colors.palette(),
-                ModernMaterialPolicy.surface(SurfaceRole.TOP_BAR, false), null, 24, 146)
+                scope, 24, 146)
             band.updateFade(144)
             band.updateDocking(1f, 88)
             band.alpha = 1f
+            band.measure(View.MeasureSpec.makeMeasureSpec(393, View.MeasureSpec.EXACTLY),
+                View.MeasureSpec.makeMeasureSpec(146, View.MeasureSpec.EXACTLY))
             band.layout(0, 0, 393, 146)
             val bitmap = Bitmap.createBitmap(393, 146, Bitmap.Config.ARGB_8888)
             try {
@@ -70,17 +76,20 @@ class HostTopListPositionInstrumentedTest {
                 assertTrue(bitmap.getPixel(100, 60) ushr 24 < 255)
                 assertTrue(band.translationZ > 0f)
                 val dark = HostChromeColors(true, colors.accent)
-                band.updateMaterial(dark.palette(), ModernMaterialPolicy.surface(SurfaceRole.TOP_BAR, true))
+                scope.updatePalette(dark)
+                band.updateMaterial(dark.palette())
                 band.updateDocking(1f, 88)
                 bitmap.eraseColor(0)
                 band.draw(Canvas(bitmap))
                 assertEquals(dark.palette().surface, bitmap.getPixel(100, 60))
-                band.updateMaterial(colors.palette(), ModernMaterialPolicy.surface(SurfaceRole.TOP_BAR, false))
+                scope.updatePalette(colors)
+                band.updateMaterial(colors.palette())
                 bitmap.eraseColor(0)
                 band.draw(Canvas(bitmap))
                 assertEquals(0xFFFFFFFF.toInt(), bitmap.getPixel(100, 60))
             } finally {
                 bitmap.recycle()
+                scope.close()
             }
         }
     }

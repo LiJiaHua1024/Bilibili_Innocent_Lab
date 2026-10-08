@@ -1,5 +1,7 @@
 package com.Bilibili_Innocent_Lab.xposedmodule.hook.feature
 
+import com.Bilibili_Innocent_Lab.xposedmodule.hook.hostui.bottom.HostBottomBarScrubRelease
+
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Test

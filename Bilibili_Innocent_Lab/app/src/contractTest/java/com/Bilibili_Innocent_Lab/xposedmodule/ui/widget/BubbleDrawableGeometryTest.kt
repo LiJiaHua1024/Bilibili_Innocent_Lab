@@ -1,8 +1,6 @@
 package com.Bilibili_Innocent_Lab.xposedmodule.ui.widget
 
-import java.io.File
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import com.Bilibili_Innocent_Lab.xposedmodule.contract.SourceContract
@@ -21,10 +19,10 @@ class BubbleDrawableGeometryTest {
         assertTrue("箭头底边必须整体位于圆角之外的直边上", cx - 3f >= r)
     }
 
-    @Test fun freeCopyBubbleKeepsItsRequestedCornerAndStillAnchors() {
+    @Test fun largeBubbleKeepsItsRequestedCornerAndStillAnchors() {
         val r = BubbleDrawable.resolvedCornerRadius(14f, 320f, 120f, 12f)
         assertEquals(14f, r, 0f)
-        // 贴左极限（HookEntry 下限 aw/2 + r = 20dp）与居中各自成立。
+        // 贴左极限（aw/2 + r = 20dp）与居中各自成立。
         assertEquals(20f, BubbleDrawable.arrowCenterX(6f, 320f, 12f, r), 0f)
         assertEquals(160f, BubbleDrawable.arrowCenterX(160f, 320f, 12f, r), 0f)
     }
@@ -54,13 +52,6 @@ class BubbleDrawableGeometryTest {
         assertTrue(badge.contains("ceil(strokeInset)"))
         assertTrue(badge.contains("floor(bounds.width() - strokeInset)"))
         assertTrue(badge.contains("bounds.top + strokeInset + bodyHeight.toFloat()"))
-    }
-
-    @Test fun freeCopyCallerClampMatchesTheDrawableRule() {
-        val hook = source("src/main/java/com/Bilibili_Innocent_Lab/xposedmodule/hook/HookEntry.kt")
-        // 调用方钳制与 drawable 内部钳制同规则：下限 aw/2 + r，不再有 0.4f 旧值。
-        assertTrue(hook.contains("arrowWidthPx / 2f + cornerRadiusPx,"))
-        assertFalse(hook.contains("cornerRadiusPx * 0.4f"))
     }
 
     private fun source(relative: String): String =

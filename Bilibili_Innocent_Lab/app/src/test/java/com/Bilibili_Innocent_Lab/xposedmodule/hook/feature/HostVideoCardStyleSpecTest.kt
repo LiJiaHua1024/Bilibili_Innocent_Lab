@@ -1,5 +1,9 @@
 package com.Bilibili_Innocent_Lab.xposedmodule.hook.feature
 
+import com.Bilibili_Innocent_Lab.xposedmodule.hook.hostui.cards.HostVideoCardGeometry
+import com.Bilibili_Innocent_Lab.xposedmodule.hook.hostui.cards.HostVideoCardSpacing
+import com.Bilibili_Innocent_Lab.xposedmodule.hook.hostui.cards.HostVideoCardStyleSpec
+
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue

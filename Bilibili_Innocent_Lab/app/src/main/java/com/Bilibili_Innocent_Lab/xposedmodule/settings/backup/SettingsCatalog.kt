@@ -20,6 +20,8 @@ import com.Bilibili_Innocent_Lab.xposedmodule.hook.feature.SemanticSurface
 import com.Bilibili_Innocent_Lab.xposedmodule.settings.appearance.MaterialColorSpec
 import com.Bilibili_Innocent_Lab.xposedmodule.settings.appearance.MaterialColorSpecStore
 import com.Bilibili_Innocent_Lab.xposedmodule.settings.appearance.ModalBackdropBlurStore
+import com.Bilibili_Innocent_Lab.xposedmodule.settings.appearance.HostGlassMaterial
+import com.Bilibili_Innocent_Lab.xposedmodule.settings.appearance.HostGlassRenderer
 
 /**
  * 可备份用户意图的唯一白名单。
@@ -30,7 +32,7 @@ import com.Bilibili_Innocent_Lab.xposedmodule.settings.appearance.ModalBackdropB
 internal object SettingsCatalog {
     const val PRODUCT_ID = "bilibili-innocent-lab.settings"
     const val SCOPE_ID = "core-user-settings"
-    const val CATALOG_VERSION = 44
+    const val CATALOG_VERSION = 45
     const val ID_PLAYER_DEFAULT_SPEED = "player.default_speed.percent"
     const val ID_PLAYER_LONG_PRESS_SPEED = "player.long_press_speed.percent"
     const val ID_FREE_COPY_COMMENT = "free_copy.comment.enabled"
@@ -618,6 +620,18 @@ internal object SettingsCatalog {
             default = false,
             introducedCatalogVersion = 41
         ),
+        text("host.bottom_bar.glass.material", FeaturePreferences.HOST_BOTTOM_BAR_GLASS_MATERIAL,
+            R.string.host_glass_material, default = HostGlassMaterial.SOFT.value,
+            allowed = HostGlassMaterial.entries.map { it.value }.toSet(), introducedCatalogVersion = 45),
+        text("host.bottom_bar.glass.renderer", FeaturePreferences.HOST_BOTTOM_BAR_GLASS_RENDERER,
+            R.string.host_glass_renderer, default = HostGlassRenderer.LEGACY,
+            allowed = HostGlassRenderer.entries.map { it.value }.toSet() + HostGlassRenderer.LEGACY, introducedCatalogVersion = 45),
+        text("host.top_bar.glass.material", FeaturePreferences.HOST_TOP_BAR_GLASS_MATERIAL,
+            R.string.host_glass_material, default = HostGlassMaterial.SOFT.value,
+            allowed = HostGlassMaterial.entries.map { it.value }.toSet(), introducedCatalogVersion = 45),
+        text("host.top_bar.glass.renderer", FeaturePreferences.HOST_TOP_BAR_GLASS_RENDERER,
+            R.string.host_glass_renderer, default = HostGlassRenderer.LEGACY,
+            allowed = HostGlassRenderer.entries.map { it.value }.toSet() + HostGlassRenderer.LEGACY, introducedCatalogVersion = 45),
         bool(
             "host.bottom_bar.icon_only.enabled",
             FeaturePreferences.HOST_BOTTOM_BAR_ICON_ONLY,
@@ -904,7 +918,7 @@ internal object SettingsCatalog {
     val byStorageKey: Map<String, SettingSpec> = specs.associateBy(SettingSpec::storageKey)
 
     init {
-        check(specs.size == 202) { "Expected 202 catalog settings, found ${specs.size}" }
+        check(specs.size == 206) { "Expected 206 catalog settings, found ${specs.size}" }
         check(byId.size == specs.size) { "Duplicate logical setting id" }
         check(specs.map(SettingSpec::storageKey).distinct().size == specs.size) {
             "Duplicate settings storage key"

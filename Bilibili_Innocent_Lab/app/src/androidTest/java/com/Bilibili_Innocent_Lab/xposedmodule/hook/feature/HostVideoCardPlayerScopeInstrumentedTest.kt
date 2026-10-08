@@ -1,5 +1,8 @@
 package com.Bilibili_Innocent_Lab.xposedmodule.hook.feature
 
+import com.Bilibili_Innocent_Lab.xposedmodule.hook.hostui.cards.HostVideoCardHostAccess
+import com.Bilibili_Innocent_Lab.xposedmodule.hook.hostui.cards.HostVideoCardStyle
+
 import android.content.Context
 import android.graphics.Color
 import android.graphics.drawable.ColorDrawable

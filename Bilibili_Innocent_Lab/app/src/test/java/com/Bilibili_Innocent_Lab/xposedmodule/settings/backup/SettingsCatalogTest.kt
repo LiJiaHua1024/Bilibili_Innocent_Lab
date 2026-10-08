@@ -11,13 +11,33 @@ class SettingsCatalogTest {
     @Test fun `catalog v44 publishes two default off SponsorBlock settings without changing old backups`() {
         val expected = requireNotNull(javaClass.classLoader?.getResourceAsStream("settings-backup/catalog-v44.txt"))
             .bufferedReader().useLines { it.filter(String::isNotBlank).toList() }
-        assertEquals(expected, SettingsCatalog.specs.map { it.id }.sorted())
+        assertEquals(expected, SettingsCatalog.specs.filter { it.introducedCatalogVersion <= 44 }.map { it.id }.sorted())
         val added = SettingsCatalog.specs.filter { it.introducedCatalogVersion == 44 }
         assertEquals(listOf("player.sponsorblock.automatic", "player.sponsorblock.enabled"), added.map { it.id }.sorted())
         added.forEach {
             assertEquals(SettingValue.Bool(false), it.defaultValue)
             assertEquals(RestorePolicy.AUTOMATIC, it.restorePolicy)
             assertTrue(ImportEffect.RESTART_BILIBILI in it.effects)
+        }
+    }
+
+    @Test fun `catalog v45 stores glass choices without losing legacy backend intent`() {
+        val expected = requireNotNull(javaClass.classLoader?.getResourceAsStream("settings-backup/catalog-v45.txt"))
+            .bufferedReader().useLines { it.filter(String::isNotBlank).toList() }
+        assertEquals(expected, SettingsCatalog.specs.map { it.id }.sorted())
+        val added = SettingsCatalog.specs.filter { it.introducedCatalogVersion == 45 }
+        assertEquals(setOf("host.top_bar.glass.material", "host.top_bar.glass.renderer",
+            "host.bottom_bar.glass.material", "host.bottom_bar.glass.renderer"), added.map { it.id }.toSet())
+        added.forEach {
+            assertTrue(ImportEffect.RESTART_BILIBILI in it.effects)
+            assertTrue(it.accepts(it.defaultValue))
+            assertFalse(it.accepts(SettingValue.Text("unknown")))
+            assertEquals(RestorePolicy.AUTOMATIC, it.restorePolicy)
+        }
+        added.filter { it.id.endsWith("renderer") }.forEach {
+            assertEquals(SettingValue.Text("legacy"), it.defaultValue)
+            assertTrue(it.accepts(SettingValue.Text("software")))
+            assertTrue(it.accepts(SettingValue.Text("auto")))
         }
     }
     @Test fun `catalog v23 adds the default off player end page filter`() {
@@ -143,11 +163,11 @@ class SettingsCatalogTest {
     }
 
     @Test
-    fun `catalog is a unique allowlist with 202 settings`() {
-        assertEquals(202, SettingsCatalog.specs.size)
-        assertEquals(202, SettingsCatalog.specs.map { it.id }.distinct().size)
-        assertEquals(202, SettingsCatalog.specs.map { it.storageKey }.distinct().size)
-        assertEquals(199, SettingsCatalog.specs.count { it.restorePolicy == RestorePolicy.AUTOMATIC })
+    fun `catalog is a unique allowlist with 206 settings`() {
+        assertEquals(206, SettingsCatalog.specs.size)
+        assertEquals(206, SettingsCatalog.specs.map { it.id }.distinct().size)
+        assertEquals(206, SettingsCatalog.specs.map { it.storageKey }.distinct().size)
+        assertEquals(203, SettingsCatalog.specs.count { it.restorePolicy == RestorePolicy.AUTOMATIC })
         assertEquals(3, SettingsCatalog.specs.count { it.restorePolicy == RestorePolicy.MANUAL })
         assertTrue(SettingsCatalog.specs.all { it.accepts(it.defaultValue) })
         assertTrue(SettingsCatalog.specs.all { it.id.matches(Regex("[a-z0-9][a-z0-9._-]{0,127}")) })
@@ -378,7 +398,7 @@ class SettingsCatalogTest {
         val expected = requireNotNull(javaClass.classLoader?.getResourceAsStream("settings-backup/catalog-v13.txt"))
             .bufferedReader().useLines { it.filter(String::isNotBlank).toList() }
         assertEquals(expected, SettingsCatalog.specs.filter { it.introducedCatalogVersion <= 13 }.map { it.id }.sorted())
-        assertEquals(44, SettingsCatalog.CATALOG_VERSION)
+        assertEquals(45, SettingsCatalog.CATALOG_VERSION)
         val added = SettingsCatalog.specs.filter { it.introducedCatalogVersion == 13 }
         assertEquals(6, added.size)
         assertTrue(added.all { it.restorePolicy == RestorePolicy.AUTOMATIC && ImportEffect.RESTART_BILIBILI in it.effects })
@@ -679,7 +699,7 @@ class SettingsCatalogTest {
     fun `catalog types and manual roaming boundary are explicit`() {
         assertEquals(137, SettingsCatalog.specs.count { it.type == SettingValueType.BOOLEAN })
         assertEquals(14, SettingsCatalog.specs.count { it.type == SettingValueType.INTEGER })
-        assertEquals(51, SettingsCatalog.specs.count { it.type == SettingValueType.STRING })
+        assertEquals(55, SettingsCatalog.specs.count { it.type == SettingValueType.STRING })
 
         val roaming = requireNotNull(SettingsCatalog.byId["compat.roaming.enabled"])
         assertEquals(RestorePolicy.MANUAL, roaming.restorePolicy)

@@ -256,6 +256,10 @@ internal object ReleaseHighlightsCatalog {
         ReleaseHighlight("sponsorblock", HighlightKind.NEW, R.string.highlights_sponsorblock,
             HighlightDestination("player.sponsorblock.enabled",
                 alsoCovers = setOf("player.sponsorblock.automatic")))
+    )), ReleaseHighlightsBatch(9, listOf(
+        ReleaseHighlight("host-glass-materials", HighlightKind.IMPROVED, R.string.highlights_host_glass_materials,
+            HighlightDestination("host.top_bar.glass.material", alsoCovers = setOf(
+                "host.top_bar.glass.renderer", "host.bottom_bar.glass.material", "host.bottom_bar.glass.renderer")))
     )))
     val currentRevision: Int get() = batches.maxOf { it.revision }
     val destinations get() = batches.sortedByDescending { it.revision }.flatMap { it.entries }
