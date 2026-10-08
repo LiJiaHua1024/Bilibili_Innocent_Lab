@@ -90,6 +90,11 @@
             android:enabled="true"
             android:exported="true" />
 
+        <!-- 仅用户启动的短任务；绑定事务验证宿主 UID，不接受外部 Intent 目标或命令。 -->
+        <service
+            android:name=".agent.AgentSessionService"
+            android:exported="true" />
+
         <provider
             android:name=".provider.HostAdmissionProvider"
             android:authorities="${applicationId}.admission"

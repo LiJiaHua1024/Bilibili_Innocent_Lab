@@ -30,7 +30,7 @@ import com.Bilibili_Innocent_Lab.xposedmodule.settings.appearance.ModalBackdropB
 internal object SettingsCatalog {
     const val PRODUCT_ID = "bilibili-innocent-lab.settings"
     const val SCOPE_ID = "core-user-settings"
-    const val CATALOG_VERSION = 45
+    const val CATALOG_VERSION = 46
     const val ID_PLAYER_DEFAULT_SPEED = "player.default_speed.percent"
     const val ID_PLAYER_LONG_PRESS_SPEED = "player.long_press_speed.percent"
     const val ID_FREE_COPY_COMMENT = "free_copy.comment.enabled"
@@ -185,6 +185,9 @@ internal object SettingsCatalog {
             restorePolicy = RestorePolicy.MANUAL, introducedCatalogVersion = 22),
         bool(ID_BILI_ACCESS_KEY_AUTHORIZED, FeaturePreferences.BILI_ACCESS_KEY_AUTHORIZED,
             R.string.bili_access_key_authorize, restorePolicy = RestorePolicy.MANUAL, introducedCatalogVersion = 29),
+        bool(com.Bilibili_Innocent_Lab.xposedmodule.agent.AgentPreferences.CATALOG_ID,
+            com.Bilibili_Innocent_Lab.xposedmodule.agent.AgentPreferences.ENABLED, R.string.agent_title,
+            restorePolicy = RestorePolicy.MANUAL, introducedCatalogVersion = 46),
         // JEV 语义判定的非敏感配置；API Key 是 hook_config 运行时键，不进目录、不进备份。
         text(ID_SEMANTIC_JEV_ENDPOINT, FeaturePreferences.SEMANTIC_JEV_ENDPOINT, R.string.semantic_jev_endpoint,
             maxStringLength = SemanticJudge.MAX_ENDPOINT_LENGTH, introducedCatalogVersion = 31),
@@ -929,7 +932,7 @@ internal object SettingsCatalog {
     val byStorageKey: Map<String, SettingSpec> = specs.associateBy(SettingSpec::storageKey)
 
     init {
-        check(specs.size == 214) { "Expected 214 catalog settings, found ${specs.size}" }
+        check(specs.size == 215) { "Expected 215 catalog settings, found ${specs.size}" }
         check(byId.size == specs.size) { "Duplicate logical setting id" }
         check(specs.map(SettingSpec::storageKey).distinct().size == specs.size) {
             "Duplicate settings storage key"

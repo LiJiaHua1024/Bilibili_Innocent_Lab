@@ -6309,6 +6309,17 @@ class MainActivity : SkinnedActivity() {
                         textColor = colorResource(R.color.colorTextDark)
                         textSize = 12f
                     }
+                    TextView(lparams = LayoutParams(widthMatchParent = true) { bottomMargin = 12.dp }) {
+                        text = stringResource(R.string.agent_title)
+                        textColor = colorResource(R.color.colorTextGray)
+                        textSize = 15f
+                        setPadding(12.dp, 10.dp, 12.dp, 10.dp)
+                        background = selfRippleBackground(10f)
+                        isClickable = true
+                        isFocusable = true
+                        bindSettingDestination(this, com.Bilibili_Innocent_Lab.xposedmodule.agent.AgentPreferences.ENABLED)
+                        setOnClickListener { showAgentDialog(anchor = it) }
+                    }
                     MaterialSwitch(
                         lparams = LayoutParams(widthMatchParent = true) {
                             bottomMargin = 5.dp

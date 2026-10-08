@@ -263,6 +263,9 @@ internal object ReleaseHighlightsCatalog {
                 alsoCovers = (5..SemanticSource.MAX_SOURCES).flatMap { index ->
                     listOf("provider", "endpoint", "model").map { "compat.semantic_source.$index.$it" }
                 }.toSet()))
+    )), ReleaseHighlightsBatch(10, listOf(
+        ReleaseHighlight("agent-task-assistant", HighlightKind.NEW, R.string.highlights_agent,
+            HighlightDestination(com.Bilibili_Innocent_Lab.xposedmodule.agent.AgentPreferences.CATALOG_ID))
     )))
     val currentRevision: Int get() = batches.maxOf { it.revision }
     val destinations get() = batches.sortedByDescending { it.revision }.flatMap { it.entries }

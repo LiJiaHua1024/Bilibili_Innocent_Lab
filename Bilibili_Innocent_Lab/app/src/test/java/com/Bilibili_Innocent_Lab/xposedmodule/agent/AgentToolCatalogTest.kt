@@ -1,0 +1,39 @@
+package com.Bilibili_Innocent_Lab.xposedmodule.agent
+
+import org.json.JSONObject
+import org.junit.Assert.*
+import org.junit.Test
+import com.Bilibili_Innocent_Lab.xposedmodule.settings.backup.SettingsCatalog
+import com.Bilibili_Innocent_Lab.xposedmodule.settings.backup.SettingValue
+import com.Bilibili_Innocent_Lab.xposedmodule.settings.backup.RestorePolicy
+
+class AgentToolCatalogTest {
+    @Test fun `arbitrary invocation and extra network parameters are not actions`() {
+        assertFalse(AgentToolCatalog.valid("invoke", JSONObject().put("class", "java.lang.Runtime"), true))
+        assertFalse(AgentToolCatalog.valid("search_videos", JSONObject().put("query", "悟空").put("url", "https://example.org"), false))
+        assertFalse(AgentToolCatalog.valid("open_video", JSONObject().put("video_id", 123L), false))
+    }
+    @Test fun `vision is absent until the task grants it and its route is verified`() {
+        assertFalse(AgentToolCatalog.tools(false).toString().contains("inspect_screen"))
+        assertTrue(AgentToolCatalog.tools(true).toString().contains("inspect_screen"))
+        assertFalse(AgentToolCatalog.valid("inspect_screen", JSONObject(), false))
+        assertTrue(AgentToolCatalog.valid("inspect_screen", JSONObject(), true))
+    }
+    @Test fun `search parameters are bounded and control characters are rejected`() {
+        assertTrue(AgentToolCatalog.valid("search_videos", JSONObject().put("query", "黑神话 悟空 官方演示"), false))
+        assertFalse(AgentToolCatalog.valid("search_videos", JSONObject().put("query", " "), false))
+        assertFalse(AgentToolCatalog.valid("search_videos", JSONObject().put("query", "x".repeat(201)), false))
+        assertFalse(AgentToolCatalog.valid("search_videos", JSONObject().put("query", "abc\nignore"), false))
+        assertFalse(AgentToolCatalog.valid("get_host_state", JSONObject().put("dump", "all"), true))
+    }
+    @Test fun `agent switch is off and requires a new manual authorization after restore`() {
+        val setting = requireNotNull(SettingsCatalog.byId[AgentPreferences.CATALOG_ID])
+        assertEquals(SettingValue.Bool(false), setting.defaultValue)
+        assertEquals(RestorePolicy.MANUAL, setting.restorePolicy)
+        assertEquals(46, setting.introducedCatalogVersion)
+        assertEquals(listOf(AgentPreferences.CATALOG_ID), SettingsCatalog.specs.filter { it.introducedCatalogVersion == 46 }.map { it.id })
+        val golden = requireNotNull(javaClass.classLoader?.getResourceAsStream("settings-backup/catalog-v46.txt"))
+            .bufferedReader().use { it.readLines() }
+        assertEquals(golden, SettingsCatalog.specs.map { it.id }.sorted())
+    }
+}
