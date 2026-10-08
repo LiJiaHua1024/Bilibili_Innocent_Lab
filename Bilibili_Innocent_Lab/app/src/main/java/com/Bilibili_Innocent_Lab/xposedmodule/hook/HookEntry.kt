@@ -3,7 +3,6 @@ package com.Bilibili_Innocent_Lab.xposedmodule.hook
 import android.content.Context
 import android.graphics.Color
 import android.graphics.drawable.ColorDrawable
-import android.graphics.drawable.GradientDrawable
 import android.view.Gravity
 import android.view.View
 import android.widget.LinearLayout
@@ -129,7 +128,7 @@ import com.Bilibili_Innocent_Lab.xposedmodule.hook.feature.VideoRelateFilterFeat
 import com.Bilibili_Innocent_Lab.xposedmodule.settings.remote.RemoteHookConfigContract
 import com.Bilibili_Innocent_Lab.xposedmodule.settings.remote.RemoteHookConfigDecodeResult
 import com.Bilibili_Innocent_Lab.xposedmodule.settings.remote.RemoteHookConfigSnapshot
-import com.Bilibili_Innocent_Lab.xposedmodule.ui.widget.BubbleDrawable
+import com.Bilibili_Innocent_Lab.xposedmodule.hook.hostui.overlays.HostCopyBubble
 
 /**
  * Bilibili 广告 / 推广内容 Hook 入口。
@@ -1828,355 +1827,33 @@ class HookEntry : XposedModule() {
                 logError("free_copy_no_act", "[BIL] 未找到 Activity context，无法弹窗")
                 return
             }
-            val density = act.resources.displayMetrics.density
-            fun dp(v: Int) = (v * density).toInt()
             runCatching {
-                // 气泡配色：默认暗色（深灰气泡 + 浅色文字），亮色模式白底黑字（适配亮色主题）。
-                // 亮暗色自动跟随开启时用主题缓存（详情页进入时判定，弹泡零反射）；
-                // 缓存未确定（null）或跟随关闭时回退手动开关。
-                val useLight = if (freeCopyAutoLight && freeCopyLightCache != null) {
-                    freeCopyLightCache!!
-                } else {
-                    freeCopyLightMode
-                }
-                val bubbleColor = if (useLight) 0xFFFFFFFF.toInt() else 0xFF2A2B2E.toInt()
-                val bubbleTextColor = if (useLight) 0xFF1C1B1F.toInt() else 0xFFE8E8E8.toInt()
-                // 屏幕尺寸：优先 WindowMetrics（当前窗口真实 bounds）——部分 ROM 上
-                // Activity 的 displayMetrics 返回的是缩放/兼容模式尺寸，会导致防越界
-                // 计算（气泡限宽、右/底贴边收窄）与真实屏幕不符
-                val wmBounds = if (AndroidVersion.isAtLeast(AndroidVersion.R)) {
-                    runCatching {
-                        val wm = act.getSystemService(android.content.Context.WINDOW_SERVICE)
-                            as? android.view.WindowManager
-                        wm?.currentWindowMetrics?.bounds
-                    }.getOrNull()
-                } else null
-                val dm = act.resources.displayMetrics
-                val screenW = wmBounds?.width()?.takeIf { it > 0 } ?: dm.widthPixels
-                val maxContentW = (screenW * 0.72).toInt() // 文本最大宽度（屏幕 72%，超长自动换行）
-
-                // 锚定到长按评论下方（右边缘/底部不超屏）—— 先算 anchor 位置和箭头偏移，
-                // 因为 body 背景用 BubbleDrawable（一次画出圆角矩形+顶部三角形箭头），箭头位置需传入
-                val loc = IntArray(2)
-                anchor.getLocationOnScreen(loc)
-                val bubbleMaxW = maxContentW + dp(36) // 文本宽 + 左右 padding
-                var bubbleX = (loc[0] - dp(16)).toFloat()
-                if (bubbleX + bubbleMaxW > screenW - dp(8)) {
-                    bubbleX = (screenW - bubbleMaxW - dp(8)).toFloat() // 右边缘贴屏收窄
-                }
-                if (bubbleX < dp(8)) bubbleX = dp(8).toFloat()
-                val anchorCenterX = loc[0] + anchor.width / 2
-                // 箭头位置：指向 anchor 中心。下限与 BubbleDrawable 内部钳制保持一致——
-                // 箭头底边必须整体落在圆角之外的直边上，否则圆角处会多描出一截直线。
-                val arrowWidthPx = dp(12).toFloat()
-                val arrowHeightPx = dp(6).toFloat()
-                val cornerRadiusPx = density * 14f
-                val arrowOffsetPx = (anchorCenterX - bubbleX).coerceIn(
-                    arrowWidthPx / 2f + cornerRadiusPx,
-                    bubbleMaxW - arrowWidthPx / 2f - cornerRadiusPx
-                )
-
-                // 气泡主体：圆角矩形 + 顶部三角形箭头，由 BubbleDrawable 一次画出，
-                // 消除原方案（body GradientDrawable + 独立 arrow View 叠加）的方角露出问题。
-                // 亮色模式加一圈黑色描边（白底气泡与 B 站白色背景分割不清）。
-                val bubbleDrawable = BubbleDrawable(
-                    bubbleColor = bubbleColor,
-                    arrowWidthPx = arrowWidthPx,
-                    arrowHeightPx = arrowHeightPx,
-                    cornerRadiusPx = cornerRadiusPx,
-                    arrowOffsetPx = arrowOffsetPx,
-                    strokeColor = if (freeCopyLightMode) 0xFF000000.toInt() else 0,
-                    strokeWidthPx = if (freeCopyLightMode) dp(1).toFloat() else 0f
-                )
-                val body = LinearLayout(act).apply {
-                    orientation = LinearLayout.VERTICAL
-                    setPadding(dp(18), dp(14), dp(18), dp(14))
-                    background = bubbleDrawable
-                }
-                // 透明占位文字：只为撑开 body 尺寸，alpha=0 不可见，外壳缩放时无可见重影
-                val spacer = TextView(act).apply {
-                    setText(text, TextView.BufferType.SPANNABLE)
-                    textSize = 15f
-                    setLineSpacing(dp(3).toFloat(), 1f)
-                    maxLines = 12
-                    maxWidth = maxContentW
-                    alpha = 0f
-                }
-                body.addView(spacer)
-                // 真实文字：独立于缩放外壳，只做淡入淡出（不缩放，彻底无重影）
+                val useLight = if (freeCopyAutoLight && freeCopyLightCache != null) freeCopyLightCache!! else freeCopyLightMode
                 val content = TextView(act).apply {
                     setText(text, TextView.BufferType.SPANNABLE)
                     textSize = 15f
-                    textColor = bubbleTextColor
-                    setLineSpacing(dp(3).toFloat(), 1f)
+                    setLineSpacing((3f * resources.displayMetrics.density).toInt().toFloat(), 1f)
                     maxLines = 12
-                    maxWidth = maxContentW // ★ 限宽，超长自动换行避免超出屏幕
-                    setTextIsSelectable(true) // ★ 系统级文本选择（自由拖选复制）
+                    maxWidth = (resources.displayMetrics.widthPixels * .72f).toInt()
                 }
                 installSemanticCopyAction(content, popupContent)
-
-                // measure body 实际高度（用于底部防超出）
-                body.measure(
-                    View.MeasureSpec.makeMeasureSpec(screenW, View.MeasureSpec.AT_MOST),
-                    View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED)
-                )
-                val bubbleH = body.measuredHeight
-                val screenH = wmBounds?.height()?.takeIf { it > 0 } ?: dm.heightPixels
-                // 底部安全线：真屏幕底部往上 20% 位置（长简介文本弹出时不得穿入最下
-                // 20% 区域——截图中气泡贴真底部即使文本不越界也观感不佳，且部分场景
-                // 锚点失效/文本超高时 clamp 到真底仍会出现「长文本顶到屏幕底边」）
-                val safeBottom = (screenH * 0.8f).toInt()
-                // anchor 坐标有效性验证：简介 desc 是「展开/收起」状态的 ExpandableTextView，
-                // 详情页简介区域在 RecyclerView 内复用——长按触发时可能拿到陈旧/不可见实例
-                // → getLocationOnScreen 返回旧屏幕位置（常处于屏幕底部），气泡被推到屏幕
-                // 下端（概率性贴底截图根因）。isShown + 坐标范围校验，失效回退屏幕 40%。
-                val anchorVisible = anchor.isShown && loc[1] >= 0 && loc[1] < screenH
-                val anchorY = if (anchorVisible) loc[1] else (screenH * 0.4f).toInt()
-                // 目标区域：优先 anchor 下方；底部放不下则 anchor 上方
-                var bubbleY = (anchorY + anchor.height + dp(4)).toFloat()
-                // 防超出底部（一次）：下边缘穿入底部安全区 → 上移
-                if (bubbleY + bubbleH > safeBottom) {
-                    bubbleY = (anchorY - bubbleH - dp(4)).toFloat()
-                }
-                // 防超出底部（二次，终极兜底）：上移后仍穿入安全区（anchor 在屏底/气泡过高）
-                // → 直接 clamp 到安全线处，保证长简介不进入屏幕底部 20% 区域
-                if (bubbleY + bubbleH > safeBottom) {
-                    bubbleY = (safeBottom - bubbleH).toFloat()
-                }
-                // 防超出顶部：上移后仍超出则贴顶（贴顶后若 bubbleH 超过可用区——
-                // maxLines=12 限高下几乎不可达——顶部优先，底部让位）
-                if (bubbleY < dp(8)) bubbleY = dp(8).toFloat()
-                // 定位成功是正常路径，只在完整档留痕；error 通道精简档也输出，会稀释真实错误。
-                logInfo("fc_loc", "[BIL] 气泡定位: anchor=${anchor.javaClass.simpleName} visible=$anchorVisible loc=(${loc[0]},${loc[1]}) h=${anchor.height} → bubble=(${bubbleX.toInt()},${bubbleY.toInt()}) h=$bubbleH safe=$safeBottom")
-
-                // 全屏透明容器（接收点击外部关闭 + 承载气泡绝对定位）
-                val fullscreen = android.widget.FrameLayout(act).apply {
-                    setBackgroundColor(Color.TRANSPARENT)
-                }
-                fullscreen.addView(body, android.widget.FrameLayout.LayoutParams(
-                    android.widget.FrameLayout.LayoutParams.WRAP_CONTENT,
-                    android.widget.FrameLayout.LayoutParams.WRAP_CONTENT
-                ))
-                // 真实文字独立添加（不随外壳缩放，只淡入淡出）
-                fullscreen.addView(content, android.widget.FrameLayout.LayoutParams(
-                    android.widget.FrameLayout.LayoutParams.WRAP_CONTENT,
-                    android.widget.FrameLayout.LayoutParams.WRAP_CONTENT
-                ))
-                // 气泡绝对定位到长按评论下方（setX/setY 不受 window attributes 影响，100% 可靠）。
-                // 注意：body 背景的箭头向上突出 arrowHeightPx（已画在 body 内），所以 content.y
-                // 直接用 bubbleY + paddingTop，不再需要原 arrow 菱形占位的 +dp(6)。
-                body.x = bubbleX
-                body.y = bubbleY
-                content.x = bubbleX + dp(18)
-                content.y = bubbleY + dp(14)
-
-                // 关闭系统默认焦点高亮：可选文本（setTextIsSelectable）会让 TextView 可聚焦，
-                // 部分 ROM 的默认焦点高亮是黑色矩形描边——保险起见统一关闭（我们自己不依赖它）
-                if (AndroidVersion.isAtLeast(AndroidVersion.O)) {
-                    fullscreen.defaultFocusHighlightEnabled = false
-                    body.defaultFocusHighlightEnabled = false
-                    content.defaultFocusHighlightEnabled = false
-                }
-                val dialog = android.app.Dialog(act, com.Bilibili_Innocent_Lab.xposedmodule.R.style.FreeCopyBubble)
-                dialog.setContentView(fullscreen)
-                dialog.setCanceledOnTouchOutside(false)
-                // 防 Activity 泄漏：将 dialog 关联到宿主 Activity，Activity 销毁时自动 dismiss，
-                // 释放 dialog 对 Activity 的强引用（否则 B 站页面销毁而气泡未关闭会泄漏 Activity + WindowLeaked）。
-                dialog.setOwnerActivity(act)
-                // setOwnerActivity 只记录归属，Android 并不保证 owner 销毁时自动 dismiss。
-                // 气泡显示期间注册会话级生命周期回调；dismiss/show 失败都立即注销，
-                // Application 不会长期持有 Activity/Dialog。
-                val ownerApplication = act.application
-                var ownerLifecycleCallbacks: android.app.Application.ActivityLifecycleCallbacks? = null
-                fun unregisterOwnerLifecycleCallbacks() {
-                    val callbacks = ownerLifecycleCallbacks ?: return
-                    ownerLifecycleCallbacks = null
-                    runCatching { ownerApplication.unregisterActivityLifecycleCallbacks(callbacks) }
-                }
-                val lifecycleCallbacks = object : android.app.Application.ActivityLifecycleCallbacks {
-                    override fun onActivityCreated(
-                        activity: android.app.Activity,
-                        savedInstanceState: android.os.Bundle?
-                    ) = Unit
-
-                    override fun onActivityStarted(activity: android.app.Activity) = Unit
-                    override fun onActivityResumed(activity: android.app.Activity) = Unit
-                    override fun onActivityPaused(activity: android.app.Activity) = Unit
-                    override fun onActivityStopped(activity: android.app.Activity) = Unit
-                    override fun onActivitySaveInstanceState(
-                        activity: android.app.Activity,
-                        outState: android.os.Bundle
-                    ) = Unit
-
-                    override fun onActivityDestroyed(activity: android.app.Activity) {
-                        if (activity !== act) return
-                        try {
-                            if (dialog.isShowing) dialog.dismiss()
-                        } finally {
-                            unregisterOwnerLifecycleCallbacks()
-                            clearDescTouchSession(resetHandled = true)
-                            clearCommentTouchSession(resetHandled = true)
-                        }
-                    }
-                }
-                ownerLifecycleCallbacks = lifecycleCallbacks
-                // 点气泡内部不关闭（消费点击）；点空白处 fullscreen 收到点击关闭（先播放退出动画）
-                body.setOnClickListener { /* 消费，避免冒泡关闭 */ }
-                content.setOnClickListener { /* 消费，避免冒泡关闭 */ }
-                fullscreen.setOnClickListener {
-                    // 退出动画：气泡收拢 + 文字淡出 + 描边快速淡出（描边不参与缩放，平滑消失无跳变）。
-                    content.setTextIsSelectable(false)
-                    // 关闭即穿透：淡出动画改为纯视觉（150ms），窗口立即对触摸透明。否则
-                    // dismiss 前的全屏 Dialog 会吃掉用户"关闭后立即"点击/长按脉络或宿主
-                    // 页面的整段触摸序列（DOWN 落在 Dialog 存活期时整段序列丢失）。
-                    // 穿透后若立刻长按另一节点弹出新气泡，beginBubbleSession 覆盖会话，
-                    // 旧 Dialog dismiss 时的 finishBubbleSession 身份校验（会话号+引用
-                    // 双重比对）保证不会误清新会话；动画结束 dismiss 后窗口自然销毁。
-                    dialog.window?.addFlags(
-                        android.view.WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE
-                    )
-                    val easeIn = android.view.animation.PathInterpolator(0.4f, 0f, 1f, 1f)
-                    val scaleOut = android.animation.ValueAnimator.ofFloat(1f, 0.92f).apply {
-                        duration = 150
-                        interpolator = easeIn
-                        addUpdateListener { bubbleDrawable.scale = it.animatedValue as Float }
-                    }
-                    val shellAlphaOut = android.animation.ObjectAnimator.ofFloat(body, View.ALPHA, 0f).apply {
-                        duration = 150
-                        interpolator = easeIn
-                    }
-                    val textAlphaOut = android.animation.ObjectAnimator.ofFloat(content, View.ALPHA, 0f).apply {
-                        duration = 150
-                        interpolator = easeIn
-                    }
-                    // 描边快速淡出（比主体动画更快，平滑消失，避免随缩放跳变）
-                    val strokeOut = android.animation.ValueAnimator.ofFloat(bubbleDrawable.strokeAlpha, 0f).apply {
-                        duration = 100
-                        interpolator = easeIn
-                        addUpdateListener { bubbleDrawable.strokeAlpha = it.animatedValue as Float }
-                    }
-                    android.animation.AnimatorSet().apply {
-                        playTogether(scaleOut, shellAlphaOut, textAlphaOut, strokeOut)
-                        addListener(object : android.animation.AnimatorListenerAdapter() {
-                            override fun onAnimationEnd(animation: android.animation.Animator) {
-                                dialog.dismiss()
-                            }
-                            // 动画被取消（如 Activity 销毁致 View detach）也 dismiss，
-                            // 与 setOwnerActivity 双重保险，杜绝 Dialog/Activity 泄漏
-                            override fun onAnimationCancel(animation: android.animation.Animator) {
-                                dialog.dismiss()
-                            }
-                        })
-                        start()
-                    }
-                }
-                // 弹泡前置清长按窗口标志：避免 PopupWindow/Dialog 拦截 hook 误拦
-                // 我们自己的气泡（气泡弹出即接管，后续 UP 消费依赖 handled 标志）。
-                // 官方抑制会话在 show 前建立，并在本气泡 dismiss 时立即结束；避免原先
-                // 裸 1.5s 全局时间窗误拦气泡关闭后紧接着触发的图片预览窗口。
-                // 方案 A：记录弹泡时刻——入场动画期间（~320ms，取 500ms 余量）暂停
-                // 批量绑定，避免绑定批次撞弹泡动画帧
+                val bubble = HostCopyBubble(act, anchor, content, useLight, outlined = freeCopyLightMode)
                 bubbleShownAtMs = android.os.SystemClock.uptimeMillis()
                 clearDescTouchSession(resetHandled = false)
                 commentTouchedView = null
-                // 关键：窗口透明化必须在 show() 之前完成——部分 ROM（HyperOS 实测）在
-                // show 的首次布局就按自己的窗口样式绘制背景/硬阴影，事后清理无法完全
-                // 覆盖（表现为圆角气泡外一圈黑色直角边框，与亮色模式描边无关、
-                // 暗色模式同样出现）。show 前统一设置 + 0 elevation 双保险。
-                dialog.window?.apply {
-                    clearFlags(android.view.WindowManager.LayoutParams.FLAG_DIM_BEHIND)
-                    setDimAmount(0f)
-                    setBackgroundDrawable(android.graphics.drawable.ColorDrawable(android.graphics.Color.TRANSPARENT))
-                    setLayout(
-                        android.view.ViewGroup.LayoutParams.MATCH_PARENT,
-                        android.view.ViewGroup.LayoutParams.MATCH_PARENT
-                    )
-                    // 清零窗口 elevation：杜绝任何 ROM 级窗口阴影（部分 ROM 阴影无模糊，
-                    // 渲染成贴着窗口内容的黑色直角实心边框）
-                    setElevation(0f)
+                val dialog = bubble.dialog
+                val sessionId = beginBubbleSession(dialog)
+                bubble.onClosed = {
+                    finishBubbleSession(dialog, sessionId)
                 }
-                // 标记「这是我们的气泡」：Dialog.show 拦截 hook 在抑制窗口内放行它。
-                // 会话编号保证旧 Dialog 的延迟 dismiss 不会清掉后来新气泡的状态。
-                val bubbleSessionId = beginBubbleSession(dialog)
-                dialog.setOnDismissListener {
-                    // 解除局部 ActionMode 回调，避免已关闭 Dialog 的 TextView 继续持有语义映射。
-                    content.customSelectionActionModeCallback = null
-                    unregisterOwnerLifecycleCallbacks()
-                    finishBubbleSession(dialog, bubbleSessionId)
-                }
-                // 尽量晚注册，确保注册后的每条异常路径都能由 onDismiss/catch 注销。
-                ownerApplication.registerActivityLifecycleCallbacks(lifecycleCallbacks)
-                try {
-                    dialog.show()
-                } catch (t: Throwable) {
-                    unregisterOwnerLifecycleCallbacks()
-                    finishBubbleSession(dialog, bubbleSessionId)
-                    throw t
-                }
+                bubble.show()
                 HostRuntimeDiagnosticsBridge.record("free_copy", FeatureRuntimeStage.APPLIED)
                 copyCapability?.let { HostRuntimeDiagnosticsBridge.record(it, FeatureRuntimeStage.APPLIED) }
-                // show 后再次确认（部分 ROM 的 PhoneWindow 会在 show 流程里重置部分属性）
-                dialog.window?.apply {
-                    clearFlags(android.view.WindowManager.LayoutParams.FLAG_DIM_BEHIND)
-                    setDimAmount(0f)
-                    setBackgroundDrawable(android.graphics.drawable.ColorDrawable(android.graphics.Color.TRANSPARENT))
-                    setLayout(
-                        android.view.ViewGroup.LayoutParams.MATCH_PARENT,
-                        android.view.ViewGroup.LayoutParams.MATCH_PARENT
-                    )
-                    setElevation(0f)
-                    decorView?.setBackgroundColor(android.graphics.Color.TRANSPARENT)
-                    decorView?.elevation = 0f
-                    // 关键：全屏 Dialog 覆盖到状态栏区域，需自行绘制状态栏背景，遮挡 B 站白天模式的状态栏品牌色（粉色 #FB7299）。
-                    // 视频详情页为沉浸式（视频深色延伸到状态栏），状态栏应为黑色 + 白色图标，与 B 站白天/黑夜主题无关。
-                    statusBarColor = 0xFF000000.toInt()
-                    navigationBarColor = 0xFF000000.toInt()
-                    // 清除 LIGHT_STATUS_BAR，保持默认白色图标（黑底白字，与沉浸式深色一致）
-                    decorView?.systemUiVisibility =
-                        (decorView?.systemUiVisibility ?: 0) and View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR.inv()
-                }
-
-                // 弹出动画：气泡矢量缩放展开 + 文字独立淡入；描边在动画期间保持淡出（透明），动画结束快速淡入恢复。
-                bubbleDrawable.scale = 0.9f
-                bubbleDrawable.strokeAlpha = 0f // 描边初始透明（动画期间不显示描边，避免随缩放跳变）
-                body.alpha = 0f
-                content.alpha = 0f
-                content.setTextIsSelectable(false)
-                val easeOut = android.view.animation.PathInterpolator(0f, 0f, 0.2f, 1f) // Material standard ease-out
-                val scaleIn = android.animation.ValueAnimator.ofFloat(0.9f, 1f).apply {
-                    duration = 200
-                    interpolator = easeOut
-                    addUpdateListener { bubbleDrawable.scale = it.animatedValue as Float }
-                }
-                val shellAlphaIn = android.animation.ObjectAnimator.ofFloat(body, View.ALPHA, 0f, 1f).apply {
-                    duration = 200
-                    interpolator = easeOut
-                }
-                val textAlphaIn = android.animation.ObjectAnimator.ofFloat(content, View.ALPHA, 0f, 1f).apply {
-                    duration = 200
-                    interpolator = easeOut
-                }
-                android.animation.AnimatorSet().apply {
-                    playTogether(scaleIn, shellAlphaIn, textAlphaIn)
-                    addListener(object : android.animation.AnimatorListenerAdapter() {
-                        override fun onAnimationEnd(animation: android.animation.Animator) {
-                            content.setTextIsSelectable(true) // 恢复可选中，长按仍可自由复制
-                            // 描边快速淡入恢复（气泡已稳定，描边平滑显现）
-                            android.animation.ValueAnimator.ofFloat(0f, 1f).apply {
-                                duration = 120
-                                interpolator = easeOut
-                                addUpdateListener { bubbleDrawable.strokeAlpha = it.animatedValue as Float }
-                            }.start()
-                        }
-                    })
-                    start()
-                }
-                logInfo("free_copy_hit", "[BIL] 已弹出自由复制气泡 (len=${text.length})")
-            }.onFailure { e ->
-                logError("free_copy_dialog_err", "[BIL] 气泡弹窗失败: $e")
+                logInfo("free_copy_hit", "[BIL] 已弹出凝光自由复制气泡 (len=${text.length})")
+            }.onFailure { error ->
+                logError("free_copy_dialog_err", "[BIL] 气泡弹窗失败: $error")
             }
         }
-
         /** 评论日期文本特征（如「8月2日 吉林」「12月3日 海外」）：评论 holder 判据之一 */
         private val COMMENT_DATE_PATTERN = java.util.regex.Pattern.compile("[0-9]{1,2}月[0-9]{1,2}日")
 

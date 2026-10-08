@@ -2,6 +2,8 @@
 
 package com.Bilibili_Innocent_Lab.xposedmodule.ui.activity
 
+import com.Bilibili_Innocent_Lab.xposedmodule.hook.hostui.cards.HostVideoCardStyleSpec
+
 import com.Bilibili_Innocent_Lab.xposedmodule.runtime.compat.CommunicationCompatibilityStore
 import android.animation.Animator
 import android.animation.AnimatorListenerAdapter
@@ -4445,7 +4447,7 @@ class MainActivity : SkinnedActivity() {
         hostBottomBarLiquidGlass = uiSettings.bool(FeaturePreferences.HOST_BOTTOM_BAR_LIQUID_GLASS)
         hostBottomBarTouchGlow = uiSettings.bool(FeaturePreferences.HOST_BOTTOM_BAR_TOUCH_GLOW)
         hostVideoCards = uiSettings.bool(FeaturePreferences.HOST_VIDEO_CARDS)
-        hostVideoCardRadiusDp = com.Bilibili_Innocent_Lab.xposedmodule.hook.feature.HostVideoCardStyleSpec.normalizeRadius(
+        hostVideoCardRadiusDp = com.Bilibili_Innocent_Lab.xposedmodule.hook.hostui.cards.HostVideoCardStyleSpec.normalizeRadius(
             uiSettings.int(FeaturePreferences.HOST_VIDEO_CARD_RADIUS_DP))
         hostBottomBarCompact = uiSettings.bool(FeaturePreferences.HOST_BOTTOM_BAR_COMPACT)
         hostBottomBarIconOnly = uiSettings.bool(FeaturePreferences.HOST_BOTTOM_BAR_ICON_ONLY)

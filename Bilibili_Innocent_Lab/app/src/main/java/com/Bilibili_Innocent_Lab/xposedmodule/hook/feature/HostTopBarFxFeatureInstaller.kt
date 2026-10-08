@@ -1,5 +1,8 @@
 package com.Bilibili_Innocent_Lab.xposedmodule.hook.feature
 
+import com.Bilibili_Innocent_Lab.xposedmodule.hook.hostui.top.HostTopBarFxConfig
+import com.Bilibili_Innocent_Lab.xposedmodule.hook.hostui.top.HostTopBarFxController
+
 import android.view.ViewGroup
 import com.Bilibili_Innocent_Lab.xposedmodule.hook.VersionAdapter
 import java.util.concurrent.atomic.AtomicBoolean

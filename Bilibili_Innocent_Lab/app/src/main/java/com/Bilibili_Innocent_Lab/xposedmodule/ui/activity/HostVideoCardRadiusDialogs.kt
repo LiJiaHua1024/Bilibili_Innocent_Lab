@@ -12,7 +12,7 @@ import android.widget.TextView
 import androidx.core.content.edit
 import com.Bilibili_Innocent_Lab.xposedmodule.R
 import com.Bilibili_Innocent_Lab.xposedmodule.hook.feature.FeaturePreferences
-import com.Bilibili_Innocent_Lab.xposedmodule.hook.feature.HostVideoCardStyleSpec
+import com.Bilibili_Innocent_Lab.xposedmodule.hook.hostui.cards.HostVideoCardStyleSpec
 import com.Bilibili_Innocent_Lab.xposedmodule.settings.prefs
 import com.highcapable.betterandroid.ui.extension.view.textColor
 

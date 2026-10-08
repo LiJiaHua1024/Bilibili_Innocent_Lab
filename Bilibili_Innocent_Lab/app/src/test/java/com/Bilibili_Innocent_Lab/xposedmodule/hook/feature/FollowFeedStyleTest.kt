@@ -1,5 +1,10 @@
 package com.Bilibili_Innocent_Lab.xposedmodule.hook.feature
 
+import com.Bilibili_Innocent_Lab.xposedmodule.hook.hostui.common.HostChromeColors
+import com.Bilibili_Innocent_Lab.xposedmodule.hook.hostui.follow.FollowFeedGrouping
+import com.Bilibili_Innocent_Lab.xposedmodule.hook.hostui.follow.FollowFeedRow
+import com.Bilibili_Innocent_Lab.xposedmodule.hook.hostui.follow.FollowFeedStyle
+
 import com.lumen.coacervation.engine.host.LumenSurfaceMaterial
 import com.lumen.coacervation.engine.host.LumenSurfaceFadeCurve
 import com.lumen.coacervation.engine.model.SurfaceRole

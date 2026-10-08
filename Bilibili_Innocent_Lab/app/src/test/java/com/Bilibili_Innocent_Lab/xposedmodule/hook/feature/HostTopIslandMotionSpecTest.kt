@@ -1,6 +1,8 @@
 package com.Bilibili_Innocent_Lab.xposedmodule.hook.feature
 
-import com.Bilibili_Innocent_Lab.xposedmodule.ui.interaction.ElasticSpringAxis
+import com.Bilibili_Innocent_Lab.xposedmodule.hook.hostui.top.HostTopIslandMotionSpec
+
+import com.Bilibili_Innocent_Lab.xposedmodule.hook.hostui.common.HostSpringAxis
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -14,7 +16,7 @@ class HostTopIslandMotionSpecTest {
     @Test fun springStartsGentlyAndKeepsAVisibleDecelerationTail() {
         for (compact in listOf(false, true)) {
             val target = if (compact) 1f else 0f
-            val spring = ElasticSpringAxis(1f - target)
+            val spring = HostSpringAxis(1f - target)
             val damping = if (compact) HostTopIslandMotionSpec.DAMPING_RATIO else HostTopIslandMotionSpec.EXPAND_DAMPING_RATIO
             val stiffness = if (compact) HostTopIslandMotionSpec.COLLAPSE_STIFFNESS else HostTopIslandMotionSpec.EXPAND_STIFFNESS
             repeat(3) { spring.advance(1f / 60f, target, stiffness, damping) }
@@ -44,7 +46,7 @@ class HostTopIslandMotionSpecTest {
     }
 
     @Test fun expansionHasAVisibleOvershootAndThenReturnsToItsFinalSize() {
-        val spring = ElasticSpringAxis(1f)
+        val spring = HostSpringAxis(1f)
         var maxStretch = 0f
         repeat(90) {
             spring.advance(1f / 60f, 0f, HostTopIslandMotionSpec.EXPAND_STIFFNESS,
@@ -67,7 +69,7 @@ class HostTopIslandMotionSpecTest {
     }
 
     @Test fun retargetingContinuesTheCurrentMomentumAndThenReturnsSmoothly() {
-        val spring = ElasticSpringAxis()
+        val spring = HostSpringAxis()
         repeat(10) { spring.advance(1f / 60f, 1f, HostTopIslandMotionSpec.COLLAPSE_STIFFNESS, HostTopIslandMotionSpec.DAMPING_RATIO) }
         val position = spring.value
         val velocity = spring.velocity
@@ -80,8 +82,8 @@ class HostTopIslandMotionSpecTest {
     }
 
     @Test fun springTrajectoryIsTheSameAtSixtyAndOneHundredTwentyHertz() {
-        val sixty = ElasticSpringAxis()
-        val highRefresh = ElasticSpringAxis()
+        val sixty = HostSpringAxis()
+        val highRefresh = HostSpringAxis()
         repeat(30) { sixty.advance(1f / 60f, 1f, HostTopIslandMotionSpec.COLLAPSE_STIFFNESS, HostTopIslandMotionSpec.DAMPING_RATIO) }
         repeat(60) { highRefresh.advance(1f / 120f, 1f, HostTopIslandMotionSpec.COLLAPSE_STIFFNESS, HostTopIslandMotionSpec.DAMPING_RATIO) }
         assertEquals(sixty.value, highRefresh.value, .00001f)
@@ -89,7 +91,7 @@ class HostTopIslandMotionSpecTest {
     }
 
     @Test fun expansionCanReverseIntoCollapseBeforeItsSpringTailFinishes() {
-        val spring = ElasticSpringAxis(1f)
+        val spring = HostSpringAxis(1f)
         repeat(20) { spring.advance(1f / 60f, 0f, HostTopIslandMotionSpec.EXPAND_STIFFNESS,
             HostTopIslandMotionSpec.EXPAND_DAMPING_RATIO) }
         assertTrue(!spring.atRest(0f, .5f / (width - height)))

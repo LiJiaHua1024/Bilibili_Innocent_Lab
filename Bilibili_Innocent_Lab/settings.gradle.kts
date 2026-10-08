@@ -38,28 +38,28 @@ rootProject.name = "Bilibili_Innocent_Lab"
 
 include(":app")
 
-// Upstream has no linear fade API. Build its pinned source with the reviewed public extension.
+// Build the pinned release with public extensions for the host's original fade, motion and glass.
 // Both modules are substituted together; the original JitPack artifacts are never mixed in.
-val lumenRevision = "91e31dce23dda35d2fd6d2411d0aac3079e3c46a"
+val lumenRevision = "1.2.0"
 check(file("gradle/libs.versions.toml").readText().contains("lumen-engine = \"$lumenRevision\"")) {
     "Update the Lumen source pin, archive checksum and extension together with the catalog."
 }
 fun digest(bytes: ByteArray) = MessageDigest.getInstance("SHA-256")
     .digest(bytes).joinToString("") { "%02x".format(it) }
-val lumenPatch = file("gradle/lumen/linear-fade.patch")
-val lumenPatchHash = digest(lumenPatch.readBytes())
+val lumenPatches = listOf("linear-fade.patch", "motion-parity.patch", "surface-parity.patch").map { file("gradle/lumen/$it") }
+val lumenPatchHash = digest(lumenPatches.fold(ByteArray(0)) { bytes, patch -> bytes + patch.readBytes() })
 val lumenCache = file(".gradle/lumen-source").apply { mkdirs() }
 val lumenSource = lumenCache.resolve("${lumenRevision.take(12)}-${lumenPatchHash.take(12)}")
 RandomAccessFile(lumenCache.resolve("prepare.lock"), "rw").channel.use { channel ->
     channel.lock().use {
         if (!lumenSource.resolve(".prepared").isFile) {
             val archive = lumenCache.resolve("$lumenRevision.zip")
-            val archiveHash = "300be73940e04854b2a893af1aea57f711c6ea18c590c556c261e6d79b8c67c6"
+            val archiveHash = "fce6a90310c8de6c0b5694d12c2378e008cc59cfb28168eb213ab1fbda236fc8"
             if (!archive.isFile) {
                 check(!gradle.startParameter.isOffline) {
                     "Lumen source is not cached. Run Gradle once without --offline to fetch the pinned archive."
                 }
-                val connection = URI("https://codeload.github.com/jichuo1/LumenCoacervationEngine/zip/$lumenRevision")
+                val connection = URI("https://codeload.github.com/jichuo1/LumenCoacervationEngine/zip/refs/tags/$lumenRevision")
                     .toURL().openConnection().apply { connectTimeout = 30_000; readTimeout = 30_000 }
                 val bytes = connection.getInputStream().use { it.readBytes() }
                 check(digest(bytes) == archiveHash) { "Lumen archive checksum mismatch." }
@@ -82,17 +82,17 @@ RandomAccessFile(lumenCache.resolve("prepare.lock"), "rw").channel.use { channel
                     }
                 }
             }
-            val builder = ProcessBuilder("git", "-c", "core.longpaths=true", "apply", "--ignore-space-change", "--whitespace=error-all", lumenPatch.absolutePath)
+            val builder = ProcessBuilder(listOf("git", "-c", "core.longpaths=true", "apply", "--ignore-space-change", "--whitespace=error-all") + lumenPatches.map { it.absolutePath })
                 .directory(lumenSource).redirectErrorStream(true)
             // This is a source patch, not a write to the host repository's index or history.
             builder.environment()["GIT_CEILING_DIRECTORIES"] = lumenCache.canonicalPath
             val process = builder.start()
             val output = process.inputStream.bufferedReader().use { it.readText() }
             check(process.waitFor() == 0) { "Could not apply the pinned Lumen extension:\n$output" }
-            // Make diagnostics identify this local extension instead of claiming stock 1.1.0.
+            // Make diagnostics identify the reviewed extension of the release.
             val properties = lumenSource.resolve("gradle.properties")
-            properties.writeText(properties.readText().replace("lumen.version=1.1.0",
-                "lumen.version=$lumenRevision-linear.${lumenPatchHash.take(12)}"))
+            properties.writeText(properties.readText().replace("lumen.version=1.2.0",
+                "lumen.version=$lumenRevision-host.${lumenPatchHash.take(12)}"))
             lumenSource.resolve(".prepared").writeText(lumenPatchHash)
         }
         check(lumenSource.resolve(".prepared").readText() == lumenPatchHash) { "Lumen source cache key collision." }

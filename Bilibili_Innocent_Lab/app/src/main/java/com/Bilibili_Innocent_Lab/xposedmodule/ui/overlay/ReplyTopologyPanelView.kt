@@ -17,7 +17,6 @@ import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
 import android.view.WindowInsets
-import android.view.animation.PathInterpolator
 import android.view.inputmethod.EditorInfo
 import android.view.inputmethod.InputMethodManager
 import android.widget.EditText
@@ -27,6 +26,8 @@ import android.widget.TextView
 import android.widget.Toast
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
+import com.Bilibili_Innocent_Lab.xposedmodule.hook.hostui.overlays.HostOverlaySurfaces
+import com.lumen.coacervation.engine.motion.LumenEasing
 import com.Bilibili_Innocent_Lab.xposedmodule.runtime.HostThreadGuard
 import com.Bilibili_Innocent_Lab.xposedmodule.runtime.replytopology.ReplyTopologyClipboardWrite
 import com.Bilibili_Innocent_Lab.xposedmodule.runtime.replytopology.ReplyTopologyExportText
@@ -49,11 +50,8 @@ internal class ReplyTopologyPanelView(
 
     private val density = resources.displayMetrics.density
     private val strings = config.strings
-    private val panelBackground = GradientDrawable().apply {
-        shape = GradientDrawable.RECTANGLE
-        cornerRadius = dp(16).toFloat()
-        setStroke(dp(1).coerceAtLeast(1), theme.strokeColor)
-    }
+    private val surfaces = HostOverlaySurfaces(this, theme.backgroundColor, theme.strokeColor,
+        Color.red(theme.backgroundColor) < 128)
 
     private val titleView = TextView(context)
     private val collapseView = TextView(context)
@@ -115,7 +113,7 @@ internal class ReplyTopologyPanelView(
     private var expandedHeightPx = 0
     private var compactAnimator: ValueAnimator? = null
     private var compactAnimating = false
-    private val compactInterpolator = PathInterpolator(0f, 0f, 0.2f, 1f)
+    private val compactInterpolator = LumenEasing.standardDecelerate()
     private val systemBarInsets = Rect()
     private val reusableMovementBounds = MovementBounds()
 
@@ -152,7 +150,7 @@ internal class ReplyTopologyPanelView(
             .scaleX(1f)
             .scaleY(1f)
             .setDuration(180L)
-            .setInterpolator(PathInterpolator(0f, 0f, 0.2f, 1f))
+            .setInterpolator(LumenEasing.standardDecelerate())
             .start()
     }
 
@@ -172,7 +170,6 @@ internal class ReplyTopologyPanelView(
         isClickable = true
         isFocusable = true
         elevation = dp(12).toFloat()
-        background = panelBackground
         setBackgroundOpacity(currentOpacity, notify = false)
         contentDescription = strings.panelDescription
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) defaultFocusHighlightEnabled = false
@@ -248,7 +245,7 @@ internal class ReplyTopologyPanelView(
             .scaleX(0.97f)
             .scaleY(0.97f)
             .setDuration(150L) // 与自由复制气泡退出同长；入场为 180L，收起略短让出视野更快
-            .setInterpolator(PathInterpolator(0.4f, 0f, 1f, 1f))
+            .setInterpolator(LumenEasing.standardAccelerate())
             .setListener(object : android.animation.Animator.AnimatorListener {
                 val delivered = java.util.concurrent.atomic.AtomicBoolean(false)
 
@@ -293,8 +290,7 @@ internal class ReplyTopologyPanelView(
         if (isReleased) return
         val normalized = opacity.coerceIn(config.minBackgroundOpacity, 1f)
         currentOpacity = normalized
-        panelBackground.setColor(withAlpha(theme.backgroundColor, normalized))
-        panelBackground.invalidateSelf()
+        surfaces.opacity(normalized)
         val progress = (normalized * 100f).roundToInt()
         if (opacitySeek.progress != progress) opacitySeek.progress = progress
         opacityLabel.text = "$progress%"
@@ -515,6 +511,7 @@ internal class ReplyTopologyPanelView(
     fun releaseResources(): ReplyTopologyPanelListener? {
         if (isReleased) return null
         isReleased = true
+        surfaces.close()
         closeTreeExplorer()
         animate().setListener(null)
         animate().cancel()
@@ -592,7 +589,7 @@ internal class ReplyTopologyPanelView(
             gravity = android.view.Gravity.CENTER
             setTextColor(theme.accentColor)
             setPadding(dp(10), 0, dp(10), 0)
-            background = roundedRipple()
+            styleChip(this)
             contentDescription = strings.collapseDescription
             isClickable = true
             isFocusable = true
@@ -725,7 +722,7 @@ internal class ReplyTopologyPanelView(
             parent.addView(viewer, params)
             viewer.submit(graph, rpid, initialPath = rpid.takeIf { path })
             viewer.alpha = 0f
-            viewer.animate().alpha(1f).setDuration(160L).setInterpolator(PathInterpolator(0f, 0f, 0.2f, 1f)).start()
+            viewer.animate().alpha(1f).setDuration(160L).setInterpolator(LumenEasing.standardDecelerate()).start()
         }.onFailure { closeTreeExplorer(viewer) }
     }
 
@@ -781,7 +778,7 @@ internal class ReplyTopologyPanelView(
             setTextColor(theme.primaryTextColor)
             setHintTextColor(theme.secondaryTextColor)
             setPadding(dp(7), 0, dp(7), 0)
-            background = roundedRipple()
+            styleChip(this)
             imeOptions = EditorInfo.IME_ACTION_DONE or EditorInfo.IME_FLAG_NO_EXTRACT_UI
             importantForAutofill = View.IMPORTANT_FOR_AUTOFILL_NO
             addTextChangedListener(keywordWatcher)
@@ -886,7 +883,7 @@ internal class ReplyTopologyPanelView(
         setTextColor(theme.accentColor)
         gravity = android.view.Gravity.CENTER
         setPadding(dp(10), 0, dp(10), 0)
-        background = roundedRipple()
+        styleChip(this)
         isClickable = true
         isFocusable = true
         visibility = View.GONE
@@ -1013,16 +1010,13 @@ internal class ReplyTopologyPanelView(
         return RippleDrawable(ColorStateList.valueOf(theme.rippleColor), null, mask)
     }
 
-    private fun roundedRipple(): RippleDrawable {
-        val content = GradientDrawable().apply {
-            cornerRadius = dp(12).toFloat()
-            setColor(withAlpha(theme.accentColor, 0.10f))
-        }
+    private fun styleChip(view: View) {
+        surfaces.chip(view, withAlpha(theme.accentColor, 0.10f))
         val mask = GradientDrawable().apply {
             cornerRadius = dp(12).toFloat()
             setColor(Color.WHITE)
         }
-        return RippleDrawable(ColorStateList.valueOf(theme.rippleColor), content, mask)
+        view.foreground = RippleDrawable(ColorStateList.valueOf(theme.rippleColor), null, mask)
     }
 
     private fun dp(value: Int): Int = (value * density).roundToInt()
