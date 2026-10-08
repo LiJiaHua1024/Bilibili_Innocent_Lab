@@ -13,6 +13,7 @@ internal object FollowFeedStyle {
     const val OUTER_DP = 12
     const val GAP_DP = 12
     const val CONTENT_DP = 12
+    const val REFERENCE_INSET_DP = 6 // 保留宿主内容边距，边框与正文之间仍有 6dp 留白。
     const val AVATAR_DP = 46
     const val FREQUENT_WIDTH_DP = 74
     const val FREQUENT_HEIGHT_DP = 82
@@ -65,6 +66,10 @@ internal object FollowFeedStyle {
         edgeWidthDp = .5f, edgeIntensity = .18f
     )
 
+    fun reference(palette: LumenPalette) = card().copy(
+        color = palette.surfaceVariant, radiusDp = 12f, edgeWidthDp = 1f, edgeIntensity = .45f
+    )
+
     fun track(palette: LumenPalette) = card().copy(
         role = SurfaceRole.TOP_BAR, color = palette.surfaceVariant, radiusDp = 18f, edgeEnabled = false
     )
@@ -89,7 +94,10 @@ internal object FollowFeedStyle {
         maxOf(original, systemBottom, dockTop?.let { (viewportBottom - it + gap).coerceAtLeast(0) } ?: 0)
 }
 
-internal data class FollowFeedRow(val identity: Long, val first: Boolean, val last: Boolean, val position: Int)
+internal data class FollowFeedReference(val identity: Long, val first: Boolean, val last: Boolean, val quoted: Boolean)
+
+internal data class FollowFeedRow(val identity: Long, val first: Boolean, val last: Boolean, val position: Int,
+                                  val reference: FollowFeedReference? = null)
 
 internal object FollowFeedGrouping {
     fun joins(previous: FollowFeedRow, next: FollowFeedRow,
