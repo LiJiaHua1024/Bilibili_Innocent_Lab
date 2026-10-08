@@ -1,0 +1,89 @@
+name: Verify Advanced
+
+on:
+  push:
+    branches: [Advanced]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: advanced-verify-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    if: github.ref == 'refs/heads/Advanced'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    defaults:
+      run:
+        working-directory: Bilibili_Innocent_Lab
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ github.sha }}
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v6
+        with:
+          cache-provider: basic
+      - uses: android-actions/setup-android@v4
+        with:
+          packages: platform-tools
+      - name: Install Android SDK
+        run: sdkmanager 'platforms;android-37.0' 'build-tools;37.0.0'
+      - name: Build debug APK
+        id: build
+        run: ./gradlew assembleDebug --console=plain --no-daemon '-Dorg.gradle.jvmargs=-Xmx6144m -Dfile.encoding=UTF-8'
+      - name: Behavior tests
+        id: unit_tests
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        run: ./gradlew testDebugUnitTest -PinnocentLab.testLayer=unit --console=plain --no-daemon '-Dorg.gradle.jvmargs=-Xmx6144m -Dfile.encoding=UTF-8'
+      - name: Preserve behavior reports
+        if: ${{ !cancelled() && steps.unit_tests.outcome != 'skipped' }}
+        uses: actions/upload-artifact@v6
+        with:
+          name: advanced-unit-tests-${{ github.sha }}
+          retention-days: 14
+          path: |
+            Bilibili_Innocent_Lab/app/build/reports/tests/testDebugUnitTest/
+            Bilibili_Innocent_Lab/app/build/test-results/testDebugUnitTest/
+      - name: Source contracts
+        id: contract_tests
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        run: ./gradlew testDebugUnitTest -PinnocentLab.testLayer=contract --console=plain --no-daemon '-Dorg.gradle.jvmargs=-Xmx6144m -Dfile.encoding=UTF-8'
+      - name: Preserve contract reports
+        if: ${{ !cancelled() && steps.contract_tests.outcome != 'skipped' }}
+        uses: actions/upload-artifact@v6
+        with:
+          name: advanced-contract-tests-${{ github.sha }}
+          retention-days: 14
+          path: |
+            Bilibili_Innocent_Lab/app/build/reports/tests/testDebugUnitTest/
+            Bilibili_Innocent_Lab/app/build/test-results/testDebugUnitTest/
+      - name: Lint
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        run: ./gradlew lintDebug --console=plain --no-daemon '-Dorg.gradle.jvmargs=-Xmx6144m -Dfile.encoding=UTF-8'
+      - name: Release minification
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        run: ./gradlew minifyReleaseWithR8 --console=plain --no-daemon '-Dorg.gradle.jvmargs=-Xmx6144m -Dfile.encoding=UTF-8'
+      - name: Upload verification reports
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v6
+        with:
+          name: advanced-verification-${{ github.sha }}
+          retention-days: 14
+          path: |
+            Bilibili_Innocent_Lab/app/build/reports/
+            Bilibili_Innocent_Lab/app/build/test-results/
+      - name: Upload debug APK
+        if: ${{ success() }}
+        uses: actions/upload-artifact@v6
+        with:
+          name: advanced-debug-${{ github.sha }}
+          retention-days: 14
+          path: Bilibili_Innocent_Lab/app/build/outputs/apk/debug/app-debug.apk

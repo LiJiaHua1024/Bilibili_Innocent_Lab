@@ -83,6 +83,35 @@ Once enabled, the module synchronises the currently supported feature configurat
 
 ## Features
 
+### AI task assistant (Advanced branch, experimental)
+
+The optional assistant accepts natural-language goals and can search Bilibili, page through a bounded
+result set, inspect video details and navigate to known candidates. It is off by default; restart
+Bilibili after enabling its host interface.
+
+Configure up to eight API sources, explicitly select the sources allowed to receive the task, and run
+the tool/vision capability test. Tests make real API requests and use quota. Agent tasks require chat
+endpoints; JEV classification endpoints remain available for semantic filtering. Leave the fixed-source
+field blank for automatic routing among selected, capable sources. A fixed source never silently fails
+over to another source.
+
+Optional screenshots require separate consent and a successful random-image challenge. Automatic
+routing can use a tool-capable planner and a separate vision-only model; the planner receives a bounded
+visual description, not the image. Secure/input screens and uninspectable WebView/Compose pages are
+rejected. Tasks are unavailable while accessibility services are enabled because accessibility takeover
+has not yet been reliably adapted; enabling such a service during a task also stops it.
+Touching, pressing a key, leaving the task context or using the host stop button takes over
+and stops the task. Tasks are limited to 12 tool steps and two minutes and are not resumed after process
+death. Tasks and screenshots are not persisted. Arbitrary coordinates, shell, account writes and
+payments are unavailable.
+
+Search RPC results are distinguished from visible results. Activity launch arguments do not prove
+playback, and publisher verification does not by itself establish an official original source. Retest
+after changing an endpoint, model or key; the module uses capability proofs for 24 hours. Existing
+semantic-source credentials retain their protected host-configuration delivery; the Agent action
+protocol does not additionally transmit credentials. Live API, device/framework and rollout-specific
+acceptance remain separate from APK structure and JVM verification.
+
 The module splits its features into independent switches, so you can enable only the parts you need. The UI is split into "Cleanup" and "Enhancements", each ending with its own advanced settings; free copy and bubble appearance live in the Enhancements column. The reorganisation kept existing switch values and behaviour; after enabling a host feature you usually need to restart Bilibili. If the current client version has no reliable enough adaptation entry point, the feature skips processing and leaves the host's original behaviour untouched.
 
 | UI entry | Contents |
