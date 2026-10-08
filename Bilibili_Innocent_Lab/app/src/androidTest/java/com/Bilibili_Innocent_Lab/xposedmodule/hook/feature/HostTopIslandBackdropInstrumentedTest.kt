@@ -1,5 +1,8 @@
 package com.Bilibili_Innocent_Lab.xposedmodule.hook.feature
 
+import com.Bilibili_Innocent_Lab.xposedmodule.hook.hostui.top.HostTopIslandBinding
+import com.Bilibili_Innocent_Lab.xposedmodule.hook.hostui.top.HostTopIslandPageActions
+
 import android.graphics.Bitmap
 import android.graphics.Color
 import android.os.Handler
@@ -14,8 +17,10 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.filters.SdkSuppress
 import androidx.test.platform.app.InstrumentationRegistry
 import com.Bilibili_Innocent_Lab.xposedmodule.ui.activity.MainActivity
-import com.Bilibili_Innocent_Lab.xposedmodule.ui.skin.material.ModernMaterialPolicy
-import com.Bilibili_Innocent_Lab.xposedmodule.ui.skin.model.SurfaceRole
+import com.Bilibili_Innocent_Lab.xposedmodule.hook.hostui.common.HostChromeColors
+import com.Bilibili_Innocent_Lab.xposedmodule.hook.hostui.common.HostSurfaceScope
+import com.Bilibili_Innocent_Lab.xposedmodule.hook.hostui.common.HostSurfaceStyle
+import com.lumen.coacervation.engine.host.LumenSurfaceBackend
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import org.junit.Assert.assertEquals
@@ -37,7 +42,7 @@ class HostTopIslandBackdropInstrumentedTest {
             lateinit var content: View
             lateinit var dock: FrameLayout
             lateinit var binding: HostTopIslandBinding
-            lateinit var backdrop: HostBottomBarBackdrop
+            lateinit var backdrop: HostSurfaceScope
             val sample = IntArray(2)
             scenario.onActivity { activity ->
                 window = activity.window
@@ -49,9 +54,9 @@ class HostTopIslandBackdropInstrumentedTest {
                     leftMargin = 40
                     topMargin = 200
                 })
-                backdrop = HostBottomBarBackdrop(1f, preferGpu)
-                dock.background = HostLiquidSurfaceDrawable(Color.WHITE, 60f, 1f,
-                    ModernMaterialPolicy.surface(SurfaceRole.FLOATING, false), backdrop = backdrop)
+                backdrop = HostSurfaceScope(dock, HostChromeColors(false, Color.MAGENTA),
+                    if (preferGpu) LumenSurfaceBackend.AUTO else LumenSurfaceBackend.SOFTWARE)
+                backdrop.surface(dock, HostSurfaceStyle.floating(false, 60f))
                 binding = checkNotNull(HostTopIslandBinding.attach(dock, null, 1f, null, backdrop,
                     Color.MAGENTA, HostTopIslandPageActions(parent, null)))
                 HostTopIslandBinding::class.java.getDeclaredField("progress").apply {
@@ -82,11 +87,17 @@ class HostTopIslandBackdropInstrumentedTest {
                     (dock.parent as FrameLayout).getChildAt(2).invalidate()
                 }
                 awaitColor(window, sample, red = true)
+                var gpuDrawsBeforeContentChange = 0L
+                instrumentation.runOnMainSync { gpuDrawsBeforeContentChange = backdrop.diagnostics()?.gpuDraws ?: 0L }
                 instrumentation.runOnMainSync {
                     content.setBackgroundColor(Color.BLUE)
                     backdrop.onVisualMovement()
                 }
                 awaitColor(window, sample, red = false)
+                if (preferGpu && android.os.Build.VERSION.SDK_INT >= 33) instrumentation.runOnMainSync {
+                    assertTrue("Custom shell silently fell back from the GPU shader",
+                        (backdrop.diagnostics()?.gpuDraws ?: 0L) > gpuDrawsBeforeContentChange)
+                }
             } finally {
                 instrumentation.runOnMainSync { backdrop.close() }
             }

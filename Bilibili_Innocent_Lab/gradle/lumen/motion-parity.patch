@@ -1,0 +1,43 @@
+diff --git a/lumen-motion/src/main/java/com/lumen/coacervation/engine/motion/LumenEasing.kt b/lumen-motion/src/main/java/com/lumen/coacervation/engine/motion/LumenEasing.kt
+index f4cb716..b3179b1 100644
+--- a/lumen-motion/src/main/java/com/lumen/coacervation/engine/motion/LumenEasing.kt
++++ b/lumen-motion/src/main/java/com/lumen/coacervation/engine/motion/LumenEasing.kt
+@@ -12,6 +12,12 @@ import android.view.animation.PathInterpolator
+  * 新增动画先按行程长度选曲线，别按"看起来更灵动"。
+  */
+ public object LumenEasing {
++    /** Material standard deceleration; preserves hosts using (0, 0, 0.2, 1). */
++    @JvmStatic public fun standardDecelerate(): PathInterpolator = PathInterpolator(0f, 0f, 0.2f, 1f)
++
++    /** Material standard acceleration; preserves hosts using (0.4, 0, 1, 1). */
++    @JvmStatic public fun standardAccelerate(): PathInterpolator = PathInterpolator(0.4f, 0f, 1f, 1f)
++
+     /** 展开、进入：减速收尾（Material 3 emphasized decelerate）。 */
+     @JvmStatic public fun emphasizedDecelerate(): PathInterpolator = PathInterpolator(0.2f, 0f, 0f, 1f)
+ 
+diff --git a/lumen-motion/src/main/java/com/lumen/coacervation/engine/widget/NavigationBarMotion.kt b/lumen-motion/src/main/java/com/lumen/coacervation/engine/widget/NavigationBarMotion.kt
+index a341723..399633a 100644
+--- a/lumen-motion/src/main/java/com/lumen/coacervation/engine/widget/NavigationBarMotion.kt
++++ b/lumen-motion/src/main/java/com/lumen/coacervation/engine/widget/NavigationBarMotion.kt
+@@ -54,11 +54,18 @@ internal object NavigationBarMotion {
+ }
+ 
+ /** Analytic damped spring. Retargets preserve position/velocity; no frame-time allocations. */
+-public class LumenSpring(start: Float, target: Float, velocity: Float = 0f) {
++public class LumenSpring @JvmOverloads constructor(start: Float, target: Float, velocity: Float = 0f,
++    stiffness: Float = 400f, dampingRatio: Float = .78f) {
++    init {
++        require(stiffness.isFinite() && stiffness > 0f)
++        require(dampingRatio.isFinite() && dampingRatio > 0f && dampingRatio < 1f)
++    }
+     private val target = if (target.isFinite()) target else 0f
+     private val displacement = (if (start.isFinite()) start else this.target) - this.target
+-    private val decay = 15.6f
+-    private val frequency = 12.51559f
++    // Preserve the original navigation coefficients exactly when no profile is supplied.
++    private val defaultProfile = stiffness == 400f && dampingRatio == .78f
++    private val decay = if (defaultProfile) 15.6f else sqrt(stiffness) * dampingRatio
++    private val frequency = if (defaultProfile) 12.51559f else sqrt(stiffness) * sqrt(1f - dampingRatio * dampingRatio)
+     private val sine = ((if (velocity.isFinite()) velocity else 0f) + decay * displacement) / frequency
+ 
+     fun value(seconds: Float): Float {

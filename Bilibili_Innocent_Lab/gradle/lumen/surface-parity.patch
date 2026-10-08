@@ -1,0 +1,414 @@
+diff --git a/lumen-engine/src/main/java/com/lumen/coacervation/engine/host/DirectSurfaceProgramApi33.kt b/lumen-engine/src/main/java/com/lumen/coacervation/engine/host/DirectSurfaceProgramApi33.kt
+index 313468d..905ed3c 100644
+--- a/lumen-engine/src/main/java/com/lumen/coacervation/engine/host/DirectSurfaceProgramApi33.kt
++++ b/lumen-engine/src/main/java/com/lumen/coacervation/engine/host/DirectSurfaceProgramApi33.kt
+@@ -9,6 +9,7 @@ import android.graphics.Shader
+ import androidx.annotation.RequiresApi
+ import com.lumen.coacervation.engine.geometry.LumenSurfaceField
+ import com.lumen.coacervation.engine.model.LumenPalette
++import com.lumen.coacervation.engine.material.LensRefractionPolicy
+ import com.lumen.coacervation.engine.runtime.LumenGraphicsCounters
+ import kotlin.math.cos
+ import kotlin.math.sin
+@@ -77,10 +78,17 @@ internal class DirectSurfaceProgramApi33(private val counters: LumenGraphicsCoun
+         s.setFloatUniform("lightStyle",if(detail==LumenDetailMode.LOW)0f else light.specularStrength,light.specularPower,lightEdge,
+             if(light.transformNormals)1f else 0f)
+         s.setColorUniform("tintColor",c.color?:palette.surface)
+-        s.setColorUniform("edgeColor",palette.primary)
++        s.setFloatUniform("backdropOpacity",c.backdropOpacity)
++        s.setFloatUniform("softLens",if(c.material==LumenSurfaceMaterial.FROSTED)1f else 0f,
++            if(c.sampling.refractionEnabled)c.sampling.refractionStrength else 0f,
++            LensRefractionPolicy.LUMINANCE_GAIN,LensRefractionPolicy.LUMINANCE_BIAS/255f)
++        val customEdge=c.edgeTopColor!=null||c.edgeBottomColor!=null
++        val topEdge=c.edgeTopColor?:if(customEdge)(palette.primary and 0xFFFFFF)or(70 shl 24)else palette.primary
++        s.setColorUniform("edgeColor",topEdge)
++        s.setColorUniform("edgeColorBottom",c.edgeBottomColor?:topEdge)
+         val strokeWidth=if(e.material.normalizeBySize)minOf(c.edgeWidthDp*density,short*e.material.maxEdgeFraction)else c.edgeWidthDp*density
+         s.setFloatUniform("style",if(c.tintEnabled)c.tintOpacity else 0f,if(c.edgeEnabled)strokeWidth else 0f,
+-            70f/255f*c.edgeIntensity,alpha)
++            (if(customEdge)1f else 70f/255f)*c.edgeIntensity,alpha)
+         s.setFloatUniform("fade",if(c.sampling.fadeEnabled)1f else 0f,c.sampling.fadeHold,c.sampling.fadeEnd,
+             if(c.sampling.fadeDirection==LumenSurfaceFadeDirection.BOTTOM_TO_TOP)1f else 0f)
+         val shadowWidth=if(e.material.normalizeBySize)minOf(geometry.shadowRadiusDp*density,short*.25f)else geometry.shadowRadiusDp*density
+@@ -123,7 +131,10 @@ uniform float4 light;
+ uniform float4 normalMap;
+ uniform float4 lightStyle;
+ layout(color) uniform half4 tintColor;
++uniform float backdropOpacity;
++uniform float4 softLens;
+ layout(color) uniform half4 edgeColor;
++layout(color) uniform half4 edgeColorBottom;
+ uniform float4 style;
+ uniform float4 fade;
+ uniform float2 shadow;
+@@ -184,6 +195,20 @@ half4 saturation(half4 c){
+     float3 result=fromLinearSrgb(clamp(float3(luminance)+(linear-float3(luminance))*optics.w,float3(0.0),float3(1.0)));
+     return half4(half3(result*float(c.a)),c.a);
+ }
++float softAxis(float u,float gain,float push){
++    float c=clamp(u,-1.0,1.0);float rim=ramp(abs(c),0.62,1.0);
++    return c*(1.0-gain*(1.0-c*c))+(c<0.0?-1.0:1.0)*push*rim*rim;
++}
++float2 softPoint(float2 point){
++    float2 size=max(shapeA.zw,float2(1.0));float2 local=point-shapeA.xy;
++    float2 gain=float2(0.06,0.16)*softLens.y;float2 push=float2(0.10,0.34)*softLens.y;
++    float2 u=local/size*2.0-1.0;
++    float2 source=shapeA.xy+(float2(softAxis(u.x,gain.x,push.x),softAxis(u.y,gain.y,push.y))+1.0)*0.5*size;
++    float2 room=max(min(local-float2(0.5),size-float2(0.5)-local),float2(0.0));
++    float2 budget=max(size*max(abs(push),abs(gain)*0.385),float2(1.0));
++    source=point+(source-point)*clamp(room/budget,0.0,1.0);
++    return clamp(source,shapeA.xy+float2(0.5),shapeA.xy+size-float2(0.5));
++}
+ half4 main(float2 coord){
+     float2 p=coord+viewport.zw;float3 f=field(p);float aa=max(geometry.z,0.25);
+     float coverage=1.0-ramp(f.x,-aa,aa);
+@@ -196,8 +221,9 @@ half4 main(float2 coord){
+     float2 waves=rippleSlope(p,rippleA)+rippleSlope(p,rippleB)+rippleSlope(p,rippleC)+rippleSlope(p,rippleD);
+     float2 displacement=direction*optics.x*edgeWeight+(pressSlope+waves)*sigma;
+     float travel=length(displacement);if(travel>warpLimit)displacement*=warpLimit/travel;
+-    half4 color=background(p+displacement);
+-    if(optics.z>0.001&&edgeWeight>0.01){
++    half4 color=background(softLens.x>0.5?softPoint(p):p+displacement);
++    if(softLens.x>0.5)color=half4(clamp(color.rgb*half(softLens.z)+half(softLens.w)*color.a,half3(0.0),half3(color.a)),color.a);
++    if(softLens.x<0.5&&optics.z>0.001&&edgeWeight>0.01){
+         half4 red=background(p+displacement+direction*optics.z*edgeWeight);
+         half4 blue=background(p+displacement-direction*optics.z*edgeWeight);
+         color=half4(min(red.r,color.a),color.g,min(blue.b,color.a),color.a);
+@@ -211,11 +237,13 @@ half4 main(float2 coord){
+     shine+=length(pressSlope)*pressLight;
+     color.rgb=min(color.rgb+half3(shine*float(color.a)),half3(color.a));
+     float tintAlpha=float(tintColor.a)*style.x;
++    color*=half(backdropOpacity);
+     color=half4(tintColor.rgb*half(tintAlpha),half(tintAlpha))+color*half(1.0-tintAlpha);
+     float stroke=(1.0-ramp(abs(f.x),0.0,max(style.y,0.0001)))*style.z;
+     if(style.y<=0.0)stroke=0.0;
+-    stroke*=float(edgeColor.a);
+-    color=half4(edgeColor.rgb*half(stroke),half(stroke))+color*half(1.0-stroke);
++    half4 edge=mix(edgeColor,edgeColorBottom,half(clamp(p.y/viewport.y,0.0,1.0)));
++    stroke*=float(edge.a);
++    color=half4(edge.rgb*half(stroke),half(stroke))+color*half(1.0-stroke);
+     float dissolve=1.0;
+     if(fade.x>0.5){float q=p.y/viewport.y;if(fade.w>0.5)q=1.0-q;dissolve=1.0-ramp(q,fade.y,fade.z);}
+     color*=half(coverage*dissolve*style.w);
+diff --git a/lumen-engine/src/main/java/com/lumen/coacervation/engine/host/LumenEffectPreset.kt b/lumen-engine/src/main/java/com/lumen/coacervation/engine/host/LumenEffectPreset.kt
+index 3577b19..002367e 100644
+--- a/lumen-engine/src/main/java/com/lumen/coacervation/engine/host/LumenEffectPreset.kt
++++ b/lumen-engine/src/main/java/com/lumen/coacervation/engine/host/LumenEffectPreset.kt
+@@ -15,11 +15,13 @@ public data class LumenEffectPreset(
+         root.put("surface",JSONObject().put("enabled",c.enabled).put("material",c.material.name).put("role",c.role.name)
+             .put("radiusDp",c.radiusDp).put("opacity",c.opacity).put("color",c.color?:JSONObject.NULL)
+             .put("tintEnabled",c.tintEnabled).put("tintOpacity",c.tintOpacity).put("fallbackTintOpacity",c.fallbackTintOpacity)
+-            .put("edgeEnabled",c.edgeEnabled).put("edgeWidthDp",c.edgeWidthDp).put("edgeIntensity",c.edgeIntensity).put("clipBackground",c.clipBackground))
++            .put("edgeEnabled",c.edgeEnabled).put("edgeWidthDp",c.edgeWidthDp).put("edgeIntensity",c.edgeIntensity).put("clipBackground",c.clipBackground)
++            .put("edgeTopColor",c.edgeTopColor?:JSONObject.NULL).put("edgeBottomColor",c.edgeBottomColor?:JSONObject.NULL).put("backdropOpacity",c.backdropOpacity))
+         root.put("sampling",JSONObject().put("enabled",s.enabled).put("backend",s.backend.name).put("blurEnabled",s.blurEnabled)
+-            .put("blurRadiusDp",s.blurRadiusDp).put("refractionEnabled",s.refractionEnabled).put("refractionStrength",s.refractionStrength)
++            .put("blurRadiusDp",s.blurRadiusDp).put("softwareBlurRadiusDp",s.softwareBlurRadiusDp?:JSONObject.NULL)
++            .put("refractionEnabled",s.refractionEnabled).put("refractionStrength",s.refractionStrength)
+             .put("minIntervalMs",s.minIntervalMs).put("softwareScale",s.softwareScale).put("maxSoftwarePixels",s.maxSoftwarePixels)
+-            .put("softwareFallback",s.softwareFallback).put("fadeEnabled",s.fadeEnabled).put("fadeHold",s.fadeHold).put("fadeEnd",s.fadeEnd).put("fadeDirection",s.fadeDirection.name))
++            .put("softwareFallback",s.softwareFallback).put("fadeEnabled",s.fadeEnabled).put("fadeHold",s.fadeHold).put("fadeEnd",s.fadeEnd).put("fadeDirection",s.fadeDirection.name).put("fadeCurve",s.fadeCurve.name))
+         val g=e.geometry
+         root.put("geometry",JSONObject().put("cornersEnabled",g.cornersEnabled).put("corners",JSONArray().put(g.corners.topLeft).put(g.corners.topRight).put(g.corners.bottomRight).put(g.corners.bottomLeft))
+             .put("mirrorCornersInRtl",g.mirrorCornersInRtl).put("fusionEnabled",g.fusionEnabled).put("fusionRadiusDp",g.fusionRadiusDp)
+@@ -62,10 +64,13 @@ public data class LumenEffectPreset(
+             val sd=LumenSurfaceSampling();val cd=LumenSurfaceOptions()
+             val sampling=LumenSurfaceSampling(s.bool("enabled",sd.enabled),enumValue(s,"backend",sd.backend),s.bool("blurEnabled",sd.blurEnabled),s.number("blurRadiusDp",sd.blurRadiusDp),
+                 s.bool("refractionEnabled",sd.refractionEnabled),s.number("refractionStrength",sd.refractionStrength),s.long("minIntervalMs",sd.minIntervalMs),s.number("softwareScale",sd.softwareScale),
+-                s.integer("maxSoftwarePixels",sd.maxSoftwarePixels),s.bool("softwareFallback",sd.softwareFallback),s.bool("fadeEnabled",sd.fadeEnabled),s.number("fadeHold",sd.fadeHold),s.number("fadeEnd",sd.fadeEnd),enumValue(s,"fadeDirection",sd.fadeDirection))
++                s.integer("maxSoftwarePixels",sd.maxSoftwarePixels),s.bool("softwareFallback",sd.softwareFallback),s.bool("fadeEnabled",sd.fadeEnabled),s.number("fadeHold",sd.fadeHold),s.number("fadeEnd",sd.fadeEnd),enumValue(s,"fadeDirection",sd.fadeDirection),
++                enumValue(s,"fadeCurve",sd.fadeCurve),if(s.has("softwareBlurRadiusDp")&&!s.isNull("softwareBlurRadiusDp"))s.number("softwareBlurRadiusDp",0f)else null)
+             val color=if(c.has("color")&&!c.isNull("color"))c.integer("color",0)else null
+             val surface=LumenSurfaceOptions(c.bool("enabled",cd.enabled),enumValue(c,"material",cd.material),enumValue(c,"role",cd.role),c.number("radiusDp",cd.radiusDp),c.number("opacity",cd.opacity),color,
+-                c.bool("tintEnabled",cd.tintEnabled),c.number("tintOpacity",cd.tintOpacity),c.number("fallbackTintOpacity",cd.fallbackTintOpacity),c.bool("edgeEnabled",cd.edgeEnabled),c.number("edgeWidthDp",cd.edgeWidthDp),c.number("edgeIntensity",cd.edgeIntensity),c.bool("clipBackground",cd.clipBackground),sampling)
++                c.bool("tintEnabled",cd.tintEnabled),c.number("tintOpacity",cd.tintOpacity),c.number("fallbackTintOpacity",cd.fallbackTintOpacity),c.bool("edgeEnabled",cd.edgeEnabled),c.number("edgeWidthDp",cd.edgeWidthDp),c.number("edgeIntensity",cd.edgeIntensity),c.bool("clipBackground",cd.clipBackground),sampling,
++                if(c.has("edgeTopColor")&&!c.isNull("edgeTopColor"))c.integer("edgeTopColor",0)else null,
++                if(c.has("edgeBottomColor")&&!c.isNull("edgeBottomColor"))c.integer("edgeBottomColor",0)else null,c.number("backdropOpacity",cd.backdropOpacity))
+             val gd=LumenSurfaceGeometryOptions();val corners=if(g.has("corners"))g.get("corners").also {require(it is JSONArray)} as JSONArray else null
+             require(corners==null||corners.length()==4)
+             fun corner(index: Int): Float {val value=corners!!.get(index);require(value is Number);return value.toFloat().also {require(it.isFinite())}}
+diff --git a/lumen-engine/src/main/java/com/lumen/coacervation/engine/host/LumenSurfaceLegibilityController.kt b/lumen-engine/src/main/java/com/lumen/coacervation/engine/host/LumenSurfaceLegibilityController.kt
+new file mode 100644
+index 0000000..75418c6
+--- /dev/null
++++ b/lumen-engine/src/main/java/com/lumen/coacervation/engine/host/LumenSurfaceLegibilityController.kt
+@@ -0,0 +1,113 @@
++package com.lumen.coacervation.engine.host
++
++import android.graphics.RectF
++import android.os.SystemClock
++import android.view.View
++import android.view.ViewTreeObserver
++import androidx.annotation.MainThread
++import com.lumen.coacervation.engine.glow.GlowContentProbe
++import com.lumen.coacervation.engine.glow.GlowContentSample
++import com.lumen.coacervation.engine.glow.GlowLegibilityPolicy
++import com.lumen.coacervation.engine.glow.GlowSurfaceOptics
++import java.util.WeakHashMap
++import kotlin.math.abs
++import kotlin.math.roundToInt
++
++/** Local dark-glass compensation for hosts whose native foreground must remain unchanged.
++ * Samples at most 8 Hz, uses the engine's content statistics and restores base options on close.
++ * Close together with the source region's surface session; no Activity or Window is taken over.
++ */
++@MainThread
++public class LumenSurfaceLegibilityController(private val source: View, private val surfaceColor: Int,
++    private val foreground: Int, private val ceiling: Float = .92f) : AutoCloseable {
++    private class Entry(val binding: LumenSurfaceBinding, var options: LumenSurfaceOptions) {
++        var from = options.tintOpacity * 255f
++        var target = from.roundToInt()
++        var started = 0L
++        var sample: GlowContentSample? = null
++        var applied = Float.NaN
++    }
++    private val entries = WeakHashMap<View, Entry>()
++    private val location = IntArray(2)
++    private val observer = source.viewTreeObserver
++    private var lastProbe = 0L
++    private var failed = false
++    private var closed = false
++    private var probe: GlowContentProbe? = null
++    private var pending: List<Entry> = emptyList()
++    private val preDraw = ViewTreeObserver.OnPreDrawListener { frame(); true }
++
++    init {
++        require(ceiling.isFinite() && ceiling in 0f..1f)
++        observer.addOnPreDrawListener(preDraw)
++    }
++
++    public fun bind(view: View, binding: LumenSurfaceBinding, options: LumenSurfaceOptions) {
++        val color = options.color ?: surfaceColor
++        if (closed || !options.sampling.enabled || !options.tintEnabled || GlowLegibilityPolicy.encodedLuma(color) >= .5f) {
++            entries.remove(view)
++            return
++        }
++        val previous = entries[view]
++        if (previous == null || previous.binding !== binding || previous.options.tintOpacity != options.tintOpacity || previous.options.color != options.color)
++            entries[view] = Entry(binding, options)
++        else { previous.options = options; previous.applied = Float.NaN }
++    }
++
++    private fun frame() {
++        if (closed || !source.isAttachedToWindow || !source.isShown) return
++        val now = SystemClock.uptimeMillis()
++        val visible = entries.entries.filter { (view, entry) ->
++            view.isAttachedToWindow && view.isShown && view.alpha > 0f && entry.binding.isBound
++        }
++        for ((view, entry) in visible) {
++            val color = entry.options.color ?: surfaceColor
++            val base = (entry.options.tintOpacity * 255f).roundToInt()
++            val optics = GlowSurfaceOptics(color, base / 255f, ceiling.coerceAtLeast(base / 255f), 1f)
++            val boost = entry.sample?.let { GlowLegibilityPolicy.target(it, foreground, optics).boost } ?: 0f
++            val desired = ((optics.baseTintAlpha + (optics.maxTintAlpha - optics.baseTintAlpha) * boost) * 255f).roundToInt()
++            val current = entry.from + (entry.target - entry.from) * ((now - entry.started) / 240f).coerceIn(0f, 1f)
++            val hysteresis = (ceiling * 255f - base) * GlowLegibilityPolicy.HYSTERESIS
++            if (desired != entry.target && (abs(desired - entry.target) >= hysteresis || desired == base || desired >= (ceiling * 255f).toInt())) {
++                entry.from = current; entry.target = desired; entry.started = now
++            }
++            val opacity = current.roundToInt().coerceIn(0, 255) / 255f
++            if (entry.applied != opacity) {
++                entry.binding.update(entry.options.copy(tintOpacity = opacity, fallbackTintOpacity = opacity))
++                entry.applied = opacity
++            }
++            if (now - entry.started < 240L) view.postInvalidateOnAnimation()
++        }
++        if (failed || visible.isEmpty() || now - lastProbe < 125L || probe?.inFlight == true) return
++        source.getLocationOnScreen(location)
++        val sourceX = location[0]; val sourceY = location[1]
++        val regions = visible.map { (view, entry) ->
++            view.getLocationOnScreen(location)
++            val shape = entry.binding.samplingRegions()?.shapeBounds
++            val rect = if (shape != null) RectF(shape.left, shape.top, shape.right, shape.bottom)
++                else RectF(0f, 0f, view.width.toFloat(), view.height.toFloat())
++            rect.offset((location[0] - sourceX).toFloat(), (location[1] - sourceY).toFloat())
++            rect
++        }
++        val sampler = probe ?: GlowContentProbe { samples ->
++            pending.forEachIndexed { index, entry -> entry.sample = samples.getOrNull(index) }
++            pending = emptyList()
++            entries.keys.forEach { it.postInvalidateOnAnimation() }
++        }.also { probe = it }
++        pending = visible.map { it.value }
++        lastProbe = now
++        runCatching { sampler.probe(source, regions) { canvas, _ -> canvas.drawColor(surfaceColor) } }
++            .onFailure { failed = true; probe?.close(); probe = null; pending = emptyList() }
++    }
++
++    override fun close() {
++        if (closed) return
++        closed = true
++        if (observer.isAlive) observer.removeOnPreDrawListener(preDraw)
++        // A floating observer can have merged into the live window observer after attach.
++        source.viewTreeObserver.takeIf { it !== observer && it.isAlive }?.removeOnPreDrawListener(preDraw)
++        probe?.close(); probe = null; pending = emptyList()
++        entries.values.forEach { if (it.binding.isBound) it.binding.update(it.options) }
++        entries.clear()
++    }
++}
+diff --git a/lumen-engine/src/main/java/com/lumen/coacervation/engine/host/LumenSurfaceOptions.kt b/lumen-engine/src/main/java/com/lumen/coacervation/engine/host/LumenSurfaceOptions.kt
+index 945996d..1dbe0ef 100644
+--- a/lumen-engine/src/main/java/com/lumen/coacervation/engine/host/LumenSurfaceOptions.kt
++++ b/lumen-engine/src/main/java/com/lumen/coacervation/engine/host/LumenSurfaceOptions.kt
+@@ -30,10 +30,13 @@ public data class LumenSurfaceSampling(
+     val fadeHold: Float = 0f,
+     val fadeEnd: Float = 1f,
+     val fadeDirection: LumenSurfaceFadeDirection = LumenSurfaceFadeDirection.TOP_TO_BOTTOM,
+-    val fadeCurve: LumenSurfaceFadeCurve = LumenSurfaceFadeCurve.SMOOTH
++    val fadeCurve: LumenSurfaceFadeCurve = LumenSurfaceFadeCurve.SMOOTH,
++    /** Optional box-blur radius for software sampling; null uses blurRadiusDp unchanged. */
++    val softwareBlurRadiusDp: Float? = null
+ ) {
+     init {
+         require(blurRadiusDp.isFinite() && blurRadiusDp in 0f..48f)
++        require(softwareBlurRadiusDp == null || softwareBlurRadiusDp.isFinite() && softwareBlurRadiusDp in 0f..48f)
+         require(refractionStrength.isFinite() && refractionStrength in 0f..2f)
+         require(minIntervalMs in 0L..1_000L)
+         require(softwareScale.isFinite() && softwareScale in 0.05f..1f)
+@@ -59,9 +62,15 @@ public data class LumenSurfaceOptions(
+     val edgeWidthDp: Float = 1f,
+     val edgeIntensity: Float = 1f,
+     val clipBackground: Boolean = true,
+-    val sampling: LumenSurfaceSampling = LumenSurfaceSampling()
++    val sampling: LumenSurfaceSampling = LumenSurfaceSampling(),
++    /** Optional ARGB edge gradient; null retains the original primary-color stroke. */
++    val edgeTopColor: Int? = null,
++    val edgeBottomColor: Int? = null,
++    /** Opacity of the sampled content, independent of the tint and edge. */
++    val backdropOpacity: Float = 1f
+ ) {
+     init {
++        require(backdropOpacity.isFinite() && backdropOpacity in 0f..1f)
+         require(radiusDp.isFinite() && radiusDp in 0f..128f)
+         require(opacity.isFinite() && opacity in 0f..1f)
+         require(tintOpacity.isFinite() && tintOpacity in 0f..1f)
+diff --git a/lumen-engine/src/main/java/com/lumen/coacervation/engine/host/LumenSurfaceSession.kt b/lumen-engine/src/main/java/com/lumen/coacervation/engine/host/LumenSurfaceSession.kt
+index 5b753a9..943973d 100644
+--- a/lumen-engine/src/main/java/com/lumen/coacervation/engine/host/LumenSurfaceSession.kt
++++ b/lumen-engine/src/main/java/com/lumen/coacervation/engine/host/LumenSurfaceSession.kt
+@@ -672,7 +672,9 @@ public class LumenSurfaceSession @JvmOverloads constructor(
+         fun rebuild() {
+             appearance=LumenMaterialRecipe.resolve(config,enhancements.material,palette)
+             val requirements=LumenSurfaceEffectFactory.requirements(appearance,enhancements)
+-            rawProfile=LumenRawSampleProfile(requirements.haloDp,requirements.weakBlurDp,requirements.strongBlurDp)
++            val softwareBlur=if(appearance.sampling.blurEnabled)appearance.sampling.softwareBlurRadiusDp else 0f
++            rawProfile=LumenRawSampleProfile(requirements.haloDp,requirements.weakBlurDp,
++                if(!enhancements.progressiveBlur.enabled&&softwareBlur!=null)softwareBlur else requirements.strongBlurDp)
+             rawDetail=null;applyDetail(if(enhancements.quality.enabled)enhancements.quality.mode else LumenDetailMode.HIGH)
+             val keep=if(enhanced()&&appearance.sampling.enabled&&appearance.material!=LumenSurfaceMaterial.STATIC)direct else null
+             if(keep!=null)direct=null
+@@ -727,25 +729,32 @@ public class LumenSurfaceSession @JvmOverloads constructor(
+             val color = c.color ?: palette.surface
+             colorAlpha = Color.alpha(color)
+             fill.color = ColorUtils.setAlphaComponent(color, 255)
+-            edgeAlpha = (70 * c.edgeIntensity).roundToInt().coerceIn(0, 255)
+-            edge.color = ColorUtils.setAlphaComponent(palette.primary, 255)
++            edgeAlpha = ((c.edgeTopColor?.let(Color::alpha) ?: 70) * c.edgeIntensity).roundToInt().coerceIn(0, 255)
++            edge.color = ColorUtils.setAlphaComponent(c.edgeTopColor ?: palette.primary, 255)
++            val edgeTop = ColorUtils.setAlphaComponent(edge.color, edgeAlpha)
++            val edgeBottom = c.edgeBottomColor?.let {
++                ColorUtils.setAlphaComponent(it, (Color.alpha(it) * c.edgeIntensity).roundToInt().coerceIn(0, 255))
++            } ?: edgeTop
+             edge.strokeWidth = c.edgeWidthDp * density
+             gradient = null; edgeGradient = null; staticGradient = null
++            if (c.edgeTopColor != null || c.edgeBottomColor != null)
++                edgeGradient = LinearGradient(0f, 0f, 0f, 1f, edgeTop, edgeBottom, Shader.TileMode.CLAMP)
+             if (c.sampling.fadeEnabled) {
+-                fun mask(base: Int): Shader {
++                fun mask(base: Int, end: Int = base): Shader {
+                     val colors = IntArray(33)
+                     val stops = FloatArray(33)
+                     for (i in colors.indices) {
+                         val t = i / 32f; stops[i] = t
+                         val weight = LumenSurfacePolicy.fade(t, c.sampling.fadeHold, c.sampling.fadeEnd,
+                             c.sampling.fadeDirection == LumenSurfaceFadeDirection.BOTTOM_TO_TOP, c.sampling.fadeCurve)
+-                        colors[i] = ColorUtils.setAlphaComponent(base, (Color.alpha(base) * weight).roundToInt())
++                        val color = ColorUtils.blendARGB(base, end, t)
++                        colors[i] = ColorUtils.setAlphaComponent(color, (Color.alpha(color) * weight).roundToInt())
+                     }
+                     return LinearGradient(0f, 0f, 0f, 1f, colors, stops, Shader.TileMode.CLAMP)
+                 }
+                 gradient = mask(ColorUtils.setAlphaComponent(color, (colorAlpha * c.tintOpacity).roundToInt()))
+                 staticGradient = mask(ColorUtils.setAlphaComponent(color, (colorAlpha * c.fallbackTintOpacity).roundToInt()))
+-                edgeGradient = mask(ColorUtils.setAlphaComponent(edge.color, edgeAlpha))
++                edgeGradient = mask(edgeTop, edgeBottom)
+             }
+             fill.shader = gradient; edge.shader = edgeGradient
+             onBoundsChange(bounds)
+@@ -803,7 +812,7 @@ public class LumenSurfaceSession @JvmOverloads constructor(
+                                     val source=group.sampler.rawShader(host,2)?:clear
+                                     rawMatrix.setScale(group.sampler.rawScale(host),group.sampler.rawScale(host))
+                                     rawMatrix.postTranslate(-group.sampler.rawMargin(host),-group.sampler.rawMargin(host))
+-                                    source.setLocalMatrix(rawMatrix);rawPaint.shader=source;rawPaint.alpha=(255*alpha).roundToInt()
++                                    source.setLocalMatrix(rawMatrix);rawPaint.shader=source;rawPaint.alpha=(255*alpha*c.backdropOpacity).roundToInt()
+                                     canvas.drawRect(rectangle,rawPaint);backend=LumenSurfaceBackend.SOFTWARE;softwareDraws++
+                                 }
+                             } else reason=if(group.sampler.hasFailed)LumenSurfaceFailure.SOFTWARE_FAILED else if(group.sampler.budgetRejected)LumenSurfaceFailure.BUDGET_EXCEEDED else LumenSurfaceFailure.FRAME_PENDING
+@@ -827,7 +836,7 @@ public class LumenSurfaceSession @JvmOverloads constructor(
+                                     } else {
+                                     entry.gpuPixels = pixels
+                                     val glass = entry.gpu ?: SurfaceCaptureApi31.Glass(c, density, ColorUtils.calculateLuminance(palette.background) < .5, entry.lenses ?: SurfaceCaptureApi31.LensCache().also { entry.lenses = it },entry.graphics).also { entry.gpu = it }
+-                                    group.capture!!.draw(glass, canvas, bounds, c.radiusDp * density, sampleMatrix, alpha)
++                                    group.capture!!.draw(glass, canvas, bounds, c.radiusDp * density, sampleMatrix, alpha * c.backdropOpacity)
+                                     backend = LumenSurfaceBackend.GPU; gpuDraws++; group.sampler.unregister(host)
+                                     }
+                                 } else reason = LumenSurfaceFailure.INVALID_GEOMETRY
+@@ -835,7 +844,7 @@ public class LumenSurfaceSession @JvmOverloads constructor(
+                         }
+                         if (backend != LumenSurfaceBackend.GPU && LumenSurfacePolicy.softwareAllowed(c.sampling)) {
+                             group.sampler.register(host, c.sampling)
+-                            if (group.sampler.draw(canvas, rectangle, c.radiusDp * density, host, (255 * alpha).roundToInt())) {
++                            if (group.sampler.draw(canvas, rectangle, c.radiusDp * density, host, (255 * alpha * c.backdropOpacity).roundToInt())) {
+                                 backend = LumenSurfaceBackend.SOFTWARE; softwareDraws++
+                             } else if (group.sampler.hasFailed) reason = LumenSurfaceFailure.SOFTWARE_FAILED
+                             else if (group.sampler.budgetRejected) reason = LumenSurfaceFailure.BUDGET_EXCEEDED
+diff --git a/lumen-engine/src/main/java/com/lumen/coacervation/engine/host/SurfaceCaptureApi31.kt b/lumen-engine/src/main/java/com/lumen/coacervation/engine/host/SurfaceCaptureApi31.kt
+index a0f18b1..690325e 100644
+--- a/lumen-engine/src/main/java/com/lumen/coacervation/engine/host/SurfaceCaptureApi31.kt
++++ b/lumen-engine/src/main/java/com/lumen/coacervation/engine/host/SurfaceCaptureApi31.kt
+@@ -3,6 +3,8 @@ package com.lumen.coacervation.engine.host
+ import android.graphics.BlendMode
+ import android.graphics.Canvas
+ import android.graphics.Color
++import android.graphics.ColorMatrix
++import android.graphics.ColorMatrixColorFilter
+ import android.graphics.LinearGradient
+ import android.graphics.Matrix
+ import android.graphics.Rect
+@@ -92,6 +94,12 @@ internal class SurfaceCaptureApi31 : AutoCloseable {
+         } else null
+         val renderer = GlowChromeGlassApi31(pad) { width, height, padding, radius, intensity, direction ->
+             var effect = blur
++            if(options.material==LumenSurfaceMaterial.FROSTED&&lens==null) {
++                val gain=com.lumen.coacervation.engine.material.LensRefractionPolicy.LUMINANCE_GAIN
++                val bias=com.lumen.coacervation.engine.material.LensRefractionPolicy.LUMINANCE_BIAS
++                effect=RenderEffect.createColorFilterEffect(ColorMatrixColorFilter(ColorMatrix(floatArrayOf(
++                    gain,0f,0f,0f,bias,0f,gain,0f,0f,bias,0f,0f,gain,0f,bias,0f,0f,0f,1f,0f))),effect)
++            }
+             if (lens != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                 effect = if (options.material == LumenSurfaceMaterial.LIQUID)
+                     LiquidChromeLensApi33.effect(lens, effect, width, height, padding, radius, intensity, direction)
+diff --git a/lumen-engine/src/main/java/com/lumen/coacervation/engine/material/LiveBackdropSampler.kt b/lumen-engine/src/main/java/com/lumen/coacervation/engine/material/LiveBackdropSampler.kt
+index 4389dd3..45deb7a 100644
+--- a/lumen-engine/src/main/java/com/lumen/coacervation/engine/material/LiveBackdropSampler.kt
++++ b/lumen-engine/src/main/java/com/lumen/coacervation/engine/material/LiveBackdropSampler.kt
+@@ -26,6 +26,7 @@ import java.util.concurrent.ExecutorService
+ import java.util.concurrent.Executors
+ import kotlin.math.ceil
+ import kotlin.math.floor
++import kotlin.math.roundToInt
+ 
+ /** Raw padded input for direct shader stages. Filtered siblings share one capture. */
+ internal data class LumenRawSampleProfile(val haloDp: Float,val weakBlurDp: Float=0f,val strongBlurDp: Float=0f)
+@@ -519,7 +520,10 @@ internal class LiveBackdropSampler(
+         margin = entry.margin,
+         outWidth = entry.outWidth,
+         outHeight = entry.outHeight,
+-        blurRadius = entry.profile?.let { (if (it.blurEnabled) it.blurRadiusDp * density / entry.scale else 0f).toInt().coerceIn(0, 32) }
++        blurRadius = entry.profile?.let {
++            val radius = if (it.blurEnabled) (it.softwareBlurRadiusDp ?: it.blurRadiusDp) * density / entry.scale else 0f
++            (if (it.softwareBlurRadiusDp != null) radius.roundToInt() else radius.toInt()).coerceIn(0, 32)
++        }
+             ?: LensRefractionPolicy.blurRadius(entry.scale, density),
+         profile = entry.profile,
+         raw=entry.raw,weakPixels=entry.weakPixels,strongPixels=entry.strongPixels,

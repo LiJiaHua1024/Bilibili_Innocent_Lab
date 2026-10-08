@@ -53,6 +53,8 @@ internal object DiagnosticCapabilityCatalog {
         DiagnosticCapabilityDefinition("home_top_bar_search_word_hidden", "home_top_bar_purify", R.string.hide_home_search_default_word, setOf(
             "home.top_bar.search_word.hidden",
             "host.top_bar.liquid_glass.enabled",
+            "host.top_bar.glass.material",
+            "host.top_bar.glass.renderer",
             "host.top_bar.touch_glow.enabled"
         )),
         DiagnosticCapabilityDefinition("home_vertical_detail", "home_vertical_detail", R.string.home_vertical_open_detail, setOf("home.vertical.open_detail")),
@@ -130,6 +132,8 @@ internal object DiagnosticCapabilityCatalog {
             "navigation.bottom_bar.hidden_rules",
             "navigation.bottom_bar.hidden_selectors",
             "host.bottom_bar.liquid_glass.enabled",
+            "host.bottom_bar.glass.material",
+            "host.bottom_bar.glass.renderer",
             "host.bottom_bar.compact.enabled",
             "host.bottom_bar.icon_only.enabled",
             "host.bottom_bar.touch_glow.enabled"

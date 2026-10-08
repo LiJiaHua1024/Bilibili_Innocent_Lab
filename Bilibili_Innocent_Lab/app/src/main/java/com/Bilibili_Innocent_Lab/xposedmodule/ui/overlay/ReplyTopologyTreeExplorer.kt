@@ -3,7 +3,7 @@ package com.Bilibili_Innocent_Lab.xposedmodule.ui.overlay
 import android.content.Context
 import android.content.res.ColorStateList
 import android.graphics.Rect
-import android.graphics.drawable.GradientDrawable
+import android.graphics.Color
 import android.graphics.drawable.RippleDrawable
 import android.os.Build
 import android.text.TextUtils
@@ -15,6 +15,7 @@ import android.widget.LinearLayout
 import android.widget.TextView
 import android.widget.Toast
 import com.Bilibili_Innocent_Lab.xposedmodule.runtime.HostThreadGuard
+import com.Bilibili_Innocent_Lab.xposedmodule.hook.hostui.overlays.HostOverlaySurfaces
 import com.Bilibili_Innocent_Lab.xposedmodule.runtime.replytopology.ReplyTopologyGraph
 import com.Bilibili_Innocent_Lab.xposedmodule.runtime.replytopology.ReplyTopologyNodeFlags
 import com.Bilibili_Innocent_Lab.xposedmodule.runtime.replytopology.ReplyTopologyPath
@@ -32,6 +33,8 @@ internal class ReplyTopologyTreeExplorer(
     onClose: (ReplyTopologyTreeExplorer) -> Unit
 ) : LinearLayout(context) {
     private val density = resources.displayMetrics.density
+    private val surfaces = HostOverlaySurfaces(this, theme.backgroundColor, theme.strokeColor,
+        Color.red(theme.backgroundColor) < 128, radiusDp = 0f)
     private val controls = ArrayList<TextView>()
     private val safeInsets = Rect()
     private val title = TextView(context)
@@ -61,7 +64,6 @@ internal class ReplyTopologyTreeExplorer(
         isClickable = true
         isFocusable = true
         isFocusableInTouchMode = true
-        setBackgroundColor(theme.backgroundColor)
         val header = LinearLayout(context).apply { orientation = HORIZONTAL; gravity = android.view.Gravity.CENTER_VERTICAL }
         title.apply { textSize = 17f; setTextColor(theme.primaryTextColor); maxLines = 1; ellipsize = TextUtils.TruncateAt.END }
         val closeButton = chip("×").apply { contentDescription = strings.closeTree; textSize = 24f }
@@ -207,6 +209,7 @@ internal class ReplyTopologyTreeExplorer(
     fun release() {
         if (released) return
         released = true
+        surfaces.close()
         animate().cancel()
         if (Build.VERSION.SDK_INT >= 33) {
             val dispatcher = backDispatcher
@@ -226,8 +229,8 @@ internal class ReplyTopologyTreeExplorer(
         gravity = android.view.Gravity.CENTER
         setPadding(dp(10), 0, dp(10), 0)
         isClickable = true; isFocusable = true
-        val fill = GradientDrawable().apply { cornerRadius = dp(10).toFloat(); setColor(ReplyTopologyPanelTheme.blendColor(theme.backgroundColor, theme.accentColor, 0.12f)) }
-        background = RippleDrawable(ColorStateList.valueOf(theme.rippleColor), fill, null)
+        surfaces.chip(this, ReplyTopologyPanelTheme.blendColor(theme.backgroundColor, theme.accentColor, 0.12f), 10f)
+        foreground = RippleDrawable(ColorStateList.valueOf(theme.rippleColor), null, null)
     }.also { controls += it }
 
     private fun scroll(row: LinearLayout) = HorizontalScrollView(context).apply {

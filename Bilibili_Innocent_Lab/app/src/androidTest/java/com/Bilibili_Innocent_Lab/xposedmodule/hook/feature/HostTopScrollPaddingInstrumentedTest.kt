@@ -1,5 +1,8 @@
 package com.Bilibili_Innocent_Lab.xposedmodule.hook.feature
 
+import com.Bilibili_Innocent_Lab.xposedmodule.hook.hostui.top.HostTopBarFxController
+import com.Bilibili_Innocent_Lab.xposedmodule.hook.hostui.top.HostTopListPosition
+
 import android.view.View
 import android.view.ViewGroup
 import androidx.recyclerview.widget.GridLayoutManager

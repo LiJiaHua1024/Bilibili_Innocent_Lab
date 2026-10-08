@@ -6,62 +6,54 @@ import android.view.View
 import android.widget.FrameLayout
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
-import com.Bilibili_Innocent_Lab.xposedmodule.ui.skin.material.ModernMaterialPolicy
-import com.Bilibili_Innocent_Lab.xposedmodule.ui.skin.model.SurfaceRole
-import org.junit.Assert.assertEquals
-import org.junit.Assert.assertNotEquals
-import org.junit.Assert.assertTrue
+import com.Bilibili_Innocent_Lab.xposedmodule.hook.hostui.common.HostChromeColors
+import com.Bilibili_Innocent_Lab.xposedmodule.hook.hostui.common.HostSurfaceScope
+import com.Bilibili_Innocent_Lab.xposedmodule.hook.hostui.common.HostSurfaceStyle
+import com.Bilibili_Innocent_Lab.xposedmodule.hook.hostui.top.HostTopIslandBinding
+import com.Bilibili_Innocent_Lab.xposedmodule.hook.hostui.top.HostTopIslandPageActions
+import org.junit.Assert.*
 import org.junit.Test
 import org.junit.runner.RunWith
 
 @RunWith(AndroidJUnit4::class)
 class HostTopIslandThemeInstrumentedTest {
-    @Test fun replacedCollapsedShellStillDrawsAcrossDayNightChanges() {
+    @Test fun collapsedShellHasItsOwnBackgroundAndFollowsDayNightPalette() {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         instrumentation.runOnMainSync {
-            val context = instrumentation.targetContext
-            val parent = FrameLayout(context)
-            val dock = FrameLayout(context)
+            val parent = FrameLayout(instrumentation.targetContext)
+            val dock = FrameLayout(parent.context)
             parent.addView(dock, FrameLayout.LayoutParams(300, 64))
             dock.layout(0, 0, 300, 64)
-            val binding = checkNotNull(HostTopIslandBinding.attach(dock, null, 1f, null, null,
+            val scope = HostSurfaceScope(dock, HostChromeColors(false, 0xFFFF6699.toInt()))
+            scope.surface(dock, HostSurfaceStyle.floating(false, 32f))
+            val binding = checkNotNull(HostTopIslandBinding.attach(dock, null, 1f, null, scope,
                 0xFFFF6699.toInt(), HostTopIslandPageActions(parent, null)))
-            // 模拟弹簧已到收起终点，宿主 dock 隐藏，由输入层代画外壳。
-            HostTopIslandBinding::class.java.getDeclaredField("collapsed").apply {
-                isAccessible = true
-                setBoolean(binding, true)
+            for (name in listOf("collapsed", "progress")) {
+                HostTopIslandBinding::class.java.getDeclaredField(name).apply {
+                    isAccessible = true
+                    if (name == "collapsed") setBoolean(binding, true) else setFloat(binding, 1f)
+                }
             }
-            HostTopIslandBinding::class.java.getDeclaredField("progress").apply {
-                isAccessible = true
-                setFloat(binding, 1f)
-            }
-            val input = parent.getChildAt(1)
-            input.layout(0, 0, 300, 80)
-            val bitmap = Bitmap.createBitmap(300, 80, Bitmap.Config.ARGB_8888)
+            val shell = parent.getChildAt(1)
+            shell.layout(0, 0, 300, 64)
+            parent.getChildAt(2).layout(0, 0, 300, 80)
+            val bitmap = Bitmap.createBitmap(300, 64, Bitmap.Config.ARGB_8888)
             try {
-                var previousPixel = 0
+                var previous = 0
                 for (dark in listOf(true, false, true)) {
-                    val colors = HostChromeColors(dark, 0xFFFF6699.toInt()).palette()
-                    val surface = HostLiquidSurfaceDrawable(colors.surface, 32f, 1f,
-                        ModernMaterialPolicy.surface(SurfaceRole.FLOATING, dark))
-                    dock.background = surface
-                    // 隐藏 View 未走 drawBackground，新 Drawable 仍没有绘制边界。
-                    surface.setBounds(0, 0, 0, 0)
+                    scope.updatePalette(HostChromeColors(dark, 0xFFFF6699.toInt()))
                     binding.sync()
                     assertEquals(View.INVISIBLE, dock.visibility)
-                    assertEquals(300, surface.bounds.width())
-                    assertEquals(64, surface.bounds.height())
+                    assertNotSame(dock.background, shell.background)
+                    assertSame(shell, shell.background.callback)
                     bitmap.eraseColor(0)
-                    input.draw(Canvas(bitmap))
-                    // 取圆心旁边，避开箭头：必须存在实际玻璃表面，且日夜颜色改变。
-                    val pixel = bitmap.getPixel(165, 40)
+                    shell.draw(Canvas(bitmap))
+                    val pixel = bitmap.getPixel(165, 32)
                     assertTrue(pixel ushr 24 > 0)
-                    assertNotEquals(previousPixel, pixel)
-                    previousPixel = pixel
+                    assertNotEquals(previous, pixel)
+                    previous = pixel
                 }
-            } finally {
-                bitmap.recycle()
-            }
+            } finally { bitmap.recycle(); scope.close() }
         }
     }
 }

@@ -1,5 +1,7 @@
 package com.Bilibili_Innocent_Lab.xposedmodule.hook.feature
 
+import com.Bilibili_Innocent_Lab.xposedmodule.hook.hostui.bottom.HostBottomBarTabSlots
+
 import org.junit.Assert.*
 import org.junit.Test
 

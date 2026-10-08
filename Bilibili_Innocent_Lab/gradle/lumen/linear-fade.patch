@@ -1,0 +1,219 @@
+diff --git a/docs/API.md b/docs/API.md
+index 535aa98..f2e15ce 100644
+--- a/docs/API.md
++++ b/docs/API.md
+@@ -242,6 +242,7 @@
+ - LumenSurfaceBinding：id / update / diagnostics / close；旧绑定不能关闭新绑定。
+ - LumenContentSource：coordinateView / excludesSurfaces / drawContent(Canvas)。
+ - LumenSurfaceOptions / LumenSurfaceSampling / LumenSurfaceSessionOptions：不可变配置，所有字段受范围约束。
++- `LumenSurfaceSampling.fadeCurve`：`LumenSurfaceFadeCurve.SMOOTH`（默认，保持原平滑曲线）或 `LINEAR`（hold 到 end 之间等速衰减）。方向、端点及透明尾部规则相同；GPU、软件采样和静态承托使用同一曲线。不改变未显式选择 LINEAR 的表面。
+ - LumenSurfaceMaterial / LumenSurfaceBackend / LumenSurfaceFadeDirection / LumenSurfaceFailure：公开枚举。
+ - LumenSurfaceState / LumenSurfaceDiagnostics：请求/实际材质、每绑定状态及会话计数。
+ - LumenSurfaceListener.onSurfaceState(id, backend, failure, firstVisibleDraw)：异步合并、异常隔离。
+diff --git a/docs/SURFACE_SESSIONS.md b/docs/SURFACE_SESSIONS.md
+index e494684..31927c4 100644
+--- a/docs/SURFACE_SESSIONS.md
++++ b/docs/SURFACE_SESSIONS.md
+@@ -40,6 +40,7 @@ Dialog/Story 浮层要传入本窗口的来源。来源或目标 detach 后会
+ | Sampling | minIntervalMs / softwareScale | 28ms，0–1000；1/3，0.05–1 |
+ | Sampling | maxSoftwarePixels | 24000，1024–96000（含外沿） |
+ | Sampling | fadeEnabled / fadeHold / fadeEnd / fadeDirection | 关闭；0 / 1，0–1且end≥hold；从上到下 |
++| Sampling | fadeCurve | `SMOOTH` 保留原缓动；`LINEAR` 在 hold–end 区间等速衰减，所有后端一致 |
+ | Session | enabled / maxSurfaces | 开启；16，1–32；降低前需解绑多余表面 |
+ | Session | maxSoftwareBytes | 8MiB，256KiB–16MiB；所有来源活跃软件缓冲合计 |
+ | Session | maxGpuContentPixels / maxGpuSurfacePixels | 各4194304，16384–8388608；录制和效果层分别计量 |
+diff --git a/lumen-engine/src/main/java/com/lumen/coacervation/engine/host/LumenSurfaceOptions.kt b/lumen-engine/src/main/java/com/lumen/coacervation/engine/host/LumenSurfaceOptions.kt
+index f01b38a..945996d 100644
+--- a/lumen-engine/src/main/java/com/lumen/coacervation/engine/host/LumenSurfaceOptions.kt
++++ b/lumen-engine/src/main/java/com/lumen/coacervation/engine/host/LumenSurfaceOptions.kt
+@@ -6,6 +6,8 @@ import com.lumen.coacervation.engine.model.SurfaceRole
+ public enum class LumenSurfaceMaterial { FROSTED, LIQUID, STATIC }
+ public enum class LumenSurfaceBackend { AUTO, GPU, SOFTWARE, STATIC }
+ public enum class LumenSurfaceFadeDirection { TOP_TO_BOTTOM, BOTTOM_TO_TOP }
++/** SMOOTH preserves the original eased fade; LINEAR has a constant rate between hold and end. */
++public enum class LumenSurfaceFadeCurve { SMOOTH, LINEAR }
+ public enum class LumenSurfaceFailure {
+     NONE, NO_SOURCE, DETACHED, HIDDEN, DIFFERENT_WINDOW, SELF_FEEDBACK,
+     INVALID_GEOMETRY, GPU_UNAVAILABLE, GPU_FAILED, SOFTWARE_FAILED, BUDGET_EXCEEDED,
+@@ -27,7 +29,8 @@ public data class LumenSurfaceSampling(
+     val fadeEnabled: Boolean = false,
+     val fadeHold: Float = 0f,
+     val fadeEnd: Float = 1f,
+-    val fadeDirection: LumenSurfaceFadeDirection = LumenSurfaceFadeDirection.TOP_TO_BOTTOM
++    val fadeDirection: LumenSurfaceFadeDirection = LumenSurfaceFadeDirection.TOP_TO_BOTTOM,
++    val fadeCurve: LumenSurfaceFadeCurve = LumenSurfaceFadeCurve.SMOOTH
+ ) {
+     init {
+         require(blurRadiusDp.isFinite() && blurRadiusDp in 0f..48f)
+diff --git a/lumen-engine/src/main/java/com/lumen/coacervation/engine/host/LumenSurfacePolicy.kt b/lumen-engine/src/main/java/com/lumen/coacervation/engine/host/LumenSurfacePolicy.kt
+index 33921f5..9ccc21c 100644
+--- a/lumen-engine/src/main/java/com/lumen/coacervation/engine/host/LumenSurfacePolicy.kt
++++ b/lumen-engine/src/main/java/com/lumen/coacervation/engine/host/LumenSurfacePolicy.kt
+@@ -5,12 +5,16 @@ import kotlin.math.sqrt
+ 
+ /** Pure geometry, budgeting and degradation rules shared by both capture backends. */
+ internal object LumenSurfacePolicy {
+-    fun fade(fraction: Float, hold: Float, end: Float, reverse: Boolean): Float {
++    fun fade(fraction: Float, hold: Float, end: Float, reverse: Boolean,
++             curve: LumenSurfaceFadeCurve = LumenSurfaceFadeCurve.SMOOTH): Float {
+         val x = if (reverse) 1f - fraction else fraction
+         if (x <= hold) return 1f
+         if (x >= end || end <= hold) return 0f
+         val t = ((x - hold) / (end - hold)).coerceIn(0f, 1f)
+-        return 1f - t * t * (3f - 2f * t)
++        return when (curve) {
++            LumenSurfaceFadeCurve.SMOOTH -> 1f - t * t * (3f - 2f * t)
++            LumenSurfaceFadeCurve.LINEAR -> 1f - t
++        }
+     }
+ 
+     fun gpuScale(width: Int, height: Int, desired: Float, pixelBudget: Int): Float {
+diff --git a/lumen-engine/src/main/java/com/lumen/coacervation/engine/host/LumenSurfaceSession.kt b/lumen-engine/src/main/java/com/lumen/coacervation/engine/host/LumenSurfaceSession.kt
+index 9570ffe..e658e6e 100644
+--- a/lumen-engine/src/main/java/com/lumen/coacervation/engine/host/LumenSurfaceSession.kt
++++ b/lumen-engine/src/main/java/com/lumen/coacervation/engine/host/LumenSurfaceSession.kt
+@@ -450,7 +450,7 @@ public class LumenSurfaceSession @JvmOverloads constructor(
+                     for (i in colors.indices) {
+                         val t = i / 32f; stops[i] = t
+                         val weight = LumenSurfacePolicy.fade(t, c.sampling.fadeHold, c.sampling.fadeEnd,
+-                            c.sampling.fadeDirection == LumenSurfaceFadeDirection.BOTTOM_TO_TOP)
++                            c.sampling.fadeDirection == LumenSurfaceFadeDirection.BOTTOM_TO_TOP, c.sampling.fadeCurve)
+                         colors[i] = ColorUtils.setAlphaComponent(base, (Color.alpha(base) * weight).roundToInt())
+                     }
+                     return LinearGradient(0f, 0f, 0f, 1f, colors, stops, Shader.TileMode.CLAMP)
+diff --git a/lumen-engine/src/main/java/com/lumen/coacervation/engine/host/SurfaceCaptureApi31.kt b/lumen-engine/src/main/java/com/lumen/coacervation/engine/host/SurfaceCaptureApi31.kt
+index a98ce52..b26dff4 100644
+--- a/lumen-engine/src/main/java/com/lumen/coacervation/engine/host/SurfaceCaptureApi31.kt
++++ b/lumen-engine/src/main/java/com/lumen/coacervation/engine/host/SurfaceCaptureApi31.kt
+@@ -102,7 +102,7 @@ internal class SurfaceCaptureApi31 : AutoCloseable {
+                 for (i in colors.indices) {
+                     val t = i / 32f
+                     val weight = LumenSurfacePolicy.fade(t, sampling.fadeHold, sampling.fadeEnd,
+-                        sampling.fadeDirection == LumenSurfaceFadeDirection.BOTTOM_TO_TOP)
++                        sampling.fadeDirection == LumenSurfaceFadeDirection.BOTTOM_TO_TOP, sampling.fadeCurve)
+                     colors[i] = Color.argb((255 * weight).roundToInt(), 255, 255, 255)
+                     positions[i] = t
+                 }
+diff --git a/lumen-engine/src/main/java/com/lumen/coacervation/engine/material/LiveBackdropSampler.kt b/lumen-engine/src/main/java/com/lumen/coacervation/engine/material/LiveBackdropSampler.kt
+index 1d64611..9591eae 100644
+--- a/lumen-engine/src/main/java/com/lumen/coacervation/engine/material/LiveBackdropSampler.kt
++++ b/lumen-engine/src/main/java/com/lumen/coacervation/engine/material/LiveBackdropSampler.kt
+@@ -577,7 +577,7 @@ internal class LiveBackdropSampler(
+             if (profile?.fadeEnabled == true) {
+                 val reverse = profile.fadeDirection == LumenSurfaceFadeDirection.BOTTOM_TO_TOP
+                 for (y in 0 until job.outHeight) {
+-                    val weight = LumenSurfacePolicy.fade((y + 0.5f) / job.outHeight, profile.fadeHold, profile.fadeEnd, reverse)
++                    val weight = LumenSurfacePolicy.fade((y + 0.5f) / job.outHeight, profile.fadeHold, profile.fadeEnd, reverse, profile.fadeCurve)
+                     for (x in 0 until job.outWidth) {
+                         val i = y * job.outWidth + x
+                         val c = job.out[i]
+diff --git a/lumen-engine/src/test/java/com/lumen/coacervation/engine/LumenSurfaceContractTest.kt b/lumen-engine/src/test/java/com/lumen/coacervation/engine/LumenSurfaceContractTest.kt
+index c623453..39b7083 100644
+--- a/lumen-engine/src/test/java/com/lumen/coacervation/engine/LumenSurfaceContractTest.kt
++++ b/lumen-engine/src/test/java/com/lumen/coacervation/engine/LumenSurfaceContractTest.kt
+@@ -5,6 +5,11 @@ import org.junit.Assert.*
+ import org.junit.Test
+ 
+ class LumenSurfaceContractTest {
++    @Test fun allFadeBackendsUseTheConfiguredCurve() {
++        assertTrue(session().contains("LumenSurfaceFadeDirection.BOTTOM_TO_TOP, c.sampling.fadeCurve"))
++        assertTrue(SourceContract.read("host/SurfaceCaptureApi31.kt").contains("LumenSurfaceFadeDirection.BOTTOM_TO_TOP, sampling.fadeCurve"))
++        assertTrue(SourceContract.read("material/LiveBackdropSampler.kt").contains("profile.fadeEnd, reverse, profile.fadeCurve"))
++    }
+     private fun session()=SourceContract.read("host/LumenSurfaceSession.kt")
+     @Test fun localSessionDoesNotTakeOverTheApplication() {
+         val s=session()
+diff --git a/lumen-engine/src/test/java/com/lumen/coacervation/engine/LumenSurfacePolicyTest.kt b/lumen-engine/src/test/java/com/lumen/coacervation/engine/LumenSurfacePolicyTest.kt
+index 3a467c9..93678e8 100644
+--- a/lumen-engine/src/test/java/com/lumen/coacervation/engine/LumenSurfacePolicyTest.kt
++++ b/lumen-engine/src/test/java/com/lumen/coacervation/engine/LumenSurfacePolicyTest.kt
+@@ -7,6 +7,28 @@ import org.junit.Assert.*
+ import org.junit.Test
+ 
+ class LumenSurfacePolicyTest {
++    @Test fun linearFadeHasConstantRateAndRespectsDirectionAndBounds() {
++        for (reverse in listOf(false, true)) {
++            for (i in 0..100) {
++                val x = .2f + .6f * i / 100f
++                val fraction = if (reverse) 1f - x else x
++                assertEquals(1f - i / 100f,
++                    LumenSurfacePolicy.fade(fraction, .2f, .8f, reverse, LumenSurfaceFadeCurve.LINEAR), .00001f)
++            }
++        }
++        assertEquals(1f, LumenSurfacePolicy.fade(0f, .2f, .8f, false, LumenSurfaceFadeCurve.LINEAR), 0f)
++        assertEquals(0f, LumenSurfacePolicy.fade(1f, .2f, .8f, false, LumenSurfaceFadeCurve.LINEAR), 0f)
++        assertEquals(0f, LumenSurfacePolicy.fade(.6f, .5f, .5f, false, LumenSurfaceFadeCurve.LINEAR), 0f)
++    }
++
++    @Test fun defaultFadePreservesExistingSmoothCurve() {
++        assertEquals(LumenSurfaceFadeCurve.SMOOTH, LumenSurfaceSampling().fadeCurve)
++        for (i in 0..100) {
++            val t = i / 100f
++            assertEquals(1f - t * t * (3f - 2f * t), LumenSurfacePolicy.fade(t, 0f, 1f, false), .00001f)
++        }
++    }
++
+     @Test fun fadeIsMonotonicAndReversible() {
+         var previous = 1f
+         for (i in 0..100) {
+diff --git a/sample/src/androidTest/java/com/lumen/coacervation/sample/LocalSurfaceIntegrationTest.kt b/sample/src/androidTest/java/com/lumen/coacervation/sample/LocalSurfaceIntegrationTest.kt
+index b026ba5..b1f5131 100644
+--- a/sample/src/androidTest/java/com/lumen/coacervation/sample/LocalSurfaceIntegrationTest.kt
++++ b/sample/src/androidTest/java/com/lumen/coacervation/sample/LocalSurfaceIntegrationTest.kt
+@@ -123,6 +123,15 @@ class LocalSurfaceIntegrationTest {
+ 
+     @SdkSuppress(minSdkVersion = 31)
+     @Test fun gpuFadeUsesTheCurrentSourceAndDoesNotTintTheWholeWindow() {
++        checkGpuFade(LumenSurfaceFadeCurve.SMOOTH)
++    }
++
++    @SdkSuppress(minSdkVersion = 31)
++    @Test fun linearGpuFadeHasUniformPixelCoverage() {
++        checkGpuFade(LumenSurfaceFadeCurve.LINEAR)
++    }
++
++    private fun checkGpuFade(curve: LumenSurfaceFadeCurve) {
+         // ATD images disable final hardware output while still running View draw callbacks.
+         val wasDrawing=if(Build.VERSION.SDK_INT>=33)TestDrawingApi33.isEnabled()else true
+         Log.i("Lumen-SurfaceTest","GPU fade: enable drawing")
+@@ -141,7 +150,7 @@ class LocalSurfaceIntegrationTest {
+                 activity.binding=activity.session.bindSource(activity.glass,
+                     LumenSurfaceOptions(radiusDp=0f,tintEnabled=false,edgeEnabled=false,
+                         sampling=LumenSurfaceSampling(backend=LumenSurfaceBackend.GPU,softwareFallback=false,
+-                            blurEnabled=false,refractionEnabled=false,minIntervalMs=0,fadeEnabled=true)),custom)
++                            blurEnabled=false,refractionEnabled=false,minIntervalMs=0,fadeEnabled=true,fadeCurve=curve)),custom)
+             }
+             val deadline=SystemClock.uptimeMillis()+5000
+             var gpu=false
+@@ -153,10 +162,11 @@ class LocalSurfaceIntegrationTest {
+             Log.i("Lumen-SurfaceTest","GPU fade: backend ready, copy pixels")
+             var image:Bitmap?=null
+             var copyResult=-1
+-            var x=0;var top=0;var bottom=0;var outside=0
++            var x=0;var top=0;var bottom=0;var outside=0;var origin=0;var height=0
+             scenario.onActivity { activity ->
+                 val location=IntArray(2);activity.glass.getLocationInWindow(location)
+                 x=location[0]+8;outside=location[0]-8
++                origin=location[1];height=activity.glass.height
+                 top=location[1]+(activity.glass.height*.05f).toInt()
+                 bottom=location[1]+(activity.glass.height*.95f).toInt()
+                 val decor=activity.window.decorView
+@@ -182,6 +192,18 @@ class LocalSurfaceIntegrationTest {
+             assertTrue(kotlin.math.abs(Color.red(low)-Color.red(behind))<35)
+             assertTrue(kotlin.math.abs(Color.green(low)-Color.green(behind))<35)
+             assertTrue(kotlin.math.abs(Color.blue(low)-Color.blue(behind))<35)
++            if (curve == LumenSurfaceFadeCurve.LINEAR) {
++                for (step in 1..9) {
++                    val y=origin+(height*step/10f).toInt()
++                    val fraction=(y-origin+.5f)/height
++                    val actual=screenshot.getPixel(x,y)
++                    val background=screenshot.getPixel(outside,y)
++                    val expectedRed=255f*(1f-fraction)+Color.red(background)*fraction
++                    assertEquals("Linear red coverage at $step/10",expectedRed,Color.red(actual).toFloat(),4f)
++                    assertEquals("Linear green coverage at $step/10",Color.green(background)*fraction,Color.green(actual).toFloat(),4f)
++                    assertEquals("Linear blue coverage at $step/10",Color.blue(background)*fraction,Color.blue(actual).toFloat(),4f)
++                }
++            }
+             screenshot.recycle()
+         }
+         } finally {

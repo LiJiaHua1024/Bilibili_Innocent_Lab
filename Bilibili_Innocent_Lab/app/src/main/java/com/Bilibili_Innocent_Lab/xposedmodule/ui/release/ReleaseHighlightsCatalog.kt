@@ -237,11 +237,13 @@ internal object ReleaseHighlightsCatalog {
             R.string.host_bottom_bar_liquid_glass_tip,
             HighlightDestination("host.bottom_bar.liquid_glass.enabled",
                 alsoCovers = setOf("host.bottom_bar.touch_glow.enabled",
-                    "host.bottom_bar.compact.enabled", "host.bottom_bar.icon_only.enabled"))),
+                    "host.bottom_bar.compact.enabled", "host.bottom_bar.icon_only.enabled",
+                    "host.bottom_bar.glass.material", "host.bottom_bar.glass.renderer"))),
         ReleaseHighlight("host-top-bar-fx", HighlightKind.NEW,
             R.string.host_top_bar_liquid_glass_tip,
             HighlightDestination("host.top_bar.liquid_glass.enabled",
-                alsoCovers = setOf("host.top_bar.touch_glow.enabled")))
+                alsoCovers = setOf("host.top_bar.touch_glow.enabled",
+                    "host.top_bar.glass.material", "host.top_bar.glass.renderer")))
     )), ReleaseHighlightsBatch(6, listOf(
         ReleaseHighlight("reply-topology-keyword-export", HighlightKind.IMPROVED,
             R.string.highlights_reply_topology_keyword_export,

@@ -1,6 +1,8 @@
 package com.Bilibili_Innocent_Lab.xposedmodule.hook.feature
 
-import com.Bilibili_Innocent_Lab.xposedmodule.hook.feature.HostTopIslandGesture.Decision
+import com.Bilibili_Innocent_Lab.xposedmodule.hook.hostui.top.HostTopIslandGesture
+
+import com.Bilibili_Innocent_Lab.xposedmodule.hook.hostui.top.HostTopIslandGesture.Decision
 import org.junit.Assert.assertEquals
 import org.junit.Test
 
