@@ -317,7 +317,7 @@ internal class FollowFeedController(
                     selectionAttempted = true
                     selection = FollowFeedSelection.create(it, session, palette)
                 }
-                selection?.resume(); selection?.sync()
+                selection?.sync(); selection?.resume()
                 if (compactHeaderSupported && !headerAttempted && selection != null) {
                     headerAttempted = true
                     header = FollowFeedHeader.create(view, requireNotNull(selection), palette)

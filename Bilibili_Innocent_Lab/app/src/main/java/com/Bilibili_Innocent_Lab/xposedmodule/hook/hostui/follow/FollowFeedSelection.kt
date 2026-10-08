@@ -1,6 +1,7 @@
 package com.Bilibili_Innocent_Lab.xposedmodule.hook.hostui.follow
 
 import android.graphics.Color
+import android.graphics.Rect
 import android.graphics.drawable.ColorDrawable
 import android.view.Gravity
 import android.view.View
@@ -32,6 +33,8 @@ internal class FollowFeedSelection private constructor(
     private val oldAccessibility = tabs.importantForAccessibility
     private val density = tabs.resources.displayMetrics.density
     private var actionPresent = false
+    private val clip = Rect()
+    private val appliedClip = Rect()
     private val wrapper = object : FrameLayout(tabs.context) {
         override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
             updateChoiceGeometry(View.MeasureSpec.getSize(widthMeasureSpec))
@@ -134,12 +137,30 @@ internal class FollowFeedSelection private constructor(
 
     fun sync(animate: Boolean = true) {
         if (closed) return
+        syncClipping()
         val actual = (selected.invoke(tabs) as? Int)?.takeIf { it in labels.indices } ?: return
         if (choice.selectedIndex != actual) choice.select(actual, animate)
     }
 
+    private fun syncClipping() {
+        val viewport = parent.parent as? ViewGroup ?: return
+        if (wrapper.height <= 0 || viewport.height <= 0) return
+        // 列表为状态栏融合放开了共享祖先的裁剪；页签与发布入口仍须留在
+        // AppBar 的原生滚动视口内，不能随负 offset 绘制到状态栏中。
+        val wrapperTop = (parent.y - viewport.scrollY + wrapper.y - parent.scrollY).roundToInt()
+        val top = (viewport.paddingTop - wrapperTop)
+            .coerceIn(0, wrapper.height)
+        val bottom = (viewport.height - viewport.paddingBottom - wrapperTop)
+            .coerceIn(top, wrapper.height)
+        clip.set(0, top, wrapper.width, bottom)
+        if (!wrapper.getClipBounds(appliedClip) || appliedClip != clip) wrapper.clipBounds = clip
+        // INVISIBLE 保留高度与 AppBar 滚动范围，同时移除收起项的触控及无障碍入口。
+        val visibility = if (top == bottom) View.INVISIBLE else View.VISIBLE
+        if (wrapper.visibility != visibility) wrapper.visibility = visibility
+    }
+
     fun resume() {
-        if (closed || !choice.isAttachedToWindow) return
+        if (closed || wrapper.visibility != View.VISIBLE || !choice.isAttachedToWindow) return
         if (trackBinding == null) trackBinding = session.bind(choice, FollowFeedStyle.track(palette))
         if (indicatorBinding == null) indicatorBinding = session.bind(choice.indicator, FollowFeedStyle.selection())
     }

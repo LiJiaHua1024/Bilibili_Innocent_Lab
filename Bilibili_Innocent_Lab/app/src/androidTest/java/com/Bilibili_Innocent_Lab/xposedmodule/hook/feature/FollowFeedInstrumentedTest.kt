@@ -365,6 +365,70 @@ class FollowFeedInstrumentedTest {
         }
     }
 
+    @Test fun scrolledSelectionClipsPixelsAndRestoresWithoutClippingTheFeed() = main { context ->
+        val host = context.createPackageContext("tv.danmaku.bili", 0)
+        val palette = FollowFeedStyle.palette(HostChromeColors(false, Color.BLUE))
+        LumenSurfaceSession(host, palette).use { session ->
+            val page = FrameLayout(host).apply { clipChildren = false; clipToPadding = false }
+            val viewport = FrameLayout(host).apply { clipChildren = false; clipToPadding = false }
+            val appBar = FrameLayout(host)
+            val tabs = NativeTabs(host)
+            val inset = 90
+            page.addView(viewport, FrameLayout.LayoutParams(-1, -1).apply { topMargin = inset })
+            viewport.addView(appBar, FrameLayout.LayoutParams(-1, -2))
+            appBar.addView(tabs, FrameLayout.LayoutParams(-1, 100))
+            val selection = requireNotNull(FollowFeedSelection.create(tabs, session, palette))
+            // 纯色覆盖页签与发布容器，让逐像素断言检测全部越界绘制。
+            selection.actionContainer.setBackgroundColor(Color.RED)
+            page.measure(View.MeasureSpec.makeMeasureSpec(1080, View.MeasureSpec.EXACTLY),
+                View.MeasureSpec.makeMeasureSpec(1000, View.MeasureSpec.EXACTLY))
+            page.layout(0, 0, 1080, 1000)
+            val headerHeight = appBar.height
+            assertTrue(headerHeight > inset)
+            fun draw(): Bitmap = Bitmap.createBitmap(1080, 1000, Bitmap.Config.ARGB_8888).also {
+                page.draw(Canvas(it))
+            }
+            fun assertStatusEmpty(bitmap: Bitmap) {
+                for (y in 0 until inset) assertEquals("header leaked at y=$y", 0,
+                    Color.alpha(bitmap.getPixel(540, y)))
+            }
+            repeat(3) {
+                appBar.offsetTopAndBottom(-headerHeight)
+                selection.sync(false)
+                assertEquals(View.INVISIBLE, selection.actionContainer.visibility)
+                assertEquals(headerHeight, appBar.height)
+                draw().also { assertStatusEmpty(it); it.recycle() }
+                appBar.offsetTopAndBottom(headerHeight / 2)
+                selection.sync(false)
+                assertEquals(View.VISIBLE, selection.actionContainer.visibility)
+                draw().also {
+                    assertStatusEmpty(it)
+                    assertEquals(Color.RED, it.getPixel(1, inset + 1))
+                    it.recycle()
+                }
+                appBar.offsetTopAndBottom(headerHeight - headerHeight / 2)
+                selection.sync(false)
+                draw().also {
+                    assertStatusEmpty(it)
+                    assertEquals(Color.RED, it.getPixel(1, inset + 1))
+                    it.recycle()
+                }
+                selection.choice.onSelect?.invoke(0)
+                assertEquals(0, tabs.actual)
+                selection.choice.onSelect?.invoke(1)
+                assertEquals(1, tabs.actual)
+            }
+            assertEquals(6, tabs.clicks)
+            assertFalse(viewport.clipChildren)
+            assertFalse(page.clipChildren)
+            selection.close()
+            assertSame(appBar, tabs.parent)
+            assertEquals(100, tabs.layoutParams.height)
+            assertEquals(1f, tabs.alpha, 0f)
+            assertFalse(viewport.clipChildren)
+        }
+    }
+
     @Test fun selectionFitsNarrowLargeFontLandscapeAndTabletWidths() = main { context ->
         val host = context.createPackageContext("tv.danmaku.bili", 0)
         for (scale in listOf(1f, 2f)) for (widthDp in listOf(280, 640, 1024)) {
