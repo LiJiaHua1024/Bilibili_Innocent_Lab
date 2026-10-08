@@ -16,6 +16,7 @@ import android.os.Parcel
 import android.os.SystemClock
 import com.Bilibili_Innocent_Lab.xposedmodule.BuildConfig
 import com.Bilibili_Innocent_Lab.xposedmodule.agent.AgentWire
+import com.Bilibili_Innocent_Lab.xposedmodule.agent.AgentTaskCache
 import java.util.concurrent.ArrayBlockingQueue
 import java.util.concurrent.CompletableFuture
 import java.util.concurrent.ThreadPoolExecutor
@@ -39,7 +40,7 @@ internal object HostAgentRuntime {
 
     private class Runtime(private val app: Application, private val loader: ClassLoader) {
         private val main = Handler(Looper.getMainLooper())
-        private val session = HostAgentSession(AgentWire.MAX_TASK_MS)
+        private val session = HostAgentSession(AgentWire.MAX_LEASE_MS, AgentWire.IPC_TIMEOUT_MS)
         private val admissionLock = Any()
         private val operations = executor("BIL-AgentHost", 4)
         private val responses = executor("BIL-AgentReply", 16)
@@ -48,6 +49,10 @@ internal object HostAgentRuntime {
         private val router by lazy { HostAgentRouter.resolve(loader) }
         @Volatile private var moduleUid = -1
         private var binding: Binding? = null // 主线程所有
+        private var expiry: Expiry? = null // 一个任务只保留一个可重排的 TTL 回调
+        private val cacheLock = Any()
+        private val detailCache = AgentTaskCache(AgentTaskCache.DETAIL_CAPACITY, AgentTaskCache.DETAIL_TTL_MS)
+        private var cacheGeneration: Long? = null // cacheLock 所有；不在锁内执行 RPC
 
         init {
             operations.execute {
@@ -80,8 +85,11 @@ internal object HostAgentRuntime {
                     }
                     synchronized(admissionLock) {
                         val closing = operation == "cancel" || operation == "finish"
-                        val admission = if (operation == "begin") session.begin(task, sequence, deadline, now(), arguments.optBoolean("allow_vision", false))
-                        else session.admit(task, sequence, deadline, now(), closing)
+                        val admission = when (operation) {
+                            "begin" -> session.begin(task, sequence, deadline, arguments.getLong("lease_until"), now(), arguments.optBoolean("allow_vision", false))
+                            "renew" -> session.renew(task, sequence, deadline, arguments.getLong("lease_until"), now())
+                            else -> session.admit(task, sequence, deadline, now(), closing)
+                        }
                         val lease = admission.lease
                         if (lease == null) {
                             deliver(request, failure(admission.error ?: "task_inactive"))
@@ -93,7 +101,7 @@ internal object HostAgentRuntime {
                             try {
                                 operations.execute { execute(request, arguments, lease) }
                             } catch (_: java.util.concurrent.RejectedExecutionException) {
-                                if (operation == "begin") stop(lease)
+                                if (operation == "begin" || operation == "renew") stop(lease)
                                 deliver(request, failure("host_queue_busy"))
                             }
                         }
@@ -112,9 +120,16 @@ internal object HostAgentRuntime {
                         windows.awaitTaskWindow(lease)
                         onMain(lease) {
                             if (!bind(lease)) throw HostAgentFailure("module_service_unavailable")
-                            main.postDelayed({ stop(lease) }, (lease.deadline - now()).coerceAtLeast(1))
+                            scheduleExpiry(lease)
                         }
-                        JSONObject().put("status", "started").put("deadline_elapsed", lease.deadline)
+                        synchronized(cacheLock) { cacheGeneration = lease.generation; detailCache.clear() }
+                        JSONObject().put("status", "started").put("deadline_elapsed", session.current(now())?.deadline)
+                    }
+                    "renew" -> {
+                        // 续租必须复核前台控制权；允许等待已发起的有限导航，但不能接管其它页面。
+                        windows.awaitTaskContext(lease)
+                        onMain(lease) { scheduleExpiry(lease) }
+                        JSONObject().put("status", "renewed").put("deadline_elapsed", session.current(now())?.deadline)
                     }
                     "capabilities" -> JSONObject().put("search_videos", rpc.search != null && router != null)
                         .put("pagination", rpc.search?.canPaginate == true)
@@ -127,8 +142,21 @@ internal object HostAgentRuntime {
                     "get_video_details" -> {
                         val id = knownId(lease, args)
                         onMain(lease) { windows.requireTaskContext(lease) }
-                        (rpc.details ?: throw HostAgentFailure("video_details_unavailable"))
-                            .query(id, (lease.deadline - now()).coerceAtLeast(1))
+                        val key = "${lease.generation}:$id"
+                        val cached = synchronized(cacheLock) {
+                            if (cacheGeneration != lease.generation) { detailCache.clear(); cacheGeneration = lease.generation }
+                            detailCache.get(key, now())
+                        }
+                        cached ?: (rpc.details ?: throw HostAgentFailure("video_details_unavailable"))
+                            .query(id, (lease.deadline - now()).coerceAtLeast(1)).also { value ->
+                                val observedAt = now()
+                                value.put("cache_hit", false).put("observed_at_elapsed", observedAt)
+                                if (!session.isActive(lease, now())) throw HostAgentFailure("task_inactive")
+                                synchronized(cacheLock) {
+                                    if (cacheGeneration != lease.generation) throw HostAgentFailure("task_inactive")
+                                    detailCache.put(key, value, observedAt)
+                                }
+                            }
                     }
                     "open_video" -> {
                         val id = knownId(lease, args)
@@ -140,10 +168,10 @@ internal object HostAgentRuntime {
                 }
                 success(result)
             } catch (caught: HostAgentFailure) {
-                if (request.operation == "begin") stop(lease)
+                if (request.operation == "begin" || request.operation == "renew") stop(lease)
                 failure(caught.reason)
             } catch (_: Throwable) {
-                if (request.operation == "begin") stop(lease)
+                if (request.operation == "begin" || request.operation == "renew") stop(lease)
                 failure("host_operation_failed")
             }
             deliver(request, value, lease)
@@ -167,6 +195,7 @@ internal object HostAgentRuntime {
             return JSONObject().put("query", query).put("source", "host_rpc").put("videos", videos)
                 .put("navigation", if (cursor == null) "requested" else "unchanged")
                 .put("truncated_by_task_budget", result.videos.any { it.id !in permitted })
+                .put("candidate_window", HostAgentSession.MAX_CANDIDATES).put("cursor_window", HostAgentSession.MAX_CURSORS)
                 .put("visible_results_verified", false).put("next_cursor", next ?: JSONObject.NULL)
         }
 
@@ -209,6 +238,29 @@ internal object HostAgentRuntime {
             main.post { release(lease) }
         }
 
+        /** 最新 task deadline 决定 TTL；旧 command deadline 不影响长期窗口监听，也不获得延长。 */
+        private fun scheduleExpiry(lease: HostAgentSession.Lease) {
+            expiry?.let { previous ->
+                if (previous.generation == lease.generation) return
+                main.removeCallbacks(previous.callback)
+            }
+            val callback = object : Runnable {
+                override fun run() {
+                    try {
+                        val current = session.current(now())
+                        if (current == null || current.generation != lease.generation) {
+                            release(lease)
+                            return
+                        }
+                        main.postDelayed(this, (current.deadline - now()).coerceAtLeast(1))
+                    } catch (_: Throwable) { stop(lease) }
+                }
+            }
+            expiry = Expiry(lease.generation, callback)
+            val current = session.current(now()) ?: return
+            main.postDelayed(callback, (current.deadline - now()).coerceAtLeast(1))
+        }
+
         /** Activity 已可见后才绑定；不请求后台启动权限，不永久保活模块。 */
         private fun bind(lease: HostAgentSession.Lease): Boolean {
             binding?.let { release(it.lease) }
@@ -216,10 +268,10 @@ internal object HostAgentRuntime {
                 "com.Bilibili_Innocent_Lab.xposedmodule.agent.AgentSessionService")
             val connection = object : ServiceConnection {
                 override fun onServiceConnected(name: ComponentName, service: IBinder) {
-                    if (name != component || !session.isActive(lease, now())) { stop(lease); return }
+                    if (name != component || !session.isTaskActive(lease, now())) { stop(lease); return }
                     try {
                         responses.execute {
-                            if (!session.isActive(lease, now())) return@execute
+                            if (!session.isTaskActive(lease, now())) return@execute
                             val data = Parcel.obtain()
                             try {
                                 data.writeInterfaceToken(AgentWire.SERVICE_DESCRIPTOR)
@@ -240,6 +292,10 @@ internal object HostAgentRuntime {
         }
 
         private fun release(lease: HostAgentSession.Lease) {
+            expiry?.takeIf { it.generation == lease.generation }?.let {
+                main.removeCallbacks(it.callback)
+                expiry = null
+            }
             val current = binding
             if (current != null && current.lease.generation == lease.generation) {
                 binding = null
@@ -247,6 +303,14 @@ internal object HostAgentRuntime {
             }
             // 窗口层也按 generation 回收，旧任务迟到的 TTL/Service 回调不能覆盖新任务 callback。
             windows.releaseTask(lease)
+            val taskClosed = !session.isTaskActive(lease, now())
+            synchronized(cacheLock) {
+                // 缓存只有 JSON 文本；清理本身是短锁，不等待 operations 中的网络查询。
+                if (cacheGeneration == lease.generation && taskClosed) {
+                    detailCache.clear()
+                    cacheGeneration = null
+                }
+            }
         }
 
         private fun deliver(request: Request, value: JSONObject, lease: HostAgentSession.Lease? = null) {
@@ -280,12 +344,14 @@ internal object HostAgentRuntime {
         }
 
         private data class Binding(val lease: HostAgentSession.Lease, val connection: ServiceConnection)
+        private data class Expiry(val generation: Long, val callback: Runnable)
         private data class Request(val task: String, val sequence: Long, val deadline: Long, val operation: String, val callback: IBinder)
     }
 
     private fun validArguments(operation: String, args: JSONObject): Boolean {
         val permitted = when (operation) {
-            "begin" -> setOf("allow_vision")
+            "begin" -> setOf("allow_vision", "lease_until")
+            "renew" -> setOf("lease_until")
             "capabilities", "get_host_state", "inspect_screen", "cancel", "finish" -> emptySet()
             "search_videos" -> setOf("query", "cursor")
             "get_video_details", "open_video" -> setOf("video_id")
@@ -293,7 +359,9 @@ internal object HostAgentRuntime {
         }
         if (args.keys().asSequence().any { it !in permitted }) return false
         return when (operation) {
-            "begin" -> !args.has("allow_vision") || args.opt("allow_vision") is Boolean
+            "begin" -> (args.opt("lease_until") is Long || args.opt("lease_until") is Int) &&
+                (!args.has("allow_vision") || args.opt("allow_vision") is Boolean)
+            "renew" -> args.opt("lease_until") is Long || args.opt("lease_until") is Int
             "search_videos" -> args.opt("query") is String && HostAgentNavigationPolicy.searchQuery(args.getString("query")) != null &&
                 (!args.has("cursor") || args.isNull("cursor") || (args.opt("cursor") is String && args.getString("cursor").length <= 32))
             "get_video_details", "open_video" -> args.opt("video_id") is String && HostAgentNavigationPolicy.videoId(args.getString("video_id")) != null

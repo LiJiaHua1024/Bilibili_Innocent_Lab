@@ -17,10 +17,13 @@ import com.Bilibili_Innocent_Lab.xposedmodule.R
 import com.Bilibili_Innocent_Lab.xposedmodule.agent.AgentController
 import com.Bilibili_Innocent_Lab.xposedmodule.agent.AgentPreferences
 import com.Bilibili_Innocent_Lab.xposedmodule.agent.AgentTaskState
+import com.Bilibili_Innocent_Lab.xposedmodule.agent.AgentTaskLimits
 import com.Bilibili_Innocent_Lab.xposedmodule.agent.AgentVisionChallenge
 import com.Bilibili_Innocent_Lab.xposedmodule.agent.AgentWire
 import com.Bilibili_Innocent_Lab.xposedmodule.agent.model.AgentCapabilityProbe
-import com.Bilibili_Innocent_Lab.xposedmodule.agent.model.AgentModelClient
+import com.Bilibili_Innocent_Lab.xposedmodule.agent.model.AgentModelRuntime
+import com.Bilibili_Innocent_Lab.xposedmodule.agent.model.AgentDecisionProbe
+import com.Bilibili_Innocent_Lab.xposedmodule.agent.model.AgentCapabilityState
 import com.Bilibili_Innocent_Lab.xposedmodule.settings.prefs
 import com.Bilibili_Innocent_Lab.xposedmodule.ui.widget.MaxHeightScrollView
 import com.highcapable.betterandroid.ui.extension.view.toast
@@ -96,11 +99,15 @@ internal fun MainActivity.showAgentDialog(anchor: View? = null) {
         }.also(body::addView).also(taskInputs::add)
     }
     fun updateCapabilities() {
+        fun capabilityText(state: AgentCapabilityState?) = getString(when (state) {
+            AgentCapabilityState.SUPPORTED -> R.string.agent_detected
+            AgentCapabilityState.UNSUPPORTED -> R.string.agent_unsupported
+            else -> R.string.agent_unverified
+        })
         sourceViews.forEach { (source, view) ->
             val caps = AgentPreferences.capabilities(activity, source)
             view.text = getString(R.string.agent_source_capability, source.index, source.model.take(64),
-                getString(if (caps?.tools == true) R.string.agent_detected else R.string.agent_unverified),
-                getString(if (caps?.vision == true) R.string.agent_detected else R.string.agent_unverified))
+                capabilityText(caps?.toolState), capabilityText(caps?.decisionState), capabilityText(caps?.visionState))
         }
     }
     updateCapabilities()
@@ -114,6 +121,12 @@ internal fun MainActivity.showAgentDialog(anchor: View? = null) {
         setText(AgentPreferences.fixed(activity)?.toString().orEmpty())
         hint = getString(R.string.agent_auto_route)
         textColor = getColor(R.color.colorTextDark)
+    }.also(body::addView).also(taskInputs::add)
+    val fallback = CheckBox(this).apply {
+        text = getString(R.string.agent_fallback_permission)
+        isChecked = AgentPreferences.fallbackAllowed(activity)
+        textColor = getColor(R.color.colorTextDark)
+        textSize = 13f
     }.also(body::addView).also(taskInputs::add)
     val vision = CheckBox(this).apply {
         text = getString(R.string.agent_vision_permission)
@@ -132,7 +145,8 @@ internal fun MainActivity.showAgentDialog(anchor: View? = null) {
         probeStatus.text = getString(R.string.agent_probing)
         runCatching { capabilityWorker.execute {
             try {
-                val probe = AgentCapabilityProbe(AgentModelClient())
+                val probe = AgentCapabilityProbe(AgentModelRuntime.chatClient,
+                    decisionProbe = AgentDecisionProbe(AgentModelRuntime.decisionClient))
                 for (source in chosen) {
                     if (closed.get()) break
                     val result = probe.probe(source, AgentVisionChallenge.create(), 30_000, closed::get)
@@ -152,6 +166,20 @@ internal fun MainActivity.showAgentDialog(anchor: View? = null) {
         } }.onFailure { probing.set(false); probeStatus.text = getString(R.string.agent_probe_busy) }
     }.also(taskInputs::add), LinearLayout.LayoutParams(-1, -2))
     label(getString(R.string.agent_probe_help), true)
+    val savedLimits = AgentPreferences.limits(activity)
+    @SuppressLint("SetTextI18n") // 预算字段使用 ASCII 整数；0 是固定的无限预算协议值。
+    fun budgetInput(value: Long): EditText = EditText(activity).apply {
+        inputType = InputType.TYPE_CLASS_NUMBER
+        filters = arrayOf(InputFilter.LengthFilter(19))
+        setSingleLine(true)
+        setText(value.toString())
+        textColor = getColor(R.color.colorTextDark)
+    }.also(body::addView).also(taskInputs::add)
+    label(getString(R.string.agent_duration_seconds))
+    val duration = budgetInput(if (savedLimits.durationMs == 0L) 0L else (savedLimits.durationMs / 1000L).coerceAtLeast(1L))
+    label(getString(R.string.agent_maximum_steps))
+    val maximumSteps = budgetInput(savedLimits.maximumSteps)
+    label(getString(R.string.agent_budget_help), true)
     label(getString(R.string.agent_goal_label))
     val goal = EditText(this).apply {
         inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_MULTI_LINE
@@ -182,7 +210,8 @@ internal fun MainActivity.showAgentDialog(anchor: View? = null) {
         })
         status.text = buildString {
             append(stage)
-            if (state.step > 0) append(getString(R.string.agent_steps, state.step, AgentWire.MAX_STEPS))
+            if (state.step > 0) append(getString(R.string.agent_steps, state.step,
+                if (state.maximumSteps == 0L) getString(R.string.agent_unlimited) else state.maximumSteps.toString()))
             if (state.source > 0) append(getString(R.string.agent_current_source, state.source))
             if (state.detail.isNotEmpty()) append('\n').append(if (state.phase == "finished") state.detail else agentError(state.detail))
         }
@@ -205,16 +234,30 @@ internal fun MainActivity.showAgentDialog(anchor: View? = null) {
     button(getString(R.string.dialog_cancel)) { dismissWithAnimation(dialog, container) {} }
     button(getString(R.string.agent_stop)) { AgentController.cancel(activity) }
     button(getString(R.string.agent_start), true) {
+        if (probing.get()) { toast(getString(R.string.agent_probe_busy)); return@button }
         val chosen = sourceViews.filterValues { it.isChecked }.keys.mapTo(linkedSetOf()) { it.index }
         val rawFixed = fixed.textToString().trim()
         val fixedIndex = rawFixed.toIntOrNull()
         if (chosen.isEmpty() || (rawFixed.isNotEmpty() && fixedIndex !in chosen)) {
             toast(getString(R.string.agent_choose_sources)); return@button
         }
-        if (!AgentPreferences.saveSelection(activity, chosen, fixedIndex, vision.isChecked)) {
+        val seconds = duration.textToString().trim().toLongOrNull()
+        if (seconds == null || seconds !in 0L..Long.MAX_VALUE / 1000L) {
+            duration.error = getString(R.string.agent_invalid_duration)
+            duration.requestFocus()
+            return@button
+        }
+        val stepLimit = maximumSteps.textToString().trim().toLongOrNull()
+        if (stepLimit == null || stepLimit < 0L) {
+            maximumSteps.error = getString(R.string.agent_invalid_steps)
+            maximumSteps.requestFocus()
+            return@button
+        }
+        val limits = AgentTaskLimits(seconds * 1000L, stepLimit)
+        if (!AgentPreferences.saveSelection(activity, chosen, fixedIndex, vision.isChecked, limits, fallback.isChecked)) {
             toast(getString(R.string.agent_save_failed)); return@button
         }
-        AgentController.start(activity, goal.textToString(), chosen, fixedIndex, vision.isChecked)?.let {
+        AgentController.start(activity, goal.textToString(), chosen, fixedIndex, vision.isChecked, limits, fallback.isChecked)?.let {
             status.text = agentError(it)
         }
     }
@@ -225,7 +268,7 @@ internal fun MainActivity.showAgentDialog(anchor: View? = null) {
 private fun MainActivity.agentError(reason: String): String = getString(when (reason) {
     "accessibility_control_unverified" -> R.string.agent_accessibility_unverified
     "invalid_goal" -> R.string.agent_invalid_goal
-    "no_sources", "model_route_unavailable", "vision_route_unavailable" -> R.string.agent_choose_sources
+    "no_sources", "model_route_unavailable", "planner_route_unavailable", "decision_route_unavailable", "vision_route_unavailable" -> R.string.agent_choose_sources
     "probe_required" -> R.string.agent_probe_required
     "already_running" -> R.string.agent_already_running
     "not_authorized" -> R.string.agent_not_enabled
@@ -233,6 +276,6 @@ private fun MainActivity.agentError(reason: String): String = getString(when (re
     "cancelled", "service_stopped", "task_inactive" -> R.string.agent_cancelled
     "task_budget", "context_budget" -> R.string.agent_limited
     else -> R.string.agent_error_detail
-}, *if (reason !in setOf("accessibility_control_unverified", "invalid_goal", "no_sources", "model_route_unavailable", "vision_route_unavailable", "probe_required",
+}, *if (reason !in setOf("accessibility_control_unverified", "invalid_goal", "no_sources", "model_route_unavailable", "planner_route_unavailable", "decision_route_unavailable", "vision_route_unavailable", "probe_required",
         "already_running", "not_authorized", "host_unavailable_restart", "host_unavailable", "host_launch_failed", "host_disconnected",
         "cancelled", "service_stopped", "task_inactive", "task_budget", "context_budget")) arrayOf(reason.take(100)) else emptyArray())

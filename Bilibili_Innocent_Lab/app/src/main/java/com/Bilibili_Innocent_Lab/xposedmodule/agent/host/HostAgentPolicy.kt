@@ -2,21 +2,25 @@ package com.Bilibili_Innocent_Lab.xposedmodule.agent.host
 
 import java.net.URI
 import java.net.URLEncoder
+import java.util.LinkedHashMap
 
 /** 只存任务元数据和有限的公开视频身份；取消与迟到动作共用同一把短锁。 */
-internal class HostAgentSession(private val maximumTaskMs: Long = 120_000L) {
+internal class HostAgentSession(private val maximumLeaseMs: Long = 180_000L,
+                                private val maximumCommandMs: Long = minOf(maximumLeaseMs, 15_000L)) {
+    init { require(maximumLeaseMs in 1L..180_000L && maximumCommandMs in 1L..minOf(maximumLeaseMs, 15_000L)) }
     data class Lease(val taskId: String, val generation: Long, val deadline: Long)
     data class Admission(val lease: Lease? = null, val error: String? = null)
     private data class Task(
         val id: String,
         val generation: Long,
-        val deadline: Long,
+        var deadline: Long,
         val allowVision: Boolean,
         var sequence: Long,
-        var commands: Int = 1,
-        val candidates: MutableSet<String> = linkedSetOf(),
-        val cursors: MutableMap<String, Pair<String, String>> = linkedMapOf(),
-        var nextCursor: Int = 1,
+        val candidates: LinkedHashMap<String, Unit> = LinkedHashMap(MAX_CANDIDATES, 0.75f, true),
+        val cursors: LinkedHashMap<String, Pair<String, String>> = LinkedHashMap(MAX_CURSORS, 0.75f, true),
+        var nextCursor: Long = 1,
+        var bucketStarted: Long,
+        var admittedInBucket: Int = 1,
         var expectedQuery: String? = null,
         var expectedVideo: String? = null
     )
@@ -26,17 +30,38 @@ internal class HostAgentSession(private val maximumTaskMs: Long = 120_000L) {
     private val closed = linkedMapOf<String, Long>()
 
     @Synchronized
-    fun begin(id: String, sequence: Long, deadline: Long, now: Long, allowVision: Boolean): Admission {
+    fun begin(id: String, sequence: Long, deadline: Long, now: Long, allowVision: Boolean): Admission =
+        begin(id, sequence, minOf(deadline, boundedDeadline(now, maximumCommandMs)), deadline, now, allowVision)
+
+    @Synchronized
+    fun begin(id: String, sequence: Long, commandDeadline: Long, taskDeadline: Long, now: Long, allowVision: Boolean): Admission {
         expire(now)
         closed.entries.removeAll { now >= it.value }
-        if (!TASK_ID.matches(id) || sequence != 1L || deadline <= now || deadline - now > maximumTaskMs) {
+        if (!TASK_ID.matches(id) || sequence != 1L || !validCommandDeadline(commandDeadline, now) ||
+            !validTaskDeadline(taskDeadline, now) || commandDeadline > taskDeadline) {
             return Admission(error = "invalid_begin")
         }
         if (id in closed) return Admission(error = "closed_task")
         if (active != null) return Admission(error = "task_busy")
-        val task = Task(id, ++generation, deadline, allowVision, sequence)
+        if (generation == Long.MAX_VALUE) return Admission(error = "generation_exhausted")
+        val task = Task(id, ++generation, taskDeadline, allowVision, sequence, bucketStarted = now)
         active = task
-        return Admission(Lease(id, task.generation, deadline))
+        return Admission(Lease(id, task.generation, commandDeadline))
+    }
+
+    /** 仅续当前任务授权；旧 operation lease 保持原 deadline，迟到操作不能因续租重获权限。 */
+    @Synchronized
+    fun renew(id: String, sequence: Long, commandDeadline: Long, taskDeadline: Long, now: Long): Admission {
+        expire(now)
+        val task = active ?: return Admission(error = "task_inactive")
+        if (id != task.id) return Admission(error = "task_mismatch")
+        if (!validCommandDeadline(commandDeadline, now) || !validTaskDeadline(taskDeadline, now) ||
+            commandDeadline > taskDeadline) return Admission(error = "invalid_deadline")
+        if (sequence <= task.sequence) return Admission(error = "replayed_sequence")
+        if (!consumeAdmission(task, now)) return Admission(error = "host_rate_limited")
+        task.sequence = sequence
+        task.deadline = maxOf(task.deadline, taskDeadline)
+        return Admission(Lease(id, task.generation, commandDeadline))
     }
 
     @Synchronized
@@ -44,11 +69,10 @@ internal class HostAgentSession(private val maximumTaskMs: Long = 120_000L) {
         expire(now)
         val task = active ?: return Admission(error = "task_inactive")
         if (id != task.id) return Admission(error = "task_mismatch")
-        if (deadline <= now || (!closing && deadline > task.deadline)) return Admission(error = "invalid_deadline")
+        if (!validCommandDeadline(deadline, now) || (!closing && deadline > task.deadline)) return Admission(error = "invalid_deadline")
         if (sequence <= task.sequence) return Admission(error = "replayed_sequence")
-        if (!closing && task.commands >= MAX_COMMANDS) return Admission(error = "task_budget_exhausted")
+        if (!closing && !consumeAdmission(task, now)) return Admission(error = "host_rate_limited")
         task.sequence = sequence
-        task.commands++
         val lease = Lease(id, task.generation, deadline)
         if (closing) close(task, now)
         return Admission(lease)
@@ -57,7 +81,14 @@ internal class HostAgentSession(private val maximumTaskMs: Long = 120_000L) {
     @Synchronized
     fun isActive(lease: Lease, now: Long): Boolean {
         expire(now)
-        return active?.let { it.id == lease.taskId && it.generation == lease.generation && now < lease.deadline } == true
+        return isTaskActive(lease, now) && now < lease.deadline
+    }
+
+    /** Window/Service 所有权可跨续租存活；只能长期监听使用，不能用于 RPC/截图/动作回调。 */
+    @Synchronized
+    fun isTaskActive(lease: Lease, now: Long): Boolean {
+        expire(now)
+        return active?.let { it.id == lease.taskId && it.generation == lease.generation } == true
     }
 
     /** 只包围短的主线程动作，绝不在锁内执行网络、压缩或等待。 */
@@ -86,23 +117,31 @@ internal class HostAgentSession(private val maximumTaskMs: Long = 120_000L) {
     fun remember(lease: Lease, identities: List<String>, now: Long): List<String> {
         if (!isActive(lease, now)) return emptyList()
         val task = active ?: return emptyList()
-        return identities.filter { id ->
-            HostAgentNavigationPolicy.videoId(id) == id &&
-                (id in task.candidates || (task.candidates.size < MAX_CANDIDATES && task.candidates.add(id)))
+        identities.forEach { id ->
+            if (HostAgentNavigationPolicy.videoId(id) == id) {
+                task.candidates[id] = Unit
+                while (task.candidates.size > MAX_CANDIDATES) task.candidates.remove(task.candidates.keys.first())
+            }
         }
+        return identities.distinct().filter { task.candidates.containsKey(it) }
     }
 
     @Synchronized
     fun knows(lease: Lease, identity: String, now: Long): Boolean =
-        isActive(lease, now) && identity in active!!.candidates
+        isActive(lease, now) && active!!.candidates[identity] != null
 
     @Synchronized
     fun rememberCursor(lease: Lease, query: String, raw: String?, now: Long): String? {
         if (!isActive(lease, now) || raw.isNullOrBlank() || raw.length > 2048) return null
         val task = active ?: return null
-        if (task.cursors.size >= MAX_CURSORS) return null
+        task.cursors.entries.firstOrNull { it.value == (query to raw) }?.key?.let { existing ->
+            task.cursors[existing]
+            return existing
+        }
+        if (task.nextCursor == Long.MAX_VALUE) return null
         val token = "page:${task.nextCursor++}"
         task.cursors[token] = query to raw
+        while (task.cursors.size > MAX_CURSORS) task.cursors.remove(task.cursors.keys.first())
         return token
     }
 
@@ -128,18 +167,34 @@ internal class HostAgentSession(private val maximumTaskMs: Long = 120_000L) {
 
     private fun expire(now: Long) { active?.takeIf { now >= it.deadline }?.let { close(it, now) } }
     private fun close(task: Task, now: Long) {
-        closed[task.id] = now + maximumTaskMs
+        closed[task.id] = boundedDeadline(now, maximumLeaseMs)
         while (closed.size > 32) closed.remove(closed.keys.first())
         active = null
     }
 
     companion object {
         private val TASK_ID = Regex("[A-Za-z0-9_-]{8,96}")
-        const val MAX_CANDIDATES = 80
-        const val MAX_CURSORS = 4
-        // 一次模型工具调用可能需要前后观测；与模型的 12 步预算分开计算。
-        const val MAX_COMMANDS = 48
+        const val MAX_CANDIDATES = 256
+        const val MAX_CURSORS = 16
+        // 限制突发收包而不是限制任务终身总操作数；取消不受此限。
+        const val MAX_COMMANDS_PER_SECOND = 48
     }
+
+    private fun validCommandDeadline(deadline: Long, now: Long): Boolean =
+        now >= 0 && deadline > now && deadline - now <= maximumCommandMs
+
+    private fun validTaskDeadline(deadline: Long, now: Long): Boolean =
+        now >= 0 && deadline > now && deadline - now <= maximumLeaseMs
+
+    private fun consumeAdmission(task: Task, now: Long): Boolean {
+        if (now - task.bucketStarted >= 1_000L) { task.bucketStarted = now; task.admittedInBucket = 0 }
+        if (task.admittedInBucket >= MAX_COMMANDS_PER_SECOND) return false
+        task.admittedInBucket++
+        return true
+    }
+
+    private fun boundedDeadline(now: Long, interval: Long): Long =
+        if (interval > Long.MAX_VALUE - now) Long.MAX_VALUE else now + interval
 }
 
 internal object HostAgentNavigationPolicy {

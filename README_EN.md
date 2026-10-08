@@ -90,19 +90,23 @@ result set, inspect video details and navigate to known candidates. It is off by
 Bilibili after enabling its host interface.
 
 Configure up to eight API sources, explicitly select the sources allowed to receive the task, and run
-the tool/vision capability test. Tests make real API requests and use quota. Agent tasks require chat
-endpoints; JEV classification endpoints remain available for semantic filtering. Leave the fixed-source
-field blank for automatic routing among selected, capable sources. A fixed source never silently fails
-over to another source.
+the tool/decision/vision capability test. Tests make real API requests and use quota. Both chat and
+JEV/Decisions endpoints participate. Leave the main-source field blank for automatic routing. A fixed
+main source is tried first; another main source takes over only with explicit fallback enabled.
+Selected, verified vision and decision helpers can cooperate independently of the main source.
 
 Optional screenshots require separate consent and a successful random-image challenge. Automatic
-routing can use a tool-capable planner and a separate vision-only model; the planner receives a bounded
-visual description, not the image. Secure/input screens and uninspectable WebView/Compose pages are
+routing can use a tool planner, a vision-capable JEV, or an ordinary vision model as a text-only JEV's
+eyes. Only selected sources with real vision proof receive images; images never enter planner history.
+Secure/input screens and uninspectable WebView/Compose pages are
 rejected. Tasks are unavailable while accessibility services are enabled because accessibility takeover
 has not yet been reliably adapted; enabling such a service during a task also stops it.
 Touching, pressing a key, leaving the task context or using the host stop button takes over
-and stops the task. Tasks are limited to 12 tool steps and two minutes and are not resumed after process
-death. Tasks and screenshots are not persisted. Arbitrary coordinates, shell, account writes and
+and stops the task. Duration in seconds and tool steps are independently configurable, defaulting to
+120 seconds and 12 steps; zero means unlimited. Individual requests and renewable host leases remain
+bounded, and repeated operations with no new evidence stop. Tasks are not resumed after process
+death. Bounded conversation rounds, historical summaries and task-local detail/vision caches preserve
+observation time without retaining images or replacing current authorization. Arbitrary coordinates, shell, account writes and
 payments are unavailable.
 
 Search RPC results are distinguished from visible results. Activity launch arguments do not prove
@@ -111,6 +115,12 @@ after changing an endpoint, model or key; the module uses capability proofs for 
 semantic-source credentials retain their protected host-configuration delivery; the Agent action
 protocol does not additionally transmit credentials. Live API, device/framework and rollout-specific
 acceptance remain separate from APK structure and JVM verification.
+Planner, vision and decision roles have independent health/cooldown state. Vision failures retain
+structured search and detail paths. Decisions use the actually verified choice/noul/score formats;
+compatibility retries require an explicit schema rejection and share a request deadline. With only
+decision sources, actions come from a predefined search/pagination/details/screen menu, with no
+invented parameters or video opening/playback. Complex goals should also select a tool-capable model.
+Unlimited budgets do not extend the 24-hour capability proof or guarantee Android process survival.
 
 The module splits its features into independent switches, so you can enable only the parts you need. The UI is split into "Cleanup" and "Enhancements", each ending with its own advanced settings; free copy and bubble appearance live in the Enhancements column. The reorganisation kept existing switch values and behaviour; after enabling a host feature you usually need to restart Bilibili. If the current client version has no reliable enough adaptation entry point, the feature skips processing and leaves the host's original behaviour untouched.
 

@@ -130,6 +130,21 @@ internal class HostAgentWindow(
         }
     }
 
+    /** 续租只等待当前任务已经发起的导航，不从任意宿主前台窗口重建所有权。 */
+    fun awaitTaskContext(lease: HostAgentSession.Lease) {
+        awaitMainCondition(lease, HostAgentWindowPolicy.NAVIGATION_MS, "task_context_lost") {
+            val current = activity()
+            if (current == null) {
+                if (!control.awaitingNavigation(lease.generation, now())) throw HostAgentFailure("host_not_foreground")
+                false
+            } else when (observeContext(current, lease)) {
+                HostAgentWindowPolicy.Observation.READY -> true
+                HostAgentWindowPolicy.Observation.NAVIGATING -> false
+                HostAgentWindowPolicy.Observation.REVOKED -> throw HostAgentFailure("task_context_lost")
+            }
+        }
+    }
+
     private fun awaitMainCondition(lease: HostAgentSession.Lease, limitMs: Long, reason: String, ready: () -> Boolean) {
         val future = CompletableFuture<Unit>()
         val deadline = minOf(lease.deadline, now() + limitMs)
@@ -175,7 +190,7 @@ internal class HostAgentWindow(
         accessibilityWatch?.let { removeAccessibilityWatch(it.generation) }
         val manager = accessibilityManager ?: throw HostAgentFailure(HostAgentAccessibilityPolicy.REASON)
         val listener = AccessibilityManager.AccessibilityStateChangeListener { enabled ->
-            if (enabled && accessibilityWatch?.generation == lease.generation && session.isActive(lease, now())) stopTask(lease)
+            if (enabled && accessibilityWatch?.generation == lease.generation && session.isTaskActive(lease, now())) stopTask(lease)
         }
         accessibilityWatch = AccessibilityWatch(lease.generation, manager, listener)
         try {
@@ -297,7 +312,7 @@ internal class HostAgentWindow(
     /** 只覆盖用户接管入口，其余所有方法由 Kotlin 委托原样传给宿主 callback。 */
     private inner class TaskCallback(val original: Window.Callback, val lease: HostAgentSession.Lease) : Window.Callback by original {
         private fun takeOver() {
-            if (ownedCallback.get() === this && session.isActive(lease, now())) runCatching { stopTask(lease) }
+            if (ownedCallback.get() === this && session.isTaskActive(lease, now())) runCatching { stopTask(lease) }
         }
         override fun dispatchTouchEvent(event: MotionEvent): Boolean {
             if (event.actionMasked == MotionEvent.ACTION_DOWN) takeOver()

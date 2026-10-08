@@ -17,8 +17,9 @@ class HostAgentPolicyTest {
         assertEquals("invalid_begin", session.begin("short", 1, 200, 100, false).error)
         assertEquals("invalid_begin", session.begin(taskId, 2, 200, 100, false).error)
         assertEquals("invalid_begin", session.begin(taskId, 1, 100, 100, false).error)
-        assertEquals("invalid_begin", session.begin(taskId, 1, 120_101, 100, false).error)
-        assertNotNull(session.begin(taskId, 1, 120_100, 100, false).lease)
+        assertEquals("invalid_begin", session.begin(taskId, 1, 180_101, 100, false).error)
+        assertEquals("invalid_begin", session.begin(taskId, 1, 15_101, 180_100, 100, false).error)
+        assertNotNull(session.begin(taskId, 1, 15_100, 180_100, 100, false).lease)
         assertEquals("task_busy", session.begin("task-00000002", 1, 200, 100, false).error)
     }
 
@@ -47,8 +48,8 @@ class HostAgentPolicyTest {
     @Test fun `cancel immediately invalidates previously queued actions and disallows resurrection`() {
         val session = HostAgentSession()
         val lease = begin(session)
-        val queued = checkNotNull(session.admit(taskId, 2, 120_100, 200).lease)
-        assertNotNull(session.admit(taskId, 3, 120_100, 201, closing = true).lease)
+        val queued = checkNotNull(session.admit(taskId, 2, 2_000, 200).lease)
+        assertNotNull(session.admit(taskId, 3, 2_000, 201, closing = true).lease)
         var navigated = false
         session.whileActive(queued, 202) { navigated = true }
         assertFalse(navigated)
@@ -71,12 +72,12 @@ class HostAgentPolicyTest {
     @Test fun `candidate identity is local to task bounded and invalid after cancel`() {
         val session = HostAgentSession()
         val lease = begin(session)
-        val admitted = session.remember(lease, (1..100).map { "av$it" }, 101)
+        val admitted = session.remember(lease, (1..300).map { "av$it" }, 101)
         assertEquals(HostAgentSession.MAX_CANDIDATES, admitted.size)
-        assertTrue(session.knows(lease, "av1", 102))
-        assertFalse(session.knows(lease, "av81", 102))
+        assertFalse(session.knows(lease, "av1", 102))
+        assertTrue(session.knows(lease, "av300", 102))
         assertFalse(session.knows(lease, "123", 102))
-        assertEquals(listOf("av1"), session.remember(lease, listOf("evil", "av1", "av999"), 103))
+        assertEquals(listOf("av1", "av999"), session.remember(lease, listOf("evil", "av1", "av999"), 103))
         session.cancel(lease, 104)
         val fresh = checkNotNull(session.begin("task-00000002", 1, 1000, 105, false).lease)
         assertFalse(session.knows(fresh, "av1", 106))
@@ -90,8 +91,9 @@ class HostAgentPolicyTest {
         assertNull(session.cursor(lease, "其他目标", token, 102))
         assertNull(session.cursor(lease, "黑神话", "backend-next", 102))
         assertNull(session.rememberCursor(lease, "黑神话", "x".repeat(2049), 102))
-        repeat(3) { assertNotNull(session.rememberCursor(lease, "黑神话", "next-$it", 103)) }
-        assertNull(session.rememberCursor(lease, "黑神话", "next-overflow", 104))
+        repeat(HostAgentSession.MAX_CURSORS - 1) { assertNotNull(session.rememberCursor(lease, "黑神话", "next-$it", 103)) }
+        assertNotNull(session.rememberCursor(lease, "黑神话", "next-overflow", 104))
+        assertNull(session.cursor(lease, "黑神话", token, 104))
         session.cancel(lease, 105)
         assertNull(session.cursor(lease, "黑神话", token, 106))
     }
@@ -114,15 +116,72 @@ class HostAgentPolicyTest {
         assertFalse(session.matchesPage(fresh, "video", "av1", 108))
     }
 
-    @Test fun `exhausted task can still be cancelled`() {
+    @Test fun `burst limit recovers and task can still be cancelled`() {
         val session = HostAgentSession()
         val lease = begin(session)
-        for (sequence in 2L..HostAgentSession.MAX_COMMANDS.toLong()) {
-            assertNotNull(session.admit(taskId, sequence, 120_100, 200).lease)
+        for (sequence in 2L..HostAgentSession.MAX_COMMANDS_PER_SECOND.toLong()) {
+            assertNotNull(session.admit(taskId, sequence, 2_000, 200).lease)
         }
-        assertEquals("task_budget_exhausted", session.admit(taskId, 99, 120_100, 201).error)
-        assertNotNull(session.admit(taskId, 100, 120_100, 202, closing = true).lease)
-        assertFalse(session.isActive(lease, 203))
+        assertEquals("host_rate_limited", session.admit(taskId, 99, 2_000, 201).error)
+        assertNotNull(session.admit(taskId, 100, 2_000, 1_101).lease)
+        assertNotNull(session.admit(taskId, 101, 2_000, 1_102, closing = true).lease)
+        assertFalse(session.isTaskActive(lease, 1_103))
+    }
+
+    @Test fun `renew extends task ownership but never an old command lease`() {
+        val session = HostAgentSession()
+        val initial = checkNotNull(session.begin(taskId, 1, 1_000, 120_100, 100, true).lease)
+        val renewed = checkNotNull(session.renew(taskId, 2, 111_000, 290_000, 110_000).lease)
+        assertEquals(initial.generation, renewed.generation)
+        assertTrue(session.isTaskActive(initial, 120_101))
+        assertFalse(session.isActive(initial, 120_101))
+        val command = checkNotNull(session.admit(taskId, 3, 121_000, 120_101).lease)
+        assertTrue(session.isActive(command, 120_102))
+        checkNotNull(session.renew(taskId, 4, 122_000, 300_000, 120_500).lease)
+        assertFalse(session.isActive(command, 121_000))
+        assertTrue(session.isTaskActive(command, 121_000))
+        assertEquals(300_000L, session.current(121_000)?.deadline)
+        assertNull(session.current(300_000))
+    }
+
+    @Test fun `renew validates task sequence finite deadlines and cannot resurrect cancelled or expired task`() {
+        val session = HostAgentSession()
+        val initial = checkNotNull(session.begin(taskId, 1, 1_000, 120_100, 100, false).lease)
+        assertEquals("task_mismatch", session.renew("task-00000002", 2, 1_000, 180_200, 200).error)
+        assertEquals("replayed_sequence", session.renew(taskId, 1, 1_000, 180_200, 200).error)
+        assertEquals("invalid_deadline", session.renew(taskId, 2, Long.MAX_VALUE, Long.MAX_VALUE, 200).error)
+        assertEquals("invalid_deadline", session.renew(taskId, 2, 1_000, 180_201, 200).error)
+        assertTrue(session.cancel(initial, 201))
+        assertEquals("task_inactive", session.renew(taskId, 2, 1_000, 180_200, 202).error)
+        val fresh = checkNotNull(session.begin("task-00000002", 1, 1_000, 1_000, 203, false).lease)
+        assertEquals("task_inactive", session.renew(fresh.taskId, 2, 2_000, 180_000, 1_000).error)
+        assertFalse(session.isTaskActive(fresh, 1_001))
+    }
+
+    @Test fun `long task allows hundreds of finite operations with bounded rolling leases`() {
+        val session = HostAgentSession()
+        val initial = checkNotNull(session.begin(taskId, 1, 1_000, 180_100, 100, false).lease)
+        var sequence = 1L
+        repeat(400) { index ->
+            val now = 1_100L + index * 1_001L
+            checkNotNull(session.renew(taskId, ++sequence, now + 1_000, now + 180_000, now).lease)
+            checkNotNull(session.admit(taskId, ++sequence, now + 1_000, now + 1).lease)
+        }
+        assertTrue(session.isTaskActive(initial, 401_000))
+        assertFalse(session.isActive(initial, 401_000))
+    }
+
+    @Test fun `candidate lru retains recently read video and cursors deduplicate backend tokens`() {
+        val session = HostAgentSession()
+        val lease = begin(session)
+        session.remember(lease, (1..HostAgentSession.MAX_CANDIDATES).map { "av$it" }, 101)
+        assertTrue(session.knows(lease, "av1", 102))
+        session.remember(lease, listOf("av999"), 103)
+        assertTrue(session.knows(lease, "av1", 104))
+        assertFalse(session.knows(lease, "av2", 104))
+        val token = session.rememberCursor(lease, "悟空", "same-token", 105)
+        repeat(100) { assertEquals(token, session.rememberCursor(lease, "悟空", "same-token", 106)) }
+        assertEquals("same-token", session.cursor(lease, "悟空", checkNotNull(token), 107))
     }
 
     @Test fun `closing deadline may extend past task end without extending authorization`() {

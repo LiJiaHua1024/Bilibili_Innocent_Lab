@@ -4,6 +4,7 @@ import android.content.Context
 import android.annotation.SuppressLint
 import com.Bilibili_Innocent_Lab.xposedmodule.agent.model.AgentModelCapabilities
 import com.Bilibili_Innocent_Lab.xposedmodule.agent.model.AgentModelSource
+import com.Bilibili_Innocent_Lab.xposedmodule.agent.model.AgentSourceProtocol
 import com.Bilibili_Innocent_Lab.xposedmodule.hook.feature.FeaturePreferences
 import com.Bilibili_Innocent_Lab.xposedmodule.hook.feature.SemanticBackend
 import com.Bilibili_Innocent_Lab.xposedmodule.hook.feature.SemanticSource
@@ -15,7 +16,7 @@ import org.json.JSONObject
 internal object AgentPreferences {
     const val ENABLED = "agent_enabled"
     const val CATALOG_ID = "agent.enabled"
-    const val CAPABILITY_TTL_MS = 24 * 60 * 60_000L
+    const val CAPABILITY_TTL_MS = AgentModelCapabilities.VALID_FOR_MS
     private const val FILE = "agent_module_private"
 
     fun sources(context: Context): List<AgentModelSource> {
@@ -23,12 +24,12 @@ internal object AgentPreferences {
         return (1..SemanticSource.MAX_SOURCES).mapNotNull { index ->
             val (provider, endpoint, model) = FeaturePreferences.semanticSourceKeys(index)
             val kind = preferences.getString(provider, SemanticBackend.JEV).orEmpty()
-            if (kind == SemanticBackend.JEV) return@mapNotNull null
             val source = SemanticSource.from(index,
                 preferences.getString(RemoteHookConfigContract.semanticApiKey(index), "").orEmpty(),
                 preferences.getString(endpoint, "").orEmpty(), kind,
                 preferences.getString(model, "").orEmpty()) ?: return@mapNotNull null
-            AgentModelSource.from(index, source.endpoint, source.apiKey, source.backend.model)
+            AgentModelSource.from(index, source.endpoint, source.apiKey, source.backend.model,
+                if (kind == SemanticBackend.JEV) AgentSourceProtocol.DECISIONS else AgentSourceProtocol.CHAT)
         }
     }
 
@@ -38,14 +39,33 @@ internal object AgentPreferences {
 
     /** 授权保存必须判断 commit 的布尔结果，KTX edit 丢弃该结果。 */
     @SuppressLint("UseKtx")
-    fun saveSelection(context: Context, indices: Set<Int>, fixed: Int?, vision: Boolean): Boolean =
-        context.getSharedPreferences(FILE, Context.MODE_PRIVATE).edit()
-            .putString("sources", indices.filter { it in 1..SemanticSource.MAX_SOURCES }.sorted().joinToString(","))
-            .putInt("fixed", fixed ?: 0).putBoolean("vision", vision).commit()
+    fun saveSelection(context: Context, indices: Set<Int>, fixed: Int?, vision: Boolean,
+                      limits: AgentTaskLimits = AgentTaskLimits(), fallback: Boolean = false): Boolean {
+        val store = context.getSharedPreferences(FILE, Context.MODE_PRIVATE)
+        val oldIndices = selected(context)
+        val oldFixed = AgentPreferences.fixed(context)
+        val oldVision = visionAllowed(context)
+        val oldLimits = AgentPreferences.limits(context)
+        val oldFallback = fallbackAllowed(context)
+        fun write(values: Set<Int>, fixedIndex: Int?, see: Boolean, budget: AgentTaskLimits, allowFallback: Boolean): Boolean = store.edit()
+            .putString("sources", values.filter { it in 1..SemanticSource.MAX_SOURCES }.sorted().joinToString(","))
+            .putInt("fixed", fixedIndex ?: 0).putBoolean("vision", see)
+            .putLong("duration_ms", budget.durationMs).putLong("maximum_steps", budget.maximumSteps)
+            .putBoolean("fallback", allowFallback).commit()
+        if (runCatching { write(indices, fixed, vision, limits, fallback) }.getOrDefault(false)) return true
+        runCatching { write(oldIndices, oldFixed, oldVision, oldLimits, oldFallback) }
+        return false
+    }
 
     fun fixed(context: Context): Int? = context.getSharedPreferences(FILE, Context.MODE_PRIVATE)
         .getInt("fixed", 0).takeIf { it in 1..SemanticSource.MAX_SOURCES }
     fun visionAllowed(context: Context) = context.getSharedPreferences(FILE, Context.MODE_PRIVATE).getBoolean("vision", false)
+    fun fallbackAllowed(context: Context) = context.getSharedPreferences(FILE, Context.MODE_PRIVATE).getBoolean("fallback", false)
+    fun limits(context: Context): AgentTaskLimits {
+        val store = context.getSharedPreferences(FILE, Context.MODE_PRIVATE)
+        return AgentTaskLimits(store.getLong("duration_ms", AgentWire.MAX_TASK_MS).coerceAtLeast(0L),
+            store.getLong("maximum_steps", AgentWire.MAX_STEPS.toLong()).coerceAtLeast(0L))
+    }
 
     /** SharedPreferences.commit 失败也可能已更新内存；必须回写原值，不能只恢复开关外观。 */
     fun writeEnabled(previous: Boolean, desired: Boolean, commit: (Boolean) -> Boolean): Boolean {

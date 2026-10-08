@@ -4,7 +4,7 @@ import android.os.IBinder
 
 /** Agent 独立协议；不扩展诊断查询的权限，不跨 ClassLoader 传宿主对象。 */
 internal object AgentWire {
-    const val DESCRIPTOR = "bilab.agent.v1"
+    const val DESCRIPTOR = "bilab.agent.v2"
     const val REQUEST = IBinder.FIRST_CALL_TRANSACTION
     const val RESPONSE = IBinder.FIRST_CALL_TRANSACTION
     const val ENDPOINT_KEY = "agent_endpoint"
@@ -12,6 +12,8 @@ internal object AgentWire {
     const val MAX_RESPONSE_BYTES = 384 * 1024
     const val MAX_TASK_MS = 120_000L
     const val MAX_STEPS = 12
+    const val MAX_LEASE_MS = 180_000L
+    const val IPC_TIMEOUT_MS = 15_000L
     const val MAX_GOAL_LENGTH = 2_000
     const val TARGET_PACKAGE = "tv.danmaku.bili"
     const val SERVICE_DESCRIPTOR = "bilab.agent.session.v1"

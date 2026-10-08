@@ -37,6 +37,8 @@ internal object AgentHostClient {
 
     fun request(taskId: String, sequence: Long, deadline: Long, operation: String,
                 arguments: JSONObject = JSONObject(), cancelled: () -> Boolean = { false }): JSONObject {
+        val now = SystemClock.elapsedRealtime()
+        if (deadline <= now || deadline - now > AgentWire.IPC_TIMEOUT_MS) return failure("invalid_operation_deadline")
         val current = connection ?: return failure("host_unavailable")
         if (!ready() || cancelled()) return failure("host_unavailable")
         val completed = CountDownLatch(1)
