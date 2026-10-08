@@ -64,9 +64,13 @@ internal fun MainActivity.showAgentDialog(anchor: View? = null) {
         isChecked = prefs().getBoolean(AgentPreferences.ENABLED, false)
         setOnCheckedChangeListener { button, checked ->
             if (restoringEnabled) return@setOnCheckedChangeListener
-            if (!prefs().edit().putBoolean(AgentPreferences.ENABLED, checked).commit()) {
+            val preferences = prefs()
+            val previousEnabled = preferences.getBoolean(AgentPreferences.ENABLED, false)
+            if (!AgentPreferences.writeEnabled(previousEnabled, checked) { value ->
+                    preferences.edit().putBoolean(AgentPreferences.ENABLED, value).commit()
+                }) {
                 restoringEnabled = true
-                button.isChecked = !checked
+                button.isChecked = previousEnabled
                 restoringEnabled = false
                 toast(getString(R.string.agent_save_failed))
             } else {

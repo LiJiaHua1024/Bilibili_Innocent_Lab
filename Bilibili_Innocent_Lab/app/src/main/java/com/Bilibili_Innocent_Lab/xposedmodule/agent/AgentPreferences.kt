@@ -47,6 +47,13 @@ internal object AgentPreferences {
         .getInt("fixed", 0).takeIf { it in 1..SemanticSource.MAX_SOURCES }
     fun visionAllowed(context: Context) = context.getSharedPreferences(FILE, Context.MODE_PRIVATE).getBoolean("vision", false)
 
+    /** SharedPreferences.commit 失败也可能已更新内存；必须回写原值，不能只恢复开关外观。 */
+    fun writeEnabled(previous: Boolean, desired: Boolean, commit: (Boolean) -> Boolean): Boolean {
+        if (runCatching { commit(desired) }.getOrDefault(false)) return true
+        runCatching { commit(previous) }
+        return false
+    }
+
     fun capabilities(context: Context, source: AgentModelSource): AgentModelCapabilities? = runCatching {
         val text = context.getSharedPreferences(FILE, Context.MODE_PRIVATE).getString("cap_${source.fingerprint}", null)
             ?: return null

@@ -8,6 +8,14 @@ import org.junit.Test
 
 /** Android 进程与 UI 无法由 JVM 替身证明；这些契约锁定易被搬动的授权与生命周期接线。 */
 class AgentWiringContractTest {
+    @Test fun permissionRollbackUsesThePreferenceSnapshotRatherThanAStaleCheckbox() {
+        val dialog = SourceContract.read("ui/activity/AgentDialogs.kt")
+        val change = dialog.after("setOnCheckedChangeListener").before("body.addView(enabled)")
+        assertTrue(change.contains("val previousEnabled = preferences.getBoolean(AgentPreferences.ENABLED, false)"))
+        assertTrue(change.contains("AgentPreferences.writeEnabled(previousEnabled, checked)"))
+        assertTrue(change.contains("button.isChecked = previousEnabled"))
+        assertFalse(change.contains("writeEnabled(!checked"))
+    }
     @Test fun hostBridgeOnlyInitializesAfterAuthorizedInstallAndRetainsApplicationFallback() {
         val hook = SourceContract.read("hook/HookEntry.kt")
         val install = hook.after("fun performAuthorizationAndInstall(").before("fun authorizeAndInstall(")
