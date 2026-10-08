@@ -18,7 +18,8 @@ androidx-appcompat = "1.8.0"
 material = "1.14.0"
 androidx-constraintlayout = "2.2.2"
 androidx-recyclerview = "1.4.0"
-# Local surfaces and sliding selection are unreleased in 1.0.0; pin both modules to the audited commit.
+# Local surfaces are unreleased in 1.0.0. settings.gradle.kts substitutes both pinned modules
+# with the same source revision plus gradle/lumen/linear-fade.patch (see its README).
 lumen-engine = "91e31dce23dda35d2fd6d2411d0aac3079e3c46a"
 markwon = "4.6.2"
 junit = "4.13.2"

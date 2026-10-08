@@ -5,6 +5,7 @@ import android.graphics.drawable.Drawable
 import android.text.TextUtils
 import android.util.TypedValue
 import android.view.View
+import android.view.ViewGroup
 import android.widget.TextView
 import java.lang.ref.WeakReference
 
@@ -35,6 +36,18 @@ internal class FollowFeedViewEdits {
         var appliedHeight: Int? = null
     }
     private val sizes = ArrayList<Size>()
+    private class Clipping(view: ViewGroup) {
+        val view = WeakReference(view)
+        val children = view.clipChildren
+        val padding = view.clipToPadding
+    }
+    private val clipping = ArrayList<Clipping>()
+
+    fun unclip(view: ViewGroup) {
+        if (clipping.none { it.view.get() === view }) clipping += Clipping(view)
+        view.clipChildren = false
+        view.clipToPadding = false
+    }
 
     fun size(view: View, width: Int? = null, height: Int? = null) {
         val saved = sizes.firstOrNull { it.view.get() === view } ?: Size(view).also(sizes::add)
@@ -107,6 +120,10 @@ internal class FollowFeedViewEdits {
             if (params.height == saved.appliedHeight) params.height = saved.height
             view.layoutParams = params
         } }
-        backgrounds.clear(); texts.clear(); sizes.clear()
+        clipping.forEach { saved -> saved.view.get()?.let { view ->
+            if (!view.clipChildren) view.clipChildren = saved.children
+            if (!view.clipToPadding) view.clipToPadding = saved.padding
+        } }
+        backgrounds.clear(); texts.clear(); sizes.clear(); clipping.clear()
     }
 }

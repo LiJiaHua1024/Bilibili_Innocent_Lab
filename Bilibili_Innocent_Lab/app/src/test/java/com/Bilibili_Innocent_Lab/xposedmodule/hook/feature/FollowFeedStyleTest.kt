@@ -1,11 +1,21 @@
 package com.Bilibili_Innocent_Lab.xposedmodule.hook.feature
 
 import com.lumen.coacervation.engine.host.LumenSurfaceMaterial
+import com.lumen.coacervation.engine.host.LumenSurfaceFadeCurve
 import com.lumen.coacervation.engine.model.SurfaceRole
 import org.junit.Assert.*
 import org.junit.Test
 
 class FollowFeedStyleTest {
+    @Test fun compactHeaderOnlyKeepsUnconsumedStatusBarInset() {
+        assertEquals(90, FollowFeedStyle.contentTopPadding(90, 0))
+        assertEquals(0, FollowFeedStyle.contentTopPadding(90, 90))
+        assertEquals(0, FollowFeedStyle.contentTopPadding(0, 0))
+        assertEquals(0, FollowFeedStyle.contentTopPadding(24, 40))
+        assertEquals(48, FollowFeedStyle.contentTopPadding(72, 24))
+        assertEquals(176, FollowFeedStyle.segmentWidth(1f))
+        assertEquals(256, FollowFeedStyle.segmentWidth(2f))
+    }
     @Test fun cardUsesAuditedStaticPresetWithOpaqueReadingSupport() {
         val card = FollowFeedStyle.card()
         assertEquals(SurfaceRole.CARD, card.role)
@@ -17,6 +27,31 @@ class FollowFeedStyleTest {
         assertEquals(16f, card.radiusDp, 0f)
         assertEquals(SurfaceRole.SELECTED_ITEM, FollowFeedStyle.selection().role)
         assertFalse(FollowFeedStyle.selection().sampling.enabled)
+    }
+
+    @Test fun statusFusionUsesPublicFadingBandWithinTheSharedBudget() {
+        val palette = FollowFeedStyle.palette(HostChromeColors(false, 0xFF5566DD.toInt()))
+        val band = FollowFeedStyle.statusBand(palette, 90, 123)
+        assertEquals(SurfaceRole.TOP_BAR, band.role)
+        assertEquals(0f, band.radiusDp, 0f)
+        assertFalse(band.edgeEnabled)
+        assertTrue(band.sampling.enabled)
+        assertTrue(band.sampling.fadeEnabled)
+        assertFalse(band.sampling.refractionEnabled)
+        assertEquals(0f, band.sampling.fadeHold, 0f)
+        assertEquals(LumenSurfaceFadeCurve.LINEAR, band.sampling.fadeCurve)
+        assertEquals(112f / 123f, band.sampling.fadeEnd, .0001f)
+        assertTrue(band.sampling.fadeEnd < 1f)
+        val zeroInset = FollowFeedStyle.statusBand(palette, 0, 12)
+        assertEquals(0f, zeroInset.sampling.fadeHold, 0f)
+        assertEquals(8f / 12f, zeroInset.sampling.fadeEnd, .0001f)
+        for ((inset, height) in listOf(0 to 0, 135 to 168, 24 to 12)) {
+            val fade = FollowFeedStyle.statusBand(palette, inset, height).sampling
+            assertTrue(fade.fadeHold in 0f..fade.fadeEnd && fade.fadeEnd <= 1f)
+        }
+        assertEquals(palette.background, band.color)
+        assertEquals(1f, band.fallbackTintOpacity, 0f)
+        assertEquals(16, FollowFeedStyle.MAX_CARD_SURFACES + 3)
     }
 
     @Test fun hostThemeFeedsSurfaceAndTextFromOnePalette() {

@@ -31,7 +31,14 @@ internal class FollowFeedSelection private constructor(
     private val oldAlpha = tabs.alpha
     private val oldAccessibility = tabs.importantForAccessibility
     private val density = tabs.resources.displayMetrics.density
-    private val wrapper = FrameLayout(tabs.context)
+    private var actionPresent = false
+    private val wrapper = object : FrameLayout(tabs.context) {
+        override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
+            updateChoiceGeometry(View.MeasureSpec.getSize(widthMeasureSpec))
+            super.onMeasure(widthMeasureSpec, heightMeasureSpec)
+        }
+    }
+    internal val actionContainer: FrameLayout get() = wrapper
     private var palette = initialPalette
     private var trackBinding: LumenSurfaceBinding? = null
     private var indicatorBinding: LumenSurfaceBinding? = null
@@ -66,7 +73,8 @@ internal class FollowFeedSelection private constructor(
                 titles += title
                 choice.addOption(title, LinearLayout.LayoutParams(0, -2, 1f))
             }
-            wrapper.addView(choice, FrameLayout.LayoutParams(-1, -2, Gravity.CENTER).apply {
+            wrapper.addView(choice, FrameLayout.LayoutParams(dp(FollowFeedStyle.segmentWidth(tabs.resources.configuration.fontScale)),
+                -2, Gravity.CENTER).apply {
                 leftMargin = dp(FollowFeedStyle.OUTER_DP); rightMargin = dp(FollowFeedStyle.OUTER_DP)
             })
             // 保留原 AppBar 子项参数类型与滚动 flags，只按字号给控件足够的触控高度。
@@ -96,6 +104,33 @@ internal class FollowFeedSelection private constructor(
     }
 
     private fun dp(value: Int) = (value * density).roundToInt()
+
+    fun reserveAction(present: Boolean) {
+        if (actionPresent == present) return
+        actionPresent = present
+        wrapper.requestLayout()
+    }
+
+    private fun updateChoiceGeometry(width: Int) {
+        if (width <= 0) return
+        val params = choice.layoutParams as FrameLayout.LayoutParams
+        val outer = dp(FollowFeedStyle.OUTER_DP)
+        val side = dp(FollowFeedStyle.OUTER_DP + if (actionPresent)
+            FollowFeedStyle.OPTION_HEIGHT_DP + FollowFeedStyle.ACTION_GAP_DP else 0)
+        val desired = dp(FollowFeedStyle.segmentWidth(tabs.resources.configuration.fontScale))
+        // 正常宽度以页面中心为轴，两侧给动作区留同等空间；窄屏/大字号时使用
+        // 发布按钮左侧的全部可用宽度。只调整几何，不接管引擎的选中框布局和动画。
+        val left = if (width - side * 2 >= desired) side else outer
+        val available = (width - left - side).coerceAtLeast(0)
+        val chosenWidth = minOf(desired, available)
+        params.width = chosenWidth
+        params.marginStart = left + (available - chosenWidth) / 2
+        params.marginEnd = side
+        params.gravity = Gravity.START or Gravity.CENTER_VERTICAL
+        // 在测量中更新相对边距时，View 不会再次自动解析已缓存的物理边距。
+        // 显式解析，避免居中位置仍沿用创建时的 12dp；不触发额外布局请求。
+        params.resolveLayoutDirection(wrapper.layoutDirection)
+    }
 
     fun sync(animate: Boolean = true) {
         if (closed) return

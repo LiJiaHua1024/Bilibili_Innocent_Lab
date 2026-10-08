@@ -48,6 +48,8 @@ class FollowFeedInstrumentedTest {
         assertEquals(Void.TYPE, painter.getDeclaredMethod("k", Canvas::class.java, recycler,
             View::class.java, access.moduleClass).returnType)
         assertNotNull(recycler.getDeclaredMethod("dispatchChildAttached", View::class.java))
+        val mediator = host.classLoader.loadClass("com.bilibili.bplus.followinglist.home.mediator.MediatorFragment")
+        assertEquals(Boolean::class.javaPrimitiveType, mediator.getDeclaredMethod("ye", Int::class.javaPrimitiveType).returnType)
     }
 
     @Test fun realStaticPixelsAreOpaqueAndHaveNoCaptureBackend() = main { context ->
@@ -141,6 +143,184 @@ class FollowFeedInstrumentedTest {
         }
     }
 
+    /** 使用真实资源构造外层标题行、页内分段与发布入口的布局关系。 */
+    class NativeHeader(context: Context, val page: FrameLayout) : FrameLayout(context) {
+        private fun resource(name: String) = context.resources.getIdentifier(name, "id", context.packageName).also { check(it != 0) }
+        val appBar = FrameLayout(context).apply { id = resource("fo_app_bar") }
+        val plate = View(context).apply { id = resource("top_tab_container") }
+        val title = TextView(context).apply { id = resource("title"); text = "关注" }
+        val tabs = View(context).apply { id = resource("toolbar_tabs"); visibility = View.GONE }
+        val publish = View(context).apply { id = resource("fo_publish_menu") }
+        init {
+            background = ColorDrawable(Color.WHITE)
+            page.setPadding(0, 211, 0, 0)
+            addView(page, FrameLayout.LayoutParams(-1, -2))
+            addView(plate, FrameLayout.LayoutParams(-1, 212))
+            addView(appBar, FrameLayout.LayoutParams(-1, 244))
+            appBar.addView(title)
+            appBar.addView(tabs)
+            appBar.addView(publish, FrameLayout.LayoutParams(127, 127))
+        }
+    }
+
+    @Test fun compactHeaderRetainsPublicationAndRestoresUnsupportedAndHiddenPages() = main { context ->
+        val host = context.createPackageContext("tv.danmaku.bili", 0)
+        val palette = FollowFeedStyle.palette(HostChromeColors(false, Color.BLUE))
+        LumenSurfaceSession(host, palette).use { session ->
+            val page = FrameLayout(host)
+            val tabs = NativeTabs(host)
+            page.addView(tabs, FrameLayout.LayoutParams(-1, 100))
+            val native = NativeHeader(host, page)
+            val originalBackground = native.background
+            val originalParams = native.publish.layoutParams
+            var clicks = 0
+            native.publish.setOnClickListener { clicks++ }
+            val selection = requireNotNull(FollowFeedSelection.create(tabs, session, palette))
+            repeat(5) {
+                val header = requireNotNull(FollowFeedHeader.create(page, selection, palette))
+                assertEquals(View.GONE, native.appBar.visibility)
+                assertEquals(View.GONE, native.plate.visibility)
+                assertSame(selection.actionContainer, native.publish.parent)
+                assertTrue(page.paddingTop < 211)
+                assertEquals(palette.background, (native.background as ColorDrawable).color)
+                native.publish.performClick()
+                page.setPadding(0, header.mapNativePadding(244), 0, 0) // 宿主重发标题行占位。
+                header.sync()
+                assertTrue(page.paddingTop < 211)
+                val dark = FollowFeedStyle.palette(HostChromeColors(true, Color.BLUE))
+                header.updatePalette(dark)
+                assertEquals(dark.background, (native.background as ColorDrawable).color)
+                header.close()
+                assertSame(native.appBar, native.publish.parent)
+                assertSame(originalParams, native.publish.layoutParams)
+                assertEquals(View.VISIBLE, native.appBar.visibility)
+                assertEquals(View.VISIBLE, native.plate.visibility)
+                assertEquals(244, page.paddingTop)
+                assertSame(originalBackground, native.background)
+                page.setPadding(0, 211, 0, 0)
+            }
+            assertEquals(5, clicks)
+            native.tabs.visibility = View.VISIBLE
+            assertNull(FollowFeedHeader.create(page, selection, palette))
+            assertSame(native.appBar, native.publish.parent)
+            native.tabs.visibility = View.GONE
+            native.title.text = "未知页面"
+            assertNull(FollowFeedHeader.create(page, selection, palette))
+            assertEquals(211, page.paddingTop)
+            selection.close()
+        }
+    }
+
+    @Test fun pagePauseKeepsCompactHeaderUntilViewDestruction() = main { context ->
+        val host = context.createPackageContext("tv.danmaku.bili",
+            Context.CONTEXT_INCLUDE_CODE or Context.CONTEXT_IGNORE_SECURITY)
+        val page = object : FrameLayout(host) {
+            override fun isShown() = visibility == View.VISIBLE
+        }
+        val tabs = NativeTabs(host).apply {
+            id = host.resources.getIdentifier("dy_tab_layout", "id", host.packageName)
+        }
+        page.addView(tabs, FrameLayout.LayoutParams(-1, 100))
+        val native = NativeHeader(host, page)
+        val controller = FollowFeedController(requireNotNull(FollowFeedHostAccess.resolve(host.classLoader)),
+            compactHeaderSupported = true, report = {}, error = { throw it })
+        controller.attach(page)
+        page.viewTreeObserver.dispatchOnPreDraw()
+        val compactPadding = page.paddingTop
+        val actionParent = native.publish.parent
+        assertEquals(View.GONE, native.appBar.visibility)
+        repeat(5) {
+            controller.pause(page)
+            page.viewTreeObserver.dispatchOnPreDraw() // 转场中的底页仍可能参与绘制。
+            assertEquals(View.GONE, native.appBar.visibility)
+            assertEquals(View.GONE, native.plate.visibility)
+            assertEquals(compactPadding, page.paddingTop)
+            assertSame(actionParent, native.publish.parent)
+            controller.resume(page)
+            page.viewTreeObserver.dispatchOnPreDraw()
+            assertSame(actionParent, native.publish.parent)
+        }
+        controller.close(page)
+        assertEquals(View.VISIBLE, native.appBar.visibility)
+        assertEquals(211, page.paddingTop)
+        assertSame(native.appBar, native.publish.parent)
+    }
+
+    @Test fun extendedViewportPreservesRestPositionBottomAndOwnership() = main { context ->
+        for (inset in listOf(0, 90, 135)) {
+            val page = FrameLayout(context).apply { setPadding(0, inset, 0, 0) }
+            val parent = FrameLayout(context)
+            page.addView(parent, FrameLayout.LayoutParams(-1, -1).apply { topMargin = 154 })
+            val list = FrameLayout(context).apply { setPadding(7, 11, 9, 48) }
+            parent.addView(list, FrameLayout.LayoutParams(-1, -1))
+            val child = View(context)
+            list.addView(child, FrameLayout.LayoutParams(100, 80))
+            fun layout() {
+                page.measure(View.MeasureSpec.makeMeasureSpec(1080, View.MeasureSpec.EXACTLY),
+                    View.MeasureSpec.makeMeasureSpec(2340, View.MeasureSpec.EXACTLY))
+                page.layout(0, 0, 1080, 2340)
+            }
+            layout()
+            val rest = parent.top + list.top + child.top
+            val bottom = parent.top + list.bottom
+            repeat(5) {
+                val viewport = FollowFeedViewport(list, page)
+                viewport.sync(inset); viewport.sync(inset)
+                layout()
+                assertEquals(rest, parent.top + list.top + child.top)
+                assertEquals(bottom, parent.top + list.bottom)
+                assertEquals(11 + inset, list.paddingTop)
+                assertFalse(page.clipChildren)
+                assertFalse(list.clipToPadding)
+                viewport.close(); layout()
+                assertEquals(11, list.paddingTop)
+                assertEquals(0, (list.layoutParams as FrameLayout.LayoutParams).topMargin)
+                assertTrue(page.clipChildren)
+                assertTrue(list.clipToPadding)
+            }
+            val viewport = FollowFeedViewport(list, page)
+            viewport.sync(inset)
+            list.setPadding(7, 300, 9, 48) // 后续业务写入不能被恢复覆盖。
+            viewport.close()
+            assertEquals(300, list.paddingTop)
+        }
+    }
+
+    @Test fun statusFallbackFadesAtConstantRateWithoutRecording() = main { context ->
+        val palette = FollowFeedStyle.palette(HostChromeColors(false, Color.BLUE))
+        LumenSurfaceSession(context, palette).use { session ->
+            val view = View(context)
+            val options = FollowFeedStyle.statusBand(palette, 90, 134)
+            val binding = session.bind(view, options.copy(material = LumenSurfaceMaterial.STATIC,
+                sampling = options.sampling.copy(enabled = false)))
+            view.layout(0, 0, 240, 134)
+            val bitmap = Bitmap.createBitmap(240, 134, Bitmap.Config.ARGB_8888)
+            view.draw(Canvas(bitmap))
+            assertTrue(Color.alpha(bitmap.getPixel(120, 40)) in 160..180)
+            // 从顶端立即衰减，不再经过保持区或先慢后快的缓动区。
+            assertTrue(Color.alpha(bitmap.getPixel(120, 90)) in 1..127)
+            assertTrue(Color.alpha(bitmap.getPixel(120, 110)) in 1..254)
+            var previous = 255
+            for (y in 0 until 134) {
+                val alpha = Color.alpha(bitmap.getPixel(120, y))
+                assertTrue("渐隐应连续单调，y=$y", alpha <= previous)
+                previous = alpha
+            }
+            val drops = (0..10).map { step ->
+                Color.alpha(bitmap.getPixel(120, step * 10)) -
+                    Color.alpha(bitmap.getPixel(120, step * 10 + 10))
+            }
+            // 10px 等距取样的透明度差应相同，仅允许 8bit 量化误差。
+            assertTrue("等距衰减应均匀: $drops", drops.max() - drops.min() <= 2)
+            // 引擎 mask 已在 View 边界之前归零，末尾整段必须完全透明。
+            for (y in 124 until 134) assertEquals(0, Color.alpha(bitmap.getPixel(120, y)))
+            bitmap.recycle()
+            assertEquals(0L, session.diagnostics().contentRecordings)
+            binding.close()
+            assertEquals(0, session.diagnostics().attachedSurfaces)
+        }
+    }
+
     @Test fun selectionPreservesBusinessClickRestorationAndUnknownLayouts() = main { context ->
         val host = context.createPackageContext("tv.danmaku.bili", 0)
         val palette = FollowFeedStyle.palette(HostChromeColors(false, Color.BLUE))
@@ -187,15 +367,26 @@ class FollowFeedInstrumentedTest {
                 val tabs = NativeTabs(configured)
                 parent.addView(tabs, FrameLayout.LayoutParams(-1, 100))
                 val selection = requireNotNull(FollowFeedSelection.create(tabs, session, palette))
+                val native = NativeHeader(configured, parent)
+                val header = requireNotNull(FollowFeedHeader.create(parent, selection, palette))
                 val width = (widthDp * configured.resources.displayMetrics.density).toInt()
-                parent.measure(View.MeasureSpec.makeMeasureSpec(width, View.MeasureSpec.EXACTLY),
+                native.measure(View.MeasureSpec.makeMeasureSpec(width, View.MeasureSpec.EXACTLY),
                     View.MeasureSpec.makeMeasureSpec(1000, View.MeasureSpec.AT_MOST))
-                parent.layout(0, 0, width, parent.measuredHeight)
+                native.layout(0, 0, width, native.measuredHeight)
                 val a = selection.choice.options.getChildAt(0) as TextView
                 val b = selection.choice.options.getChildAt(1) as TextView
                 assertTrue(a.width > 0 && a.right <= b.left)
                 assertTrue(a.height >= 48 * configured.resources.displayMetrics.density)
                 assertTrue(a.height >= a.lineHeight)
+                assertTrue(native.publish.width >= 48 * configured.resources.displayMetrics.density)
+                assertTrue(selection.choice.left >= 12 * configured.resources.displayMetrics.density)
+                assertTrue(selection.choice.right <= native.publish.left)
+                if (widthDp >= 640) {
+                    assertTrue("font=$scale width=$widthDp bounds=${selection.choice.left}..${selection.choice.right} page=$width",
+                        kotlin.math.abs(selection.choice.left + selection.choice.width / 2 - width / 2) <= 1)
+                    assertTrue(selection.choice.width <= FollowFeedStyle.segmentWidth(scale) * configured.resources.displayMetrics.density + 1)
+                }
+                header.close()
                 selection.close()
             }
         }

@@ -10,15 +10,17 @@ import android.view.ViewTreeObserver
 import android.widget.FrameLayout
 import android.widget.TextView
 import com.lumen.coacervation.engine.host.LumenSurfaceBinding
+import com.lumen.coacervation.engine.host.LumenSurfaceBackend
 import com.lumen.coacervation.engine.host.LumenSurfaceSession
 import com.lumen.coacervation.engine.model.LumenPalette
 import java.lang.ref.WeakReference
 import java.util.WeakHashMap
 import kotlin.math.roundToInt
 
-/** 页面负责排布和复用，凝光负责全部表面。没有采样 source，也没有手势或播放器接管。 */
+/** 页面负责排布和复用，凝光负责全部表面；仅状态栏采样，不接管手势或播放器。 */
 internal class FollowFeedController(
     private val host: FollowFeedHostAccess,
+    private val compactHeaderSupported: Boolean,
     private val report: (String) -> Unit,
     private val error: (Throwable) -> Unit
 ) {
@@ -57,6 +59,7 @@ internal class FollowFeedController(
     fun close(root: View) { pages.remove(root)?.get()?.close() }
     fun pause(root: View) { pages[root]?.get()?.setLifecycleActive(false) }
     fun resume(root: View) = safely { attach(root); pages[root]?.get()?.setLifecycleActive(true) }
+    fun headerPadding(root: View, requested: Int) = pages[root]?.get()?.headerPadding(requested) ?: requested
 
     fun bind(root: View, holder: Any, position: Int) = safely {
         // 只保留这个 View 当前的标量身份，宿主每次 bind 后重读；不能缓存旧模型。
@@ -215,6 +218,9 @@ internal class FollowFeedController(
         private val ids = HashMap<String, Int>()
         private var observer: ViewTreeObserver? = null
         private var selection: FollowFeedSelection? = null
+        private var header: FollowFeedHeader? = null
+        private var statusBar: FollowFeedStatusBar? = null
+        private var headerAttempted = false
         private var themeReadAt = 0L
         private var paused = false
         private var lifecycleActive = true
@@ -223,6 +229,7 @@ internal class FollowFeedController(
             private set
         private var reportedDraw = false
         private var reportedCards = false
+        private var reportedStatus = false
 
         fun dp(value: Int) = (value * (root.get()?.resources?.displayMetrics?.density ?: 1f)).roundToInt()
         fun <T : View> find(view: View, name: String): T? {
@@ -296,6 +303,8 @@ internal class FollowFeedController(
                         session.updatePalette(palette)
                         applyPageColors(view)
                         selection?.updatePalette(palette)
+                        header?.updatePalette(palette)
+                        statusBar?.updatePalette(palette)
                         lists.values.forEach { it.updatePalette() }
                         rows.forEach { (row, state) -> if (state.page.get() === this) styleRow(row, state, this) }
                     }
@@ -307,7 +316,21 @@ internal class FollowFeedController(
                     selection = FollowFeedSelection.create(it, session, palette)
                 }
                 selection?.resume(); selection?.sync()
+                if (compactHeaderSupported && !headerAttempted && selection != null) {
+                    headerAttempted = true
+                    header = FollowFeedHeader.create(view, requireNotNull(selection), palette)
+                }
+                header?.sync()
+                if (header != null && statusBar == null && view is FrameLayout)
+                    statusBar = FollowFeedStatusBar(view, session, palette)
                 lists.values.forEach { it.update() }
+                statusBar?.sync(lists.entries.firstOrNull { it.key.isShown && it.value.panelCount > 0 }?.key)
+                statusBar?.diagnostics()?.takeIf { it.hasVisibleFrame && it.backend != LumenSurfaceBackend.STATIC }?.let {
+                    if (!reportedStatus) {
+                        reportedStatus = true
+                        diagnostics("status-fusion-${it.backend}-${it.failure}")
+                    }
+                }
                 if (!reportedDraw && session.diagnostics().firstVisibleDraws > 0) {
                     reportedDraw = true
                     diagnostics("visible")
@@ -323,10 +346,15 @@ internal class FollowFeedController(
         fun pause() {
             if (closed || paused) return
             paused = true
+            // onPause 可能发生在 UP 主筛选/空间页的入场动画中，此时底页仍会绘制。
+            // 只停采样和释放绑定；原标题、发布父容器与占位等到真正销毁 View 再恢复。
+            statusBar?.pause()
             selection?.pause(); lists.values.forEach { it.releasePanels() }
             session.pause()
             diagnostics("paused")
         }
+
+        fun headerPadding(requested: Int) = header?.mapNativePadding(requested) ?: requested
 
         fun setLifecycleActive(active: Boolean) {
             lifecycleActive = active
@@ -352,6 +380,8 @@ internal class FollowFeedController(
             closed = true
             observer?.takeIf { it.isAlive }?.removeOnPreDrawListener(this); observer = null
             root.get()?.removeOnAttachStateChangeListener(this)
+            header?.close(); header = null
+            statusBar?.close(); statusBar = null
             selection?.close(); selection = null
             lists.values.forEach { it.close() }; lists.clear()
             rows.forEach { (_, state) -> if (state.page.get() === this) {
@@ -368,9 +398,11 @@ internal class FollowFeedController(
             }.apply {
                 importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS
                 isClickable = false; isFocusable = false
-                clipChildren = true
+                clipChildren = false
+                clipToPadding = false
             }
             private val listEdits = FollowFeedViewEdits()
+            private var viewport: FollowFeedViewport? = null
             private val originalPadding = list.paddingBottom
             private var appliedPadding = originalPadding
             private val panels = LinkedHashMap<Long, Panel>()
@@ -415,13 +447,18 @@ internal class FollowFeedController(
 
             fun update() {
                 if (!list.isShown || !list.isAttachedToWindow) { releasePanels(); return }
+                if (header != null) {
+                    if (viewport == null) viewport = root.get()?.let { FollowFeedViewport(list, it as ViewGroup) }
+                    viewport?.sync(root.get()?.paddingTop ?: 0)
+                }
                 generation++
+                var surfacesChanged = false
                 for (i in 0 until list.childCount) {
                     val child = list.getChildAt(i)
                     val state = rows[child] ?: continue
                     val row = state.row ?: continue
                     val panel = panels[row.identity] ?: if (lists.values.sumOf { it.panelCount } < FollowFeedStyle.MAX_CARD_SURFACES) {
-                        Panel().also { panels[row.identity] = it }
+                        Panel().also { panels[row.identity] = it; surfacesChanged = true }
                     } else continue
                     val top = child.top + child.translationY.roundToInt() + list.top
                     val bottom = child.bottom + child.translationY.roundToInt() + list.top
@@ -441,7 +478,9 @@ internal class FollowFeedController(
                 val radius = dp(cardOptions.radiusDp.roundToInt())
                 while (iterator.hasNext()) {
                     val panel = iterator.next().value
-                    if (panel.generation != generation || !panel.valid) { panel.close(); iterator.remove(); continue }
+                    if (panel.generation != generation || !panel.valid) {
+                        panel.close(); iterator.remove(); surfacesChanged = true; continue
+                    }
                     // 部分模块已滚出视口时把缺失首尾延至视口外，不在卡片中途产生圆角。
                     val top = if (panel.first?.first == true) panel.top else minOf(panel.top - radius, -radius)
                     val bottom = if (panel.last?.last == true) panel.bottom else maxOf(panel.bottom + radius, list.height + radius)
@@ -449,8 +488,10 @@ internal class FollowFeedController(
                     val right = list.right - dp(FollowFeedStyle.OUTER_DP)
                     if (panel.view.left != left || panel.view.top != top || panel.view.right != right || panel.view.bottom != bottom)
                         panel.view.layout(left, top, right, bottom)
-                    if (panel.binding == null && panel.view.isAttachedToWindow)
+                    if (panel.binding == null && panel.view.isAttachedToWindow) {
                         panel.binding = session.bind(panel.view, cardOptions)
+                        surfacesChanged = true
+                    }
                 }
                 // 分组验证和预算检查通过后才移除模块底色。未知布局、重复身份或配额
                 // 不足时保留原模块，不能出现只有透明内容而缺失承托表面的半改版。
@@ -464,6 +505,9 @@ internal class FollowFeedController(
                     }
                     styleRow(child, state, this@Page)
                 }
+                // 原 ItemDecoration 的矩形底色也在列表显示缓存中。绑定重建/撤销
+                // 后必须刷新一次，不能等用户滚动才清掉暂停时录入的底色。
+                if (surfacesChanged) list.invalidate()
                 updateBottomPadding()
             }
 
@@ -485,11 +529,16 @@ internal class FollowFeedController(
                 }
             }
 
-            fun releasePanels() { panels.values.forEach { it.close() }; panels.clear() }
+            fun releasePanels() {
+                if (panels.isEmpty()) return
+                panels.values.forEach { it.close() }; panels.clear()
+                list.invalidate()
+            }
             fun hasSurface(identity: Long) = panels[identity]?.let { it.binding != null && it.view.isAttachedToWindow } == true
             val panelCount: Int get() = panels.size
             override fun close() {
-                releasePanels(); parent.removeView(layer); listEdits.restore()
+                releasePanels(); viewport?.close(); viewport = null
+                parent.removeView(layer); listEdits.restore()
                 if (list.paddingBottom == appliedPadding)
                     list.setPadding(list.paddingLeft, list.paddingTop, list.paddingRight, originalPadding)
             }

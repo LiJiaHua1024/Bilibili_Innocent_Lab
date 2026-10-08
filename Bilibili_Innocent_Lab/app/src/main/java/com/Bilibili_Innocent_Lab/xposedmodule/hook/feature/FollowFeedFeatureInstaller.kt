@@ -37,9 +37,11 @@ internal class FollowFeedFeatureInstaller(private val enabled: Boolean) : Featur
         recycler.getDeclaredMethod("dispatchChildAttached", View::class.java)
         fragment.getDeclaredMethod("onViewCreated", View::class.java, Bundle::class.java)
         fragment.getDeclaredMethod("onDestroyView")
+        val headerPadding = KavaMemberLookup.methodOrNull(fragment, "ye", Int::class.javaPrimitiveType!!)
+            ?.takeIf { it.returnType == Boolean::class.javaPrimitiveType }
         val failed = AtomicBoolean(false)
         val applied = AtomicBoolean(false)
-        val controller = FollowFeedController(host, report = {
+        val controller = FollowFeedController(host, compactHeaderSupported = headerPadding != null, report = {
             // 日志入口按 key 去重；每个固定生命周期阶段各输出一次，不泄漏业务身份。
             environment.logInfo("follow_feed_diagnostics_${it.substringBefore(':')}", it)
             if (applied.compareAndSet(false, true)) environment.reportRuntimeEvidence(id, FeatureRuntimeStage.APPLIED)
@@ -56,6 +58,14 @@ internal class FollowFeedFeatureInstaller(private val enabled: Boolean) : Featur
         }
         environment.registrar.exact("follow_feed.destroy", fragment, "onDestroyView") {
             before { (instance?.let { getView.invoke(it) } as? View)?.let(controller::close) }
+        }
+        if (headerPadding != null) environment.registrar.exact("follow_feed.header_padding", fragment,
+            headerPadding.name, *headerPadding.parameterTypes) {
+            before {
+                val root = instance?.let { getView.invoke(it) } as? View ?: return@before
+                val requested = argOrNull(0) as? Int ?: return@before
+                args[0] = controller.headerPadding(root, requested)
+            }
         }
         for (event in listOf("onPause", "onResume")) {
             val method = fragment.getMethod(event)
@@ -98,7 +108,7 @@ internal class FollowFeedFeatureInstaller(private val enabled: Boolean) : Featur
                 before { argOrNull(0)?.let { itemView.get(it) as? View }?.let(controller::recycle) }
             }
         }
-        environment.logInfo("follow_feed_installed", "[BIL] 关注页凝光局部表面与分段切换安装完成（无采样）")
-        return FeatureInstallResult.Installed(9)
+        environment.logInfo("follow_feed_installed", "[BIL] 关注页凝光接入完成（卡片/分段无采样，状态栏按需融合）")
+        return FeatureInstallResult.Installed(if (headerPadding == null) 9 else 10)
     }
 }

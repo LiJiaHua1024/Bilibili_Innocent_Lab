@@ -1,6 +1,7 @@
 package com.Bilibili_Innocent_Lab.xposedmodule.hook.feature
 
 import com.lumen.coacervation.engine.host.LumenSurfacePresets
+import com.lumen.coacervation.engine.host.LumenSurfaceFadeCurve
 import com.lumen.coacervation.engine.model.LumenPalette
 import com.lumen.coacervation.engine.model.SurfaceRole
 import kotlin.math.roundToInt
@@ -15,14 +16,19 @@ internal object FollowFeedStyle {
     const val FREQUENT_HEIGHT_DP = 82
     const val FREQUENT_LIST_HEIGHT_DP = 90
     const val OPTION_HEIGHT_DP = 48
+    const val ACTION_GAP_DP = 8
     const val SEGMENT_INSET_DP = 4
     const val OPTION_VERTICAL_INSET_DP = 8
     const val SEGMENT_HEIGHT_DP = OPTION_HEIGHT_DP + SEGMENT_INSET_DP * 2
     const val SEGMENT_FONT_GROWTH_DP = 20
     const val SEGMENT_TEXT_SP = 15f
+    const val SEGMENT_WIDTH_DP = 176
+    const val SEGMENT_FONT_WIDTH_GROWTH_DP = 80
     const val VIDEO_TITLE_SP = 16f
     const val FREQUENT_TITLE_SP = 14f
-    const val MAX_CARD_SURFACES = 14 // 保留默认 16 个表面中的轨道与选中框配额。
+    const val STATUS_FADE_DP = 12 // 状态栏外 8dp 渐隐 + 4dp 透明尾部，先归零再结束 View。
+    private const val STATUS_FADE_END = 2f / 3f
+    const val MAX_CARD_SURFACES = 13 // 默认 16 个表面中预留轨道、选中框与状态栏融合带。
 
     fun frequentHeight(fontScale: Float) =
         FREQUENT_HEIGHT_DP + ((fontScale.coerceIn(1f, 2f) - 1f) * 32).roundToInt()
@@ -32,6 +38,12 @@ internal object FollowFeedStyle {
 
     fun segmentHeight(fontScale: Float) =
         SEGMENT_HEIGHT_DP + ((fontScale - 1f).coerceAtLeast(0f) * SEGMENT_FONT_GROWTH_DP).roundToInt()
+
+    fun segmentWidth(fontScale: Float) =
+        SEGMENT_WIDTH_DP + ((fontScale - 1f).coerceAtLeast(0f) * SEGMENT_FONT_WIDTH_GROWTH_DP).roundToInt()
+
+    /** 只避让尚未由页面位置承担的状态栏，不保留原标题行高度。 */
+    fun contentTopPadding(statusTop: Int, pageTop: Int) = (statusTop - pageTop).coerceAtLeast(0)
 
     /** 普通作者名接入语义前景；有彩色会员/业务强调的昵称保留宿主原色。 */
     fun isNeutralText(color: Int): Boolean {
@@ -57,6 +69,19 @@ internal object FollowFeedStyle {
     )
 
     fun selection() = card().copy(role = SurfaceRole.SELECTED_ITEM, radiusDp = 14f, edgeIntensity = .45f)
+
+    fun statusBand(palette: LumenPalette, inset: Int, height: Int): com.lumen.coacervation.engine.host.LumenSurfaceOptions {
+        val extent = height.coerceAtLeast(1).toFloat()
+        val safeInset = inset.coerceIn(0, height.coerceAtLeast(0)).toFloat()
+        val preset = LumenSurfacePresets.fadingBand(
+            hold = 0f,
+            end = (safeInset + (height.coerceAtLeast(0) - safeInset) * STATUS_FADE_END) / extent
+        )
+        return preset.copy(
+            color = palette.background, tintOpacity = .72f, fallbackTintOpacity = 1f,
+            sampling = preset.sampling.copy(fadeCurve = LumenSurfaceFadeCurve.LINEAR)
+        )
+    }
 
     /** 以覆盖区域求并集，已有 padding 与系统 inset 不重复相加。 */
     fun bottomPadding(original: Int, viewportBottom: Int, dockTop: Int?, systemBottom: Int, gap: Int): Int =

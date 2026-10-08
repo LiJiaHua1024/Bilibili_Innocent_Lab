@@ -1,0 +1,2 @@
+# Empty patch context lines contain a required space; git apply checks the patched code.
+*.patch text eol=lf whitespace=-blank-at-eol
