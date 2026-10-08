@@ -208,7 +208,7 @@ index 0000000..75418c6
 +            }
 +            val opacity = current.roundToInt().coerceIn(0, 255) / 255f
 +            if (entry.applied != opacity) {
-+                entry.binding.update(entry.options.copy(tintOpacity = opacity, fallbackTintOpacity = opacity, backdropOpacity = 1f - opacity))
++                entry.binding.update(entry.options.copy(tintOpacity = opacity, fallbackTintOpacity = opacity))
 +                entry.applied = opacity
 +            }
 +            if (now - entry.started < 240L) view.postInvalidateOnAnimation()

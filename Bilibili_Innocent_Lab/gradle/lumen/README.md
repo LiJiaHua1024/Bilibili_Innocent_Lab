@@ -10,6 +10,8 @@
 
 该补丁还增加可空的 `softwareBlurRadiusDp`，让同一表面分别声明 RenderEffect 半径与软件盒式模糊半径；不传时保留上游算法与取整方式，宿主传 GPU 17dp / 软件 10dp。预设 JSON 同步往返软件半径与 `fadeCurve`。FROSTED 在无折射 GPU 路径补齐原提亮，在自定义形状 AGSL 路径使用原柔光 C¹ 透镜函数、边界收敛和预乘提亮；LIQUID 保留其折射与色散。自定义形状仍使用引擎后台原始纹理，软件兼容回退仍是模糊加裁剪，不能视为原即时 GPU 或完整软件透镜。普通展开胶囊的 GPU/软件效果分别由模块保留的原算法作像素参照，实机帧统计按 VSYNC 去重。
 
+可读性扩展必须保留调用方的 `backdropOpacity`，只调整色罩。完整帧的柔光采样 alpha 经归一化后为 1；将其重写为 `1 - tintOpacity` 会使未模糊内容透出，浅深色不能使用不同的合成规则。外观验收同时使用完整模块 renderer 和细条纹/文字背景，不能只对照旧宿主单层透明算法或低频色块。
+
 Android settings 使用正规复合构建，同时替换 catalog 中同版本的 `lumen-engine` 与 `lumen-motion` JitPack 模块，避免新旧类共存。源码从固定标签下载，SHA-256 为 `fce6a90310c8de6c0b5694d12c2378e008cc59cfb28168eb213ab1fbda236fc8`；三个补丁按 settings 中的顺序拼接后计算 SHA-256，作为源码缓存键及 `1.2.0-host.<hash>` 诊断版本后缀。局部 `.gitattributes` 固定补丁为 LF，防止跨平台换行改变版本标识。首次构建需要联网取得源码，此后支持 `--offline`。引擎包名保持上游名称，不发布自建依赖。
 
 源码缓存在 Android 工程的 `.gradle/lumen-source/`，不提交缓存。用项目原有 Gradle wrapper 执行 `:lumen:lumen-engine:testDebugUnitTest`、`:lumen:sample:testReleaseUnitTest` 和引擎构建/Lint；sample 的 `linearGpuFadeHasUniformPixelCoverage` 检查真实 GPU 输出。

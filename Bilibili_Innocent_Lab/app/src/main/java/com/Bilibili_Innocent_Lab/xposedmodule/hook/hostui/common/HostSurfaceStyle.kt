@@ -15,7 +15,10 @@ internal object HostSurfaceStyle {
         if (appearance.material == HostGlassMaterial.LIQUID) LumenSurfaceMaterial.LIQUID else LumenSurfaceMaterial.FROSTED
     ).copy(radiusDp = radiusDp, tintOpacity = (if (dark) 120 else 112) / 255f,
         fallbackTintOpacity = (if (dark) 120 else 112) / 255f,
-        backdropOpacity = (255 - if (dark) 120 else 112) / 255f, edgeWidthDp = .65f,
+        // 模块柔光的 sampleAlpha 会归一化到完整帧透明度。色罩在采样之上单独合成，
+        // 再乘 (1 - tint) 会让未模糊的宿主内容从底下漏出，不能靠增大 blur 修正。
+        backdropOpacity = if (appearance.material == HostGlassMaterial.SOFT) 1f
+            else (255 - if (dark) 120 else 112) / 255f, edgeWidthDp = .65f,
         edgeTopColor = ((if (dark) 56 else 140) shl 24) or 0xFFFFFF,
         edgeBottomColor = ((if (dark) 16 else 32) shl 24) or 0xFFFFFF,
         sampling = LumenSurfacePresets.floating().sampling.copy(blurRadiusDp = 17f,

@@ -261,7 +261,7 @@ class HostChromeRenderingInstrumentedTest {
         }
     }
 
-    /** 迁移前仍保留在模块 UI 中的独立算法，作为原底栏像素参照。 */
+    /** 模块 UI 的独立算法；与 FrostedMotionSurfaceAlpha 相同，完整帧的采样 alpha 是 255。 */
     private class OriginalSoftSurface(private val view: View, private val content: PatternContent, private val sampler: LiveBackdropSampler,
         private val color: Int, density: Float, gpu: Boolean) : Drawable(), AutoCloseable {
         private val glass: GlowChromeGlassApi31? = if (gpu) FrostedChromeGlassApi31.create(density) else null
@@ -276,10 +276,10 @@ class HostChromeRenderingInstrumentedTest {
             region.set(bounds); val radius = region.height() / 2
             val capture = content.originalCapture
             if (glass != null && capture?.recorded == true && mapping.sourceToTarget(content, view, matrix)) {
-                glass.draw(canvas, bounds, radius, capture, 0f, 0f, 143 / 255f, 1f, 0f, null, matrix)
+                glass.draw(canvas, bounds, radius, capture, 0f, 0f, 1f, 1f, 0f, null, matrix)
                 sampled = true
             } else {
-                sampler.register(view); sampled = sampler.draw(canvas, region, radius, view, 143) || sampled
+                sampler.register(view); sampled = sampler.draw(canvas, region, radius, view, 255) || sampled
             }
             fill.color = (color and 0xFFFFFF) or (112 shl 24); canvas.drawRoundRect(region, radius, radius, fill)
             edge.shader = LinearGradient(0f, region.top, 0f, region.bottom, 0x8CFFFFFF.toInt(), 0x20FFFFFF, Shader.TileMode.CLAMP)
