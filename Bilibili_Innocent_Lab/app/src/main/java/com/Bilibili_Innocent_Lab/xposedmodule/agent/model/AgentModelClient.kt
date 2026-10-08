@@ -6,7 +6,6 @@ import org.json.JSONArray
 import org.json.JSONObject
 import java.net.URI
 import java.util.Locale
-import java.util.concurrent.ConcurrentHashMap
 
 /** 仅收发模型消息；宿主动作由任务执行器校验、串行执行，不从自由文本推导动作。 */
 internal class AgentModelClient(
@@ -14,15 +13,18 @@ internal class AgentModelClient(
     private val outputTokenBudget: Int = 2048,
     private val clock: () -> Long = System::currentTimeMillis
 ) {
-    private val capabilities = ConcurrentHashMap<String, AgentModelCapabilities>()
-    private val tokenParameters = ConcurrentHashMap<String, String>()
-    private val rejectedReasoning = ConcurrentHashMap.newKeySet<String>()
+    private val capabilities = AgentBoundedCache<String, AgentModelCapabilities>(clock = clock)
+    private val tokenParameters = AgentBoundedCache<String, String>(clock = clock)
+    private val rejectedReasoning = AgentBoundedCache<String, Boolean>(clock = clock)
 
     init { require(outputTokenBudget in 256..8192) }
 
     fun setCapabilities(source: AgentModelSource, value: AgentModelCapabilities) {
         capabilities[source.fingerprint] = value
     }
+
+    /** 同一显式探测共享注入的传输实现；JVM 替身不能因切换协议意外连接真实网络。 */
+    internal fun decisionClientForProbe(): AgentDecisionClient = AgentDecisionClient(transport, clock)
 
     fun generate(
         source: AgentModelSource,
@@ -48,6 +50,7 @@ internal class AgentModelClient(
         timeoutMs: Int, cancelled: () -> Boolean, probing: Boolean
     ): AgentModelTurn {
         if (cancelled()) throw AgentModelException(AgentModelException.Reason.CANCELLED)
+        if (source.protocol != AgentSourceProtocol.CHAT) throw AgentModelException(AgentModelException.Reason.INVALID_REQUEST)
         if (withVision && !probing && capabilities[source.fingerprint]?.let { it.vision && it.fresh(clock()) } != true) {
             throw AgentModelException(AgentModelException.Reason.VISION_UNVERIFIED)
         }
@@ -56,12 +59,13 @@ internal class AgentModelClient(
         val body = JSONObject().put("model", source.model).put("messages", JSONArray(messages.toString()))
             .put("stream", false)
         if (tools.length() > 0) body.put("tools", JSONArray(tools.toString())).put("tool_choice", "auto")
-        val optionalReasoning = knownReasoningParams(source)?.takeIf { source.fingerprint !in rejectedReasoning }
+        val optionalReasoning = knownReasoningParams(source)?.takeIf { rejectedReasoning[source.fingerprint] != true }
         optionalReasoning?.keys()?.forEach { body.put(it, optionalReasoning.get(it)) }
         var removedReasoning = false
         val deadline = System.nanoTime() + timeoutMs.coerceIn(1, AgentHttpsTransport.MAX_TIMEOUT_MS) * 1_000_000L
         var parameter = tokenParameters[source.fingerprint] ?: "max_tokens"
-        repeat(2) { attempt ->
+        val rejectedTokens = hashSetOf<String>()
+        repeat(3) { attempt ->
             body.remove("max_tokens")
             body.remove("max_completion_tokens")
             body.put(parameter, outputTokenBudget)
@@ -76,16 +80,20 @@ internal class AgentModelClient(
                 if (System.nanoTime() >= deadline) throw AgentModelException(AgentModelException.Reason.TIMEOUT)
                 val turn = decode(payload, allowed, historyIds)
                 tokenParameters[source.fingerprint] = parameter
-                if (removedReasoning) rejectedReasoning.add(source.fingerprint)
+                if (removedReasoning) rejectedReasoning[source.fingerprint] = true
                 return turn
             } catch (e: AgentModelException) {
-                // 两种兼容回退共用一次重试额度和同一截止时间；永不剥掉 tools 或输出预算。
-                if (attempt != 0) throw e
+                // 只对明确拒绝的参数做有界回退，共用截止时间；永不剥掉 tools 或输出预算。
+                if (attempt == 2) throw e
                 when {
-                    e.reason == AgentModelException.Reason.TOKEN_PARAMETER ->
+                    e.reason == AgentModelException.Reason.TOKEN_PARAMETER &&
+                        (e.rejectedParameter == null || e.rejectedParameter == parameter) -> {
+                        rejectedTokens += parameter
                         parameter = if (parameter == "max_tokens") "max_completion_tokens" else "max_tokens"
+                        if (parameter in rejectedTokens) throw e
+                    }
                     e.reason == AgentModelException.Reason.OPTIONAL_PARAMETER && optionalReasoning != null &&
-                        e.rejectedParameter?.let { optionalReasoning.has(it) } == true -> {
+                        !removedReasoning && e.rejectedParameter?.let { optionalReasoning.has(it) } == true -> {
                         optionalReasoning.keys().forEach(body::remove)
                         removedReasoning = true
                     }
@@ -187,6 +195,17 @@ internal class AgentModelClient(
         if (original.optString("role") != "assistant" || (original.has("function_call") && !original.isNull("function_call"))) invalidResponse()
         val text = when (val content = original.opt("content")) {
             is String -> content.takeIf { it.length <= MAX_TEXT_CHARS } ?: invalidResponse()
+            is JSONArray -> {
+                if (content.length() > 8) invalidResponse()
+                buildString {
+                    for (index in 0 until content.length()) {
+                        val part = content.optJSONObject(index) ?: invalidResponse()
+                        if (part.optString("type") != "text" || part.opt("text") !is String) invalidResponse()
+                        append(part.getString("text"))
+                        if (length > MAX_TEXT_CHARS) invalidResponse()
+                    }
+                }
+            }
             null, JSONObject.NULL -> ""
             else -> invalidResponse()
         }
@@ -235,6 +254,13 @@ internal class AgentModelClient(
     private fun invalidResponse(): Nothing = throw AgentModelException(AgentModelException.Reason.INVALID_RESPONSE)
 
     companion object {
+        /** 不跨来源转发厂商私有推理字段；保留工具调用与结果配对，且不修改任务持有的历史。 */
+        internal fun historyForSource(messages: JSONArray, previousSourceFingerprint: String?, source: AgentModelSource): JSONArray =
+            JSONArray(messages.toString()).also { history ->
+                if (previousSourceFingerprint != source.fingerprint) {
+                    for (index in 0 until history.length()) history.optJSONObject(index)?.remove("reasoning_content")
+                }
+            }
         private val NAME = Regex("[A-Za-z_][A-Za-z0-9_-]{0,63}")
         private val IMAGE_DATA = Regex("data:image/(?:png|jpeg);base64,[A-Za-z0-9+/]+={0,2}")
         private const val MAX_TEXT_CHARS = 65_536

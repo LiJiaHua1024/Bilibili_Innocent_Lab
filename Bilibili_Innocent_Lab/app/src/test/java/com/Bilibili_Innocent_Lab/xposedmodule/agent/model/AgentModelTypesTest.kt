@@ -50,4 +50,30 @@ class AgentModelTypesTest {
         val tokens = "{\"error\":{\"code\":\"unsupported_parameter\",\"param\":\"max_tokens\"}}"
         assertEquals(AgentModelException.Reason.TOKEN_PARAMETER, AgentHttpsTransport.httpFailure(400, tokens, null).reason)
     }
+
+    @Test fun `decisions endpoints use the actual protocol and never become chat paths`() {
+        val native = AgentModelSource(1, "https://api.typesafe.ai/v1", "key", "jev-latest", AgentSourceProtocol.DECISIONS)
+        assertEquals("https://api.typesafe.ai/v1/systemone", native.resolvedEndpoint)
+        val router = native.copy(endpoint = "https://openrouter.ai/api/v1")
+        assertEquals("https://openrouter.ai/api/alpha/decisions", router.resolvedEndpoint)
+        assertEquals("https://proxy.example/v1/decision?version=2", native.copy(endpoint =
+            "https://proxy.example/v1/decision?version=2").resolvedEndpoint)
+        assertNotEquals(native.fingerprint, native.copy(protocol = AgentSourceProtocol.CHAT).fingerprint)
+        for (endpoint in listOf("http://proxy.example/v1", "https://user:secret@proxy.example/v1/decision",
+            "https://proxy.example/v1/decision#fragment")) {
+            assertNull(AgentModelSource.from(1, endpoint, "key", "jev", AgentSourceProtocol.DECISIONS))
+        }
+    }
+
+    @Test fun `old capability documents remain readable while new decision evidence expires after one day`() {
+        val old = AgentModelCapabilities(true, false, 1000, "checked").toJson()
+        old.remove("decisions"); old.remove("decisionState"); old.remove("decisionFormats")
+        assertFalse(AgentModelCapabilities.fromJson(old)!!.decisions)
+        val current = AgentModelCapabilities(false, true, 1000, "checked", decisions = true,
+            decisionFormats = setOf("choice", "noul"))
+        assertEquals(current, AgentModelCapabilities.fromJson(current.toJson()))
+        assertTrue(current.fresh(1000 + 24 * 60 * 60_000L))
+        assertFalse(current.fresh(1001 + 24 * 60 * 60_000L))
+        assertNull(AgentModelCapabilities.fromJson(current.toJson().put("decisionFormats", org.json.JSONArray().put("arbitrary"))))
+    }
 }

@@ -1,6 +1,6 @@
 package com.Bilibili_Innocent_Lab.xposedmodule.agent.model
 
-/** 自动路由也必须由任务明确提供授权来源集；固定来源失败默认不扩大数据接收方。 */
+/** 所有角色只在任务授权来源内协作；固定来源只约束规划器。 */
 internal data class AgentRoutePolicy(
     val sourceIndices: Set<Int>,
     val fixedIndex: Int? = null,
@@ -14,23 +14,29 @@ internal data class AgentRoutePolicy(
     }
 }
 
-/** 只选择一次尚未执行的模型请求，不保存动作、也不重放宿主动作。 */
+/** 只选择尚未执行的模型请求。健康可跨任务共享，角色粘性只属于本任务。 */
 internal class AgentSourceRouter(
     sources: List<AgentModelSource>,
-    capabilities: Map<String, AgentModelCapabilities> = emptyMap()
+    capabilities: Map<String, AgentModelCapabilities> = emptyMap(),
+    private val health: AgentHealthRegistry = AgentHealthRegistry()
 ) {
-    internal class Slot(val source: AgentModelSource) {
-        var inFlight = 0
-        var latencyMs = 2_000.0
-        var failures = 0
-        var cooldownUntil = 0L
-    }
-
-    private val slots = sources.map(::Slot)
+    private val sources = sources.toList()
     private val known = capabilities.toMutableMap()
+    private val preferred = mutableMapOf<AgentModelRole, String>()
 
     init {
         require(sources.size <= AgentModelSource.MAX_SOURCES && sources.map { it.index }.toSet().size == sources.size)
+    }
+
+    @Synchronized
+    fun acquire(role: AgentModelRole, route: AgentRoutePolicy, nowMs: Long,
+                excludeFingerprints: Set<String> = emptySet(), preferredFingerprint: String? = null): Lease? {
+        val candidates = eligible(role, route, nowMs, excludeFingerprints)
+        val requested = if (role == AgentModelRole.PLANNER) route.fixedIndex?.let { index ->
+            candidates.firstOrNull { it.index == index }?.fingerprint
+        } else null
+        val reserved = health.reserve(candidates, role, nowMs, requested ?: preferredFingerprint ?: preferred[role]) ?: return null
+        return Lease(role, reserved)
     }
 
     @Synchronized
@@ -38,6 +44,7 @@ internal class AgentSourceRouter(
         known[source.fingerprint] = capabilities
     }
 
+    /** 兼容旧调用；tools + vision 仍要求同一 CHAT 来源同时具备两项能力。 */
     @Synchronized
     fun acquire(
         requireTools: Boolean,
@@ -46,51 +53,52 @@ internal class AgentSourceRouter(
         nowMs: Long,
         excludeFingerprints: Set<String> = emptySet()
     ): Lease? {
-        val candidates = slots.filter { slot ->
-            val source = slot.source
-            val capability = known[source.fingerprint]
-            source.index in route.allowedSources && source.fingerprint !in excludeFingerprints && nowMs >= slot.cooldownUntil &&
-                (!requireTools || capability?.let { it.tools && it.fresh(nowMs) } == true) &&
-                (!requireVision || capability?.let { it.vision && it.fresh(nowMs) } == true)
+        val role = if (requireTools) AgentModelRole.PLANNER else if (requireVision) AgentModelRole.VISION else AgentModelRole.PLANNER
+        val candidates = eligible(role, route, nowMs, excludeFingerprints).filter {
+            !requireVision || known[it.fingerprint]?.vision == true
         }
-        val fixed = route.fixedIndex
-        val eligible = if (fixed == null) candidates else {
-            val preferred = candidates.filter { it.source.index == fixed }
-            if (preferred.isNotEmpty() || !route.allowFallback) preferred else candidates
-        }
-        val slot = eligible.minWithOrNull(compareBy<Slot>({ (it.inFlight + 1) * it.latencyMs }, { it.source.index }))
-            ?: return null
-        slot.inFlight++
-        return Lease(slot)
+        val requested = if (role == AgentModelRole.PLANNER) route.fixedIndex?.let { index ->
+            candidates.firstOrNull { it.index == index }?.fingerprint
+        } else null
+        val reserved = health.reserve(candidates, role, nowMs, requested) ?: return null
+        return Lease(role, reserved)
     }
 
-    internal inner class Lease internal constructor(private val slot: Slot) : AutoCloseable {
-        val source: AgentModelSource get() = slot.source
-        private var released = false
+    private fun eligible(role: AgentModelRole, route: AgentRoutePolicy, nowMs: Long,
+                         excluded: Set<String>): List<AgentModelSource> {
+        val candidates = sources.filter { source ->
+            val capability = known[source.fingerprint]
+            source.index in route.allowedSources && source.fingerprint !in excluded && capability?.fresh(nowMs) == true &&
+                when (role) {
+                    AgentModelRole.PLANNER -> source.protocol == AgentSourceProtocol.CHAT && capability.tools
+                    AgentModelRole.VISION -> capability.vision
+                    AgentModelRole.DECISION -> source.protocol == AgentSourceProtocol.DECISIONS && capability.decisions
+                }
+        }
+        if (role != AgentModelRole.PLANNER || route.fixedIndex == null) return candidates
+        return if (route.allowFallback) candidates else candidates.filter { it.index == route.fixedIndex }
+    }
 
+    internal inner class Lease internal constructor(private val role: AgentModelRole, private val reserved: AgentHealthRegistry.Lease) : AutoCloseable {
+        val source: AgentModelSource get() = reserved.source
+        private var released = false
         fun succeed(elapsedMs: Long) = synchronized(this@AgentSourceRouter) {
             if (!released) {
-                slot.latencyMs = slot.latencyMs * 0.7 + elapsedMs.coerceIn(1, AgentHttpsTransport.MAX_TIMEOUT_MS.toLong()) * 0.3
-                slot.failures = 0
-                slot.cooldownUntil = 0L
-                release()
+                if (role == AgentModelRole.PLANNER) preferred[role] = source.fingerprint
+                reserved.succeed(elapsedMs)
+                released = true
             }
         }
 
-        fun fail(nowMs: Long, retryAfterMs: Long? = null) = synchronized(this@AgentSourceRouter) {
+        fun fail(nowMs: Long, retryAfterMs: Long? = null, error: AgentModelException? = null) = synchronized(this@AgentSourceRouter) {
             if (!released) {
-                val exponential = (15_000L shl slot.failures.coerceAtMost(5)).coerceAtMost(300_000L)
-                val cooldown = maxOf(exponential, retryAfterMs?.coerceIn(0, 300_000L) ?: 0L)
-                slot.cooldownUntil = maxOf(slot.cooldownUntil, nowMs.coerceAtMost(Long.MAX_VALUE - cooldown) + cooldown)
-                slot.failures = (slot.failures + 1).coerceAtMost(6)
-                release()
+                if (preferred[role] == source.fingerprint) preferred.remove(role)
+                reserved.fail(nowMs, retryAfterMs, error)
+                released = true
             }
         }
-
-        override fun close() = synchronized(this@AgentSourceRouter) { release() }
-
-        private fun release() {
-            if (!released) { released = true; slot.inFlight-- }
+        override fun close() = synchronized(this@AgentSourceRouter) {
+            if (!released) { reserved.close(); released = true }
         }
     }
 }

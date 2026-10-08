@@ -3,15 +3,21 @@ package com.Bilibili_Innocent_Lab.xposedmodule.agent.model
 import org.json.JSONObject
 import java.net.URI
 import java.security.MessageDigest
+import com.Bilibili_Innocent_Lab.xposedmodule.hook.feature.JevBackend
+import org.json.JSONArray
+
+internal enum class AgentSourceProtocol { CHAT, DECISIONS }
+internal enum class AgentModelRole { PLANNER, VISION, DECISION }
 
 /** 编号与设置页一致。凭据仅留在模块进程；默认字符串表示不能泄露配置。 */
 internal data class AgentModelSource(
     val index: Int,
     val endpoint: String,
     val apiKey: String,
-    val model: String
+    val model: String,
+    val protocol: AgentSourceProtocol = AgentSourceProtocol.CHAT
 ) {
-    val resolvedEndpoint: String = resolveEndpoint(endpoint)
+    val resolvedEndpoint: String = resolveEndpoint(endpoint, protocol)
 
     init {
         require(index in 1..MAX_SOURCES) { "来源编号应为 1–8" }
@@ -22,7 +28,7 @@ internal data class AgentModelSource(
     /** 换 Key、模型、地址均使旧能力失效；摘要从不用于认证。 */
     val fingerprint: String by lazy {
         MessageDigest.getInstance("SHA-256")
-            .digest("$resolvedEndpoint\u0000$model\u0000$apiKey".toByteArray(Charsets.UTF_8))
+            .digest("${protocol.name}\u0000$resolvedEndpoint\u0000$model\u0000$apiKey".toByteArray(Charsets.UTF_8))
             .joinToString("") { "%02x".format(it.toInt() and 0xff) }
     }
 
@@ -31,16 +37,20 @@ internal data class AgentModelSource(
     companion object {
         const val MAX_SOURCES = 8
 
-        fun from(index: Int, endpoint: String, apiKey: String, model: String): AgentModelSource? =
-            runCatching { AgentModelSource(index, endpoint.trim(), apiKey.trim(), model.trim()) }.getOrNull()
+        fun from(index: Int, endpoint: String, apiKey: String, model: String,
+                 protocol: AgentSourceProtocol = AgentSourceProtocol.CHAT): AgentModelSource? =
+            runCatching { AgentModelSource(index, endpoint.trim(), apiKey.trim(), model.trim(), protocol) }.getOrNull()
 
-        private fun resolveEndpoint(raw: String): String {
-            require(raw.length in 1..2048 && raw.none { it.isWhitespace() || it.isISOControl() }) { "API 地址无效" }
-            val uri = try { URI(raw) } catch (_: Exception) { throw IllegalArgumentException("API 地址无效") }
+        private fun resolveEndpoint(raw: String, protocol: AgentSourceProtocol): String {
+            val value = if (protocol == AgentSourceProtocol.DECISIONS) JevBackend().resolveEndpoint(raw)
+                ?: throw IllegalArgumentException("判定 API 地址无效") else raw
+            require(value.length in 1..2048 && value.none { it.isWhitespace() || it.isISOControl() }) { "API 地址无效" }
+            val uri = try { URI(value) } catch (_: Exception) { throw IllegalArgumentException("API 地址无效") }
             require(uri.scheme.equals("https", ignoreCase = true) && !uri.host.isNullOrBlank() &&
                 uri.rawUserInfo == null && uri.rawFragment == null && uri.port in -1..65535 && uri.port != 0) {
                 "Agent API 必须使用无内嵌凭据的 HTTPS 地址"
             }
+            if (protocol == AgentSourceProtocol.DECISIONS) return value
             val path = uri.rawPath.orEmpty().trimEnd('/')
             val resolved = when {
                 path.endsWith("/chat/completions") -> path
@@ -60,11 +70,18 @@ internal data class AgentModelCapabilities(
     val checkedAtMs: Long,
     val detail: String,
     val toolState: AgentCapabilityState = if (tools) AgentCapabilityState.SUPPORTED else AgentCapabilityState.UNKNOWN,
-    val visionState: AgentCapabilityState = if (vision) AgentCapabilityState.SUPPORTED else AgentCapabilityState.UNKNOWN
+    val visionState: AgentCapabilityState = if (vision) AgentCapabilityState.SUPPORTED else AgentCapabilityState.UNKNOWN,
+    val decisions: Boolean = false,
+    val decisionState: AgentCapabilityState = if (decisions) AgentCapabilityState.SUPPORTED else AgentCapabilityState.UNKNOWN,
+    val decisionFormats: Set<String> = emptySet(),
+    val decisionVisionFormats: Set<String> = emptySet()
 ) {
     init {
         require(tools == (toolState == AgentCapabilityState.SUPPORTED))
         require(vision == (visionState == AgentCapabilityState.SUPPORTED))
+        require(decisions == (decisionState == AgentCapabilityState.SUPPORTED))
+        require(decisionFormats.all { it in setOf("choice", "noul", "score") })
+        require(decisionVisionFormats.all { it in setOf("choice", "noul", "score") })
     }
 
     fun fresh(nowMs: Long): Boolean = checkedAtMs > 0 && nowMs >= checkedAtMs && nowMs - checkedAtMs <= VALID_FOR_MS
@@ -72,15 +89,26 @@ internal data class AgentModelCapabilities(
     fun toJson(): JSONObject = JSONObject().put("tools", tools).put("vision", vision)
         .put("checkedAtMs", checkedAtMs).put("detail", detail.take(256))
         .put("toolState", toolState.name).put("visionState", visionState.name)
+        .put("decisions", decisions).put("decisionState", decisionState.name)
+        .put("decisionFormats", JSONArray(decisionFormats.sorted()))
+        .put("decisionVisionFormats", JSONArray(decisionVisionFormats.sorted()))
 
     companion object {
-        const val VALID_FOR_MS = 7 * 24 * 60 * 60 * 1000L
+        const val VALID_FOR_MS = 24 * 60 * 60 * 1000L
         fun unknown(detail: String = "尚未检测") = AgentModelCapabilities(false, false, 0L, detail)
         fun fromJson(json: JSONObject): AgentModelCapabilities? = runCatching {
             AgentModelCapabilities(json.getBoolean("tools"), json.getBoolean("vision"),
                 json.getLong("checkedAtMs"), json.getString("detail").take(256),
                 AgentCapabilityState.valueOf(json.getString("toolState")),
-                AgentCapabilityState.valueOf(json.getString("visionState")))
+                AgentCapabilityState.valueOf(json.getString("visionState")),
+                json.optBoolean("decisions", false),
+                AgentCapabilityState.valueOf(json.optString("decisionState", AgentCapabilityState.UNKNOWN.name)),
+                json.optJSONArray("decisionFormats")?.let { formats ->
+                    (0 until formats.length()).map { formats.getString(it) }.toSet()
+                } ?: emptySet(),
+                json.optJSONArray("decisionVisionFormats")?.let { formats ->
+                    (0 until formats.length()).map { formats.getString(it) }.toSet()
+                } ?: emptySet())
         }.getOrNull()
     }
 }
@@ -114,8 +142,10 @@ internal class AgentModelException(
         TOO_LARGE("模型请求或响应超过大小限制"), INVALID_RESPONSE("模型响应结构无效"),
         INVALID_REQUEST("模型请求结构无效"), OUTPUT_LIMIT("模型输出达到预算上限"),
         VISION_UNVERIFIED("该来源尚未通过视觉检测"),
+        DECISIONS_UNVERIFIED("该来源尚未通过限定决策检测"),
         TOKEN_PARAMETER("模型不接受当前输出预算参数"),
         OPTIONAL_PARAMETER("模型不接受当前思考控制参数"),
+        DECISION_PARAMETER("判定接口不接受当前结构写法"),
         TOOLS_UNSUPPORTED("接口明确不支持工具调用"), VISION_UNSUPPORTED("接口明确不支持图像输入")
     }
 }

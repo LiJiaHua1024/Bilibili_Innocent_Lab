@@ -31,6 +31,65 @@ class AgentModelClientTest {
         assertTrue(turn.toolCalls.isEmpty())
     }
 
+    @Test fun `typed text response content remains text and rejects non text parts`() {
+        val client = AgentModelClient()
+        val root = JSONObject(response())
+        val message = root.getJSONArray("choices").getJSONObject(0).getJSONObject("message")
+        message.put("content", JSONArray().put(JSONObject().put("type", "text").put("text", "first"))
+            .put(JSONObject().put("type", "text").put("text", " second")))
+        assertEquals("first second", client.decode(root.toString(), emptySet()).text)
+        assertTrue(client.decode(root.toString(), emptySet()).toolCalls.isEmpty())
+        message.getJSONArray("content").put(JSONObject().put("type", "image_url").put("image_url", "private"))
+        failure(AgentModelException.Reason.INVALID_RESPONSE) { client.decode(root.toString(), emptySet()) }
+    }
+
+    @Test fun `switching planners strips source specific reasoning without changing tool pairing or original history`() {
+        val history = JSONArray(user.toString()).put(JSONObject().put("role", "assistant").put("content", JSONObject.NULL)
+            .put("tool_calls", calls()).put("reasoning_content", "source-private-reasoning"))
+            .put(JSONObject().put("role", "tool").put("tool_call_id", "call_1").put("content", "verified result"))
+        val same = AgentModelClient.historyForSource(history, source.fingerprint, source)
+        assertTrue(same.getJSONObject(1).has("reasoning_content"))
+        val nextSource = source.copy(apiKey = "replacement")
+        val next = AgentModelClient.historyForSource(history, source.fingerprint, nextSource)
+        assertFalse(next.getJSONObject(1).has("reasoning_content"))
+        assertTrue(history.getJSONObject(1).has("reasoning_content"))
+        assertEquals("call_1", next.getJSONObject(2).getString("tool_call_id"))
+        assertEquals(calls().toString(), next.getJSONObject(1).getJSONArray("tool_calls").toString())
+        val client = AgentModelClient(AgentHttpTransport { _, body, _, _ ->
+            assertFalse(JSONObject(String(body, Charsets.UTF_8)).getJSONArray("messages").getJSONObject(1).has("reasoning_content"))
+            response()
+        })
+        client.generate(nextSource, next, tools, false, 5000) { false }
+    }
+
+    @Test fun `one shared client learns compatibility across tasks but changed credentials or TTL require fresh attempts`() {
+        var now = 1_000_000L
+        val requests = mutableListOf<JSONObject>()
+        val client = AgentModelClient(AgentHttpTransport { _, bytes, _, _ ->
+            val request = JSONObject(String(bytes, Charsets.UTF_8))
+            requests += request
+            if (request.has("max_tokens")) throw AgentModelException(AgentModelException.Reason.TOKEN_PARAMETER,
+                rejectedParameter = "max_tokens")
+            response()
+        }, clock = { now })
+        client.generate(source, user, tools, false, 5000) { false }
+        assertEquals(2, requests.size)
+        client.generate(source, JSONArray(user.toString()), tools, false, 5000) { false }
+        assertEquals(3, requests.size)
+        client.generate(source.copy(apiKey = "changed"), user, tools, false, 5000) { false }
+        assertEquals(5, requests.size)
+        now += AgentModelCapabilities.VALID_FOR_MS + 1
+        client.generate(source, user, tools, false, 5000) { false }
+        assertEquals(7, requests.size)
+    }
+
+    @Test fun `decision protocol never enters chat transport`() {
+        val client = AgentModelClient(AgentHttpTransport { _, _, _, _ -> fail("must not use chat protocol"); response() })
+        failure(AgentModelException.Reason.INVALID_REQUEST) {
+            client.generate(source.copy(protocol = AgentSourceProtocol.DECISIONS), user, tools, false, 5000) { false }
+        }
+    }
+
     @Test fun `nullable compatibility fields remain non executable`() {
         val client = AgentModelClient()
         for (toolCalls in listOf(JSONObject.NULL, JSONArray())) {

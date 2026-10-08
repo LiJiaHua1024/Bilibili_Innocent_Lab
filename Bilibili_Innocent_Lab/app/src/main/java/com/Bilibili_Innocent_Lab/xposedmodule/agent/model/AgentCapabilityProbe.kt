@@ -16,7 +16,8 @@ internal data class VisionChallenge(val dataUrl: String, val expectedAnswer: Str
 /** 能力来自实际回路；认证失败、超时、答错都只说明未确认，不能宣称模型不支持。 */
 internal class AgentCapabilityProbe(
     private val client: AgentModelClient,
-    private val clock: () -> Long = System::currentTimeMillis
+    private val clock: () -> Long = System::currentTimeMillis,
+    private val decisionProbe: AgentDecisionProbe = AgentDecisionProbe(client.decisionClientForProbe(), clock)
 ) {
     fun probe(
         source: AgentModelSource,
@@ -24,6 +25,9 @@ internal class AgentCapabilityProbe(
         timeoutMs: Int = 30_000,
         cancelled: () -> Boolean = { false }
     ): AgentModelCapabilities {
+        if (source.protocol == AgentSourceProtocol.DECISIONS) {
+            return decisionProbe.probe(source, visionChallenge, timeoutMs, cancelled)
+        }
         val deadline = System.nanoTime() + timeoutMs.coerceIn(1, AgentHttpsTransport.MAX_TIMEOUT_MS) * 1_000_000L
         fun remaining(): Int {
             if (cancelled()) throw AgentModelException(AgentModelException.Reason.CANCELLED)

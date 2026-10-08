@@ -118,11 +118,13 @@ internal object AgentHttpsTransport : AgentHttpTransport {
     }
 
     internal fun httpFailure(status: Int, body: String, retryAfterMs: Long?): AgentModelException {
-        val error = runCatching { JSONObject(body).optJSONObject("error") }.getOrNull()
+        val root = runCatching { JSONObject(body) }.getOrNull()
+        val error = root?.optJSONObject("error")
         val code = error?.optString("code").orEmpty()
         val parameter = error?.optString("param").orEmpty()
         val parameterRejected = status in setOf(400, 422) && code in setOf("unsupported_parameter", "invalid_request_error")
         val optionalParameter = parameter.substringBefore('.')
+        val decisionParameter = if (status in setOf(400, 422)) rejectedDecisionParameter(root, error) else null
         // 只认结构化拒绝，不能从任意错误正文推断能力或把正文展示给用户。
         val reason = when {
             parameterRejected &&
@@ -134,10 +136,49 @@ internal object AgentHttpsTransport : AgentHttpTransport {
                 AgentModelException.Reason.TOOLS_UNSUPPORTED
             status in setOf(400, 422) && code == "unsupported_feature" && parameter in setOf("image_url", "vision") ->
                 AgentModelException.Reason.VISION_UNSUPPORTED
+            decisionParameter != null -> AgentModelException.Reason.DECISION_PARAMETER
             else -> AgentModelException.Reason.HTTP
         }
         return AgentModelException(reason, status, retryAfterMs,
-            if (reason == AgentModelException.Reason.OPTIONAL_PARAMETER) optionalParameter else null)
+            when (reason) {
+                AgentModelException.Reason.OPTIONAL_PARAMETER -> optionalParameter
+                AgentModelException.Reason.TOKEN_PARAMETER -> parameter
+                AgentModelException.Reason.DECISION_PARAMETER -> decisionParameter
+                else -> null
+            })
+    }
+
+    /** 只输出固定字段名；认证、模型不存在和未知 400 均不能触发题型/状态回退。 */
+    private fun rejectedDecisionParameter(root: JSONObject?, error: JSONObject?): String? {
+        fun field(parts: List<String>): String? {
+            val path = parts.filter(String::isNotBlank).dropWhile { it == "body" || it == "$" }
+            return when (path.firstOrNull()) {
+                "state" -> "state"
+                "questions" -> when (path.lastOrNull()) {
+                    "type" -> "type"
+                    "criteria" -> "criteria"
+                    else -> "questions"
+                }
+                "type", "criteria" -> path.singleOrNull()
+                else -> null
+            }
+        }
+        error?.optString("param")?.takeIf { it.isNotBlank() }?.let { value ->
+            field(value.split(Regex("[.\\[\\]/]+")))?.let { return it }
+        }
+        root?.optJSONArray("detail")?.let { details ->
+            for (index in 0 until details.length()) {
+                val location = details.optJSONObject(index)?.optJSONArray("loc") ?: continue
+                val parts = (0 until location.length()).mapNotNull { location.opt(it) as? String }
+                field(parts)?.let { return it }
+            }
+        }
+        // 已见过的 Respan 写法拒绝只有短 message；严格限制为结构错误，不从一般正文猜能力。
+        val message = error?.optString("message").orEmpty().lowercase(java.util.Locale.ROOT)
+        if (message.contains("state must be a string") || message.contains("state should be a string") ||
+            message.contains("expected state to be a string")) return "state"
+        if (message.contains("unsupported question type") || message.contains("unknown question type")) return "type"
+        return null
     }
 
     const val MAX_REQUEST_BYTES = 2 * 1024 * 1024

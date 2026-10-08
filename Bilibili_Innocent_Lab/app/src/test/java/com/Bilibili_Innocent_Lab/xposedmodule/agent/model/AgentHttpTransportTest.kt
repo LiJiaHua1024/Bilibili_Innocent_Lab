@@ -164,16 +164,44 @@ class AgentHttpTransportTest {
         }
     }
 
-    @Test fun `reasoning and output budget compatibility share at most one retry`() {
+    @Test fun `reasoning and output budget compatibility use bounded retries without losing tools or budget`() {
         var attempts = 0
+        val requests = mutableListOf<JSONObject>()
         val client = AgentModelClient(AgentHttpTransport { src, body, timeout, cancelled ->
-            val parameter = if (attempts++ == 0) "enable_thinking" else "max_tokens"
+            val request = JSONObject(String(body, Charsets.UTF_8))
+            requests += request
+            assertTrue(request.has("tools"))
+            assertTrue(request.has("max_tokens") || request.has("max_completion_tokens"))
+            if (attempts++ >= 2) return@AgentHttpTransport success
+            val parameter = if (attempts == 1) "enable_thinking" else "max_tokens"
             val error = "{\"error\":{\"code\":\"unsupported_parameter\",\"param\":\"$parameter\"}}"
-            assertTrue(JSONObject(String(body, Charsets.UTF_8)).has("tools"))
             AgentHttpsTransport.postWithConnection(src, body, timeout, cancelled) { Connection(400, error) }
         })
-        try { client.generate(source.copy(endpoint = "https://dashscope.aliyuncs.com/v1"), messages, tools, false, 5000) { false }; fail("reject expected") }
-        catch (error: AgentModelException) { assertEquals(AgentModelException.Reason.TOKEN_PARAMETER, error.reason) }
-        assertEquals(2, attempts)
+        val qwen = source.copy(endpoint = "https://dashscope.aliyuncs.com/v1")
+        assertEquals("ok", client.generate(qwen, messages, tools, false, 5000) { false }.text)
+        assertEquals(3, attempts)
+        assertFalse(requests.last().has("enable_thinking"))
+        assertEquals(2048, requests.last().getInt("max_completion_tokens"))
+        client.generate(qwen, messages, tools, false, 5000) { false }
+        assertFalse(requests.last().has("enable_thinking"))
+        assertEquals(2048, requests.last().getInt("max_completion_tokens"))
+    }
+
+    @Test fun `decision shape classification only reports bounded field names and respects status`() {
+        val shape = "{\"detail\":[{\"loc\":[\"body\",\"questions\",\"secret-user-question\",\"type\"],\"msg\":\"private-key\"}]}"
+        val result = AgentHttpsTransport.httpFailure(422, shape, null)
+        assertEquals(AgentModelException.Reason.DECISION_PARAMETER, result.reason)
+        assertEquals("type", result.rejectedParameter)
+        assertFalse(result.toString().contains("private-key"))
+        assertFalse(result.rejectedParameter!!.contains("secret"))
+        for (status in listOf(401, 403, 500)) {
+            assertEquals(AgentModelException.Reason.HTTP, AgentHttpsTransport.httpFailure(status, shape, null).reason)
+        }
+        assertEquals("state", AgentHttpsTransport.httpFailure(400,
+            "{\"error\":{\"param\":\"state\",\"message\":\"must be string\"}}", null).rejectedParameter)
+        for (payload in listOf("{\"error\":{\"message\":\"unsupported model\"}}",
+            "{\"error\":{\"param\":\"model\"}}", "{\"detail\":[{\"loc\":[\"body\",\"api_key\"]}]}")) {
+            assertEquals(AgentModelException.Reason.HTTP, AgentHttpsTransport.httpFailure(400, payload, null).reason)
+        }
     }
 }
