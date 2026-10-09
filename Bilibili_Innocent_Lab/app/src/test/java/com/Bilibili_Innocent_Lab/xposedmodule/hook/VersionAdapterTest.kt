@@ -10,6 +10,16 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class VersionAdapterTest {
+    @Test fun `sponsor optional classes round trip and live results retain priority`() {
+        val point = com.Bilibili_Innocent_Lab.xposedmodule.hook.adapter.SponsorPlayerClasses(
+            "com.bilibili.ship.theseus.Run", "com.bilibili.ship.theseus.Wrapper", null, "com.bilibili.ship.theseus.Seek")
+        val cached = result().copy(sponsorPlayer = point)
+        assertEquals(point, VersionAdapter.AdaptResult.fromJson(cached.toJson())?.sponsorPlayer)
+        assertEquals(point, VersionAdapter.mergeRuntimeWithCached(result(), cached)?.sponsorPlayer)
+        val live = point.copy(wrapper = "com.bilibili.ship.theseus.NewWrapper")
+        assertEquals(live, VersionAdapter.mergeRuntimeWithCached(result().copy(sponsorPlayer = live), cached)?.sponsorPlayer)
+        assertNull(VersionAdapter.AdaptResult.fromJson(cached.toJson().apply { remove("sponsor_player") })?.sponsorPlayer)
+    }
 
     @Test fun `K default words optional point survives full cache validation and runtime merge`() {
         val method = com.Bilibili_Innocent_Lab.xposedmodule.hook.feature.KotlinDefaultWordsTest.RenamedSearch::class.java

@@ -8,6 +8,8 @@ import android.view.MenuInflater
 import android.view.View
 import android.widget.TextView
 import android.widget.Toast
+import com.Bilibili_Innocent_Lab.xposedmodule.hook.adapter.SponsorPlayerClasses
+import com.Bilibili_Innocent_Lab.xposedmodule.hook.adapter.SponsorPlayerLocator
 import com.Bilibili_Innocent_Lab.xposedmodule.hook.adapter.KotlinDefaultWordsLocator
 import com.Bilibili_Innocent_Lab.xposedmodule.hook.adapter.PgcAutoActivityPopupLocator
 import com.Bilibili_Innocent_Lab.xposedmodule.hook.adapter.dex.AtomicJsonCache
@@ -1824,7 +1826,8 @@ object VersionAdapter {
         /** 每个逻辑 Hook 点的定位结果，供日志/UI 诊断。 */
         val diagnostics: List<AdaptDiagnostic>,
         /** 宿主全部 classes*.dex 的中央目录内容指纹；不包含安装路径。 */
-        val dexSourceFingerprint: String = DEX_SOURCE_UNAVAILABLE
+        val dexSourceFingerprint: String = DEX_SOURCE_UNAVAILABLE,
+        val sponsorPlayer: SponsorPlayerClasses? = null
     ) {
         fun toJson(): JSONObject = JSONObject().apply {
             put("sv", SCHEMA_VERSION)
@@ -1859,6 +1862,7 @@ object VersionAdapter {
             commentTopology?.let { put("comment_topology", it.toJson()) }
             commentSection?.let { put("comment_section", it.toJson()) }
             splashAds?.let { put("splash_ads", it.toJson()) }
+            sponsorPlayer?.let { put("sponsor_player", it.toJson()) }
             put("fp", hostFingerprint)
             put("protocol_fp", protocolFingerprint)
             put("dex_fp", dexSourceFingerprint)
@@ -2234,7 +2238,8 @@ object VersionAdapter {
                     hostFingerprint = o.optString("fp"),
                     protocolFingerprint = o.optString("protocol_fp"),
                     diagnostics = diagnostics,
-                    dexSourceFingerprint = o.getString("dex_fp")
+                    dexSourceFingerprint = o.getString("dex_fp"),
+                    sponsorPlayer = o.optJSONObject("sponsor_player")?.let(SponsorPlayerClasses::fromJson)
                 ).takeIf { it.isStructurallyValid() }
             }
         }
@@ -2945,7 +2950,8 @@ object VersionAdapter {
             splashAds = runtime.splashAds ?: cached.splashAds,
             hostFingerprint = cached.hostFingerprint,
             diagnostics = mergedDiagnostics,
-            dexSourceFingerprint = cached.dexSourceFingerprint
+            dexSourceFingerprint = cached.dexSourceFingerprint,
+            sponsorPlayer = runtime.sponsorPlayer ?: cached.sponsorPlayer
         )
     }
 
@@ -3036,9 +3042,10 @@ object VersionAdapter {
         classLoader: ClassLoader,
         resetTimestamp: Long,
         callback: AdaptCallback?,
-        kotlinDefaultWordsEnabled: Boolean = false
+        kotlinDefaultWordsEnabled: Boolean = false,
+        sponsorBlockEnabled: Boolean = false
     ) = ensureAdapted(
-        context, classLoader, resetTimestamp, callback, readStartupCache(context, resetTimestamp), kotlinDefaultWordsEnabled
+        context, classLoader, resetTimestamp, callback, readStartupCache(context, resetTimestamp), kotlinDefaultWordsEnabled, sponsorBlockEnabled
     )
 
     internal fun ensureAdapted(
@@ -3047,7 +3054,8 @@ object VersionAdapter {
         resetTimestamp: Long,
         callback: AdaptCallback?,
         startupCache: StartupCacheSnapshot,
-        kotlinDefaultWordsEnabled: Boolean = false
+        kotlinDefaultWordsEnabled: Boolean = false,
+        sponsorBlockEnabled: Boolean = false
     ) {
         // reset 不同意味着不是同一次安装快照，必须重新读取而不能复用已缓存的 null/旧结果。
         val startup = if (startupCache.resetTimestamp == resetTimestamp.coerceAtLeast(0L)) {
@@ -3063,7 +3071,11 @@ object VersionAdapter {
             KavaMemberLookup.hasClass(classLoader, it)
         }
         val cached = startup.usableCache(highCandidateExists)?.takeUnless { value ->
-            kotlinDefaultWordsEnabled && KotlinDefaultWordsLocator.refreshCache(
+            val sponsorRefresh = sponsorBlockEnabled && SponsorPlayerLocator.refreshCache(sponsorBlockEnabled, SponsorPlayerLocator.applicable(classLoader),
+                SponsorPlayerLocator.direct(classLoader) != null,
+                value.sponsorPlayer?.let { SponsorPlayerLocator.resolve(classLoader, it) } != null,
+                value.diagnostics.any { it.id == SponsorPlayerLocator.DIAGNOSTIC && it.state == AdaptState.MISSING })
+            sponsorRefresh || kotlinDefaultWordsEnabled && KotlinDefaultWordsLocator.refreshCache(
                 enabled = true,
                 applicable = KotlinDefaultWordsLocator.applicable(classLoader),
                 directFound = KotlinDefaultWordsLocator.direct(classLoader) != null,
@@ -3097,7 +3109,7 @@ object VersionAdapter {
                 // `adapt` 已自带 runCatching，但 writeCache 与日志不在其中；宿主进程内
                 // 线程的逃逸异常一律杀进程，整段必须过防波堤。
                 HostThreadGuard.run("adapter.adapt_worker") {
-                    result = runCatching { adapt(context, classLoader, kotlinDefaultWordsEnabled) }.getOrNull()
+                    result = runCatching { adapt(context, classLoader, kotlinDefaultWordsEnabled, sponsorBlockEnabled) }.getOrNull()
                     result?.let { adapted ->
                         // 写文件缓存（loadApp 快路径载体）；校验后原子替换，旧缓存不会被半截 JSON 覆盖。
                         if (!writeCache(adapted)) {
@@ -3274,7 +3286,7 @@ object VersionAdapter {
      * 适配结果主要用于快路径签名（定位不到签名不影响运行期内置候选注册），
      * 避免「功能可用但报适配失败」的误导（8.90.2 实测）。
      */
-    private fun adapt(context: Context, loader: ClassLoader, kotlinDefaultWordsEnabled: Boolean): AdaptResult? {
+    private fun adapt(context: Context, loader: ClassLoader, kotlinDefaultWordsEnabled: Boolean, sponsorBlockEnabled: Boolean): AdaptResult? {
         val vc = biliVersionCode(context)
         val dexSource = runCatching {
             context.packageManager.getPackageInfo("tv.danmaku.bili", 0).applicationInfo
@@ -3287,6 +3299,8 @@ object VersionAdapter {
         var homeTopBar = locateHomeTopBar(loader)
         val defaultWordsNeedsAssist = KotlinDefaultWordsLocator.needsQuery(kotlinDefaultWordsEnabled,
             KotlinDefaultWordsLocator.applicable(loader), homeTopBar?.kotlinDefaultWords != null)
+        val directSponsor = if (sponsorBlockEnabled) SponsorPlayerLocator.direct(loader) else null
+        val sponsorNeedsAssist = sponsorBlockEnabled && SponsorPlayerLocator.needsQuery(sponsorBlockEnabled, SponsorPlayerLocator.applicable(loader), directSponsor != null)
         val mineVip = locateMineVip(loader)
         val directBlockUpdate = locateBlockUpdate(loader)
         val directPlayerQuality = locateDefaultVideoQuality(loader)
@@ -3308,9 +3322,14 @@ object VersionAdapter {
                     if (playerQualityNeedsAssist) add(DexAssistQuery.PLAYER_DEFAULT_QUALITY)
                     if (directTopologyOutcome.points == null) add(DexAssistQuery.COMMENT_REPLY_MAPPER)
                     if (defaultWordsNeedsAssist) add(DexAssistQuery.SEARCH_DEFAULT_WORDS_KOTLIN)
+                    if (sponsorNeedsAssist) addAll(SponsorPlayerLocator.queries)
                 }
             )
         }
+        val sponsor = directSponsor ?: if (sponsorNeedsAssist) SponsorPlayerLocator.assisted(loader, dexAssist) else null
+        val sponsorDiagnostic = AdaptDiagnostic(SponsorPlayerLocator.DIAGNOSTIC,
+            if (sponsor != null) AdaptState.FOUND else if (sponsorNeedsAssist) AdaptState.MISSING else AdaptState.NOT_APPLICABLE,
+            if (!sponsorBlockEnabled) "feature-disabled" else if (directSponsor != null) "direct" else if (sponsor != null) "verified" else "unavailable-or-ambiguous")
         val blockUpdateAssist = if (directBlockUpdate == null) {
             locateBlockUpdateByDex(loader, dexAssist)
         } else {
@@ -3480,8 +3499,9 @@ object VersionAdapter {
                 commentTopologyOutcome.failureDetail, commentSection,
                 splashAds
             ) + protocolFingerprint.toDiagnostic() + blockUpdateAssist.diagnostic +
-                topologyAssist.diagnostic + playerQualityAssist.diagnostic + defaultWordsAssist.diagnostic,
-            dexSourceFingerprint = dexSource?.value ?: DEX_SOURCE_UNAVAILABLE
+                topologyAssist.diagnostic + playerQualityAssist.diagnostic + defaultWordsAssist.diagnostic + sponsorDiagnostic,
+            dexSourceFingerprint = dexSource?.value ?: DEX_SOURCE_UNAVAILABLE,
+            sponsorPlayer = sponsor?.classes
         )
     }
 

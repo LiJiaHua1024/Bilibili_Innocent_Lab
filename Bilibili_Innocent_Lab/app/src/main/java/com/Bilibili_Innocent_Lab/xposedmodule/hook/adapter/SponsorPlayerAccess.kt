@@ -94,14 +94,15 @@ internal class SponsorPlayerAccess private constructor(
         const val CONTAINER_INTERFACE = "tv.danmaku.biliplayerv2.IPlayerContainer"
         private const val FAMILY = "com.bilibili.ship.theseus.keel.player."
 
-        fun resolve(loader: ClassLoader): SponsorPlayerAccess? = runCatching {
-            val continuation = Lookup.classOrNull(loader, RUN_CLASS) ?: return null
+        fun resolve(loader: ClassLoader, continuationName: String = RUN_CLASS,
+            wrapperName: String = WRAPPER_CLASS, containerScopeName: String? = CONTAINER_SCOPE_CLASS): SponsorPlayerAccess? = runCatching {
+            val continuation = Lookup.classOrNull(loader, continuationName) ?: return null
             val runLabel = Lookup.fieldOrNull(continuation, "label")?.takeIf {
                 !Modifier.isStatic(it.modifiers) && it.type == classOf<Int>()
             } ?: return null
             val params = Lookup.classOrNull(loader, PARAMS_CLASS) ?: return null
             val core = Lookup.classOrNull(loader, CORE_CLASS)?.takeIf { it.isInterface } ?: return null
-            val wrapper = Lookup.classOrNull(loader, WRAPPER_CLASS) ?: return null
+            val wrapper = Lookup.classOrNull(loader, wrapperName) ?: return null
             val progress = Lookup.classOrNull(loader, "tv.danmaku.biliplayerv2.service.PlayerProgressObserver") ?: return null
             val seekObserver = Lookup.classOrNull(loader, "tv.danmaku.biliplayerv2.service.PlayerSeekObserver") ?: return null
             val stateObserver = Lookup.classOrNull(loader, "tv.danmaku.biliplayerv2.service.PlayerStateObserver") ?: return null
@@ -142,7 +143,7 @@ internal class SponsorPlayerAccess private constructor(
                 it.isInterface && container != null && it.isAssignableFrom(container)
             }
             val containerCore = containerInterface?.let { method(it, "getPlayerCoreService", core) }
-            val containerConstructor = Lookup.classOrNull(loader, CONTAINER_SCOPE_CLASS)?.let { cls ->
+            val containerConstructor = containerScopeName?.let { Lookup.classOrNull(loader, it) }?.let { cls ->
                 Lookup.declaredConstructors(cls, true) {
                     !it.isSynthetic && it.parameterCount in 3..16 &&
                         it.parameterTypes.count { type -> type == context } == 1 &&
