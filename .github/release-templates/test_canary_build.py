@@ -30,7 +30,7 @@ class CanaryIdentityTest(unittest.TestCase):
         self.assertIn("verify_release_apk.py",content)
         self.assertIn("apk_debuggable=false",content)
         self.assertIn("ANDROID_SIGNING_CERT_SHA256",content)
-        self.assertIn("uses: actions/upload-artifact@v6",content)
+        self.assertIn("uses: actions/upload-artifact@v7",content)
         self.assertNotIn("publish_telegram.py",content)
         self.assertNotIn("TELEGRAM_BOT_TOKEN",content)
         self.assertIn("name: alpha-release",content)

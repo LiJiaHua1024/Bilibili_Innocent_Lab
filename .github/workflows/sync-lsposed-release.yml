@@ -68,7 +68,7 @@ jobs:
           echo "source_tag=$source_tag" >> "$GITHUB_OUTPUT"
 
       - name: Check out synchronization tooling
-        uses: actions/checkout@v5
+        uses: actions/checkout@v7.0.1
         with:
           # Release events may point GITHUB_SHA at an older published tag. Keep the
           # synchronization implementation on the default branch for that event;
@@ -97,7 +97,7 @@ jobs:
             -p 'test_*.py'
 
       - name: Set up Android SDK
-        uses: android-actions/setup-android@v4
+        uses: android-actions/setup-android@v4.0.4
         with:
           # packages 默认值 "tools platform-tools" 会跑 `sdkmanager tools`，而 Google 已在
           # 2026-09-14 把废弃多年的 tools 包从 SDK 仓库下架，该调用直接 exit 1（Failed to

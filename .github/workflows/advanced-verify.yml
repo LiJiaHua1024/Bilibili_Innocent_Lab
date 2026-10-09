@@ -21,17 +21,17 @@ jobs:
       run:
         working-directory: Bilibili_Innocent_Lab
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7.0.1
         with:
           ref: ${{ github.sha }}
-      - uses: actions/setup-java@v5
+      - uses: actions/setup-java@v6.0.1
         with:
           distribution: temurin
           java-version: '17'
-      - uses: gradle/actions/setup-gradle@v6
+      - uses: gradle/actions/setup-gradle@v6.4.0
         with:
           cache-provider: basic
-      - uses: android-actions/setup-android@v4
+      - uses: android-actions/setup-android@v4.0.4
         with:
           packages: platform-tools
       - name: Install Android SDK
@@ -45,7 +45,7 @@ jobs:
         run: ./gradlew testDebugUnitTest -PinnocentLab.testLayer=unit --console=plain --no-daemon '-Dorg.gradle.jvmargs=-Xmx6144m -Dfile.encoding=UTF-8'
       - name: Preserve behavior reports
         if: ${{ !cancelled() && steps.unit_tests.outcome != 'skipped' }}
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7.0.2
         with:
           name: advanced-unit-tests-${{ github.sha }}
           retention-days: 14
@@ -58,7 +58,7 @@ jobs:
         run: ./gradlew testDebugUnitTest -PinnocentLab.testLayer=contract --console=plain --no-daemon '-Dorg.gradle.jvmargs=-Xmx6144m -Dfile.encoding=UTF-8'
       - name: Preserve contract reports
         if: ${{ !cancelled() && steps.contract_tests.outcome != 'skipped' }}
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7.0.2
         with:
           name: advanced-contract-tests-${{ github.sha }}
           retention-days: 14
@@ -73,7 +73,7 @@ jobs:
         run: ./gradlew minifyReleaseWithR8 --console=plain --no-daemon '-Dorg.gradle.jvmargs=-Xmx6144m -Dfile.encoding=UTF-8'
       - name: Upload verification reports
         if: ${{ !cancelled() }}
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7.0.2
         with:
           name: advanced-verification-${{ github.sha }}
           retention-days: 14
@@ -82,7 +82,7 @@ jobs:
             Bilibili_Innocent_Lab/app/build/test-results/
       - name: Upload debug APK
         if: ${{ success() }}
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7.0.2
         with:
           name: advanced-debug-${{ github.sha }}
           retention-days: 14

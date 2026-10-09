@@ -32,7 +32,7 @@ jobs:
       name: alpha-release
     steps:
       - name: Check out trusted delivery tooling
-        uses: actions/checkout@v5
+        uses: actions/checkout@v7.0.1
         with:
           ref: ${{ github.sha }}
           fetch-depth: 0
@@ -61,13 +61,13 @@ jobs:
             --github-output "$GITHUB_OUTPUT"
 
       - name: Set up Java
-        uses: actions/setup-java@v5
+        uses: actions/setup-java@v6.0.1
         with:
           distribution: temurin
           java-version: '17'
 
       - name: Set up Android APK inspection tools
-        uses: android-actions/setup-android@v4
+        uses: android-actions/setup-android@v4.0.4
         with:
           packages: platform-tools
 

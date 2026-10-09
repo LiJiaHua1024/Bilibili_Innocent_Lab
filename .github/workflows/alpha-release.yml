@@ -48,7 +48,7 @@ jobs:
 
     steps:
       - name: Check out source
-        uses: actions/checkout@v5
+        uses: actions/checkout@v7.0.1
         with:
           # 始终构建触发事件记录的精确提交，禁止 checkout 随分支移动而漂移。
           ref: ${{ github.sha }}
@@ -127,19 +127,19 @@ jobs:
             --github-output "$GITHUB_OUTPUT"
 
       - name: Set up Java
-        uses: actions/setup-java@v5
+        uses: actions/setup-java@v6.0.1
         with:
           distribution: temurin
           java-version: '17'
 
       - name: Set up Gradle and restore build cache
-        uses: gradle/actions/setup-gradle@v6
+        uses: gradle/actions/setup-gradle@v6.4.0
         with:
           # Keep the cache provider open-source and avoid overlapping setup-java caches.
           cache-provider: basic
 
       - name: Set up Android SDK
-        uses: android-actions/setup-android@v4
+        uses: android-actions/setup-android@v4.0.4
         with:
           # packages 默认值 "tools platform-tools" 会跑 `sdkmanager tools`，而 Google 已在
           # 2026-09-14 把废弃多年的 tools 包从 SDK 仓库下架，该调用直接 exit 1（Failed to
@@ -240,7 +240,7 @@ jobs:
 
       - name: Upload test and lint reports
         if: ${{ failure() }}
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7.0.2
         with:
           name: verify-reports
           path: |
@@ -261,7 +261,7 @@ jobs:
 
     steps:
       - name: Check out source and release template
-        uses: actions/checkout@v5
+        uses: actions/checkout@v7.0.1
         with:
           ref: ${{ github.sha }}
           fetch-depth: 0
@@ -279,19 +279,19 @@ jobs:
           fi
 
       - name: Set up Java
-        uses: actions/setup-java@v5
+        uses: actions/setup-java@v6.0.1
         with:
           distribution: temurin
           java-version: '17'
 
       - name: Set up Gradle and restore build cache
-        uses: gradle/actions/setup-gradle@v6
+        uses: gradle/actions/setup-gradle@v6.4.0
         with:
           # Restore the verify job's dependency/R8 task cache before signing.
           cache-provider: basic
 
       - name: Set up Android SDK
-        uses: android-actions/setup-android@v4
+        uses: android-actions/setup-android@v4.0.4
         with:
           # packages 默认值 "tools platform-tools" 会跑 `sdkmanager tools`，而 Google 已在
           # 2026-09-14 把废弃多年的 tools 包从 SDK 仓库下架，该调用直接 exit 1（Failed to
@@ -422,7 +422,7 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Upload verified signed Alpha asset
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7.0.2
         with:
           name: alpha-signed-release-asset-${{ github.sha }}
           path: release-asset
@@ -430,7 +430,7 @@ jobs:
           retention-days: 7
 
       - name: Upload Alpha R8 mapping
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7.0.2
         with:
           name: alpha-r8-mapping-${{ github.sha }}
           path: release-symbols
