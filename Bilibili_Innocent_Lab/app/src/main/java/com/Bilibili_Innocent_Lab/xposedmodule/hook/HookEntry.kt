@@ -2644,6 +2644,11 @@ class HookEntry : XposedModule() {
             )
             val featureInstallCoordinator = FeatureInstallCoordinator(hookEnvironment)
             val sponsorClassesRef = java.util.concurrent.atomic.AtomicReference(hostAdaptResult?.sponsorPlayer)
+            val classicPointsRef = java.util.concurrent.atomic.AtomicReference(hostAdaptResult?.commentClassicStyle)
+            val classicInstaller = CommentClassicStyleFeatureInstaller(
+                enabled = hookConfig.getBoolean(FeaturePreferences.COMMENT_CLASSIC_STYLE, false),
+                cachedPoints = { classicPointsRef.get() }
+            )
             val sponsorInstaller = SponsorBlockFeatureInstaller(
                 enabled = hookConfig.getBoolean(FeaturePreferences.SPONSORBLOCK_ENABLED, false),
                 automatic = hookConfig.getBoolean(FeaturePreferences.SPONSORBLOCK_AUTOMATIC, false),
@@ -3575,9 +3580,7 @@ class HookEntry : XposedModule() {
                             false
                         )
                     ),
-                    CommentClassicStyleFeatureInstaller(
-                        enabled = prefs.getBoolean(FeaturePreferences.COMMENT_CLASSIC_STYLE, false)
-                    ),
+                    classicInstaller,
                     SplashAutoNightFeatureInstaller(
                         enabled = prefs.getBoolean(
                             FeaturePreferences.SPLASH_AUTO_NIGHT,
@@ -4740,6 +4743,16 @@ class HookEntry : XposedModule() {
 
                             override fun onAdaptFinished(ok: Boolean) {
                                 if (ok) {
+                                    if (classicInstaller.requiresAdaptationRetry) {
+                                        classicPointsRef.set(VersionAdapter.loadCached(attachedContext,
+                                            versionAdapterResetTimestamp)?.commentClassicStyle)
+                                        hookEnvironment.postToMain?.invoke {
+                                            if (classicInstaller.requiresAdaptationRetry) {
+                                                featureInstallCoordinator.installAll(listOf(classicInstaller))
+                                                logInfo("comment_classic_adapt_ready", "[BIL] 旧版评论后台适配完成；已打开页面的实验缓存不会被改写，需冷启动")
+                                            }
+                                        }
+                                    }
                                     if (sponsorInstaller.requiresAdaptationRetry) {
                                         sponsorClassesRef.set(VersionAdapter.loadCached(attachedContext,
                                             versionAdapterResetTimestamp)?.sponsorPlayer)
@@ -4764,7 +4777,8 @@ class HookEntry : XposedModule() {
                         },
                         startupCache = startupCache,
                         kotlinDefaultWordsEnabled = prefs.getBoolean(FeaturePreferences.HIDE_HOME_SEARCH_DEFAULT_WORD, false),
-                        sponsorBlockEnabled = prefs.getBoolean(FeaturePreferences.SPONSORBLOCK_ENABLED, false)
+                        sponsorBlockEnabled = prefs.getBoolean(FeaturePreferences.SPONSORBLOCK_ENABLED, false),
+                        commentClassicStyleEnabled = prefs.getBoolean(FeaturePreferences.COMMENT_CLASSIC_STYLE, false)
                     )
                 }.onFailure { throwable ->
                     logError(

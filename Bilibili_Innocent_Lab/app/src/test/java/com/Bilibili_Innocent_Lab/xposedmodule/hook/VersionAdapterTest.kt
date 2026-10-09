@@ -10,6 +10,17 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class VersionAdapterTest {
+    @Test fun `classic comment cache is optional verified and merged per family`() {
+        val native = VersionAdapter.HookPoint("com.bilibili.lib.dd.DeviceDecision", "getBoolean", listOf("java.lang.String", "boolean"))
+        val kotlin = VersionAdapter.HookPoint("kntr.base.dd.IDeviceDecisionKt", "getBool", listOf("kntr.base.dd.IDeviceDecision", "java.lang.String", "boolean", "kntr.base.dd.IDeviceDecision\$Context"))
+        val points = com.Bilibili_Innocent_Lab.xposedmodule.hook.adapter.CommentClassicStylePoints(listOf(native), listOf(kotlin))
+        val sample = result().copy(commentClassicStyle = points)
+        assertEquals(points, VersionAdapter.AdaptResult.fromJson(sample.toJson())?.commentClassicStyle)
+        assertNull(VersionAdapter.AdaptResult.fromJson(result().toJson())?.commentClassicStyle)
+        assertNull(VersionAdapter.AdaptResult.fromJson(sample.toJson().put("comment_classic", JSONObject().put("native", "bad"))))
+        val live = sample.copy(commentClassicStyle = points.copy(kotlinReaders = emptyList()))
+        assertEquals(points, VersionAdapter.mergeRuntimeWithCached(live, sample)?.commentClassicStyle)
+    }
     @Test fun `sponsor optional classes round trip and live results retain priority`() {
         val point = com.Bilibili_Innocent_Lab.xposedmodule.hook.adapter.SponsorPlayerClasses(
             "com.bilibili.ship.theseus.Run", "com.bilibili.ship.theseus.Wrapper", null, "com.bilibili.ship.theseus.Seek")

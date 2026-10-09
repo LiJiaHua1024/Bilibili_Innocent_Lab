@@ -10,6 +10,8 @@ import android.widget.TextView
 import android.widget.Toast
 import com.Bilibili_Innocent_Lab.xposedmodule.hook.adapter.SponsorPlayerClasses
 import com.Bilibili_Innocent_Lab.xposedmodule.hook.adapter.SponsorPlayerLocator
+import com.Bilibili_Innocent_Lab.xposedmodule.hook.adapter.CommentClassicStyleLocator
+import com.Bilibili_Innocent_Lab.xposedmodule.hook.adapter.CommentClassicStylePoints
 import com.Bilibili_Innocent_Lab.xposedmodule.hook.adapter.KotlinDefaultWordsLocator
 import com.Bilibili_Innocent_Lab.xposedmodule.hook.adapter.PgcAutoActivityPopupLocator
 import com.Bilibili_Innocent_Lab.xposedmodule.hook.adapter.dex.AtomicJsonCache
@@ -1827,7 +1829,8 @@ object VersionAdapter {
         val diagnostics: List<AdaptDiagnostic>,
         /** 宿主全部 classes*.dex 的中央目录内容指纹；不包含安装路径。 */
         val dexSourceFingerprint: String = DEX_SOURCE_UNAVAILABLE,
-        val sponsorPlayer: SponsorPlayerClasses? = null
+        val sponsorPlayer: SponsorPlayerClasses? = null,
+        val commentClassicStyle: CommentClassicStylePoints? = null
     ) {
         fun toJson(): JSONObject = JSONObject().apply {
             put("sv", SCHEMA_VERSION)
@@ -1863,6 +1866,7 @@ object VersionAdapter {
             commentSection?.let { put("comment_section", it.toJson()) }
             splashAds?.let { put("splash_ads", it.toJson()) }
             sponsorPlayer?.let { put("sponsor_player", it.toJson()) }
+            commentClassicStyle?.let { put("comment_classic", it.toJson()) }
             put("fp", hostFingerprint)
             put("protocol_fp", protocolFingerprint)
             put("dex_fp", dexSourceFingerprint)
@@ -2239,7 +2243,9 @@ object VersionAdapter {
                     protocolFingerprint = o.optString("protocol_fp"),
                     diagnostics = diagnostics,
                     dexSourceFingerprint = o.getString("dex_fp"),
-                    sponsorPlayer = o.optJSONObject("sponsor_player")?.let(SponsorPlayerClasses::fromJson)
+                    sponsorPlayer = o.optJSONObject("sponsor_player")?.let(SponsorPlayerClasses::fromJson),
+                    commentClassicStyle = if (o.has("comment_classic"))
+                        CommentClassicStylePoints.fromJson(o.getJSONObject("comment_classic")) ?: return null else null
                 ).takeIf { it.isStructurallyValid() }
             }
         }
@@ -2951,7 +2957,8 @@ object VersionAdapter {
             hostFingerprint = cached.hostFingerprint,
             diagnostics = mergedDiagnostics,
             dexSourceFingerprint = cached.dexSourceFingerprint,
-            sponsorPlayer = runtime.sponsorPlayer ?: cached.sponsorPlayer
+            sponsorPlayer = runtime.sponsorPlayer ?: cached.sponsorPlayer,
+            commentClassicStyle = CommentClassicStyleLocator.merge(runtime.commentClassicStyle, cached.commentClassicStyle)
         )
     }
 
@@ -3043,9 +3050,10 @@ object VersionAdapter {
         resetTimestamp: Long,
         callback: AdaptCallback?,
         kotlinDefaultWordsEnabled: Boolean = false,
-        sponsorBlockEnabled: Boolean = false
+        sponsorBlockEnabled: Boolean = false,
+        commentClassicStyleEnabled: Boolean = false
     ) = ensureAdapted(
-        context, classLoader, resetTimestamp, callback, readStartupCache(context, resetTimestamp), kotlinDefaultWordsEnabled, sponsorBlockEnabled
+        context, classLoader, resetTimestamp, callback, readStartupCache(context, resetTimestamp), kotlinDefaultWordsEnabled, sponsorBlockEnabled, commentClassicStyleEnabled
     )
 
     internal fun ensureAdapted(
@@ -3055,7 +3063,8 @@ object VersionAdapter {
         callback: AdaptCallback?,
         startupCache: StartupCacheSnapshot,
         kotlinDefaultWordsEnabled: Boolean = false,
-        sponsorBlockEnabled: Boolean = false
+        sponsorBlockEnabled: Boolean = false,
+        commentClassicStyleEnabled: Boolean = false
     ) {
         // reset 不同意味着不是同一次安装快照，必须重新读取而不能复用已缓存的 null/旧结果。
         val startup = if (startupCache.resetTimestamp == resetTimestamp.coerceAtLeast(0L)) {
@@ -3071,11 +3080,14 @@ object VersionAdapter {
             KavaMemberLookup.hasClass(classLoader, it)
         }
         val cached = startup.usableCache(highCandidateExists)?.takeUnless { value ->
+            val classicRefresh = commentClassicStyleEnabled &&
+                CommentClassicStyleLocator.missing(classLoader, value.commentClassicStyle).isNotEmpty() &&
+                value.diagnostics.none { it.id == CommentClassicStyleLocator.DIAGNOSTIC && it.state == AdaptState.MISSING }
             val sponsorRefresh = sponsorBlockEnabled && SponsorPlayerLocator.refreshCache(sponsorBlockEnabled, SponsorPlayerLocator.applicable(classLoader),
                 SponsorPlayerLocator.direct(classLoader) != null,
                 value.sponsorPlayer?.let { SponsorPlayerLocator.resolve(classLoader, it) } != null,
                 value.diagnostics.any { it.id == SponsorPlayerLocator.DIAGNOSTIC && it.state == AdaptState.MISSING })
-            sponsorRefresh || kotlinDefaultWordsEnabled && KotlinDefaultWordsLocator.refreshCache(
+            classicRefresh || sponsorRefresh || kotlinDefaultWordsEnabled && KotlinDefaultWordsLocator.refreshCache(
                 enabled = true,
                 applicable = KotlinDefaultWordsLocator.applicable(classLoader),
                 directFound = KotlinDefaultWordsLocator.direct(classLoader) != null,
@@ -3109,7 +3121,7 @@ object VersionAdapter {
                 // `adapt` 已自带 runCatching，但 writeCache 与日志不在其中；宿主进程内
                 // 线程的逃逸异常一律杀进程，整段必须过防波堤。
                 HostThreadGuard.run("adapter.adapt_worker") {
-                    result = runCatching { adapt(context, classLoader, kotlinDefaultWordsEnabled, sponsorBlockEnabled) }.getOrNull()
+                    result = runCatching { adapt(context, classLoader, kotlinDefaultWordsEnabled, sponsorBlockEnabled, commentClassicStyleEnabled) }.getOrNull()
                     result?.let { adapted ->
                         // 写文件缓存（loadApp 快路径载体）；校验后原子替换，旧缓存不会被半截 JSON 覆盖。
                         if (!writeCache(adapted)) {
@@ -3286,7 +3298,7 @@ object VersionAdapter {
      * 适配结果主要用于快路径签名（定位不到签名不影响运行期内置候选注册），
      * 避免「功能可用但报适配失败」的误导（8.90.2 实测）。
      */
-    private fun adapt(context: Context, loader: ClassLoader, kotlinDefaultWordsEnabled: Boolean, sponsorBlockEnabled: Boolean): AdaptResult? {
+    private fun adapt(context: Context, loader: ClassLoader, kotlinDefaultWordsEnabled: Boolean, sponsorBlockEnabled: Boolean, commentClassicStyleEnabled: Boolean): AdaptResult? {
         val vc = biliVersionCode(context)
         val dexSource = runCatching {
             context.packageManager.getPackageInfo("tv.danmaku.bili", 0).applicationInfo
@@ -3301,6 +3313,7 @@ object VersionAdapter {
             KotlinDefaultWordsLocator.applicable(loader), homeTopBar?.kotlinDefaultWords != null)
         val directSponsor = if (sponsorBlockEnabled) SponsorPlayerLocator.direct(loader) else null
         val sponsorNeedsAssist = sponsorBlockEnabled && SponsorPlayerLocator.needsQuery(sponsorBlockEnabled, SponsorPlayerLocator.applicable(loader), directSponsor != null)
+        val classicMissing = if (commentClassicStyleEnabled) CommentClassicStyleLocator.missing(loader) else emptySet()
         val mineVip = locateMineVip(loader)
         val directBlockUpdate = locateBlockUpdate(loader)
         val directPlayerQuality = locateDefaultVideoQuality(loader)
@@ -3323,10 +3336,17 @@ object VersionAdapter {
                     if (directTopologyOutcome.points == null) add(DexAssistQuery.COMMENT_REPLY_MAPPER)
                     if (defaultWordsNeedsAssist) add(DexAssistQuery.SEARCH_DEFAULT_WORDS_KOTLIN)
                     if (sponsorNeedsAssist) addAll(SponsorPlayerLocator.queries)
+                    classicMissing.forEach { add(it.query) }
                 }
             )
         }
         val sponsor = directSponsor ?: if (sponsorNeedsAssist) SponsorPlayerLocator.assisted(loader, dexAssist) else null
+        val classic = if (commentClassicStyleEnabled) CommentClassicStyleLocator.locate(loader, dexAssist, true) else null
+        val classicUnresolved = classic != null && CommentClassicStyleLocator.missing(loader, classic).isNotEmpty()
+        val classicDiagnostic = AdaptDiagnostic(CommentClassicStyleLocator.DIAGNOSTIC,
+            if (classicUnresolved) AdaptState.MISSING else if (classic != null) AdaptState.FOUND else AdaptState.NOT_APPLICABLE,
+            if (!commentClassicStyleEnabled) "feature-disabled" else if (classicUnresolved) "unavailable-or-ambiguous"
+            else if (classicMissing.isEmpty()) "direct" else "verified")
         val sponsorDiagnostic = AdaptDiagnostic(SponsorPlayerLocator.DIAGNOSTIC,
             if (sponsor != null) AdaptState.FOUND else if (sponsorNeedsAssist) AdaptState.MISSING else AdaptState.NOT_APPLICABLE,
             if (!sponsorBlockEnabled) "feature-disabled" else if (directSponsor != null) "direct" else if (sponsor != null) "verified" else "unavailable-or-ambiguous")
@@ -3499,9 +3519,10 @@ object VersionAdapter {
                 commentTopologyOutcome.failureDetail, commentSection,
                 splashAds
             ) + protocolFingerprint.toDiagnostic() + blockUpdateAssist.diagnostic +
-                topologyAssist.diagnostic + playerQualityAssist.diagnostic + defaultWordsAssist.diagnostic + sponsorDiagnostic,
+                topologyAssist.diagnostic + playerQualityAssist.diagnostic + defaultWordsAssist.diagnostic + sponsorDiagnostic + classicDiagnostic,
             dexSourceFingerprint = dexSource?.value ?: DEX_SOURCE_UNAVAILABLE,
-            sponsorPlayer = sponsor?.classes
+            sponsorPlayer = sponsor?.classes,
+            commentClassicStyle = classic
         )
     }
 
