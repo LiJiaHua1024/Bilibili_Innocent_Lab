@@ -50,6 +50,7 @@ import com.Bilibili_Innocent_Lab.xposedmodule.hook.feature.BottomBarFeatureInsta
 import com.Bilibili_Innocent_Lab.xposedmodule.hook.feature.HostBottomBarFxFeatureInstaller
 import com.Bilibili_Innocent_Lab.xposedmodule.hook.feature.HostVideoCardStyleFeatureInstaller
 import com.Bilibili_Innocent_Lab.xposedmodule.hook.feature.HostTopBarFxFeatureInstaller
+import com.Bilibili_Innocent_Lab.xposedmodule.hook.feature.HostTouchGlowFeatureInstaller
 import com.Bilibili_Innocent_Lab.xposedmodule.hook.feature.BvToAvFeatureInstaller
 import com.Bilibili_Innocent_Lab.xposedmodule.hook.feature.CommentPurifyFeatureInstaller
 import com.Bilibili_Innocent_Lab.xposedmodule.hook.feature.CommentFilterFeatureInstaller
@@ -2745,6 +2746,12 @@ class HookEntry : XposedModule() {
                             false
                         ),
                         points = hostAdaptResult?.homeTopBar
+                    ),
+                    HostTouchGlowFeatureInstaller(
+                        enabled = (!prefs.getBoolean(FeaturePreferences.HOST_TOP_BAR_LIQUID_GLASS, false) &&
+                            prefs.getBoolean(FeaturePreferences.HOST_TOP_BAR_TOUCH_GLOW, false)) ||
+                            (!prefs.getBoolean(FeaturePreferences.HOST_BOTTOM_BAR_LIQUID_GLASS, false) &&
+                                prefs.getBoolean(FeaturePreferences.HOST_BOTTOM_BAR_TOUCH_GLOW, false))
                     ),
                     HostTopBarFxFeatureInstaller(
                         liquidGlass = prefs.getBoolean(

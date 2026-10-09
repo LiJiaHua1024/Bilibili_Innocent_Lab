@@ -1248,9 +1248,9 @@
     <string name="update_canary_actions">Actions APK</string>
     <string name="update_canary_telegram">Telegram channel</string>
     <string name="host_bottom_bar_compact">Compact bottom bar</string>
-    <string name="host_bottom_bar_compact_tip">Reduces the bottom bar height. Restart Bilibili to apply.</string>
+    <string name="host_bottom_bar_compact_tip">Requires the floating bottom capsule. Reduces the capsule height. Restart Bilibili to apply.</string>
     <string name="host_bottom_bar_icon_only">Icon-only bottom bar</string>
-    <string name="host_bottom_bar_icon_only_tip">Hides tab labels, centers icons vertically, and reduces vertical space. Can be combined with compact mode. Restart Bilibili to apply.</string>
+    <string name="host_bottom_bar_icon_only_tip">Requires the floating bottom capsule. Hides capsule tab labels, centers icons vertically, and reduces space. Can be combined with compact mode. Restart Bilibili to apply.</string>
     <string name="sponsorblock_title">SponsorBlock</string>
     <string name="highlights_sponsorblock">Ordinary video details can show community sponsor-segment prompts, with optional automatic skipping and undo. Disabled by default; enabling it queries www.bsbsb.top.</string>
     <string name="highlights_host_glass_materials">Choose soft lens or Liquid glass materials and rendering modes independently for the host top and bottom bars.</string>

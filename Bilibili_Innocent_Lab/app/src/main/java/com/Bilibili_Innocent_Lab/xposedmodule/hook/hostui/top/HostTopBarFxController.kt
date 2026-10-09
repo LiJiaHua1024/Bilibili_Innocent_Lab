@@ -6,6 +6,7 @@ import com.Bilibili_Innocent_Lab.xposedmodule.hook.hostui.common.HostDockLayer
 import com.Bilibili_Innocent_Lab.xposedmodule.hook.hostui.common.HostGlowView
 import com.Bilibili_Innocent_Lab.xposedmodule.hook.hostui.common.HostSurfaceScope
 import com.Bilibili_Innocent_Lab.xposedmodule.hook.hostui.common.HostSurfaceStyle
+import com.Bilibili_Innocent_Lab.xposedmodule.hook.hostui.common.HostTouchGlowBinding
 import com.Bilibili_Innocent_Lab.xposedmodule.settings.appearance.HostChromeAppearance
 
 import android.annotation.SuppressLint
@@ -76,6 +77,10 @@ internal object HostTopBarFxController {
 
         val hierarchy = locateTopBarHierarchy(root, fragment, searchFieldName) ?: return
         val topBarDock = hierarchy.topBarDock
+        if (!config.liquidGlass) {
+            if (config.touchGlow) HostTouchGlowBinding.attach(topBarDock)
+            return
+        }
         val context = topBarDock.context
         val density = topBarDock.resources.displayMetrics.density
         val theme = HostChromeTheme(context)

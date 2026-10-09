@@ -3,6 +3,7 @@
 package com.Bilibili_Innocent_Lab.xposedmodule.ui.activity
 
 import android.util.Log
+import android.view.View
 import android.widget.LinearLayout as NativeLinearLayout
 import androidx.core.content.edit
 import com.Bilibili_Innocent_Lab.xposedmodule.R
@@ -22,6 +23,13 @@ internal fun MainActivity.hostBottomBarAppearanceRows(
 ) {
     with(performer) {
         var refreshGlassSettings: () -> Unit = {}
+        val capsuleOptions = mutableListOf<View>()
+        fun refreshCapsuleOptions() {
+            capsuleOptions.forEach {
+                it.isEnabled = hostBottomBarLiquidGlass
+                it.alpha = if (hostBottomBarLiquidGlass) 1f else .45f
+            }
+        }
         MaterialSwitch(
             lparams = LayoutParams(widthMatchParent = true) {
                 topMargin = 12.dp
@@ -53,6 +61,7 @@ internal fun MainActivity.hostBottomBarAppearanceRows(
                     )
                 }
                 refreshGlassSettings()
+                refreshCapsuleOptions()
             }
         }
         TextView(
@@ -67,10 +76,12 @@ internal fun MainActivity.hostBottomBarAppearanceRows(
         refreshGlassSettings = hostGlassConfigurationRows(this, bottom = true)
         MaterialSwitch(
             lparams = LayoutParams(widthMatchParent = true) {
+                marginStart = 16.dp
                 topMargin = 12.dp
                 bottomMargin = 5.dp
             }
         ) {
+            capsuleOptions += this
             bindFavoriteSwitch(this, FeaturePreferences.HOST_BOTTOM_BAR_COMPACT, directToggle = true)
             text = stringResource(R.string.host_bottom_bar_compact)
             isAllCaps = false
@@ -78,6 +89,10 @@ internal fun MainActivity.hostBottomBarAppearanceRows(
             textSize = 15f
             isChecked = hostBottomBarCompact
             setOnCheckedChangeListener { _, checked ->
+                if (!hostBottomBarLiquidGlass) {
+                    isChecked = hostBottomBarCompact
+                    return@setOnCheckedChangeListener
+                }
                 hostBottomBarCompact = checked
                 runCatching {
                     prefs().edit {
@@ -95,7 +110,8 @@ internal fun MainActivity.hostBottomBarAppearanceRows(
                 }
             }
         }
-        TextView(lparams = LayoutParams(widthMatchParent = true)) {
+        TextView(lparams = LayoutParams(widthMatchParent = true) { marginStart = 16.dp }) {
+            capsuleOptions += this
             alpha = 0.6f
             text = stringResource(R.string.host_bottom_bar_compact_tip)
             textColor = colorResource(R.color.colorTextDark)
@@ -103,10 +119,12 @@ internal fun MainActivity.hostBottomBarAppearanceRows(
         }
         MaterialSwitch(
             lparams = LayoutParams(widthMatchParent = true) {
+                marginStart = 16.dp
                 topMargin = 12.dp
                 bottomMargin = 5.dp
             }
         ) {
+            capsuleOptions += this
             bindFavoriteSwitch(this, FeaturePreferences.HOST_BOTTOM_BAR_ICON_ONLY, directToggle = true)
             text = stringResource(R.string.host_bottom_bar_icon_only)
             isAllCaps = false
@@ -114,6 +132,10 @@ internal fun MainActivity.hostBottomBarAppearanceRows(
             textSize = 15f
             isChecked = hostBottomBarIconOnly
             setOnCheckedChangeListener { _, checked ->
+                if (!hostBottomBarLiquidGlass) {
+                    isChecked = hostBottomBarIconOnly
+                    return@setOnCheckedChangeListener
+                }
                 hostBottomBarIconOnly = checked
                 runCatching {
                     prefs().edit {
@@ -131,12 +153,14 @@ internal fun MainActivity.hostBottomBarAppearanceRows(
                 }
             }
         }
-        TextView(lparams = LayoutParams(widthMatchParent = true)) {
+        TextView(lparams = LayoutParams(widthMatchParent = true) { marginStart = 16.dp }) {
+            capsuleOptions += this
             alpha = 0.6f
             text = stringResource(R.string.host_bottom_bar_icon_only_tip)
             textColor = colorResource(R.color.colorTextDark)
             textSize = 12f
         }
+        refreshCapsuleOptions()
         MaterialSwitch(
             lparams = LayoutParams(widthMatchParent = true) {
                 topMargin = 12.dp

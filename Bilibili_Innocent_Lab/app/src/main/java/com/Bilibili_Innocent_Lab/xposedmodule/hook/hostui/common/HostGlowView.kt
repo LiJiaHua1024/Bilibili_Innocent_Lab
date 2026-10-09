@@ -60,7 +60,8 @@ internal class HostGlowView(
         barWidth: Int,
         barHeight: Int,
         viewShiftX: Float = 0f,
-        viewShiftY: Float = 0f
+        viewShiftY: Float = 0f,
+        cornerRadius: Float = barHeight / 2f
     ) {
         val now = System.nanoTime()
         val dt = if (lastUpdateNanos == 0L) GlowState.DEFAULT_DT_SECONDS
@@ -82,7 +83,7 @@ internal class HostGlowView(
         frame.centerY = touchY
         frame.boundsWidth = barWidth.toFloat()
         frame.boundsHeight = barHeight.toFloat()
-        frame.cornerRadius = barHeight / 2f
+        frame.cornerRadius = cornerRadius
 
         getLocationOnScreen(screenLoc)
         val metrics = resources.displayMetrics

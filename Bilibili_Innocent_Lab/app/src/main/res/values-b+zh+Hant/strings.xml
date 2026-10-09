@@ -1248,9 +1248,9 @@
     <string name="update_canary_actions">Actions 安裝套件</string>
     <string name="update_canary_telegram">Telegram 頻道</string>
     <string name="host_bottom_bar_compact">小底部導覽列</string>
-    <string name="host_bottom_bar_compact_tip">縮小底部導覽列高度，減少佔用空間。重新啟動嗶哩嗶哩後生效。</string>
+    <string name="host_bottom_bar_compact_tip">需開啟底部導覽列懸浮膠囊。縮小膠囊高度，減少佔用空間。重新啟動嗶哩嗶哩後生效。</string>
     <string name="host_bottom_bar_icon_only">底部導覽列無字模式</string>
-    <string name="host_bottom_bar_icon_only_tip">隱藏首頁、動態等標籤，僅保留圖示並垂直置中，同時縮減上下留白。可與小底部導覽列疊加使用，重新啟動嗶哩嗶哩後生效。</string>
+    <string name="host_bottom_bar_icon_only_tip">需開啟底部導覽列懸浮膠囊。隱藏膠囊中的標籤，僅保留圖示並垂直置中，同時縮減留白。可與小底部導覽列疊加使用，重新啟動嗶哩嗶哩後生效。</string>
     <string name="sponsorblock_title">商單片段 · SponsorBlock</string>
     <string name="highlights_sponsorblock">普通影片詳情頁可提示社群標註的商單片段，另可選擇自動略過並復原。預設關閉，開啟後會查詢 www.bsbsb.top 社群服務。</string>
     <string name="highlights_host_glass_materials">新增頂欄與底欄獨立的柔光、液態玻璃材質及渲染方式選擇。</string>

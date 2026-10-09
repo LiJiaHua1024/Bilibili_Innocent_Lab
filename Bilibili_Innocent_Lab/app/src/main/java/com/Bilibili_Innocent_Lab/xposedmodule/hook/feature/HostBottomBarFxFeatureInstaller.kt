@@ -28,7 +28,7 @@ internal class HostBottomBarFxFeatureInstaller(
         if (environment.processName != TARGET_PACKAGE) {
             return FeatureInstallResult.Skipped("non-main-process")
         }
-        if (!liquidGlass && !touchGlow && !compact && !iconOnly) {
+        if (!liquidGlass && !touchGlow) {
             return FeatureInstallResult.Skipped("disabled")
         }
         val adapted = points ?: run {
@@ -41,8 +41,8 @@ internal class HostBottomBarFxFeatureInstaller(
         val config = HostBottomBarFxConfig(
             liquidGlass = liquidGlass,
             touchGlow = touchGlow,
-            compact = compact,
-            iconOnly = iconOnly,
+            compact = liquidGlass && compact,
+            iconOnly = liquidGlass && iconOnly,
             appearance = appearance
         )
 

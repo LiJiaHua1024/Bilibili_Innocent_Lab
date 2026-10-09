@@ -4,6 +4,7 @@ import com.Bilibili_Innocent_Lab.xposedmodule.hook.hostui.common.HostChromeTheme
 import com.Bilibili_Innocent_Lab.xposedmodule.hook.hostui.common.HostGlowView
 import com.Bilibili_Innocent_Lab.xposedmodule.hook.hostui.common.HostSurfaceScope
 import com.Bilibili_Innocent_Lab.xposedmodule.hook.hostui.common.HostSurfaceStyle
+import com.Bilibili_Innocent_Lab.xposedmodule.hook.hostui.common.HostTouchGlowBinding
 
 import android.graphics.Outline
 import android.os.Build
@@ -26,7 +27,7 @@ internal object HostBottomBarFxController {
     private val attachedHosts = Collections.newSetFromMap(WeakHashMap<ViewGroup, Boolean>())
 
     fun attach(tabHost: ViewGroup, config: HostBottomBarFxConfig) {
-        if (!config.liquidGlass && !config.touchGlow && !config.compact && !config.iconOnly) return
+        if (!config.liquidGlass && !config.touchGlow) return
         tabHost.post {
             attachInternal(tabHost, config)
         }
@@ -51,6 +52,12 @@ internal object HostBottomBarFxController {
             ?: (0 until tabHost.childCount).map { tabHost.getChildAt(it) }
                 .filterIsInstance<ViewGroup>().firstOrNull()
 
+        // 小底栏和无字模式仅调整模块胶囊，不能把胶囊几何套到官方底栏。
+        if (!config.liquidGlass) {
+            if (config.touchGlow) HostTouchGlowBinding.attach(tabHost)
+            return
+        }
+
         val barHeight = (config.heightDp * density).roundToInt()
         val marginH = horizontalMarginPx(tabHost, container, config, density)
         val marginB = (12f * density).roundToInt()
@@ -58,7 +65,7 @@ internal object HostBottomBarFxController {
 
         // 2. 悬浮胶囊几何形态与 Liquid Glass 外壳背景
         val backdrop = if (config.liquidGlass) HostSurfaceScope(tabHost, colors, appearance = config.appearance) else null
-        if (config.liquidGlass || config.compact || config.iconOnly) {
+        if (config.liquidGlass) {
             val lp = tabHost.layoutParams
             if (lp != null) {
                 lp.height = barHeight
@@ -99,7 +106,7 @@ internal object HostBottomBarFxController {
         var sanitizePosted = false
         val sanitizeRunnable = Runnable {
             sanitizePosted = false
-            if (config.liquidGlass || config.touchGlow) stripAllHostArtifacts(tabHost, isRoot = true)
+            if (config.liquidGlass) stripAllHostArtifacts(tabHost, isRoot = true)
             alignTabContent(tabHost, container, density, insetH, config)
             // 冷启动时底栏还没有尺寸、找不到采样源；布局稳定后每次清理都顺手补一次定位（命中即 O(1)）。
             backdrop?.revalidate()
@@ -114,15 +121,6 @@ internal object HostBottomBarFxController {
 
         tabHost.addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ -> requestSanitization() }
 
-
-        if (!config.liquidGlass && !config.touchGlow) {
-            container?.addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ -> requestSanitization() }
-            tabHost.viewTreeObserver.addOnPreDrawListener {
-                alignTabContent(tabHost, container, density, insetH, config)
-                true
-            }
-            return
-        }
 
         // 4. 插入专属硬件加速指示滑块、柔光图层与实时透镜 (放在最底层)
         val dockLayer = HostBottomBarDockLayer(
@@ -208,7 +206,7 @@ internal object HostBottomBarFxController {
         insetH: Int,
         config: HostBottomBarFxConfig = HostBottomBarFxConfig()
     ) {
-        if (container == null) return
+        if (container == null || !config.liquidGlass) return
         if (config.iconOnly) {
             val lp = tabHost.layoutParams as? ViewGroup.MarginLayoutParams
             val marginH = horizontalMarginPx(tabHost, container, config, density)
@@ -273,10 +271,12 @@ internal object HostBottomBarFxController {
         for (i in 0 until container.childCount) {
             val tab = container.getChildAt(i) as? ViewGroup ?: continue
             if (tab.visibility == View.GONE) continue
-            if (tab.background != null) tab.background = null
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && tab.foreground != null) tab.foreground = null
-            if (tab is FrameLayout && tab.foreground != null) tab.foreground = null
-            if (tab.isPressed) tab.isPressed = false
+            if (config.liquidGlass) {
+                if (tab.background != null) tab.background = null
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && tab.foreground != null) tab.foreground = null
+                if (tab is FrameLayout && tab.foreground != null) tab.foreground = null
+                if (tab.isPressed) tab.isPressed = false
+            }
             tab.setPadding(0, 0, 0, 0)
 
             val tlp = tab.layoutParams
