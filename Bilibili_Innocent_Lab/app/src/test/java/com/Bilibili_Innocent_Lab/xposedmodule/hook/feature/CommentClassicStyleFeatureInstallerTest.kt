@@ -1,6 +1,9 @@
 package com.Bilibili_Innocent_Lab.xposedmodule.hook.feature
 
 import com.Bilibili_Innocent_Lab.xposedmodule.hook.HookPointRegistry
+import com.Bilibili_Innocent_Lab.xposedmodule.hook.adapter.CommentClassicStyleLocatorTest
+import com.Bilibili_Innocent_Lab.xposedmodule.hook.adapter.CommentClassicStyleLocatorTest.KotlinReaders
+import com.Bilibili_Innocent_Lab.xposedmodule.hook.adapter.CommentClassicStylePoints
 import org.junit.Assert.*
 import org.junit.Test
 
@@ -8,7 +11,7 @@ class CommentClassicStyleFeatureInstallerTest {
     private fun environment(
         registrar: HookRegistrar = TestHookRegistrar,
         process: String = "tv.danmaku.bili",
-        loader: ClassLoader? = javaClass.classLoader,
+        loader: ClassLoader? = CommentClassicStyleLocatorTest.loader(),
         evidence: (String, FeatureRuntimeStage, Int) -> Unit = { _, _, _ -> }
     ) = HookEnvironment(
         processName = process,
@@ -74,5 +77,46 @@ class CommentClassicStyleFeatureInstallerTest {
             CommentClassicStyleFeatureInstaller(true).install(environment(loader = null)))
         assertEquals(FeatureInstallResult.Installed(1, complete = false),
             CommentClassicStyleFeatureInstaller(true).install(environment(PlayerPortTestRegistrar("comment.classic.dd.0"))))
+    }
+
+    @Test fun `kotlin direct and default calls disable all four containers and forward unrelated keys`() {
+        val registrar = PlayerPortTestRegistrar()
+        val installer = CommentClassicStyleFeatureInstaller(true)
+        installer.install(environment(registrar, loader = CommentClassicStyleLocatorTest.loader(kotlin = true)))
+        assertEquals(4, registrar.hooks.size)
+        for ((id, entry) in registrar.hooks.filterKeys { it.startsWith("comment.classic.kotlin.") }) {
+            for (key in listOf("comment.kntr.enabled", "comment.kntr.route.enabled", "comment.kntr.landscape.enabled", "comment.kntr.story.enabled")) {
+                val args = arrayOfNulls<Any?>(entry.member.parameterCount); args[1] = key; args[2] = true
+                assertEquals(false, registrar.invoke(id, args = args) { error("must disable KMP selection") })
+            }
+            val args = arrayOfNulls<Any?>(entry.member.parameterCount); args[1] = "comment.kntr.enabled_extra"; args[2] = true
+            assertEquals(true, registrar.invoke(id, args = args) { true })
+        }
+        installer.install(environment(registrar, loader = CommentClassicStyleLocatorTest.loader(kotlin = true)))
+        assertEquals(4, registrar.hooks.size)
+    }
+
+    @Test fun `late adaptation fills missing family without replacing registered hooks or previews`() {
+        val registrar = PlayerPortTestRegistrar()
+        var cache: CommentClassicStylePoints? = null
+        val loader = CommentClassicStyleLocatorTest.loader(kotlin = true, missingKotlin = true)
+        val installer = CommentClassicStyleFeatureInstaller(true) { cache }
+        installer.install(environment(registrar, loader = loader))
+        assertTrue(installer.requiresAdaptationRetry)
+        val initial = registrar.hooks.toMap()
+        cache = CommentClassicStylePoints(emptyList(), listOf(CommentClassicStyleLocatorTest.point(KotlinReaders::class.java, "getBool")))
+        installer.install(environment(registrar, loader = loader))
+        assertFalse(installer.requiresAdaptationRetry)
+        assertEquals(3, registrar.hooks.size)
+        initial.forEach { (id, hook) -> assertSame(hook, registrar.hooks[id]) }
+    }
+
+    @Test fun `kotlin selection stays open when native style registration is incomplete`() {
+        val registrar = PlayerPortTestRegistrar("comment.classic.dd.0")
+        CommentClassicStyleFeatureInstaller(true).install(environment(registrar, loader = CommentClassicStyleLocatorTest.loader(kotlin = true)))
+        registrar.hooks.filterKeys { it.startsWith("comment.classic.kotlin.") }.forEach { (id, entry) ->
+            val args = arrayOfNulls<Any?>(entry.member.parameterCount); args[1] = "comment.kntr.enabled"; args[2] = true
+            assertEquals(true, registrar.invoke(id, args = args) { true })
+        }
     }
 }

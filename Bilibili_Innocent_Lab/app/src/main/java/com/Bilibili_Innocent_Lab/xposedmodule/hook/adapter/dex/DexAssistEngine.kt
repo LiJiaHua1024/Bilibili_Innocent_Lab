@@ -40,7 +40,12 @@ internal enum class DexAssistQuery {
     /** 具有 core/scope 捕获字段、并创建 seek 协程的双参数包装入口。 */
     SPONSOR_PLAYER_WRAPPER,
     /** 明确捕获 Context/PlayerContainer 的 SuspendLambda 构造边界。 */
-    SPONSOR_CONTAINER_SCOPE
+    SPONSOR_CONTAINER_SCOPE,
+
+    /** 评论外观实验常量调用者 → 原生布尔读取方法，不替换合并 lambda。 */
+    COMMENT_CLASSIC_NATIVE,
+    /** KMP 评论容器实验常量调用者 → 带 key 参数的静态布尔读取边界。 */
+    COMMENT_CLASSIC_KOTLIN
 }
 
 internal sealed interface DexAssistResult {

@@ -32,13 +32,15 @@ class DexAssistSessionTest {
     fun `planned queries share one pass`() {
         val engine = RecordingEngine()
         val planned = setOf(DexAssistQuery.BLOCK_UPDATE, DexAssistQuery.PLAYER_DEFAULT_QUALITY,
-            DexAssistQuery.SEARCH_DEFAULT_WORDS_KOTLIN)
+            DexAssistQuery.SEARCH_DEFAULT_WORDS_KOTLIN, DexAssistQuery.COMMENT_CLASSIC_NATIVE, DexAssistQuery.COMMENT_CLASSIC_KOTLIN)
         val session = session(engine, planned)
 
         assertTrue(engine.batches.isEmpty()) // 不取结果就不建桥
         session.result(DexAssistQuery.BLOCK_UPDATE)
         session.result(DexAssistQuery.PLAYER_DEFAULT_QUALITY)
         session.result(DexAssistQuery.SEARCH_DEFAULT_WORDS_KOTLIN)
+        session.result(DexAssistQuery.COMMENT_CLASSIC_NATIVE)
+        session.result(DexAssistQuery.COMMENT_CLASSIC_KOTLIN)
 
         assertEquals(listOf(planned), engine.batches)
         assertTrue(engine.singles.isEmpty())

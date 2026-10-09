@@ -8,6 +8,7 @@ import java.lang.reflect.Modifier
 import com.Bilibili_Innocent_Lab.xposedmodule.hook.adapter.KotlinDefaultWordsLocator
 import com.Bilibili_Innocent_Lab.xposedmodule.hook.adapter.SponsorPlayerAccess
 import com.Bilibili_Innocent_Lab.xposedmodule.hook.adapter.SponsorPlayerLocator
+import com.Bilibili_Innocent_Lab.xposedmodule.hook.adapter.CommentClassicStyleLocator
 
 /**
  * DexKit 后台实现：只在常规 KavaRef 定位缺失时创建桥，并在每个代码 APK 查询后立即关闭。
@@ -80,7 +81,28 @@ internal object DexKitAssistEngine : DexAssistEngine {
                                     failed[query] = DexAssistResult.Reason.TOO_MANY_MATCHES
                                 } else {
                                     matches.forEach { data ->
-                                        if (query == DexAssistQuery.SPONSOR_CONTAINER_SCOPE) {
+                                        if (query == DexAssistQuery.COMMENT_CLASSIC_NATIVE || query == DexAssistQuery.COMMENT_CLASSIC_KOTLIN) {
+                                            // R8 会把实验 lambda 与其它业务合并；只挂其调用的 key 参数读取器。
+                                            val invokes = data.invokes
+                                            if (invokes.size > 128) { failed[query] = DexAssistResult.Reason.TOO_MANY_MATCHES; return@forEach }
+                                            val family = if (query == DexAssistQuery.COMMENT_CLASSIC_NATIVE)
+                                                CommentClassicStyleLocator.Family.NATIVE else CommentClassicStyleLocator.Family.KOTLIN
+                                            invokes.forEach { callee ->
+                                                val method = runCatching { callee.getMethodInstance(classLoader) }.getOrNull()
+                                                    ?: return@forEach
+                                                if (!CommentClassicStyleLocator.verified(method, family)) return@forEach
+                                                found += method
+                                                if (family == CommentClassicStyleLocator.Family.KOTLIN && method.parameterCount == 6) {
+                                                    // 常量调用者可能只引用 default 包装；它委托的四参 getter 也必须覆盖。
+                                                    val delegates = callee.invokes
+                                                    if (delegates.size > 128) { failed[query] = DexAssistResult.Reason.TOO_MANY_MATCHES; return@forEach }
+                                                    delegates.filter { it.declaredClassName == callee.declaredClassName }
+                                                        .mapNotNull { runCatching { it.getMethodInstance(classLoader) }.getOrNull() }
+                                                        .filter { CommentClassicStyleLocator.isDefaultDelegate(method, it) }.forEach { found += it }
+                                                }
+                                            }
+                                            if (found.size > MAX_MATCHES) failed[query] = DexAssistResult.Reason.TOO_MANY_MATCHES
+                                        } else if (query == DexAssistQuery.SPONSOR_CONTAINER_SCOPE) {
                                             runCatching { data.getConstructorInstance(classLoader).declaringClass }
                                                 .getOrNull()?.let { classes.getValue(query) += it }
                                         } else {
@@ -120,6 +142,12 @@ internal object DexKitAssistEngine : DexAssistEngine {
     }
 
     private fun find(bridge: DexKitBridge, query: DexAssistQuery) = when (query) {
+        DexAssistQuery.COMMENT_CLASSIC_NATIVE, DexAssistQuery.COMMENT_CLASSIC_KOTLIN -> bridge.findMethod {
+            matcher {
+                usingStrings(listOf(if (query == DexAssistQuery.COMMENT_CLASSIC_NATIVE)
+                    CommentClassicStyleLocator.NATIVE_ANCHOR else CommentClassicStyleLocator.KOTLIN_ANCHOR), StringMatchType.Equals)
+            }
+        }
         DexAssistQuery.SPONSOR_RUN_PLAYABLE -> bridge.findMethod {
             searchPackages(SponsorPlayerLocator.FAMILY)
             matcher {

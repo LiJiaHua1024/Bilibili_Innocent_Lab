@@ -1,22 +1,33 @@
 package com.Bilibili_Innocent_Lab.xposedmodule.hook.feature
 
+import com.Bilibili_Innocent_Lab.xposedmodule.hook.adapter.CommentClassicStyleLocator
+import com.Bilibili_Innocent_Lab.xposedmodule.hook.adapter.CommentClassicStyleLocator.Family
+import com.Bilibili_Innocent_Lab.xposedmodule.hook.adapter.CommentClassicStylePoints
 import com.Bilibili_Innocent_Lab.xposedmodule.runtime.KavaMemberLookup
-import com.highcapable.kavaref.extension.classOf
-import com.highcapable.kavaref.extension.isStatic
+import java.lang.reflect.Method
+import java.util.concurrent.atomic.AtomicBoolean
 
 /**
  * 恢复宿主自带的旧版评论布局与楼中楼预览。
  *
- * 宿主按 next_appearance / next_appearance_experiment_3 选择评论 Holder，
+ * 先关闭 kntr 容器实验，再按 next_appearance / next_appearance_experiment_3 恢复原生 Holder，
  * 数据转换也读取同一组实验位；同时在后台主列表转换前补齐服务端省略的楼中楼预览。
  * 新宿主内联转换器后，在主列表 fetch 协程的响应恢复边界处理相同 protobuf。
  * 实验结果有进程级 Lazy 缓存，必须冷启动生效。
  */
 internal class CommentClassicStyleFeatureInstaller(
-    private val enabled: Boolean
+    private val enabled: Boolean,
+    private val cachedPoints: () -> CommentClassicStylePoints? = { null }
 ) : FeatureInstaller {
     override val id: String = ID
+    @Volatile var requiresAdaptationRetry = false
+        private set
+    private val registered = linkedSetOf<Method>()
+    private var previewResult: Pair<Int, Boolean>? = null
+    @Volatile private var nativeFallbackReady = false
+    private val observedFamily = Array(Family.entries.size) { AtomicBoolean(false) }
 
+    @Synchronized
     override fun install(environment: HookEnvironment): FeatureInstallResult {
         if (!enabled) {
             environment.reportStatus(CHANNEL_STATUS, "disabled")
@@ -25,43 +36,50 @@ internal class CommentClassicStyleFeatureInstaller(
         if (environment.processName != TARGET_PACKAGE) {
             return FeatureInstallResult.Skipped("non-main-process")
         }
-        val owner = KavaMemberLookup.classOrNull(environment.classLoader, DEVICE_DECISION_CLASS)
-            ?: return missing(environment, "missing-config-boundary")
-        val methods = KavaMemberLookup.declaredMethods(owner, makeAccessible = true) { method ->
-            !method.isStatic && method.name == "getBoolean" &&
-                method.returnType == classOf<Boolean>() &&
-                method.parameterTypes.firstOrNull() == classOf<String>() &&
-                method.parameterTypes.getOrNull(1) == classOf<Boolean>()
-        }
-        if (methods.isEmpty()) return missing(environment, "missing-config-boundary")
-
-        var installed = 0
-        methods.forEachIndexed { index, method ->
-            runCatching {
-                environment.registrar.exact(
-                    "comment.classic.dd.$index", method.declaringClass, method.name,
-                    *method.parameterTypes
-                ) {
-                    before {
-                        // DeviceDecision 是全局热路径：未命中只比较 key，不复制参数或分配集合。
-                        if (!isStyleExperimentKey(argOrNull(0))) return@before
-                        result = false
-                        environment.reportRuntimeEvidence(ID, FeatureRuntimeStage.OBSERVED)
-                        environment.reportRuntimeEvidence(ID, FeatureRuntimeStage.APPLIED)
+        val loader = environment.classLoader ?: return missing(environment, "missing-config-boundary")
+        if (!KavaMemberLookup.hasClass(loader, CommentClassicStyleLocator.NATIVE_ENTRY))
+            return missing(environment, "missing-legacy-container")
+        val cache = cachedPoints()
+        val families = if (CommentClassicStyleLocator.kotlinApplicable(loader)) Family.entries else listOf(Family.NATIVE)
+        val readers = families.associateWith { CommentClassicStyleLocator.readers(loader, cache, it) }
+        requiresAdaptationRetry = readers.values.any { it.isEmpty() }
+        readers.forEach { (family, methods) ->
+            methods.forEachIndexed { index, method ->
+                if (method in registered) return@forEachIndexed
+                val observedKey = "comment_classic_observed_${family.name}"
+                val observedMessage = "[BIL] 旧版评论配置读取已拦截(family=${family.name})；不代表当前页面已切换布局"
+                runCatching {
+                    environment.registrar.exact(
+                        "comment.classic.${if (family == Family.NATIVE) "dd" else "kotlin"}.$index", method.declaringClass, method.name,
+                        *method.parameterTypes
+                    ) {
+                        before {
+                            // DeviceDecision 是全局热路径：未命中只比较 key，不复制参数或分配集合。
+                            val key = argOrNull(family.keyIndex)
+                            if (!CommentClassicStyleLocator.matchesKey(key) ||
+                                CommentClassicStyleLocator.isContainerKey(key) && !nativeFallbackReady) return@before
+                            result = false
+                            environment.reportRuntimeEvidence(ID, FeatureRuntimeStage.OBSERVED)
+                            environment.reportRuntimeEvidence(ID, FeatureRuntimeStage.APPLIED)
+                            if (observedFamily[family.ordinal].compareAndSet(false, true))
+                                environment.logInfo(observedKey, observedMessage)
+                        }
                     }
+                    registered += method
+                }.onFailure { throwable ->
+                    environment.logError("comment_classic_register_$index", "[BIL] 旧版评论样式 Hook 注册失败: $throwable")
                 }
-                installed += 1
-            }.onFailure { throwable ->
-                environment.logError("comment_classic_register_$index", "[BIL] 旧版评论样式 Hook 注册失败: $throwable")
             }
+            if (family == Family.NATIVE) nativeFallbackReady = methods.isNotEmpty() && methods.all(registered::contains)
         }
-        if (installed == 0) return missing(environment, "registration-failed")
-        val (previewHooks, previewComplete) = installPreviews(environment)
-        val complete = installed == methods.size && previewComplete
-        installed += previewHooks
+        if (registered.isEmpty()) return missing(environment, if (requiresAdaptationRetry) "missing-config-boundary" else "registration-failed")
+        val (previewHooks, previewComplete) = previewResult ?: installPreviews(environment).also { previewResult = it }
+        val complete = readers.values.all { it.isNotEmpty() && it.all(registered::contains) } && previewComplete
+        val installed = registered.size + previewHooks
         environment.reportRuntimeEvidence(ID, FeatureRuntimeStage.ADAPTED)
         environment.reportStatus(CHANNEL_STATUS, if (complete) "success" else "partial:style-and-preview")
         environment.logInfo("comment_classic_installed", "[BIL] 旧版评论已安装，hooks=$installed，previewHooks=$previewHooks")
+        if (!complete) environment.logInfo("comment_classic_partial", "[BIL] 旧版评论部分接入：native=${readers[Family.NATIVE]?.count(registered::contains) ?: 0}, kotlin=${readers[Family.KOTLIN]?.count(registered::contains) ?: 0}, preview=$previewComplete；补齐适配后需冷启动")
         return FeatureInstallResult.Installed(installed, complete)
     }
 
@@ -120,7 +138,6 @@ internal class CommentClassicStyleFeatureInstaller(
         const val ID = "comment_classic_style"
         private const val TARGET_PACKAGE = "tv.danmaku.bili"
         private const val CHANNEL_STATUS = "comment_classic_style_status"
-        private const val DEVICE_DECISION_CLASS = "com.bilibili.lib.dd.DeviceDecision"
 
         internal fun isStyleExperimentKey(key: Any?): Boolean =
             key == "comment.next_appearance" || key == "comment.next_appearance_experiment_3"
