@@ -41,13 +41,22 @@ include(":app")
 // Build the pinned release with public extensions for the host's original fade, motion and glass.
 // Both modules are substituted together; the original JitPack artifacts are never mixed in.
 val lumenRevision = "1.2.2"
-check(file("gradle/libs.versions.toml").readText().contains("lumen-engine = \"$lumenRevision\"")) {
+val hostVersionCatalog = file("gradle/libs.versions.toml").readText()
+check(hostVersionCatalog.contains("lumen-engine = \"$lumenRevision\"")) {
     "Update the Lumen source pin, archive checksum and extension together with the catalog."
 }
 fun digest(bytes: ByteArray) = MessageDigest.getInstance("SHA-256")
     .digest(bytes).joinToString("") { "%02x".format(it) }
 val lumenPatches = listOf("linear-fade.patch", "motion-parity.patch", "surface-parity.patch").map { file("gradle/lumen/$it") }
-val lumenPatchHash = digest(lumenPatches.fold(ByteArray(0)) { bytes, patch -> bytes + patch.readBytes() })
+// Composite Android builds require the same AGP; keep shared versions and the cache in sync.
+val lumenHostVersions = listOf("agp", "kotlin", "androidx-core-ktx", "androidx-appcompat", "androidx-recyclerview", "junit")
+    .associateWith { name ->
+        Regex("^${Regex.escape(name)}\\s*=\\s*\"([^\"]+)\"\\s*$", RegexOption.MULTILINE)
+            .find(hostVersionCatalog)?.groupValues?.get(1)
+            ?: error("Missing host version for Lumen: $name")
+    }
+val lumenVersionFingerprint = lumenHostVersions.entries.joinToString("\n") { "${it.key}=${it.value}" }.toByteArray()
+val lumenPatchHash = digest(lumenPatches.fold(lumenVersionFingerprint) { bytes, patch -> bytes + patch.readBytes() })
 val lumenCache = file(".gradle/lumen-source").apply { mkdirs() }
 val lumenSource = lumenCache.resolve("${lumenRevision.take(12)}-${lumenPatchHash.take(12)}")
 RandomAccessFile(lumenCache.resolve("prepare.lock"), "rw").channel.use { channel ->
@@ -89,6 +98,14 @@ RandomAccessFile(lumenCache.resolve("prepare.lock"), "rw").channel.use { channel
             val process = builder.start()
             val output = process.inputStream.bufferedReader().use { it.readText() }
             check(process.waitFor() == 0) { "Could not apply the pinned Lumen extension:\n$output" }
+            val sourceCatalog = lumenSource.resolve("gradle/libs.versions.toml")
+            var alignedCatalog = sourceCatalog.readText()
+            for ((name, version) in lumenHostVersions) {
+                val pattern = Regex("^${Regex.escape(name)}\\s*=\\s*\"[^\"]+\"\\s*$", RegexOption.MULTILINE)
+                check(pattern.findAll(alignedCatalog).count() == 1) { "Missing or ambiguous Lumen version: $name" }
+                alignedCatalog = pattern.replace(alignedCatalog) { "$name = \"$version\"" }
+            }
+            sourceCatalog.writeText(alignedCatalog)
             // Make diagnostics identify the reviewed extension of the release.
             val properties = lumenSource.resolve("gradle.properties")
             properties.writeText(properties.readText().replace("lumen.version=$lumenRevision",
