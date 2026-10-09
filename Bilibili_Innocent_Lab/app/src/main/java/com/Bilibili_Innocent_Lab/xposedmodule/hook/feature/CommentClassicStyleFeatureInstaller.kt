@@ -9,6 +9,7 @@ import com.highcapable.kavaref.extension.isStatic
  *
  * 宿主按 next_appearance / next_appearance_experiment_3 选择评论 Holder，
  * 数据转换也读取同一组实验位；同时在后台主列表转换前补齐服务端省略的楼中楼预览。
+ * 新宿主内联转换器后，在主列表 fetch 协程的响应恢复边界处理相同 protobuf。
  * 实验结果有进程级 Lazy 缓存，必须冷启动生效。
  */
 internal class CommentClassicStyleFeatureInstaller(
@@ -70,7 +71,8 @@ internal class CommentClassicStyleFeatureInstaller(
             environment.logError("comment_classic_preview_shape", "[BIL] 评论预览接口解析失败: $it")
         })
         val mappers = CommentReplyPreviewHost.mainListMappers(loader)
-        if (host == null || mappers.isEmpty()) {
+        val coroutine = if (mappers.isEmpty()) CommentReplyPreviewCoroutineBoundary.resolve(loader) else null
+        if (host == null || (mappers.isEmpty() && coroutine == null)) {
             environment.logError("comment_classic_preview_missing", "[BIL] 评论预览补取边界缺失，当前仅恢复旧版布局")
             return 0 to false
         }
@@ -82,6 +84,11 @@ internal class CommentClassicStyleFeatureInstaller(
             },
             failure = { environment.logError("comment_classic_preview_request", "[BIL] 评论预览补取失败: $it") }
         )
+        fun restore(original: Any): Any = runCatching { restorer.restore(original) }.getOrElse {
+            environment.logError("comment_classic_preview_restore", "[BIL] 评论预览转换失败，保留原响应: $it")
+            original
+        }
+        if (coroutine != null) return coroutine.install(environment, ::restore)
         var installed = 0
         mappers.forEachIndexed { index, method ->
             runCatching {
@@ -92,9 +99,7 @@ internal class CommentClassicStyleFeatureInstaller(
                         // 新版本若改到主线程则保留原响应，不能让补取阻塞界面。
                         if (android.os.Looper.myLooper() == android.os.Looper.getMainLooper()) return@before
                         val original = argOrNull(0) ?: return@before
-                        runCatching { restorer.restore(original) }.onSuccess { args[0] = it }.onFailure {
-                            environment.logError("comment_classic_preview_restore", "[BIL] 评论预览转换失败，保留原响应: $it")
-                        }
+                        args[0] = restore(original)
                     }
                 }
                 installed++
