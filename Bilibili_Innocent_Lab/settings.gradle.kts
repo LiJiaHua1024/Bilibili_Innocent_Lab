@@ -40,7 +40,7 @@ include(":app")
 
 // Build the pinned release with public extensions for the host's original fade, motion and glass.
 // Both modules are substituted together; the original JitPack artifacts are never mixed in.
-val lumenRevision = "1.2.0"
+val lumenRevision = "1.2.2"
 check(file("gradle/libs.versions.toml").readText().contains("lumen-engine = \"$lumenRevision\"")) {
     "Update the Lumen source pin, archive checksum and extension together with the catalog."
 }
@@ -54,7 +54,7 @@ RandomAccessFile(lumenCache.resolve("prepare.lock"), "rw").channel.use { channel
     channel.lock().use {
         if (!lumenSource.resolve(".prepared").isFile) {
             val archive = lumenCache.resolve("$lumenRevision.zip")
-            val archiveHash = "fce6a90310c8de6c0b5694d12c2378e008cc59cfb28168eb213ab1fbda236fc8"
+            val archiveHash = "c736b882977584dd79fa4e320f0353ab05027fad284ee8b024af9ac2ec4fc4e6"
             if (!archive.isFile) {
                 check(!gradle.startParameter.isOffline) {
                     "Lumen source is not cached. Run Gradle once without --offline to fetch the pinned archive."
@@ -91,7 +91,7 @@ RandomAccessFile(lumenCache.resolve("prepare.lock"), "rw").channel.use { channel
             check(process.waitFor() == 0) { "Could not apply the pinned Lumen extension:\n$output" }
             // Make diagnostics identify the reviewed extension of the release.
             val properties = lumenSource.resolve("gradle.properties")
-            properties.writeText(properties.readText().replace("lumen.version=1.2.0",
+            properties.writeText(properties.readText().replace("lumen.version=$lumenRevision",
                 "lumen.version=$lumenRevision-host.${lumenPatchHash.take(12)}"))
             lumenSource.resolve(".prepared").writeText(lumenPatchHash)
         }

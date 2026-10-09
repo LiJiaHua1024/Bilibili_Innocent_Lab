@@ -1,6 +1,6 @@
 # 凝光宿主视觉公共扩展
 
-基线固定为上游 [1.2.0 发布版](https://github.com/jichuo1/LumenCoacervationEngine/releases/tag/1.2.0)。为保留迁移前的效果，在引擎原包名下应用小范围公共扩展；宿主适配只使用公开 API，不重新维护材质、探针或弹簧求解器。接入结构见 `app/src/main/java/com/Bilibili_Innocent_Lab/xposedmodule/hook/hostui/README.md`。
+基线固定为上游 [1.2.2 发布版](https://github.com/jichuo1/LumenCoacervationEngine/releases/tag/1.2.2)。为保留迁移前的效果，在引擎原包名下应用小范围公共扩展；宿主适配只使用公开 API，不重新维护材质、探针或弹簧求解器。接入结构见 `app/src/main/java/com/Bilibili_Innocent_Lab/xposedmodule/hook/hostui/README.md`。
 
 `linear-fade.patch` 是引擎原包名下的小范围公共扩展，增加 `LumenSurfaceSampling.fadeCurve` / `LumenSurfaceFadeCurve.LINEAR`；默认 `SMOOTH` 保持原行为。GPU、软件采样与静态承托共用同一策略。补丁包含引擎 API 文档、策略与后端接线测试，以及 sample 的 GPU 实际像素检查，不包含宿主业务代码。
 
@@ -12,7 +12,7 @@
 
 可读性扩展必须保留调用方的 `backdropOpacity`，只调整色罩。完整帧的柔光采样 alpha 经归一化后为 1；将其重写为 `1 - tintOpacity` 会使未模糊内容透出，浅深色不能使用不同的合成规则。外观验收同时使用完整模块 renderer 和细条纹/文字背景，不能只对照旧宿主单层透明算法或低频色块。
 
-Android settings 使用正规复合构建，同时替换 catalog 中同版本的 `lumen-engine` 与 `lumen-motion` JitPack 模块，避免新旧类共存。源码从固定标签下载，SHA-256 为 `fce6a90310c8de6c0b5694d12c2378e008cc59cfb28168eb213ab1fbda236fc8`；三个补丁按 settings 中的顺序拼接后计算 SHA-256，作为源码缓存键及 `1.2.0-host.<hash>` 诊断版本后缀。局部 `.gitattributes` 固定补丁为 LF，防止跨平台换行改变版本标识。首次构建需要联网取得源码，此后支持 `--offline`。引擎包名保持上游名称，不发布自建依赖。
+Android settings 使用正规复合构建，同时替换 catalog 中同版本的 `lumen-engine` 与 `lumen-motion` JitPack 模块，避免新旧类共存。源码从固定标签下载，SHA-256 为 `c736b882977584dd79fa4e320f0353ab05027fad284ee8b024af9ac2ec4fc4e6`；三个补丁按 settings 中的顺序拼接后计算 SHA-256，作为源码缓存键及 `1.2.2-host.<hash>` 诊断版本后缀。局部 `.gitattributes` 固定补丁为 LF，防止跨平台换行改变版本标识。首次构建需要联网取得源码，此后支持 `--offline`。引擎包名保持上游名称，不发布自建依赖。
 
 源码缓存在 Android 工程的 `.gradle/lumen-source/`，不提交缓存。用项目原有 Gradle wrapper 执行 `:lumen:lumen-engine:testDebugUnitTest`、`:lumen:sample:testReleaseUnitTest` 和引擎构建/Lint；sample 的 `linearGpuFadeHasUniformPixelCoverage` 检查真实 GPU 输出。
 
