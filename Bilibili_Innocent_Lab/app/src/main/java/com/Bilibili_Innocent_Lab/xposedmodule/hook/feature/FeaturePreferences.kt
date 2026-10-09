@@ -295,7 +295,7 @@ internal object FeaturePreferences {
     /** 用户写的判定口径（空 = 默认）；防注入前缀与输出格式由模块固定，见 SemanticGuidance。 */
     const val SEMANTIC_JEV_GUIDANCE = "semantic_jev_guidance"
 
-    /** 2–4 号判定来源：接口类型 / 地址 / 模型（Key 是运行时键，见 RemoteHookConfigContract）。1 号沿用 SEMANTIC_JEV_*。 */
+    /** 2–8 号判定来源：接口类型 / 地址 / 模型（Key 是运行时键，见 RemoteHookConfigContract）。1 号沿用 SEMANTIC_JEV_*。 */
     const val SEMANTIC_SOURCE_2_PROVIDER = "semantic_source_2_provider"
     const val SEMANTIC_SOURCE_2_ENDPOINT = "semantic_source_2_endpoint"
     const val SEMANTIC_SOURCE_2_MODEL = "semantic_source_2_model"
@@ -305,6 +305,18 @@ internal object FeaturePreferences {
     const val SEMANTIC_SOURCE_4_PROVIDER = "semantic_source_4_provider"
     const val SEMANTIC_SOURCE_4_ENDPOINT = "semantic_source_4_endpoint"
     const val SEMANTIC_SOURCE_4_MODEL = "semantic_source_4_model"
+    const val SEMANTIC_SOURCE_5_PROVIDER = "semantic_source_5_provider"
+    const val SEMANTIC_SOURCE_5_ENDPOINT = "semantic_source_5_endpoint"
+    const val SEMANTIC_SOURCE_5_MODEL = "semantic_source_5_model"
+    const val SEMANTIC_SOURCE_6_PROVIDER = "semantic_source_6_provider"
+    const val SEMANTIC_SOURCE_6_ENDPOINT = "semantic_source_6_endpoint"
+    const val SEMANTIC_SOURCE_6_MODEL = "semantic_source_6_model"
+    const val SEMANTIC_SOURCE_7_PROVIDER = "semantic_source_7_provider"
+    const val SEMANTIC_SOURCE_7_ENDPOINT = "semantic_source_7_endpoint"
+    const val SEMANTIC_SOURCE_7_MODEL = "semantic_source_7_model"
+    const val SEMANTIC_SOURCE_8_PROVIDER = "semantic_source_8_provider"
+    const val SEMANTIC_SOURCE_8_ENDPOINT = "semantic_source_8_endpoint"
+    const val SEMANTIC_SOURCE_8_MODEL = "semantic_source_8_model"
 
     /** 各过滤面的判定来源：auto（自动分流）或来源编号。 */
     const val DYNAMIC_SEMANTIC_FILTER_SOURCE = "dynamic_semantic_filter_source"
@@ -324,6 +336,10 @@ internal object FeaturePreferences {
         2 -> Triple(SEMANTIC_SOURCE_2_PROVIDER, SEMANTIC_SOURCE_2_ENDPOINT, SEMANTIC_SOURCE_2_MODEL)
         3 -> Triple(SEMANTIC_SOURCE_3_PROVIDER, SEMANTIC_SOURCE_3_ENDPOINT, SEMANTIC_SOURCE_3_MODEL)
         4 -> Triple(SEMANTIC_SOURCE_4_PROVIDER, SEMANTIC_SOURCE_4_ENDPOINT, SEMANTIC_SOURCE_4_MODEL)
+        5 -> Triple(SEMANTIC_SOURCE_5_PROVIDER, SEMANTIC_SOURCE_5_ENDPOINT, SEMANTIC_SOURCE_5_MODEL)
+        6 -> Triple(SEMANTIC_SOURCE_6_PROVIDER, SEMANTIC_SOURCE_6_ENDPOINT, SEMANTIC_SOURCE_6_MODEL)
+        7 -> Triple(SEMANTIC_SOURCE_7_PROVIDER, SEMANTIC_SOURCE_7_ENDPOINT, SEMANTIC_SOURCE_7_MODEL)
+        8 -> Triple(SEMANTIC_SOURCE_8_PROVIDER, SEMANTIC_SOURCE_8_ENDPOINT, SEMANTIC_SOURCE_8_MODEL)
         else -> throw IllegalArgumentException("semantic source $index")
     }
 

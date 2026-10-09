@@ -83,6 +83,68 @@ Once enabled, the module synchronises the currently supported feature configurat
 
 ## Features
 
+### AI task assistant (experimental)
+
+The optional assistant accepts natural-language goals and can search Bilibili, page through a bounded
+result set, inspect video details and navigate to known candidates. It is off by default; restart
+Bilibili after enabling its host interface.
+
+Configure up to eight API sources, explicitly select the sources allowed to receive the task, and run
+the tool/decision/vision capability test. Tests make real API requests and use quota. Both chat and
+JEV/Decisions endpoints participate. Leave the main-source field blank for automatic routing. A fixed
+main source is tried first; another main source takes over only with explicit fallback enabled.
+Selected, verified vision and decision helpers can cooperate independently of the main source.
+
+Optional screenshots require separate consent and a successful random-image challenge. Automatic
+routing can use a tool planner, a vision-capable JEV, or an ordinary vision model as a text-only JEV's
+eyes. Only selected sources with real vision proof receive images; images never enter planner history.
+Secure/input screens and uninspectable WebView/Compose pages are
+rejected. Tasks are unavailable while accessibility services are enabled because accessibility takeover
+has not yet been reliably adapted; enabling such a service during a task also stops it.
+Touching, pressing a key, leaving the task context or using the host stop button takes over
+and stops the task. Duration in seconds and tool steps are independently configurable, defaulting to
+120 seconds and 12 steps; zero means unlimited. Individual requests and renewable host leases remain
+bounded, and repeated operations with no new evidence stop. Tasks are not resumed after process
+death. Bounded conversation rounds, historical summaries and task-local detail/vision caches preserve
+observation time without retaining images or replacing current authorization. Arbitrary coordinates, shell, account writes and
+payments are unavailable.
+
+An optional Agent status island shows the module icon and animated operating state. Expand it for
+the current action tip, then open the execution log. Grant Android display-over-other-apps permission
+in task settings; without it, task execution remains available. The public overlay stays below system
+bars. Narrow centered cutouts align the two sides to the camera horizontal projection; edge holes,
+notches, landscape and unavailable cutout data use a safe centered fallback. Ordinary apps cannot
+guarantee placement around a physical camera inside the system status bar.
+During a task, logs use a separate non-focusable overlay and stay outside the host PixelCopy surface.
+Afterward, use the module settings log entry; switching activities still invokes existing takeover rules.
+Private logs store only stages, source numbers, roles, timing, outcomes, token counts and cache flags,
+never goals, keys, images, reasoning or raw replies. Four tasks, 256 events per task and a 64 KiB total
+budget bound retention, with visible omission counts. Interrupted tasks are recorded without replay.
+The small status view refreshes at most 20 fps; screen-off, lock, permission revocation and task closure
+remove its window and animation.
+
+Search RPC results are distinguished from visible results. Activity launch arguments do not prove
+playback, and publisher verification does not by itself establish an official original source. Retest
+after changing an endpoint, model or key; the module uses capability proofs for 24 hours. Existing
+semantic-source credentials retain their protected host-configuration delivery; the Agent action
+protocol does not additionally transmit credentials. Live API, device/framework and rollout-specific
+acceptance remain separate from APK structure and JVM verification.
+Planner, vision and decision roles have independent health/cooldown state. Vision failures retain
+structured search and detail paths. Decisions use the actually verified choice/noul/score formats;
+compatibility retries require an explicit schema rejection and share a request deadline. With only
+decision sources, actions come from a predefined search/pagination/details/screen menu, with no
+invented parameters or video opening/playback. Complex goals should also select a tool-capable model.
+Unlimited budgets do not extend the 24-hour capability proof or guarantee Android process survival.
+Task input uses a soft budget with six recent complete tool rounds and up to eight deduplicated historical
+records. The original goal, latest complete tool round, candidate identities and verification/unknown
+states remain available; history never grants current navigation authority. Short-lived auxiliary results
+can reuse identical evidence or the same image/page. Changed images, pages, evidence, sources or expired
+proof still require fresh checks. Planner actions and unknown visual conclusions are never cached.
+Auxiliary provider usage reaches execution logs; cache hits do not repeat previous usage as new consumption.
+Output budgets and image challenges stay unchanged for reasoning-model and OCR compatibility. Savings
+come from smaller repeated inputs, fewer auxiliary requests and fewer explicitly rejected compatibility
+attempts. Local byte reductions are not provider-billed token counts or monetary savings.
+
 The module splits its features into independent switches, so you can enable only the parts you need. The UI is split into "Cleanup" and "Enhancements", each ending with its own advanced settings; free copy and bubble appearance live in the Enhancements column. The reorganisation kept existing switch values and behaviour; after enabling a host feature you usually need to restart Bilibili. If the current client version has no reliable enough adaptation entry point, the feature skips processing and leaves the host's original behaviour untouched.
 
 | UI entry | Contents |

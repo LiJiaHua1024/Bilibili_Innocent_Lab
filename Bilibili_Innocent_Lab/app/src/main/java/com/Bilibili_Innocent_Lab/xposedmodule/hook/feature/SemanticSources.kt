@@ -6,7 +6,7 @@ import java.util.concurrent.atomic.AtomicInteger
 
 /**
  * 一个判定来源：接口类型 + 模型 + 地址 + Key。最多 [MAX_SOURCES] 个，[index] 从 1 开始，与设置页编号一致。
- * 1 号沿用最早的单来源设置键（升级后原配置不变），2–4 号是多来源新增的。
+ * 1 号沿用最早的单来源设置键（升级后原配置不变），2–8 号是多来源新增的。
  */
 internal data class SemanticSource(
     val index: Int,
@@ -21,10 +21,11 @@ internal data class SemanticSource(
     val learnKey: String by lazy { SemanticJudge.learnKeyOf(identity) }
 
     companion object {
-        const val MAX_SOURCES = 4
+        const val MAX_SOURCES = 8
 
         /** Key 为空、后端配置不全（对话模型未填模型名）或地址非法时返回 null：这个来源不启用。 */
         fun from(index: Int, apiKey: String, endpoint: String, provider: String, model: String): SemanticSource? {
+            if (index !in 1..MAX_SOURCES) return null
             val key = apiKey.trim().takeIf { it.isNotEmpty() && it.length <= SemanticJudge.MAX_API_KEY_LENGTH }
                 ?: return null
             val backend = SemanticBackend.of(provider, model) ?: return null
@@ -35,7 +36,7 @@ internal data class SemanticSource(
 }
 
 /**
- * 过滤面用哪些来源：[AUTO] = 全部已配置来源自动分流；"1"–"4" = 固定一个来源。
+ * 过滤面用哪些来源：[AUTO] = 全部已配置来源自动分流；"1"–"8" = 固定一个来源。
  * 固定的来源不存在（被删除或配置不全）时退回自动分流：宁可换来源也不让功能静默失效。
  */
 internal object SemanticRoute {
@@ -53,12 +54,15 @@ internal object SemanticRoute {
  * 各面都会绕开它；一个来源正忙，各面都会把新请求交给别的来源。
  *
  * 分流：选"预计最快完成"的来源，估计值 = (在途请求数 + 1) × 近期单请求耗时（指数平滑）。
- * 没用过的来源先按 [PRIOR_MS] 估计，所以每个来源都会被试到；慢的来源自然分到的少。
+ * 首轮每个可用来源最多先试一次；之后按估计分流，并有限重试久未使用的空闲来源。
+ * 探测不增加请求数量或线程：只改变下一个请求交给谁，冷却和固定路由优先。
  */
 internal class SemanticSourcePool(val sources: List<SemanticSource>) {
     internal class Slot(val source: SemanticSource) {
         @Volatile var cooldownUntil = 0L
         val inFlight = AtomicInteger()
+        /** 仅在池锁内读写；-1 表示此进程尚未向该来源分配请求。 */
+        internal var lastAcquired = -1L
         @Volatile var latencyMs = PRIOR_MS
         /** 连续失败次数；成功一次清零。 */
         @Volatile var failures = 0
@@ -113,6 +117,7 @@ internal class SemanticSourcePool(val sources: List<SemanticSource>) {
     }
 
     private val slots: List<Slot> = sources.map(::Slot)
+    private var acquisitions = 0L
 
     init {
         // 登记到判定器的共享表：套用上次保存的可信度，写盘时也从这里取最新值。
@@ -133,7 +138,18 @@ internal class SemanticSourcePool(val sources: List<SemanticSource>) {
      * 用完必须调 [release]。
      */
     fun acquire(candidates: List<Slot>, now: Long, exclude: Set<Slot> = emptySet()): Slot? = synchronized(this) {
-        pick(candidates, now, exclude)?.also { it.inFlight.incrementAndGet() }
+        val available = candidates.filter { it.available(now) && it !in exclude }
+        val idle = available.filter { it.inFlight.get() == 0 }
+        // 即使网络线程少于来源数，前几条完成后也会试到尚未分配的来源。
+        val untried = idle.filter { it.lastAcquired < 0 }.minByOrNull { it.source.index }
+        // 不让先前慢、现已恢复的来源永久饿死；低可信来源仍按正常估计降权。
+        val overdue = idle.filter {
+            !it.untrusted && it.lastAcquired >= 0 && acquisitions - it.lastAcquired >= REPROBE_AFTER
+        }.minByOrNull { it.lastAcquired }
+        (untried ?: overdue ?: pick(available, now))?.also {
+            it.lastAcquired = acquisitions++
+            it.inFlight.incrementAndGet()
+        }
     }
 
     fun release(slot: Slot) {
@@ -142,6 +158,8 @@ internal class SemanticSourcePool(val sources: List<SemanticSource>) {
 
     companion object {
         const val PRIOR_MS = 1_500.0
+        /** 至少间隔 32 次分配才重新探测一个闲置来源，不额外发请求。 */
+        internal const val REPROBE_AFTER = 32L
         private const val SMOOTHING = 0.3
         const val MAX_BACKOFF_MS = 300_000L
         private const val MAX_BACKOFF_SHIFT = 5

@@ -32,7 +32,7 @@ import com.Bilibili_Innocent_Lab.xposedmodule.settings.appearance.HostGlassRende
 internal object SettingsCatalog {
     const val PRODUCT_ID = "bilibili-innocent-lab.settings"
     const val SCOPE_ID = "core-user-settings"
-    const val CATALOG_VERSION = 45
+    const val CATALOG_VERSION = 47
     const val ID_PLAYER_DEFAULT_SPEED = "player.default_speed.percent"
     const val ID_PLAYER_LONG_PRESS_SPEED = "player.long_press_speed.percent"
     const val ID_FREE_COPY_COMMENT = "free_copy.comment.enabled"
@@ -187,6 +187,9 @@ internal object SettingsCatalog {
             restorePolicy = RestorePolicy.MANUAL, introducedCatalogVersion = 22),
         bool(ID_BILI_ACCESS_KEY_AUTHORIZED, FeaturePreferences.BILI_ACCESS_KEY_AUTHORIZED,
             R.string.bili_access_key_authorize, restorePolicy = RestorePolicy.MANUAL, introducedCatalogVersion = 29),
+        bool(com.Bilibili_Innocent_Lab.xposedmodule.agent.AgentPreferences.CATALOG_ID,
+            com.Bilibili_Innocent_Lab.xposedmodule.agent.AgentPreferences.ENABLED, R.string.agent_title,
+            restorePolicy = RestorePolicy.MANUAL, introducedCatalogVersion = 47),
         // JEV 语义判定的非敏感配置；API Key 是 hook_config 运行时键，不进目录、不进备份。
         text(ID_SEMANTIC_JEV_ENDPOINT, FeaturePreferences.SEMANTIC_JEV_ENDPOINT, R.string.semantic_jev_endpoint,
             maxStringLength = SemanticJudge.MAX_ENDPOINT_LENGTH, introducedCatalogVersion = 31),
@@ -225,6 +228,31 @@ internal object SettingsCatalog {
             maxStringLength = SemanticJudge.MAX_ENDPOINT_LENGTH, introducedCatalogVersion = 36),
         text("compat.semantic_source.4.model", FeaturePreferences.SEMANTIC_SOURCE_4_MODEL, R.string.semantic_source_4_label,
             maxStringLength = SemanticBackend.MAX_MODEL_LENGTH, introducedCatalogVersion = 36),
+        // v46：扩展到 8 个来源；新来源默认无凭据，不会自行启用。
+        text("compat.semantic_source.5.provider", FeaturePreferences.SEMANTIC_SOURCE_5_PROVIDER, R.string.semantic_source_5_label,
+            default = SemanticBackend.JEV, allowed = SemanticBackend.IDS, introducedCatalogVersion = 46),
+        text("compat.semantic_source.5.endpoint", FeaturePreferences.SEMANTIC_SOURCE_5_ENDPOINT, R.string.semantic_source_5_label,
+            maxStringLength = SemanticJudge.MAX_ENDPOINT_LENGTH, introducedCatalogVersion = 46),
+        text("compat.semantic_source.5.model", FeaturePreferences.SEMANTIC_SOURCE_5_MODEL, R.string.semantic_source_5_label,
+            maxStringLength = SemanticBackend.MAX_MODEL_LENGTH, introducedCatalogVersion = 46),
+        text("compat.semantic_source.6.provider", FeaturePreferences.SEMANTIC_SOURCE_6_PROVIDER, R.string.semantic_source_6_label,
+            default = SemanticBackend.JEV, allowed = SemanticBackend.IDS, introducedCatalogVersion = 46),
+        text("compat.semantic_source.6.endpoint", FeaturePreferences.SEMANTIC_SOURCE_6_ENDPOINT, R.string.semantic_source_6_label,
+            maxStringLength = SemanticJudge.MAX_ENDPOINT_LENGTH, introducedCatalogVersion = 46),
+        text("compat.semantic_source.6.model", FeaturePreferences.SEMANTIC_SOURCE_6_MODEL, R.string.semantic_source_6_label,
+            maxStringLength = SemanticBackend.MAX_MODEL_LENGTH, introducedCatalogVersion = 46),
+        text("compat.semantic_source.7.provider", FeaturePreferences.SEMANTIC_SOURCE_7_PROVIDER, R.string.semantic_source_7_label,
+            default = SemanticBackend.JEV, allowed = SemanticBackend.IDS, introducedCatalogVersion = 46),
+        text("compat.semantic_source.7.endpoint", FeaturePreferences.SEMANTIC_SOURCE_7_ENDPOINT, R.string.semantic_source_7_label,
+            maxStringLength = SemanticJudge.MAX_ENDPOINT_LENGTH, introducedCatalogVersion = 46),
+        text("compat.semantic_source.7.model", FeaturePreferences.SEMANTIC_SOURCE_7_MODEL, R.string.semantic_source_7_label,
+            maxStringLength = SemanticBackend.MAX_MODEL_LENGTH, introducedCatalogVersion = 46),
+        text("compat.semantic_source.8.provider", FeaturePreferences.SEMANTIC_SOURCE_8_PROVIDER, R.string.semantic_source_8_label,
+            default = SemanticBackend.JEV, allowed = SemanticBackend.IDS, introducedCatalogVersion = 46),
+        text("compat.semantic_source.8.endpoint", FeaturePreferences.SEMANTIC_SOURCE_8_ENDPOINT, R.string.semantic_source_8_label,
+            maxStringLength = SemanticJudge.MAX_ENDPOINT_LENGTH, introducedCatalogVersion = 46),
+        text("compat.semantic_source.8.model", FeaturePreferences.SEMANTIC_SOURCE_8_MODEL, R.string.semantic_source_8_label,
+            maxStringLength = SemanticBackend.MAX_MODEL_LENGTH, introducedCatalogVersion = 46),
         text(ID_DYNAMIC_SEMANTIC_SOURCE, FeaturePreferences.DYNAMIC_SEMANTIC_FILTER_SOURCE, R.string.semantic_route_title,
             default = SemanticRoute.AUTO, allowed = SemanticRoute.IDS, introducedCatalogVersion = 36),
         text(ID_DANMAKU_SEMANTIC_SOURCE, FeaturePreferences.DANMAKU_SEMANTIC_FILTER_SOURCE, R.string.semantic_route_title,
@@ -918,7 +946,7 @@ internal object SettingsCatalog {
     val byStorageKey: Map<String, SettingSpec> = specs.associateBy(SettingSpec::storageKey)
 
     init {
-        check(specs.size == 206) { "Expected 206 catalog settings, found ${specs.size}" }
+        check(specs.size == 219) { "Expected 219 catalog settings, found ${specs.size}" }
         check(byId.size == specs.size) { "Duplicate logical setting id" }
         check(specs.map(SettingSpec::storageKey).distinct().size == specs.size) {
             "Duplicate settings storage key"

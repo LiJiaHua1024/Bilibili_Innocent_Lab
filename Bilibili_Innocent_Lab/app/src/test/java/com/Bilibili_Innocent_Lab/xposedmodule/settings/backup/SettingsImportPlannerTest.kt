@@ -6,6 +6,49 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class SettingsImportPlannerTest {
+    @Test fun `older backups preserve all four newly added source configurations`() {
+        val specs = SettingsCatalog.specs.filter { it.introducedCatalogVersion == 46 }
+        val current = snapshot(*specs.map { spec ->
+            spec to StoredSetting(true, SettingValue.Text(when {
+                spec.id.endsWith(".provider") -> "openai"
+                spec.id.endsWith(".endpoint") -> "https://api.example.com/v1"
+                else -> "existing-model"
+            }))
+        }.toTypedArray())
+        for (version in 1..45) {
+            val plan = SettingsImportPlanner(specs, 47).plan(document(version, emptyList()), current)
+            assertEquals(12, plan.entries.size)
+            assertTrue(plan.entries.all { it.status == ImportStatus.NEW_IN_CURRENT })
+            assertTrue(plan.writes.isEmpty())
+        }
+    }
+
+    @Test fun `Advanced v45 and v46 source records survive catalog version reconciliation`() {
+        val specs = SettingsCatalog.specs.filter { it.introducedCatalogVersion == 46 }
+        val current = snapshot(*specs.map { it to StoredSetting(false, it.defaultValue) }.toTypedArray())
+        val records = specs.map { spec -> record(spec, true, SettingValue.Text(when {
+            spec.id.endsWith(".provider") -> "openai"
+            spec.id.endsWith(".endpoint") -> "https://api.example.com/v1"
+            else -> "restored-model"
+        })) }
+        for (version in 45..46) {
+            val plan = SettingsImportPlanner(specs, 47).plan(document(version, records), current)
+            assertEquals(12, plan.writes.size)
+            assertTrue(plan.entries.all { it.status == ImportStatus.EXACT })
+            assertEquals(records.map { it.value }, plan.writes.map { it.value })
+        }
+    }
+
+    @Test fun `Advanced v46 Agent permission remains manual after reconciliation`() {
+        val spec = SettingsCatalog.byId.getValue("agent.enabled")
+        val source = document(46, listOf(record(spec, true, SettingValue.Bool(true))))
+        val current = snapshot(spec to StoredSetting(false, SettingValue.Bool(false)))
+        val plan = SettingsImportPlanner(listOf(spec), 47).plan(source, current)
+        assertEquals(ImportStatus.MANUAL_REQUIRED, plan.entries.single().status)
+        assertFalse(plan.entries.single().willWrite)
+        assertTrue(plan.writes.isEmpty())
+    }
+
     @Test fun `old backups preserve search home preference`() {
         val spec = SettingsCatalog.byId.getValue("search.home_recommend.hidden")
         val current = snapshot(spec to StoredSetting(true,SettingValue.Bool(true)))

@@ -45,9 +45,17 @@ import android.widget.TextView as NativeTextView
 private fun MainActivity.semanticSourceKey(index: Int): String =
     prefs().getString(RemoteHookConfigContract.semanticApiKey(index), "").orEmpty()
 
-/** 已填 Key 的来源编号（界面口径；宿主另外还会校验地址与模型）。 */
-internal fun MainActivity.configuredSemanticSources(): List<Int> =
-    (1..SemanticSource.MAX_SOURCES).filter { semanticSourceKey(it).isNotBlank() }
+/** 与宿主使用同一套来源校验；只有 Key、模型和地址都有效的来源才参与路由。 */
+internal fun MainActivity.configuredSemanticSources(): List<Int> {
+    val prefs = prefs()
+    return (1..SemanticSource.MAX_SOURCES).filter { index ->
+        val (providerKey, endpointKey, modelKey) = FeaturePreferences.semanticSourceKeys(index)
+        SemanticSource.from(
+            index, semanticSourceKey(index), prefs.getString(endpointKey, "").orEmpty(),
+            prefs.getString(providerKey, SemanticBackend.JEV).orEmpty(), prefs.getString(modelKey, "").orEmpty()
+        ) != null
+    }
+}
 
 /** AI 语义判定当前配置的一行摘要；Key 只判断有无，绝不回显。 */
 internal fun MainActivity.semanticJevSummaryText(): String {

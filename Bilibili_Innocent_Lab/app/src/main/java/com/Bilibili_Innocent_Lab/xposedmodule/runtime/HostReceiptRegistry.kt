@@ -79,6 +79,8 @@ internal object HostReceiptRegistry {
                     }
                 }
                 // 与会话替换串行，旧进程迟到的发布不能覆盖新会话的缓存。
+                com.Bilibili_Innocent_Lab.xposedmodule.agent.AgentHostClient.register(
+                    candidate, extras.getBinder(com.Bilibili_Innocent_Lab.xposedmodule.agent.AgentWire.ENDPOINT_KEY))
                 if (channel == HostReceiptWire.REGISTER) return@synchronized true
                 val sequence = extras.getLong("sequence")
                 if (!ReceiptSessionGate.isNewerSequence(sequences[channel] ?: 0L, sequence)) return@synchronized false

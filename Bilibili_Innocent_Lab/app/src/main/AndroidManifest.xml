@@ -49,6 +49,7 @@
     <uses-permission android:name="${applicationId}.permission.QUERY_MINE_COMPONENT_SNAPSHOT" />
     <uses-permission android:name="${applicationId}.permission.QUERY_HOST_RUNTIME_DIAGNOSTICS" />
     <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
     <uses-permission android:name="android.permission.VIBRATE" />
     <!-- 仅供自定义背景的相册兜底使用：系统照片选择器不可用时才会申请 -->
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32" />
@@ -88,6 +89,11 @@
         <service
             android:name=".runtime.compat.CompatibilityReceiptService"
             android:enabled="true"
+            android:exported="true" />
+
+        <!-- 仅用户启动的短任务；绑定事务验证宿主 UID，不接受外部 Intent 目标或命令。 -->
+        <service
+            android:name=".agent.AgentSessionService"
             android:exported="true" />
 
         <provider

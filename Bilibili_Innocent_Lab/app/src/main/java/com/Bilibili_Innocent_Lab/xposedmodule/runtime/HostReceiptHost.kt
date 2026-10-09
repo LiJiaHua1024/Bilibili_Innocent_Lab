@@ -144,6 +144,9 @@ internal object HostReceiptHost {
             putLong("started", started)
             putLong("sequence", stamped.sequence)
             putBinder("endpoint", endpoint)
+            com.Bilibili_Innocent_Lab.xposedmodule.agent.host.HostAgentRuntime.endpoint()?.let {
+                putBinder(com.Bilibili_Innocent_Lab.xposedmodule.agent.AgentWire.ENDPOINT_KEY, it)
+            }
             putString("channel", channel)
             putString("payload", outgoing.payload)
             putString("digest", HostRuntimeDiagnosticsQueryContract.sha256(outgoing.payload))

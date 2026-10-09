@@ -101,6 +101,7 @@ import com.Bilibili_Innocent_Lab.xposedmodule.hook.RoamingCompatHook
 import com.Bilibili_Innocent_Lab.xposedmodule.hook.feature.DetailModulePurifyPolicy
 import com.Bilibili_Innocent_Lab.xposedmodule.hook.feature.ComponentLibraryPoolMatcher
 import com.Bilibili_Innocent_Lab.xposedmodule.hook.feature.FeaturePreferences
+import com.Bilibili_Innocent_Lab.xposedmodule.hook.feature.SemanticSource
 import com.Bilibili_Innocent_Lab.xposedmodule.hook.feature.StoryActionIcon
 import com.Bilibili_Innocent_Lab.xposedmodule.hook.feature.SemanticSurface
 import com.Bilibili_Innocent_Lab.xposedmodule.hook.feature.CommentFilterFeatureInstaller
@@ -6295,7 +6296,7 @@ class MainActivity : SkinnedActivity() {
                         settingsDestinations.bind(SettingsCatalog.ID_SEMANTIC_JEV_MODEL, this)
                         settingsDestinations.bind(SettingsCatalog.ID_SEMANTIC_JEV_TIMEOUT_MS, this)
                         settingsDestinations.bind(SettingsCatalog.ID_SEMANTIC_JEV_GUIDANCE, this)
-                        (2..4).forEach { index ->
+                        (2..SemanticSource.MAX_SOURCES).forEach { index ->
                             listOf("provider", "endpoint", "model").forEach { field ->
                                 settingsDestinations.bind("compat.semantic_source.$index.$field", this)
                             }
@@ -6320,6 +6321,17 @@ class MainActivity : SkinnedActivity() {
                         text = stringResource(R.string.semantic_jev_tip)
                         textColor = colorResource(R.color.colorTextDark)
                         textSize = 12f
+                    }
+                    TextView(lparams = LayoutParams(widthMatchParent = true) { bottomMargin = 12.dp }) {
+                        text = stringResource(R.string.agent_title)
+                        textColor = colorResource(R.color.colorTextGray)
+                        textSize = 15f
+                        setPadding(12.dp, 10.dp, 12.dp, 10.dp)
+                        background = selfRippleBackground(10f)
+                        isClickable = true
+                        isFocusable = true
+                        bindSettingDestination(this, com.Bilibili_Innocent_Lab.xposedmodule.agent.AgentPreferences.ENABLED)
+                        setOnClickListener { showAgentDialog(anchor = it) }
                     }
                     MaterialSwitch(
                         lparams = LayoutParams(widthMatchParent = true) {

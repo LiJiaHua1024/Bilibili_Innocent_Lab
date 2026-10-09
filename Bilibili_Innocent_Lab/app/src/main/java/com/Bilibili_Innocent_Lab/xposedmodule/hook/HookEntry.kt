@@ -4837,6 +4837,11 @@ class HookEntry : XposedModule() {
                     installer(appContext)
                 }.onSuccess {
                     authorizedHooksInstalled.set(true)
+                    if (processName == TARGET_PACKAGE && config.values[com.Bilibili_Innocent_Lab.xposedmodule.agent.AgentPreferences.ENABLED] == true) {
+                        runCatching {
+                            com.Bilibili_Innocent_Lab.xposedmodule.agent.host.HostAgentRuntime.initialize(appContext, biliClassLoader)
+                        }.onFailure { frameworkLog("[BIL] Agent 工具桥初始化失败，保持不可用") }
+                    }
                     if (processName == TARGET_PACKAGE) {
                         frameworkLog(
                             "[BIL] Hook 安装链完成耗时=" +
@@ -5006,6 +5011,14 @@ class HookEntry : XposedModule() {
                     }
                     after {
                         applicationOnCreateCompleted.set(true)
+                        if (processName == TARGET_PACKAGE && authorizedHooksInstalled.get() &&
+                            activeHookConfig.get()?.getBoolean(com.Bilibili_Innocent_Lab.xposedmodule.agent.AgentPreferences.ENABLED, false) == true) {
+                            (args.firstOrNull() as? android.app.Application)?.let { application ->
+                                runCatching {
+                                    com.Bilibili_Innocent_Lab.xposedmodule.agent.host.HostAgentRuntime.initialize(application, biliClassLoader)
+                                }.onFailure { frameworkLog("[BIL] Agent 工具桥初始化失败，保持不可用") }
+                            }
+                        }
                         reportScanResultIfReady(args.firstOrNull() as? Context)
                     }
                 }

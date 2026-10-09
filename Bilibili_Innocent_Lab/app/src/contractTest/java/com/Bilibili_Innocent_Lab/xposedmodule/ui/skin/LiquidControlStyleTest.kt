@@ -83,7 +83,8 @@ class LiquidControlStyleTest {
         // 2026-10-01：新增「竖屏页互动图标」勾选面板（StoryActionIconsDialogs.kt），38 → 39。
         // 2026-10-07：新增宿主视频卡片圆角弹窗，39 → 40。
         // 2026-10-08：宿主玻璃材质与高级渲染共用一个受检选择弹窗，40 → 41。
-        assertEquals(41, dialogs)
+        // 2026-10-09：合入 Agent 任务与执行日志表单，复用同一皮肤容器与公共 presenter，41 → 43。
+        assertEquals(43, dialogs)
         // 「管理常用」改用定宽 presentSizedModalDialog（EXACTLY 行宽保证把手钉右缘）。
         assertTrue(SettingsUiSource.function("showSettingsFavoritesDialog").contains("presentSizedModalDialog(dialog, container, width, anchor)"))
         val presenter = SettingsUiSource.function("presentSizedModalDialog")
