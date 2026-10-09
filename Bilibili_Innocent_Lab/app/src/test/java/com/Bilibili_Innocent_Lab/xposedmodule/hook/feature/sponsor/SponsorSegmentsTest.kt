@@ -27,6 +27,17 @@ class SponsorSegmentsTest {
         assertEquals(SponsorParseSummary(4, 1, 1, 1, 0), SponsorSegmentParser.parseDetailed(body, id).summary)
         assertTrue(SponsorSegmentParser.parse(body, id.copy(bvid = "BV1Q8P7z8Exw")).isEmpty())
     }
+
+    @Test fun avidMappingMatchesUpstreamVectorsIncludingLargeIdentifiersAndRejectsOutOfRangeValues() {
+        val vectors = listOf(2L to "BV1xx411c7mD", 170_001L to "BV17x411w7KC",
+            455_017_605L to "BV1Q541167Qg", 882_584_971L to "BV1mK4y1C7Bz",
+            80_433_022L to "BV1GJ411x7h7", 713_984_017L to "BV18X4y1N7Yh",
+            113_864_347_752_328L to "BV1CDwbeEE46", 117_312_082_479_704L to "BV1FnhC6qEck")
+        vectors.forEach { (avid, bvid) -> assertEquals(bvid, SponsorVideoId.bvidFromAvid(avid)) }
+        for (invalid in listOf(Long.MIN_VALUE, -1L, 0L, 2_251_799_813_685_248L, Long.MAX_VALUE)) {
+            assertNull(SponsorVideoId.bvidFromAvid(invalid))
+        }
+    }
     @Test fun invalidRangesAndDuplicateContradictionsCannotBecomeSkips() {
         for (range in listOf(listOf(-1, 5), listOf(5, 4), listOf(1), listOf(1, 999_999_999))) {
             assertTrue(SponsorSegmentParser.parse(payload(segment().put("segment", JSONArray(range))), id).isEmpty())

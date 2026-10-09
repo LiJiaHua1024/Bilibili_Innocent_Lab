@@ -190,7 +190,8 @@ internal class SponsorPlayerSessions(private val env: HookEnvironment, private v
         val owner = entry?.first ?: run { diagnostics.record("binding.waiting"); detach(); return }
         val candidate = entry.second
         val wrapper = candidate.wrapper.get() ?: run { detach(); return }
-        val video = access.video(owner) ?: run { diagnostics.record("binding.invalid-media"); detach(); return }
+        val video = access.video(owner) { diagnostics.record("binding.media.$it") }
+            ?: run { diagnostics.record("binding.invalid-media"); detach(); return }
         val epoch = candidate.epoch.get()
         if (current?.let { !it.invalid.get() && it.owner.get() === owner && it.wrapper.get() === wrapper &&
                 it.video == video && it.epoch == epoch && it.activity.get() === activity } == true) return

@@ -55,6 +55,26 @@ class SponsorPlayerAccessTest {
         }
     }
 
+    @Test fun emptyUgcBvidUsesTheCurrentAidWithoutCachingThePartOrAcceptingMalformedIdentity() {
+        val access = requireNotNull(SponsorPlayerAccess.resolve(loader))
+        val owner = TheseusKeelPlayer(playable(avid = 117_312_082_479_704L,
+            cid = 42_072_543_108L, bvid = ""))
+        val diagnostics = mutableListOf<String>()
+        assertEquals(SponsorVideoId("BV1FnhC6qEck", 42_072_543_108L), access.video(owner, diagnostics::add))
+        assertEquals(listOf("aid-derived"), diagnostics)
+        owner.current = playable(avid = 117_312_082_479_704L, cid = 42_072_543_109L, bvid = "")
+        assertEquals(SponsorVideoId("BV1FnhC6qEck", 42_072_543_109L), access.video(owner))
+        owner.current = playable(avid = 170_001L, cid = 1, bvid = "")
+        assertEquals(SponsorVideoId("BV17x411w7KC", 1), access.video(owner))
+        for (invalid in listOf(playable(avid = 170_001L, bvid = "broken"),
+            playable(avid = 170_001L, bvid = " "), playable(avid = 0, bvid = ""),
+            playable(avid = 2_251_799_813_685_248L, bvid = ""), playable(cid = 0, bvid = ""),
+            playable(business = SponsorBusiness.PGC, bvid = ""))) {
+            owner.current = invalid
+            assertNull(access.video(owner))
+        }
+    }
+
     @Test fun seekGuardRequiresTheConcreteCoroutineCloneAndHostUnit() {
         val player = requireNotNull(SponsorPlayerAccess.resolve(loader))
         val seek = requireNotNull(SponsorSeekAccess.resolve(loader, player))

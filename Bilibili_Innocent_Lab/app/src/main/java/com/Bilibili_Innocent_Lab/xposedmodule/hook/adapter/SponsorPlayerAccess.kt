@@ -51,12 +51,34 @@ internal class SponsorPlayerAccess private constructor(
             runLabel.getInt(resumed) == 2
     }.getOrDefault(false)
 
-    fun video(owner: Any): SponsorVideoId? = runCatching {
-        val playable = active.invoke(owner) ?: return null
-        val values = params.invoke(playable) ?: return null
-        if (business.invoke(values) !== ugc || (aid.invoke(values) as? Long ?: 0) <= 0) return null
-        SponsorVideoId(bvid.invoke(values) as? String ?: return null, cid.invoke(values) as? Long ?: return null)
-    }.getOrNull()
+    // 只缓存确定的 AID→BVID 映射；CID 和当前 playable 每次重新读取，不能沿用旧分 P。
+    @Volatile private var derivedBvid: Pair<Long, String>? = null
+
+    fun video(owner: Any, diagnostic: ((String) -> Unit)? = null): SponsorVideoId? = runCatching {
+        val playable = active.invoke(owner) ?: return unavailable(diagnostic, "missing-active")
+        val values = params.invoke(playable) ?: return unavailable(diagnostic, "missing-params")
+        if (business.invoke(values) !== ugc) return unavailable(diagnostic, "non-ugc")
+        val avid = aid.invoke(values) as? Long ?: return unavailable(diagnostic, "invalid-aid")
+        if (avid <= 0) return unavailable(diagnostic, "invalid-aid")
+        val part = cid.invoke(values) as? Long ?: return unavailable(diagnostic, "invalid-cid")
+        if (part <= 0) return unavailable(diagnostic, "invalid-cid")
+        val supplied = bvid.invoke(values) as? String ?: return unavailable(diagnostic, "missing-bvid")
+        val identifier = if (supplied.isEmpty()) {
+            // 普通 UGC 工厂不填 BVID，空值才使用同一个 active playable 的 AID。
+            val cached = derivedBvid
+            val converted = if (cached?.first == avid) cached.second else
+                SponsorVideoId.bvidFromAvid(avid)?.also { derivedBvid = avid to it }
+                    ?: return unavailable(diagnostic, "invalid-aid")
+            diagnostic?.invoke("aid-derived")
+            converted
+        } else supplied
+        runCatching { SponsorVideoId(identifier, part) }.getOrElse { unavailable(diagnostic, "invalid-bvid") }
+    }.getOrElse { unavailable(diagnostic, "read-failed") }
+
+    private fun unavailable(diagnostic: ((String) -> Unit)?, reason: String): SponsorVideoId? {
+        diagnostic?.invoke(reason)
+        return null
+    }
 
     companion object {
         const val RUN_CLASS = "com.bilibili.ship.theseus.keel.player.TheseusKeelPlayer\$runPlayable\$1"

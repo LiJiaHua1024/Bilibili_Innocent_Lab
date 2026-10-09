@@ -10,7 +10,26 @@ internal data class SponsorVideoId(val bvid: String, val cid: Long) {
     val hashPrefix: String get() = MessageDigest.getInstance("SHA-256")
         .digest(bvid.toByteArray(Charsets.UTF_8)).take(2).joinToString("") { "%02x".format(it) }
 
-    companion object { private val BVID = Regex("BV[0-9A-Za-z]{10}") }
+    companion object {
+        private val BVID = Regex("BV[0-9A-Za-z]{10}")
+        private const val MAX_AID = 2_251_799_813_685_248L
+        private const val XOR_CODE = 23_442_827_791_579L
+        private const val ALPHABET = "FcwAPNKTMug3GV5Lj7EJnHpWsx4tb8haYeviqBz6rkCy12mUSDQX9RdoZf"
+
+        /** 与 BilibiliSponsorBlock 的 bvidAvidUtils 相同的编号映射，不请求额外接口。 */
+        fun bvidFromAvid(avid: Long): String? {
+            if (avid <= 0 || avid >= MAX_AID) return null
+            val chars = "BV1000000000".toCharArray()
+            var value = (MAX_AID or avid) xor XOR_CODE
+            for (index in 11 downTo 3) {
+                chars[index] = ALPHABET[(value % 58).toInt()]
+                value /= 58
+            }
+            val third = chars[3]; chars[3] = chars[9]; chars[9] = third
+            val fourth = chars[4]; chars[4] = chars[7]; chars[7] = fourth
+            return String(chars)
+        }
+    }
 }
 
 internal data class SponsorSegment(val uuid: String, val startMs: Long, val endMs: Long, val declaredDurationMs: Long) {
