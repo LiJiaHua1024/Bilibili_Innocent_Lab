@@ -2641,6 +2641,12 @@ class HookEntry : XposedModule() {
                 }
             )
             val featureInstallCoordinator = FeatureInstallCoordinator(hookEnvironment)
+            val sponsorClassesRef = java.util.concurrent.atomic.AtomicReference(hostAdaptResult?.sponsorPlayer)
+            val sponsorInstaller = SponsorBlockFeatureInstaller(
+                enabled = hookConfig.getBoolean(FeaturePreferences.SPONSORBLOCK_ENABLED, false),
+                automatic = hookConfig.getBoolean(FeaturePreferences.SPONSORBLOCK_AUTOMATIC, false),
+                cachedClasses = { sponsorClassesRef.get() }
+            )
 
             val roamingCompatPrefs = hookConfig
 
@@ -3554,10 +3560,7 @@ class HookEntry : XposedModule() {
                         longPressPercent = prefs.getInt(FeaturePreferences.PLAYER_LONG_PRESS_SPEED_PERCENT, 0),
                         defaultPercent = prefs.getInt(FeaturePreferences.PLAYER_DEFAULT_SPEED_PERCENT, 0)
                     ),
-                    SponsorBlockFeatureInstaller(
-                        enabled = prefs.getBoolean(FeaturePreferences.SPONSORBLOCK_ENABLED, false),
-                        automatic = prefs.getBoolean(FeaturePreferences.SPONSORBLOCK_AUTOMATIC, false)
-                    ),
+                    sponsorInstaller,
                     SystemMediaNotificationFeatureInstaller(
                         enabled = prefs.getBoolean(
                             FeaturePreferences.SYSTEM_MEDIA_NOTIFICATION,
@@ -4726,6 +4729,15 @@ class HookEntry : XposedModule() {
 
                             override fun onAdaptFinished(ok: Boolean) {
                                 if (ok) {
+                                    if (sponsorInstaller.requiresAdaptationRetry) {
+                                        sponsorClassesRef.set(VersionAdapter.loadCached(attachedContext,
+                                            versionAdapterResetTimestamp)?.sponsorPlayer)
+                                        hookEnvironment.postToMain?.invoke {
+                                            if (sponsorInstaller.requiresAdaptationRetry) {
+                                                featureInstallCoordinator.installAll(listOf(sponsorInstaller))
+                                            }
+                                        }
+                                    }
                                     retryFreeCopyHooksAfterAdapt()
                                     VersionAdapter.showAdaptToast(
                                         attachedContext,
@@ -4740,7 +4752,8 @@ class HookEntry : XposedModule() {
                             }
                         },
                         startupCache = startupCache,
-                        kotlinDefaultWordsEnabled = prefs.getBoolean(FeaturePreferences.HIDE_HOME_SEARCH_DEFAULT_WORD, false)
+                        kotlinDefaultWordsEnabled = prefs.getBoolean(FeaturePreferences.HIDE_HOME_SEARCH_DEFAULT_WORD, false),
+                        sponsorBlockEnabled = prefs.getBoolean(FeaturePreferences.SPONSORBLOCK_ENABLED, false)
                     )
                 }.onFailure { throwable ->
                     logError(
