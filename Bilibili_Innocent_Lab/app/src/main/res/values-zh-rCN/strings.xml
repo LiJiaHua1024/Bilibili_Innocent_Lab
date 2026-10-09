@@ -1246,9 +1246,9 @@
     <string name="update_canary_actions">Actions 安装包</string>
     <string name="update_canary_telegram">Telegram 频道</string>
     <string name="host_bottom_bar_compact">小底栏</string>
-    <string name="host_bottom_bar_compact_tip">缩小底栏高度，减少占用空间。重启哔哩哔哩后生效。</string>
+    <string name="host_bottom_bar_compact_tip">需开启底栏悬浮胶囊。缩小胶囊高度，减少占用空间。重启哔哩哔哩后生效。</string>
     <string name="host_bottom_bar_icon_only">底栏无字模式</string>
-    <string name="host_bottom_bar_icon_only_tip">隐藏首页、动态等标签，仅保留图标并上下居中，同时缩减上下留白。可与小底栏叠加使用，重启哔哩哔哩后生效。</string>
+    <string name="host_bottom_bar_icon_only_tip">需开启底栏悬浮胶囊。隐藏胶囊中的标签，仅保留图标并上下居中，同时缩减留白。可与小底栏叠加使用，重启哔哩哔哩后生效。</string>
     <string name="sponsorblock_title">商单片段 · SponsorBlock</string>
     <string name="highlights_sponsorblock">普通视频详情页可提示社区标注的商单片段，另可选择自动跳过并撤销。默认关闭，开启后会查询 www.bsbsb.top 社区服务。</string>
     <string name="highlights_host_glass_materials">新增顶栏与底栏独立的柔光、液态玻璃材质及渲染方式选择。</string>

@@ -19,7 +19,7 @@ class HostBottomBarLayoutTest {
         assertEquals((393f - 32f) * 0.84f, 393f - margin * 2f, 0.001f)
         assertTrue(margin > icons.horizontalMarginDp(393f, 5))
         assertEquals(44f, combined.heightDp, 0f)
-        assertTrue(combined.copy(liquidGlass = false).horizontalMarginDp(393f, 5) > 0f)
+        assertEquals(0f, combined.copy(liquidGlass = false).horizontalMarginDp(393f, 5), 0f)
     }
 
     @Test fun narrowScreensPreserveTabSpaceWithoutExpandingPastTheOriginalWidth() {
@@ -35,8 +35,8 @@ class HostBottomBarLayoutTest {
         }
     }
 
-    @Test fun layoutModesReduceHeightIndependentlyAndTogether() {
-        val normal = HostBottomBarFxConfig(liquidGlass = false, touchGlow = false)
+    @Test fun capsuleLayoutModesReduceHeightIndividuallyAndTogether() {
+        val normal = HostBottomBarFxConfig(liquidGlass = true, touchGlow = false)
         val compact = normal.copy(compact = true)
         val icons = normal.copy(iconOnly = true)
         val combined = compact.copy(iconOnly = true)
@@ -46,7 +46,20 @@ class HostBottomBarLayoutTest {
         assertTrue(combined.heightDp < icons.heightDp)
         assertTrue(combined.heightDp >= 44f)
         for (mode in listOf(normal, compact, icons, combined)) {
-            assertEquals(mode.heightDp, mode.copy(liquidGlass = true, touchGlow = true).heightDp, 0f)
+            assertEquals(mode.heightDp, mode.copy(touchGlow = true).heightDp, 0f)
+        }
+    }
+
+    @Test fun staleCapsuleOptionsCannotResizeTheOfficialBarOrInstallLayoutHooks() {
+        for (compact in listOf(false, true)) for (icons in listOf(false, true)) {
+            val config = HostBottomBarFxConfig(liquidGlass = false, touchGlow = false, compact = compact, iconOnly = icons)
+            assertEquals(64f, config.heightDp, 0f)
+            assertEquals(0f, config.horizontalMarginDp(393f, 5), 0f)
+            val environment = HookEnvironment("tv.danmaku.bili", javaClass.classLoader,
+                com.Bilibili_Innocent_Lab.xposedmodule.hook.HookPointRegistry(javaClass.classLoader!!),
+                TestHookRegistrar, { _, _ -> }, { _, _ -> }, { _, _ -> })
+            assertEquals(FeatureInstallResult.Skipped("disabled"),
+                HostBottomBarFxFeatureInstaller(false, false, null, compact, icons).install(environment))
         }
     }
 }
