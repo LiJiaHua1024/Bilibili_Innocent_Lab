@@ -200,6 +200,11 @@ androidComponents.onVariants(androidComponents.selector().withBuildType("debug")
     }
 }
 
+// 源码护栏必须检查本次 composite build 实际使用的引擎，不能读取旧模块副本。
+tasks.withType<Test>().configureEach {
+    systemProperty("innocentLab.lumenSource", gradle.extra["innocentLab.lumenSource"])
+}
+
 // ---- 测试分层 ----
 // 行为测试（src/test/java）与源码契约测试（src/contractTest/java）共用 testDebugUnitTest。
 // 不带属性时两层全跑（本地门禁与改动前完全一致）；CI 用

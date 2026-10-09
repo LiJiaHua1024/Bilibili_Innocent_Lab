@@ -1,4 +1,14 @@
-# 凝光宿主视觉公共扩展
+# 凝光源码接入
+
+当前基线固定为上游 [1.2.3 标签](https://github.com/jichuo1/LumenCoacervationEngine/tree/1.2.3)，core 与 motion 同时接入，正式源码归档 SHA-256 为 `e7b0ca34504c3bb4f140b25f9d58fe58e15864fd701c8a810a9e3cbd880d2806`。构建只对齐 Android 复合工程需要的工具链版本，不再修改引擎的行为源码或诊断版本号。
+
+引擎 1.2.3 已吸收下述三个扩展；它们作为历史记录保留，settings 不再应用。首次构建下载固定归档并核对哈希，此后支持 `--offline`。缓存键由版本与宿主工具链版本确定，缓存位于 `.gradle/lumen-source/`，不提交缓存。
+
+宿主 motion 的兼容名称委托到 LCE；窗口只有一个弹性控制器，原生回弹、翻页、手风琴、气泡、锚点和全屏形变使用引擎实现。业务 View 树、颜色、入口坐标协议和业务回调留在宿主。源码契约先核对实际委托，再读取本次 Gradle 编译的引擎源码。
+
+本地开发引擎时可显式传 `-PinnocentLab.lumenDevelopmentSource=<引擎目录>`，默认构建与 CI 均使用上面的正式标签和哈希。开发目录必须完成工具链对齐；正式验收不得把开发覆盖当作标签构建证据。
+
+## 历史：1.2.2 的公共扩展
 
 基线固定为上游 [1.2.2 发布版](https://github.com/jichuo1/LumenCoacervationEngine/releases/tag/1.2.2)。为保留迁移前的效果，在引擎原包名下应用小范围公共扩展；宿主适配只使用公开 API，不重新维护材质、探针或弹簧求解器。接入结构见 `app/src/main/java/com/Bilibili_Innocent_Lab/xposedmodule/hook/hostui/README.md`。
 
@@ -19,3 +29,6 @@ Android settings 使用正规复合构建，同时替换 catalog 中同版本的
 源码缓存在 Android 工程的 `.gradle/lumen-source/`，不提交缓存。用项目原有 Gradle wrapper 执行 `:lumen:lumen-engine:testDebugUnitTest`、`:lumen:sample:testReleaseUnitTest` 和引擎构建/Lint；sample 的 `linearGpuFadeHasUniformPixelCoverage` 检查真实 GPU 输出。
 
 升级时同步修改 catalog 版本、settings 中的标签与归档 SHA-256，依次确认补丁可应用，再执行引擎策略与模块回归。上游提供等效公共能力后逐项删除对应补丁，并迁移调用；三个扩展都不再需要时再删除复合构建入口。更新后检查实际顶栏收起/展开、气泡的短文限宽与独立文字层、面板描边与透明度、深色亮图补偿、GPU/软件实时采样，以及 detach/重绑定后的资源和背景归属。
+
+
+以上升级说明为 1.2.2 的历史流程。1.2.3 不再应用补丁；复合构建继续保证 core/motion 来源一致，并让模块与源码契约使用同一版本。升级时同步 catalog、settings 标签和归档哈希，再检查模块与引擎的行为门禁、面板裁剪、长控件拖动、关闭第一帧、GPU/软件背景及 detach 后资源归属。
