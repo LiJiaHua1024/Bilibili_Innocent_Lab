@@ -37,6 +37,7 @@ import com.Bilibili_Innocent_Lab.xposedmodule.ui.skin.engine.GlowEngineCallbacks
 import com.Bilibili_Innocent_Lab.xposedmodule.ui.skin.model.SkinId
 import com.Bilibili_Innocent_Lab.xposedmodule.ui.skin.liquid.LiquidMotionSurfaceFrameProvider
 import com.Bilibili_Innocent_Lab.xposedmodule.ui.skin.geometry.SamplingMatrixMath
+import com.Bilibili_Innocent_Lab.xposedmodule.ui.skin.geometry.ScrollSurfaceScope
 import com.Bilibili_Innocent_Lab.xposedmodule.ui.skin.geometry.ViewSamplingMatrix
 import com.Bilibili_Innocent_Lab.xposedmodule.ui.skin.model.SurfaceRole
 import com.Bilibili_Innocent_Lab.xposedmodule.ui.theme.MonetColors
@@ -358,6 +359,15 @@ internal class FrostedMaterialRenderer(
      */
     override fun notifyPositionChanged() = onPositionChanged()
 
+    override fun notifyScrollPositionChanged(scrollHost: View) {
+        if (!lifecycle.canWork || root == null || surfaces.isEmpty() ||
+            !scrollHost.isAttachedToWindow || !scrollHost.isShown) return
+        val windowRoot = scrollHost.rootView
+        if (!windows.containsKey(windowRoot)) return
+        live.invalidate()
+        flushPositionChanges(windowRoot, scrollHost)
+    }
+
     private fun onPositionChanged() {
         if (!lifecycle.canWork) return
         live.invalidate()
@@ -374,7 +384,7 @@ internal class FrostedMaterialRenderer(
         }
     }
 
-    private fun flushPositionChanges(windowRoot: View) {
+    private fun flushPositionChanges(windowRoot: View, scrollHost: View? = null) {
         if (!lifecycle.canWork) return
         // 本段只读几何；所有可见表面共用祖先前缀，备忘严格不跨回调保存。
         samplingMatrices.withAncestorMemo {
@@ -385,6 +395,7 @@ internal class FrostedMaterialRenderer(
                 val (view, position) = iterator.next()
                 if (!view.isAttachedToWindow) { iterator.remove(); continue }
                 if (view.rootView !== windowRoot || !view.isShown) continue
+                if (scrollHost != null && !ScrollSurfaceScope.contains(view, scrollHost) { it.parent as? View }) continue
                 if (!sourceValid || !samplingMatrices.localToScreen(view, movedTransform) ||
                     !SamplingMatrixMath.equal(position.target, movedTransform) ||
                     !SamplingMatrixMath.equal(position.source, sourceTransform)) view.invalidate()

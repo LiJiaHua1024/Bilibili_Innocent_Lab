@@ -282,6 +282,11 @@ abstract class SkinnedActivity : AppViewsActivity() {
         if (!lifecycleEnded) skinSessionOrNull?.notifyPositionChanged()
     }
 
+    @MainThread
+    protected fun notifyPreparedSkinScrollPositionChanged(scrollHost: View) {
+        if (!lifecycleEnded) skinSessionOrNull?.notifyScrollPositionChanged(scrollHost)
+    }
+
     /** 悬浮胶囊下方的内容层（必须是胶囊的兄弟而非祖先），供模糊/折射采样。 */
     @MainThread
     protected fun bindPreparedSkinContentSource(view: View) {

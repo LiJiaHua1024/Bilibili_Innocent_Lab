@@ -25,6 +25,10 @@ internal object LiquidRefreshVisibilityPolicy {
 /** Changed properties are already scheduled by their owners; this never posts an idle frame. */
 internal class LiquidRefreshBatch {
     private var pending = 0
+    private var preDrawPassed = false
+    val isAfterPreDraw: Boolean get() = preDrawPassed
+    fun beforeDraw() { preDrawPassed = true }
+    fun drawn() { preDrawPassed = false }
     /**
      * [captureOnly]：这次内容变化只是实时截图换了一张（2026-09-23）。不读截图的表面
      * （内容节点玻璃栏）不必为它重录；其余内容变化（底图、后端、回弹强度）照常算 [CONTENT]。

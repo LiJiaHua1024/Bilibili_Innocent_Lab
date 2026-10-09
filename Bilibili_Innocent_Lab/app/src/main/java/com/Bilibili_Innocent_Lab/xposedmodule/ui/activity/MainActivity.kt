@@ -4893,6 +4893,7 @@ class MainActivity : SkinnedActivity() {
             installStretch = { target, allowed -> installPreparedLiquidStretch(target, allowed) },
             finishStretch = { target -> finishPreparedLiquidStretch(target) },
             skinPositionChanged = { notifyPreparedSkinPositionChanged() },
+            skinScrollPositionChanged = { scroll -> notifyPreparedSkinScrollPositionChanged(scroll) },
             skinContentSource = { bindPreparedSkinContentSource(it) },
             navigationChanged = {
                 cancelSettingsReveal()

@@ -47,6 +47,7 @@ internal class SettingsHomePresenter(
     private val installStretch: (View, () -> Boolean) -> View?,
     private val finishStretch: (View?) -> Unit,
     private val skinPositionChanged: () -> Unit,
+    private val skinScrollPositionChanged: (View) -> Unit,
     private val skinContentSource: (View) -> Unit,
     private val navigationChanged: () -> Unit,
     private val navigationTouched: () -> Unit
@@ -67,6 +68,7 @@ internal class SettingsHomePresenter(
     private var navigation: ModernNavigationBar? = null
     private val contents = List(pageCount) { LinearLayout(activity).apply { orientation = LinearLayout.VERTICAL } }
     private val scrolls = List(pageCount) { SettingsHomeScrollView(activity, ::userNavigated, navigationTouched).apply {
+        onScrollPositionChanged = skinScrollPositionChanged
         isFillViewport = true
         isVerticalScrollBarEnabled = false
         clipToPadding = false
@@ -494,6 +496,7 @@ internal class SettingsHomePresenter(
 
     fun dispose() {
         disposed = true
+        scrolls.forEach { it.onScrollPositionChanged = null }
         floatingChrome?.dispose()
         floatingChrome = null
         textChain?.dispose()
