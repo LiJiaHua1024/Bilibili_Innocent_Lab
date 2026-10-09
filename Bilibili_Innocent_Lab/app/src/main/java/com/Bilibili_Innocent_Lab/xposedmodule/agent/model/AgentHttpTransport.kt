@@ -7,7 +7,7 @@ import java.net.HttpURLConnection
 import java.net.URL
 import java.util.concurrent.Callable
 import java.util.concurrent.ExecutionException
-import java.util.concurrent.SynchronousQueue
+import java.util.concurrent.ArrayBlockingQueue
 import java.util.concurrent.ThreadPoolExecutor
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.TimeoutException
@@ -19,9 +19,9 @@ internal fun interface AgentHttpTransport {
 
 /** 全程 HTTPS；不跟随重定向；DNS/写入阻塞也不得无限占住任务线程。 */
 internal object AgentHttpsTransport : AgentHttpTransport {
-    private val workers = ThreadPoolExecutor(0, 2, 30, TimeUnit.SECONDS, SynchronousQueue()) { runnable ->
+    private val workers = ThreadPoolExecutor(2, 2, 30, TimeUnit.SECONDS, ArrayBlockingQueue<Runnable>(2)) { runnable ->
         Thread(runnable, "BIL-AgentHttp").apply { isDaemon = true }
-    }
+    }.apply { allowCoreThreadTimeOut(true) }
 
     override fun post(source: AgentModelSource, body: ByteArray, timeoutMs: Int, cancelled: () -> Boolean): String =
         postWithConnection(source, body, timeoutMs, cancelled) { it.openConnection() as HttpURLConnection }
@@ -37,6 +37,8 @@ internal object AgentHttpsTransport : AgentHttpTransport {
         val deadline = System.nanoTime() + timeoutMs.coerceIn(1, MAX_TIMEOUT_MS) * 1_000_000L
         val task = try {
             workers.submit(Callable {
+                // Future完成到worker重新等待之间仍占用线程，有限队列吸收快速重试而不误报网络失败。
+                checkAlive(deadline, cancelled)
                 val http = connect(URL(source.resolvedEndpoint))
                 connection.set(http)
                 try {
@@ -92,6 +94,7 @@ internal object AgentHttpsTransport : AgentHttpTransport {
             throw AgentModelException(AgentModelException.Reason.CANCELLED)
         } finally {
             task.cancel(true)
+            (task as? Runnable)?.let(workers::remove)
             connection.getAndSet(null)?.disconnect()
         }
     }
