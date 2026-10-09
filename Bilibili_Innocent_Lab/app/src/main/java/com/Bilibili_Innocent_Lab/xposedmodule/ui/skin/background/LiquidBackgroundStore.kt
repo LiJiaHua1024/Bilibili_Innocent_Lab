@@ -267,6 +267,9 @@ internal object LiquidBackgroundStore {
         }.getOrElse { if (it is SecurityException) CopyResult.ACCESS_DENIED else CopyResult.FAILED }
     }
 
+    /** 宿主背景复用同样的尺寸上限与 EXIF 纠正，不复用模块皮肤的存储或配置。 */
+    internal fun normalizedBitmap(file: File): Bitmap? = decodeAndNormalize(file).bitmap
+
     private fun decodeAndNormalize(file: File): NormalizeResult {
         val bounds = decodeBounds(file)
             ?: return NormalizeResult(null, LiquidBackgroundImportFailure.UNSUPPORTED_IMAGE)

@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="host_background_title">Feed background</string>
+    <string name="host_background_current">Feed background: %1$s</string>
+    <string name="host_background_tip">A stationary background for video card lists, including when floating cards are disabled. Restart Bilibili to apply. Images stay on this device; settings backups include effects only. Missing images use Aurora.</string>
+    <string name="host_background_off">Follow Bilibili</string>
+    <string name="host_background_aurora">Aurora</string>
+    <string name="host_background_sakura">Sakura haze</string>
+    <string name="host_background_ocean">Ocean glass</string>
+    <string name="host_background_sunset">Peach sunset</string>
+    <string name="host_background_mist">Forest mist</string>
+    <string name="host_background_custom">Custom image</string>
+    <string name="host_background_choose">Choose or replace an image</string>
+    <string name="host_background_use_saved">Use saved image</string>
+    <string name="host_background_blur">Image blur</string>
+    <string name="host_background_saturation">Image saturation</string>
+    <string name="host_background_veil">Readability veil</string>
+    <string name="host_background_preview_card">Video card preview</string>
+    <string name="host_background_missing">Image unavailable. Choose an image; Bilibili will use Aurora meanwhile.</string>
+    <string name="host_background_import_failed">Could not import the image. Choose a supported image under 32 MB.</string>
+    <string name="host_background_saved">Background saved. Restart Bilibili to apply.</string>
+    <string name="host_background_save_failed">Could not save the background. Your previous settings are kept.</string>
+</resources>

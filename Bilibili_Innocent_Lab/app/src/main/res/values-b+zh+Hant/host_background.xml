@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="host_background_title">影片列表背景</string>
+    <string name="host_background_current">影片列表背景：%1$s</string>
+    <string name="host_background_tip">為影片卡片列表鋪上固定背景，可獨立於卡片美化啟用，重新啟動嗶哩嗶哩後生效。圖片僅儲存在本機，設定備份只還原預設和效果參數；圖片無法使用時套用極光柔色。</string>
+    <string name="host_background_off">跟隨嗶哩嗶哩</string>
+    <string name="host_background_aurora">極光柔色</string>
+    <string name="host_background_sakura">櫻花薄霧</string>
+    <string name="host_background_ocean">海鹽琉璃</string>
+    <string name="host_background_sunset">蜜桃落日</string>
+    <string name="host_background_mist">森林晨霧</string>
+    <string name="host_background_custom">自訂圖片</string>
+    <string name="host_background_choose">選擇或更換圖片</string>
+    <string name="host_background_use_saved">使用已儲存圖片</string>
+    <string name="host_background_blur">圖片模糊</string>
+    <string name="host_background_saturation">圖片飽和度</string>
+    <string name="host_background_veil">可讀性遮罩</string>
+    <string name="host_background_preview_card">影片卡片預覽</string>
+    <string name="host_background_missing">圖片無法使用，請重新選擇；宿主暫用極光柔色。</string>
+    <string name="host_background_import_failed">圖片匯入失敗，請選擇 32 MB 以內的受支援圖片。</string>
+    <string name="host_background_saved">背景已儲存，重新啟動嗶哩嗶哩後生效。</string>
+    <string name="host_background_save_failed">背景儲存失敗，原設定已保留。</string>
+</resources>

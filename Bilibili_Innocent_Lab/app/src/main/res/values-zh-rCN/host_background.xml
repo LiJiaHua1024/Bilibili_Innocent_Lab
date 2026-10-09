@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="host_background_title">视频列表背景</string>
+    <string name="host_background_current">视频列表背景：%1$s</string>
+    <string name="host_background_tip">为视频卡片列表铺上固定背景，可独立于卡片美化启用，重启哔哩哔哩后生效。图片仅保存在本机，设置备份只恢复预设和效果参数；图片不可用时使用极光柔色。</string>
+    <string name="host_background_off">跟随哔哩哔哩</string>
+    <string name="host_background_aurora">极光柔色</string>
+    <string name="host_background_sakura">樱花薄雾</string>
+    <string name="host_background_ocean">海盐琉璃</string>
+    <string name="host_background_sunset">蜜桃落日</string>
+    <string name="host_background_mist">森林晨雾</string>
+    <string name="host_background_custom">自定义图片</string>
+    <string name="host_background_choose">选择或更换图片</string>
+    <string name="host_background_use_saved">使用已保存图片</string>
+    <string name="host_background_blur">图片模糊</string>
+    <string name="host_background_saturation">图片饱和度</string>
+    <string name="host_background_veil">可读性遮罩</string>
+    <string name="host_background_preview_card">视频卡片预览</string>
+    <string name="host_background_missing">图片不可用，请重新选择；宿主暂用极光柔色。</string>
+    <string name="host_background_import_failed">图片导入失败，请选择 32 MB 以内的受支持图片。</string>
+    <string name="host_background_saved">背景已保存，重启哔哩哔哩后生效。</string>
+    <string name="host_background_save_failed">背景保存失败，原设置已保留。</string>
+</resources>

@@ -258,6 +258,17 @@ class MainActivity : SkinnedActivity() {
         }
     }
 
+    internal var hostBackgroundEditor: HostBackgroundEditor? = null
+    internal val hostBackgroundPicker = registerForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
+        if (uri != null) {
+            // 系统选择器期间 Activity 可能重建，回到新的编辑器继续导入。
+            val editor = hostBackgroundEditor ?: HostBackgroundEditor(this, window.decorView) {
+                recreate()
+            }.also { hostBackgroundEditor = it; it.show() }
+            editor.importImage(uri)
+        }
+    }
+
     internal val liquidBackgroundPicker = registerForActivityResult(
         ActivityResultContracts.OpenDocument()
     ) { uri ->
@@ -4128,6 +4139,8 @@ class MainActivity : SkinnedActivity() {
         // Activity 销毁时主动关闭弹窗，避免 WindowLeaked（Activity has leaked window）
         activeConfirmDialog?.dismiss()
         activeConfirmDialog = null
+        hostBackgroundEditor?.close()
+        hostBackgroundEditor = null
         liquidBackgroundDialog?.dismiss()
         liquidBackgroundDialog = null
         liquidBackgroundDialogContainer = null
@@ -5575,6 +5588,7 @@ class MainActivity : SkinnedActivity() {
             hostBottomBarAppearanceRows(this)
             hostAppearanceHeading(R.string.host_appearance_video_cards)
             hostVideoCardAppearanceRows(this)
+            hostBackgroundAppearanceRows(this)
             hostAppearanceHeading(R.string.host_appearance_player)
             MaterialSwitch(
                 lparams = LayoutParams(widthMatchParent = true) {

@@ -91,6 +91,21 @@ class HostVideoCardPlayerScopeInstrumentedTest {
         card.assertUnmodified()
     }
 
+    @Test fun backgroundWorksWithoutChangingCardsWhenCardStylingIsDisabled() = check { context, _ ->
+        val card = Card(context, endPage = false)
+        card.attach(player = false)
+        val style = HostVideoCardStyle(null, HostVideoCardHostAccess(javaClass.classLoader!!), -1,
+            onApplied = {}, onError = { throw AssertionError(it) },
+            decorateCards = false,
+            background = com.Bilibili_Innocent_Lab.xposedmodule.hook.hostui.background.HostBackgroundController(
+                com.Bilibili_Innocent_Lab.xposedmodule.hook.hostui.background.HostBackgroundConfig(
+                    com.Bilibili_Innocent_Lab.xposedmodule.hook.hostui.background.HostBackgroundPreset.AURORA),
+                onError = { throw AssertionError(it) }))
+        style.bind(card.root)
+        card.assertUnmodified()
+        assertTrue((card.root.parent as View).background is com.Bilibili_Innocent_Lab.xposedmodule.hook.hostui.background.HostBackgroundDrawable)
+    }
+
     @Test fun playerAncestorExcludesCardsWithoutEndPageMarker() = check { context, style ->
         val card = Card(context, endPage = false)
         card.attach(player = true)

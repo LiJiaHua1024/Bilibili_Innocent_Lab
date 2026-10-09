@@ -273,6 +273,10 @@ internal object ReleaseHighlightsCatalog {
     )), ReleaseHighlightsBatch(12, listOf(
         ReleaseHighlight("comment-classic-style", HighlightKind.NEW, R.string.comment_classic_style_tip,
             HighlightDestination("comments.classic_style.enabled"))
+    )), ReleaseHighlightsBatch(13, listOf(
+        ReleaseHighlight("host-background", HighlightKind.NEW, R.string.host_background_tip,
+            HighlightDestination("host.background.preset", alsoCovers = setOf(
+                "host.background.blur", "host.background.saturation", "host.background.veil", "host.background.asset")))
     )))
     val currentRevision: Int get() = batches.maxOf { it.revision }
     val destinations get() = batches.sortedByDescending { it.revision }.flatMap { it.entries }

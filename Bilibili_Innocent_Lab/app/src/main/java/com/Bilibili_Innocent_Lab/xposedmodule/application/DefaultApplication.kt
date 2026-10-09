@@ -35,6 +35,10 @@ class DefaultApplication : Application() {
         }.getOrNull()
         // 条款未授权时除 Remote Preferences 关闭态配置外不触发任何派生状态补写。
         if (!termsDecision.isAuthorized || modulePrefs == null) return
+        runCatching {
+            com.Bilibili_Innocent_Lab.xposedmodule.hook.hostui.background.HostBackgroundImages.grant(this,
+                modulePrefs.getString(com.Bilibili_Innocent_Lab.xposedmodule.hook.feature.FeaturePreferences.HOST_BACKGROUND_ASSET, "").orEmpty())
+        }.onFailure { Log.w("BilibiliInnocentLab", "restore host background image grant failed", it) }
         // 若上次导入在 prefs 提交后、自由复制镜像落盘前中断，启动时幂等补写。
         runCatching {
             check(

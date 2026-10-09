@@ -27,6 +27,7 @@ internal data class DiagnosticFeatureDescriptor(
 internal object DiagnosticFeatureRegistry {
     private val groups: List<DiagnosticFeatureDescriptor> = listOf(
         DiagnosticFeatureDescriptor("host_video_cards", DiagnosticFeatureCategory.GENERAL, runtimeEvidenceExpected = true),
+        DiagnosticFeatureDescriptor("host_background", DiagnosticFeatureCategory.GENERAL, runtimeEvidenceExpected = true),
         DiagnosticFeatureDescriptor("search_home_recommend_hidden", DiagnosticFeatureCategory.HOME_AND_DYNAMIC, runtimeEvidenceExpected = true),
         DiagnosticFeatureDescriptor("paused_ad", DiagnosticFeatureCategory.ADVERTISING),
         DiagnosticFeatureDescriptor("game_mentioned_promotion", DiagnosticFeatureCategory.ADVERTISING),

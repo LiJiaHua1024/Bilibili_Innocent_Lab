@@ -19,7 +19,9 @@ internal class HostVideoCardStyle(
     private val host: HostVideoCardHostAccess,
     private val radiusDp: Int,
     private val onApplied: () -> Unit,
-    private val onError: (Throwable) -> Unit
+    private val onError: (Throwable) -> Unit,
+    private val decorateCards: Boolean = true,
+    private val background: com.Bilibili_Innocent_Lab.xposedmodule.hook.hostui.background.HostBackgroundController? = null
 ) {
     private class Cover(view: View) {
         val view = WeakReference(view)
@@ -99,6 +101,8 @@ internal class HostVideoCardStyle(
         override fun onPreDraw(): Boolean {
             val list = parent.get() ?: return true
             val night = host.isNight(list.context)
+            background?.apply(list, night)
+            if (!decorateCards) return true
             val color = HostVideoCardSurface.color(night)
             // 宿主换肤可能同时替换列表背景和卡片背景，当前帧绘制前一并恢复。
             for (i in 0 until list.childCount) {
@@ -142,7 +146,7 @@ internal class HostVideoCardStyle(
             excluded.remove(root)
         }
         // 字号和封面信息留白在绑定/首次测量前设置，布局回调不再修改 LayoutParams。
-        configureInfo(root, state)
+        if (decorateCards) configureInfo(root, state)
         safelyApply(root)
     }
 
@@ -161,6 +165,7 @@ internal class HostVideoCardStyle(
 
     /** GridLayoutManager 已分配 span、尚未测量子项时调用；不发送 requestLayout。 */
     fun prepareMeasurement(manager: Any, root: View) {
+        if (!decorateCards) return
         val state = states[root] ?: return
         if (isInPlayer(root)) return
         val params = root.layoutParams as? ViewGroup.MarginLayoutParams ?: return
@@ -243,6 +248,10 @@ internal class HostVideoCardStyle(
         val parent = root.parent as? ViewGroup ?: return
         if (!isRecycler(parent.javaClass)) return
         if (isInPlayer(parent)) return
+        val night = nightOverride ?: host.isNight(root.context)
+        background?.apply(parent, night)
+        watch(parent)
+        if (!decorateCards) { onApplied(); return }
         var count = 0
         var single: View? = null
         for (cached in state.covers) {
@@ -279,7 +288,6 @@ internal class HostVideoCardStyle(
             HostVideoCardStyleSpec.coverRadius(single.width, single.height, radiusDp, density)
             else HostVideoCardStyleSpec.cardRadius(root.width, root.height, radiusDp, density)
         val resized = state.updateGeometry(root.width, root.height, radius)
-        val night = nightOverride ?: host.isNight(root.context)
         val color = HostVideoCardSurface.color(night)
         if (state.surface == null || state.surfaceRadius != radius || state.color != color) {
             val surface = HostVideoCardSurface.create(root, radius, night) ?: return
@@ -293,7 +301,6 @@ internal class HostVideoCardStyle(
             state.decorated = true
             onApplied()
         }
-        watch(parent)
         if (root.background !== state.surface) root.background = state.surface
         val replaced = root.outlineProvider !== state
         if (replaced) root.outlineProvider = state

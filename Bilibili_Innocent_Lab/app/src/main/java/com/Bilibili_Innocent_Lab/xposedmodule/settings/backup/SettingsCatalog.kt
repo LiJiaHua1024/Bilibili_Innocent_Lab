@@ -32,7 +32,7 @@ import com.Bilibili_Innocent_Lab.xposedmodule.settings.appearance.HostGlassRende
 internal object SettingsCatalog {
     const val PRODUCT_ID = "bilibili-innocent-lab.settings"
     const val SCOPE_ID = "core-user-settings"
-    const val CATALOG_VERSION = 48
+    const val CATALOG_VERSION = 49
     const val ID_PLAYER_DEFAULT_SPEED = "player.default_speed.percent"
     const val ID_PLAYER_LONG_PRESS_SPEED = "player.long_press_speed.percent"
     const val ID_FREE_COPY_COMMENT = "free_copy.comment.enabled"
@@ -626,6 +626,19 @@ internal object SettingsCatalog {
             default = false,
             introducedCatalogVersion = 39
         ),
+        text("host.background.preset", FeaturePreferences.HOST_BACKGROUND_PRESET, R.string.host_background_title,
+            default = "off", allowed = com.Bilibili_Innocent_Lab.xposedmodule.hook.hostui.background.HostBackgroundPreset.entries.map { it.value }.toSet(),
+            introducedCatalogVersion = 49),
+        integer("host.background.blur", FeaturePreferences.HOST_BACKGROUND_BLUR, R.string.host_background_blur,
+            default = 16, range = 0..60, introducedCatalogVersion = 49),
+        integer("host.background.saturation", FeaturePreferences.HOST_BACKGROUND_SATURATION, R.string.host_background_saturation,
+            default = 85, range = 0..200, introducedCatalogVersion = 49),
+        integer("host.background.veil", FeaturePreferences.HOST_BACKGROUND_VEIL, R.string.host_background_veil,
+            default = 35, range = 0..90, introducedCatalogVersion = 49),
+        // 图片仍在本机私有存储，资产引用只随 Hook 快照发布，不跨设备自动恢复。
+        SettingSpec("host.background.asset", FeaturePreferences.HOST_BACKGROUND_ASSET, R.string.host_background_custom,
+            SettingValueType.STRING, SettingValue.Text(""), introducedCatalogVersion = 49,
+            restorePolicy = RestorePolicy.MANUAL, maxStringLength = 36),
         bool(
             "host.video_cards.enabled",
             FeaturePreferences.HOST_VIDEO_CARDS,
@@ -947,7 +960,7 @@ internal object SettingsCatalog {
     val byStorageKey: Map<String, SettingSpec> = specs.associateBy(SettingSpec::storageKey)
 
     init {
-        check(specs.size == 220) { "Expected 220 catalog settings, found ${specs.size}" }
+        check(specs.size == 225) { "Expected 225 catalog settings, found ${specs.size}" }
         check(byId.size == specs.size) { "Duplicate logical setting id" }
         check(specs.map(SettingSpec::storageKey).distinct().size == specs.size) {
             "Duplicate settings storage key"

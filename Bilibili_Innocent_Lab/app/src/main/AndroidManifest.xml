@@ -112,6 +112,12 @@
         <receiver android:name=".agent.AgentNotificationReceiver" android:exported="false" />
 
         <provider
+            android:name=".provider.HostBackgroundProvider"
+            android:authorities="${applicationId}.hostbackground"
+            android:exported="true"
+            android:grantUriPermissions="true" />
+
+        <provider
             android:name=".provider.HostAdmissionProvider"
             android:authorities="${applicationId}.admission"
             android:exported="true" />
