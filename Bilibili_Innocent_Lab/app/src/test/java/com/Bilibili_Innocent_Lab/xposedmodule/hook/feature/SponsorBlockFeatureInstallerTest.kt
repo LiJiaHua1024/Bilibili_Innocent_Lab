@@ -5,6 +5,13 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class SponsorBlockFeatureInstallerTest {
+    private open class LifecycleBase {
+        open fun onResume() {}
+    }
+    private class LifecycleDetail : LifecycleBase() {
+        override fun onResume() {}
+        fun onResume(state: Boolean) {}
+    }
     private fun environment(process: String = "tv.danmaku.bili", loader: ClassLoader? = null) = HookEnvironment(
         process, loader, HookPointRegistry(loader), TestHookRegistrar, { _, _ -> }, { _, _ -> }, { _, _ -> })
 
@@ -29,5 +36,12 @@ class SponsorBlockFeatureInstallerTest {
         }
         assertEquals(FeatureInstallResult.Skipped("missing-detail-activity"), SponsorBlockFeatureInstaller(true, false)
             .install(environment(loader = withoutDetail)))
+    }
+
+    @Test fun lifecycleLookupMustTargetTheActualNoArgumentOverride() {
+        val method = com.Bilibili_Innocent_Lab.xposedmodule.runtime.KavaMemberLookup
+            .inheritedMethodOrNull(LifecycleDetail::class.java, "onResume")
+        assertEquals(LifecycleDetail::class.java, method?.declaringClass)
+        assertEquals(0, method?.parameterCount)
     }
 }

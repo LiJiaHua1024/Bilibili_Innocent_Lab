@@ -42,6 +42,7 @@ internal class SponsorPlayerSessions(private val env: HookEnvironment, private v
         var count = 9
         env.registrar.constructor("sponsorblock.wrapper", access.wrapper) {
             after {
+                diagnostics.record("callback.wrapper", "active=${active.get()} receiver=${instance != null} failed=$hasThrowable")
                 if (!active.get() || hasThrowable) return@after
                 val owner = argOrNull(1) ?: return@after
                 val wrapper = instance ?: return@after
@@ -55,6 +56,7 @@ internal class SponsorPlayerSessions(private val env: HookEnvironment, private v
             count++
             env.registrar.constructor("sponsorblock.activity_scope", scope) {
                 after {
+                    diagnostics.record("callback.scope", "active=${active.get()} failed=$hasThrowable")
                     if (!active.get() || hasThrowable) return@after
                     val owner = argOrNull(2) ?: return@after
                     val activity = activity(argOrNull(1) as? Context)?.takeIf(detail::isInstance) ?: run {
@@ -70,6 +72,7 @@ internal class SponsorPlayerSessions(private val env: HookEnvironment, private v
             count++
             env.registrar.constructor("sponsorblock.container_scope", scope.constructor) {
                 after {
+                    diagnostics.record("callback.container", "active=${active.get()} failed=$hasThrowable")
                     if (!active.get() || hasThrowable) return@after
                     val context = argOrNull(scope.contextIndex) as? Context
                     val activity = activity(context)?.takeIf(detail::isInstance) ?: run {
@@ -87,6 +90,7 @@ internal class SponsorPlayerSessions(private val env: HookEnvironment, private v
         }
         env.registrar.exact("sponsorblock.media", access.run.declaringClass, access.run.name, *access.run.parameterTypes) {
             before {
+                diagnostics.record("callback.media", "active=${active.get()} receiver=${instance != null}")
                 if (!active.get()) return@before
                 val owner = instance ?: return@before
                 val epoch = bindings.begin(owner)
@@ -140,12 +144,18 @@ internal class SponsorPlayerSessions(private val env: HookEnvironment, private v
         }
         lifecycle.forEachIndexed { index, method ->
             env.registrar.exact("sponsorblock.lifecycle.$index", method.declaringClass, method.name, *method.parameterTypes) {
-                if (index == 0) after {
-                    val activity = instance as? Activity ?: return@after
-                    if (!active.get() || hasThrowable || !detail.isInstance(activity)) return@after
-                    foreground = WeakReference(activity)
-                    diagnostics.record("binding.foreground")
-                    main { if (foreground.get() === activity) reconcile() }
+                if (index == 0) {
+                    before {
+                        diagnostics.record("callback.resume", "active=${active.get()} activity=${instance is Activity} " +
+                            "type=${instance?.let(detail::isInstance)} name=${instance?.javaClass?.name == detail.name}")
+                    }
+                    after {
+                        val activity = instance as? Activity ?: return@after
+                        if (!active.get() || hasThrowable || !detail.isInstance(activity)) return@after
+                        foreground = WeakReference(activity)
+                        diagnostics.record("binding.foreground")
+                        main { if (foreground.get() === activity) reconcile() }
+                    }
                 } else before {
                     val activity = instance as? Activity ?: return@before
                     if (!active.get() || !detail.isInstance(activity)) return@before
@@ -159,6 +169,7 @@ internal class SponsorPlayerSessions(private val env: HookEnvironment, private v
             }
         }
         active.set(true)
+        diagnostics.record("installed", "active=${active.get()} hooks=$count resume=${lifecycle.first().declaringClass.name}")
         return count
     }
 
