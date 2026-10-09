@@ -12,7 +12,8 @@ import java.lang.reflect.Modifier
 internal class SponsorPlayerAccess private constructor(
     val run: Method,
     val wrapper: Constructor<*>,
-    val scope: Constructor<*>,
+    val scope: Constructor<*>?,
+    val containerScope: ContainerScope?,
     val active: Method,
     private val continuation: Class<*>,
     private val continuationOwner: Field,
@@ -40,6 +41,8 @@ internal class SponsorPlayerAccess private constructor(
     val stateObserver: Class<*>,
     val releaseObserver: Class<*>
 ) {
+    class ContainerScope(val constructor: Constructor<*>, val contextIndex: Int, val containerIndex: Int,
+        val core: Method)
     /** runPlayable 正常播放时保持挂起；只接受已激活的实参或 label=2 的播放续体。 */
     fun bound(owner: Any, requested: Any?, resumed: Any?): Boolean = runCatching {
         val current = active.invoke(owner) ?: return false
@@ -61,6 +64,9 @@ internal class SponsorPlayerAccess private constructor(
         const val CORE_CLASS = "tv.danmaku.biliplayerv2.service.IPlayerCoreService"
         const val WRAPPER_CLASS = "com.bilibili.ship.theseus.united.player.oldway.playercontainer.TheseusPlayerContainerProvider\$providePlayerContainer\$playerContainer\$1\$1\$1"
         const val SCOPE_CLASS = "com.bilibili.ship.theseus.united.player.oldway.playercontainer.BadNetworkTipService"
+        const val CONTAINER_SCOPE_CLASS = "com.bilibili.ship.theseus.united.player.oldway.playercontainer.TheseusPlayerContainerProvider\$providePlayerContainer\$2"
+        const val CONTAINER_CLASS = "tv.danmaku.biliplayerv2.PlayerContainer"
+        const val CONTAINER_INTERFACE = "tv.danmaku.biliplayerv2.IPlayerContainer"
         private const val FAMILY = "com.bilibili.ship.theseus.keel.player."
 
         fun resolve(loader: ClassLoader): SponsorPlayerAccess? = runCatching {
@@ -107,14 +113,31 @@ internal class SponsorPlayerAccess private constructor(
                     !it.isSynthetic && it.parameterCount in 3..12 &&
                         it.parameterTypes.take(3) == listOf(core, context, owner)
                 }.singleOrNull()
-            } ?: return null
+            }
+            val container = Lookup.classOrNull(loader, CONTAINER_CLASS)
+            // PlayerContainer 为抽象类，getter 声明在 IPlayerContainer；只查父类会漏掉。
+            val containerInterface = Lookup.classOrNull(loader, CONTAINER_INTERFACE)?.takeIf {
+                it.isInterface && container != null && it.isAssignableFrom(container)
+            }
+            val containerCore = containerInterface?.let { method(it, "getPlayerCoreService", core) }
+            val containerConstructor = Lookup.classOrNull(loader, CONTAINER_SCOPE_CLASS)?.let { cls ->
+                Lookup.declaredConstructors(cls, true) {
+                    !it.isSynthetic && it.parameterCount in 3..16 &&
+                        it.parameterTypes.count { type -> type == context } == 1 &&
+                        it.parameterTypes.count { type -> type == container } == 1
+                }.singleOrNull()
+            }
+            val containerScope = if (containerConstructor != null && containerCore != null) ContainerScope(
+                containerConstructor, containerConstructor.parameterTypes.indexOf(context),
+                containerConstructor.parameterTypes.indexOf(container), containerCore) else null
+            if (scope == null && containerScope == null) return null
             val business = Lookup.inheritedMethodOrNull(params, "getBizType")?.takeIf {
                 !Modifier.isStatic(it.modifiers) && it.returnType.isEnum
             } ?: return null
             val ugc = Lookup.fieldOrNull(business.returnType, "UGC")?.takeIf {
                 Modifier.isStatic(it.modifiers) && it.type == business.returnType
             }?.get(null) ?: return null
-            SponsorPlayerAccess(run, constructor, scope, active, continuation, continuationOwner, runLabel, parameters,
+            SponsorPlayerAccess(run, constructor, scope, containerScope, active, continuation, continuationOwner, runLabel, parameters,
                 method(params, "getBvId", classOf<String>()) ?: return null,
                 method(params, "getCid", classOf<Long>()) ?: return null,
                 method(params, "getAvid", classOf<Long>()) ?: return null, business, ugc,

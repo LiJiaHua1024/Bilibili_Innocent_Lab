@@ -22,23 +22,16 @@ import com.Bilibili_Innocent_Lab.xposedmodule.runtime.InjectedUiLocale
 import java.lang.ref.WeakReference
 import java.lang.reflect.Method
 import java.lang.reflect.Proxy
-import java.util.WeakHashMap
 import java.util.concurrent.atomic.AtomicBoolean
-import java.util.concurrent.atomic.AtomicLong
 
 /** 不轮询、不全局 Hook 触摸；只有显式归属前台详情 Activity 的普通 UGC 会话才查询。 */
 internal class SponsorPlayerSessions(private val env: HookEnvironment, private val access: SponsorPlayerAccess,
     private val seekAccess: SponsorSeekAccess, private val detail: Class<*>, private val automatic: Boolean,
     private val repository: SponsorSegmentRepository) {
-    private class Candidate {
-        val epoch = AtomicLong()
-        @Volatile var ready = false
-        @Volatile var order = 0L
-        @Volatile var wrapper = WeakReference<Any>(null)
-        @Volatile var activity = WeakReference<Activity>(null)
+    private val bindings = SponsorPlayerBindings()
+    private val diagnostics = SponsorRuntimeDiagnostics { key, message, failure ->
+        if (failure) env.logError(key, message) else env.logInfo(key, message)
     }
-    private val candidates = WeakHashMap<Any, Candidate>()
-    private val order = AtomicLong()
     private val active = AtomicBoolean(false)
     private val handler = Handler(Looper.getMainLooper())
     private val guard = SponsorSeekGuard()
@@ -46,31 +39,57 @@ internal class SponsorPlayerSessions(private val env: HookEnvironment, private v
     @Volatile private var current: Session? = null
 
     fun install(lifecycle: List<Method>, seekMethod: Method): Int {
+        var count = 9
         env.registrar.constructor("sponsorblock.wrapper", access.wrapper) {
             after {
                 if (!active.get() || hasThrowable) return@after
                 val owner = argOrNull(1) ?: return@after
                 val wrapper = instance ?: return@after
-                synchronized(candidates) { candidates.getOrPut(owner, ::Candidate).wrapper = WeakReference(wrapper) }
+                val core = argOrNull(0) ?: return@after
+                bindings.wrapper(owner, wrapper, core)
+                diagnostics.record("binding.wrapper")
                 main { reconcile() }
             }
         }
-        env.registrar.constructor("sponsorblock.activity_scope", access.scope) {
-            after {
-                if (!active.get() || hasThrowable) return@after
-                val owner = argOrNull(2) ?: return@after
-                val activity = activity(argOrNull(1) as? Context)?.takeIf(detail::isInstance) ?: return@after
-                synchronized(candidates) { candidates.getOrPut(owner, ::Candidate).activity = WeakReference(activity) }
-                main { reconcile() }
+        access.scope?.let { scope ->
+            count++
+            env.registrar.constructor("sponsorblock.activity_scope", scope) {
+                after {
+                    if (!active.get() || hasThrowable) return@after
+                    val owner = argOrNull(2) ?: return@after
+                    val activity = activity(argOrNull(1) as? Context)?.takeIf(detail::isInstance) ?: run {
+                        diagnostics.record("binding.failed.scope-context"); return@after
+                    }
+                    bindings.activity(owner, activity)
+                    diagnostics.record("binding.scope")
+                    main { reconcile() }
+                }
+            }
+        }
+        access.containerScope?.let { scope ->
+            count++
+            env.registrar.constructor("sponsorblock.container_scope", scope.constructor) {
+                after {
+                    if (!active.get() || hasThrowable) return@after
+                    val context = argOrNull(scope.contextIndex) as? Context
+                    val activity = activity(context)?.takeIf(detail::isInstance) ?: run {
+                        diagnostics.record("binding.failed.container-context"); return@after
+                    }
+                    val container = argOrNull(scope.containerIndex) ?: return@after
+                    val core = runCatching { scope.core.invoke(container) }.getOrNull() ?: run {
+                        diagnostics.record("binding.failed.container-core"); return@after
+                    }
+                    val matched = bindings.container(core, activity)
+                    diagnostics.record(if (matched) "binding.container" else "binding.container-pending")
+                    main { reconcile() }
+                }
             }
         }
         env.registrar.exact("sponsorblock.media", access.run.declaringClass, access.run.name, *access.run.parameterTypes) {
             before {
                 if (!active.get()) return@before
                 val owner = instance ?: return@before
-                val epoch = synchronized(candidates) {
-                    candidates.getOrPut(owner, ::Candidate).let { it.ready = false; it.epoch.incrementAndGet() }
-                }
+                val epoch = bindings.begin(owner)
                 setObjectExtra("sponsorblock_epoch", epoch)
                 current?.takeIf { it.owner.get() === owner }?.invalid?.set(true)
                 main { if (current?.invalid?.get() == true) detach() }
@@ -78,11 +97,12 @@ internal class SponsorPlayerSessions(private val env: HookEnvironment, private v
             after {
                 if (!active.get() || hasThrowable) return@after
                 val owner = instance ?: return@after
-                if (!access.bound(owner, argOrNull(0), argOrNull(1))) return@after
+                if (!access.bound(owner, argOrNull(0), argOrNull(1))) {
+                    diagnostics.record("binding.media-pending"); return@after
+                }
                 val epoch = getObjectExtra("sponsorblock_epoch") as? Long ?: return@after
-                synchronized(candidates) { candidates[owner]?.takeIf { it.epoch.get() == epoch }?.let {
-                    it.ready = true; it.order = order.incrementAndGet()
-                } }
+                bindings.ready(owner, epoch)
+                diagnostics.record("binding.media")
                 main { reconcile() }
             }
         }
@@ -124,6 +144,7 @@ internal class SponsorPlayerSessions(private val env: HookEnvironment, private v
                     val activity = instance as? Activity ?: return@after
                     if (!active.get() || hasThrowable || !detail.isInstance(activity)) return@after
                     foreground = WeakReference(activity)
+                    diagnostics.record("binding.foreground")
                     main { if (foreground.get() === activity) reconcile() }
                 } else before {
                     val activity = instance as? Activity ?: return@before
@@ -133,14 +154,12 @@ internal class SponsorPlayerSessions(private val env: HookEnvironment, private v
                         current?.invalid?.set(true)
                         main { if (current?.activity?.get() === activity) detach() }
                     }
-                    if (index == 2) synchronized(candidates) {
-                        candidates.entries.removeAll { it.value.activity.get() === activity }
-                    }
+                    if (index == 2) bindings.destroy(activity)
                 }
             }
         }
         active.set(true)
-        return 10
+        return count
     }
 
     private fun main(block: () -> Unit) {
@@ -153,22 +172,22 @@ internal class SponsorPlayerSessions(private val env: HookEnvironment, private v
     private fun reconcile() {
         if (!active.get()) return
         val activity = foreground.get()?.takeUnless { it.isFinishing || it.isDestroyed } ?: run { detach(); return }
-        val entry = synchronized(candidates) { candidates.entries.filter {
-            it.value.ready && it.value.activity.get() === activity && it.value.wrapper.get() != null
-        }.maxByOrNull { it.value.order }?.let { it.key to it.value } }
-        val owner = entry?.first ?: run { detach(); return }
+        val entry = bindings.select(activity)
+        val owner = entry?.first ?: run { diagnostics.record("binding.waiting"); detach(); return }
         val candidate = entry.second
         val wrapper = candidate.wrapper.get() ?: run { detach(); return }
-        val video = access.video(owner) ?: run { detach(); return }
+        val video = access.video(owner) ?: run { diagnostics.record("binding.invalid-media"); detach(); return }
         val epoch = candidate.epoch.get()
         if (current?.let { !it.invalid.get() && it.owner.get() === owner && it.wrapper.get() === wrapper &&
                 it.video == video && it.epoch == epoch && it.activity.get() === activity } == true) return
         detach()
-        val root = activity.findViewById<FrameLayout>(android.R.id.content) ?: return
+        val root = activity.findViewById<FrameLayout>(android.R.id.content) ?: run {
+            diagnostics.record("binding.failed.root"); return
+        }
         val session = Session(owner, wrapper, candidate, epoch, video, activity, root)
         current = session
         if (runCatching { session.start() }.onFailure {
-                env.logError("sponsorblock_session", "[BIL] 商单会话注册失败: ${it.javaClass.simpleName}")
+                diagnostics.record("session.failed", it.javaClass.simpleName)
             }.isFailure) { session.invalid.set(true); detach() }
     }
 
@@ -178,7 +197,7 @@ internal class SponsorPlayerSessions(private val env: HookEnvironment, private v
         old.stop()
     }
 
-    private inner class Session(owner: Any, wrapper: Any, private val candidate: Candidate, val epoch: Long,
+    private inner class Session(owner: Any, wrapper: Any, private val candidate: SponsorPlayerBindings.Candidate, val epoch: Long,
         val video: SponsorVideoId, activity: Activity, root: FrameLayout) : SponsorPlayerPort {
         val owner = WeakReference(owner)
         val wrapper = WeakReference(wrapper)
@@ -193,12 +212,16 @@ internal class SponsorPlayerSessions(private val env: HookEnvironment, private v
         val controller = SponsorPlaybackController(video, automatic, this, repository::lookup, ::main,
             { delay, block -> val task = Runnable(block); handler.postDelayed(task, delay)
                 SponsorSegmentRepository.Ticket { handler.removeCallbacks(task) } }, SystemClock::uptimeMillis,
-            ::render, { env.reportRuntimeEvidence(SponsorBlockFeatureInstaller.ID, FeatureRuntimeStage.APPLIED) })
+            ::render, { env.reportRuntimeEvidence(SponsorBlockFeatureInstaller.ID, FeatureRuntimeStage.APPLIED) },
+            diagnostics::record)
 
-        override fun valid(video: SponsorVideoId): Boolean = !invalid.get() && current === this &&
-            foreground.get() === activity.get() && activity.get() != null && root.get() != null && wrapper.get() != null &&
-            candidate.ready && candidate.epoch.get() == epoch && owner.get()?.let { access.video(it) == video } == true
-            && candidate.activity.get() === activity.get() && candidate.wrapper.get() === wrapper.get()
+        override fun valid(video: SponsorVideoId): Boolean {
+            val owner = owner.get() ?: return false
+            val wrapper = wrapper.get() ?: return false
+            val activity = activity.get() ?: return false
+            return !invalid.get() && current === this && foreground.get() === activity && root.get() != null &&
+                access.video(owner) == video && bindings.current(owner, candidate, epoch, wrapper, activity)
+        }
         override fun position(): Long = if (!progressSeen.get()) -1L else
             wrapper.get()?.let { access.position.invoke(it) as? Int }?.toLong() ?: -1L
         override fun duration(): Long = if (!progressSeen.get()) 0L else
@@ -215,7 +238,8 @@ internal class SponsorPlayerSessions(private val env: HookEnvironment, private v
         fun start() {
             observe(access.releaseObserver, access.registerRelease, access.unregisterRelease) { name, _ ->
                 if (name == "onPlayerWillRelease") {
-                    invalid.set(true); candidate.ready = false
+                    invalid.set(true)
+                    owner.get()?.let { bindings.release(it, epoch) }
                     main { if (current === this) detach() }
                 } else if (name == "onPlayerItemWillChanged" || name == "onPlayerItemRelease") {
                     progressSeen.set(false)
@@ -225,7 +249,7 @@ internal class SponsorPlayerSessions(private val env: HookEnvironment, private v
             }
             observe(access.progressObserver, access.registerProgress, access.unregisterProgress) { name, _ ->
                 if (name == "onPlayerProgressChange") {
-                    progressSeen.set(true)
+                    if (progressSeen.compareAndSet(false, true)) diagnostics.record("progress.observed")
                     if (progressQueued.compareAndSet(false, true)) main {
                         progressQueued.set(false)
                         if (current === this) { if (valid(video)) controller.refresh() else detach() }
@@ -246,6 +270,7 @@ internal class SponsorPlayerSessions(private val env: HookEnvironment, private v
                     if (current === this) controller.stateChanged()
                 } }
             env.reportRuntimeEvidence(SponsorBlockFeatureInstaller.ID, FeatureRuntimeStage.OBSERVED)
+            diagnostics.record("session.bound")
             controller.start()
         }
 
@@ -257,7 +282,11 @@ internal class SponsorPlayerSessions(private val env: HookEnvironment, private v
                     "hashCode" -> System.identityHashCode(proxy)
                     "equals" -> proxy === args?.firstOrNull()
                     "toString" -> "InnocentLabSponsorObserver"
-                    else -> { if (weak.get()?.invalid?.get() == false) runCatching { callback(method.name, args) }; null }
+                    else -> {
+                        if (weak.get()?.invalid?.get() == false) runCatching { callback(method.name, args) }
+                            .onFailure { diagnostics.record("observer.failed", it.javaClass.simpleName) }
+                        null
+                    }
                 }
             }
             val wrapper = wrapper.get() ?: error("released-player")

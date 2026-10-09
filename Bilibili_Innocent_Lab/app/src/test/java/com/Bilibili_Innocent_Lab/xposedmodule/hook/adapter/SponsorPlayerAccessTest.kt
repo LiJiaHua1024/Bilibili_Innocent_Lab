@@ -18,7 +18,11 @@ class SponsorPlayerAccessTest {
 
     @Test fun inheritedBusinessGetterAndExactTwoArgumentSeekAreResolved() {
         val access = requireNotNull(SponsorPlayerAccess.resolve(loader))
-        assertEquals(7, access.scope.parameterCount)
+        assertEquals(7, requireNotNull(access.scope).parameterCount)
+        val container = requireNotNull(access.containerScope)
+        assertEquals(2, container.containerIndex); assertEquals(3, container.contextIndex)
+        assertEquals("getPlayerCoreService", container.core.name)
+        assertEquals(SponsorPlayerAccess.CONTAINER_INTERFACE, container.core.declaringClass.name)
         assertEquals(listOf(Int::class.javaPrimitiveType, Boolean::class.javaPrimitiveType), access.seek.parameterTypes.toList())
         assertEquals(SponsorVideoId("BV14741127BN", 1), access.video(TheseusKeelPlayer(playable())))
     }
@@ -28,6 +32,8 @@ class SponsorPlayerAccessTest {
         val owner = TheseusKeelPlayer(playable())
         owner.current = playable(cid = 3)
         assertEquals(SponsorVideoId("BV14741127BN", 3), access.video(owner))
+        owner.current = playable(cid = 42_072_543_108L, bvid = "BV1FnhC6qEck")
+        assertEquals(SponsorVideoId("BV1FnhC6qEck", 42_072_543_108L), access.video(owner))
         for (invalid in listOf(playable(business = SponsorBusiness.PGC), playable(cid = 0),
             playable(avid = 0), playable(bvid = "invalid"), null)) {
             owner.current = invalid
@@ -72,5 +78,19 @@ class SponsorPlayerAccessTest {
         assertFalse(access.bound(TheseusKeelPlayer(next), null, resume))
         owner.current = null
         assertFalse(access.bound(owner, null, resume))
+    }
+
+    @Test fun eitherExplicitActivityBindingRouteCanSupportAHostButNeitherCannot() {
+        fun hiding(vararg classes: String) = object : ClassLoader(loader) {
+            override fun loadClass(name: String, resolve: Boolean): Class<*> {
+                if (name in classes) throw ClassNotFoundException(name)
+                return super.loadClass(name, resolve)
+            }
+        }
+        val direct = requireNotNull(SponsorPlayerAccess.resolve(hiding(SponsorPlayerAccess.SCOPE_CLASS)))
+        assertNull(direct.scope); assertNotNull(direct.containerScope)
+        val fallback = requireNotNull(SponsorPlayerAccess.resolve(hiding(SponsorPlayerAccess.CONTAINER_SCOPE_CLASS)))
+        assertNotNull(fallback.scope); assertNull(fallback.containerScope)
+        assertNull(SponsorPlayerAccess.resolve(hiding(SponsorPlayerAccess.SCOPE_CLASS, SponsorPlayerAccess.CONTAINER_SCOPE_CLASS)))
     }
 }
