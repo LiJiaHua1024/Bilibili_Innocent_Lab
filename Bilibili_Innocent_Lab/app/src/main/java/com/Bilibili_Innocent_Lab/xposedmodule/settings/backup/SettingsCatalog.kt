@@ -32,7 +32,7 @@ import com.Bilibili_Innocent_Lab.xposedmodule.settings.appearance.HostGlassRende
 internal object SettingsCatalog {
     const val PRODUCT_ID = "bilibili-innocent-lab.settings"
     const val SCOPE_ID = "core-user-settings"
-    const val CATALOG_VERSION = 45
+    const val CATALOG_VERSION = 46
     const val ID_PLAYER_DEFAULT_SPEED = "player.default_speed.percent"
     const val ID_PLAYER_LONG_PRESS_SPEED = "player.long_press_speed.percent"
     const val ID_FREE_COPY_COMMENT = "free_copy.comment.enabled"
@@ -764,6 +764,7 @@ internal object SettingsCatalog {
         bool("comments.quick_reply.blocked", FeaturePreferences.BLOCK_COMMENT_QUICK_REPLY, R.string.block_comment_quick_reply),
         bool("comments.section.hidden", FeaturePreferences.HIDE_COMMENT_SECTION, R.string.hide_comment_section),
         bool("comments.reply_topology.enabled", FeaturePreferences.REPLY_TOPOLOGY_ENABLED, R.string.reply_topology_enabled),
+        bool("comments.classic_style.enabled", FeaturePreferences.COMMENT_CLASSIC_STYLE, R.string.comment_classic_style, introducedCatalogVersion = 46),
         bool("comments.keyword_filter.enabled", FeaturePreferences.COMMENT_KEYWORD_FILTER_ENABLED, R.string.comment_keyword_filter),
         text("comments.keyword_filter.keywords", FeaturePreferences.COMMENT_FILTER_KEYWORDS, R.string.comment_keyword_rules),
         bool("comments.minimum_level_filter.enabled", FeaturePreferences.COMMENT_MIN_LEVEL_FILTER_ENABLED, R.string.comment_min_level_filter),
@@ -918,7 +919,7 @@ internal object SettingsCatalog {
     val byStorageKey: Map<String, SettingSpec> = specs.associateBy(SettingSpec::storageKey)
 
     init {
-        check(specs.size == 206) { "Expected 206 catalog settings, found ${specs.size}" }
+        check(specs.size == 207) { "Expected 207 catalog settings, found ${specs.size}" }
         check(byId.size == specs.size) { "Duplicate logical setting id" }
         check(specs.map(SettingSpec::storageKey).distinct().size == specs.size) {
             "Duplicate settings storage key"

@@ -20,7 +20,7 @@ internal object DiagnosticCapabilityCatalog {
      * 客户端是按 "比我已知的版本更新" 做增量的，
      * VERSION 涨了却没有任何条目标在新版本上，增量就是空集（有测试钉住）。
      */
-    const val VERSION = 19
+    const val VERSION = 20
     val definitions = listOf(
         DiagnosticCapabilityDefinition("sponsorblock", "sponsorblock", R.string.sponsorblock_enabled,
             setOf("player.sponsorblock.enabled", "player.sponsorblock.automatic"), introducedCatalogVersion = 19),
@@ -157,6 +157,7 @@ internal object DiagnosticCapabilityCatalog {
         DiagnosticCapabilityDefinition("comments_quick_reply_blocked", "comment_purify", R.string.block_comment_quick_reply, setOf("comments.quick_reply.blocked")),
         DiagnosticCapabilityDefinition("comment_section", "comment_section", R.string.hide_comment_section, setOf("comments.section.hidden")),
         DiagnosticCapabilityDefinition("comment_topology", "comment_topology", R.string.reply_topology_enabled, setOf("comments.reply_topology.enabled")),
+        DiagnosticCapabilityDefinition("comment_classic_style", "comment_classic_style", R.string.comment_classic_style, setOf("comments.classic_style.enabled"), introducedCatalogVersion = 20),
         DiagnosticCapabilityDefinition("comments_keyword_filter_enabled", "comment_filter", R.string.comment_keyword_filter, setOf("comments.keyword_filter.enabled", "comments.keyword_filter.keywords")),
         DiagnosticCapabilityDefinition("comments_minimum_level_filter_enabled", "comment_filter", R.string.comment_min_level_filter, setOf("comments.minimum_level_filter.enabled", "comments.minimum_level_filter.level")),
         DiagnosticCapabilityDefinition("comments_at_only_removed", "comment_filter", R.string.remove_at_only_comments, setOf("comments.at_only.removed")),

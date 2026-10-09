@@ -55,6 +55,7 @@ import com.Bilibili_Innocent_Lab.xposedmodule.hook.feature.CommentPurifyFeatureI
 import com.Bilibili_Innocent_Lab.xposedmodule.hook.feature.CommentFilterFeatureInstaller
 import com.Bilibili_Innocent_Lab.xposedmodule.hook.feature.CommentTopologyFeatureInstaller
 import com.Bilibili_Innocent_Lab.xposedmodule.hook.feature.CommentSectionFeatureInstaller
+import com.Bilibili_Innocent_Lab.xposedmodule.hook.feature.CommentClassicStyleFeatureInstaller
 import com.Bilibili_Innocent_Lab.xposedmodule.hook.feature.DanmakuPurifyFeatureInstaller
 import com.Bilibili_Innocent_Lab.xposedmodule.hook.feature.DanmakuPurifyPolicy
 import com.Bilibili_Innocent_Lab.xposedmodule.hook.feature.DynamicPurifyFeatureInstaller
@@ -3563,6 +3564,9 @@ class HookEntry : XposedModule() {
                             FeaturePreferences.SYSTEM_MEDIA_NOTIFICATION,
                             false
                         )
+                    ),
+                    CommentClassicStyleFeatureInstaller(
+                        enabled = prefs.getBoolean(FeaturePreferences.COMMENT_CLASSIC_STYLE, false)
                     ),
                     SplashAutoNightFeatureInstaller(
                         enabled = prefs.getBoolean(

@@ -400,6 +400,8 @@
     <string name="hide_comment_section">完全隱藏評論區</string>
     <string name="hide_comment_section_tip">開啟後，移除影片詳細頁的評論分頁，簡介等其他分頁不受影響。重新啟動 Bilibili 後生效。</string>
     <string name="reply_topology_enabled">回覆脈絡圖</string>
+    <string name="comment_classic_style">恢復舊版評論區</string>
+    <string name="comment_classic_style_tip">恢復舊版評論版面。樓中樓預覽為空時自動補取最多三條回覆，更多回覆仍可點按查看。補取可能稍微增加評論載入時間。重新啟動 Bilibili 後生效。</string>
     <string name="highlights_reply_topology_keyword_export">回覆脈絡支援依作者或回覆關鍵詞篩選，保留上層回覆關係，並可將目前可見的回覆預覽複製到剪貼簿。</string>
     <string name="highlights_reply_topology_tree_explorer">深層回覆顯示真實層級，可開啟完整樹狀圖自由拖曳縮放，也可透過獨立入口查看最近上層與直接回覆。</string>
     <string name="reply_topology_enabled_tip">開啟後，有回覆的第一層評論會顯示「脈絡」入口，可檢視回覆關係並定位評論；僅開啟面板時載入資料。重新啟動 Bilibili 後生效。</string>
