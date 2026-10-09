@@ -135,6 +135,15 @@ compatibility retries require an explicit schema rejection and share a request d
 decision sources, actions come from a predefined search/pagination/details/screen menu, with no
 invented parameters or video opening/playback. Complex goals should also select a tool-capable model.
 Unlimited budgets do not extend the 24-hour capability proof or guarantee Android process survival.
+Task input uses a soft budget with six recent complete tool rounds and up to eight deduplicated historical
+records. The original goal, latest complete tool round, candidate identities and verification/unknown
+states remain available; history never grants current navigation authority. Short-lived auxiliary results
+can reuse identical evidence or the same image/page. Changed images, pages, evidence, sources or expired
+proof still require fresh checks. Planner actions and unknown visual conclusions are never cached.
+Auxiliary provider usage reaches execution logs; cache hits do not repeat previous usage as new consumption.
+Output budgets and image challenges stay unchanged for reasoning-model and OCR compatibility. Savings
+come from smaller repeated inputs, fewer auxiliary requests and fewer explicitly rejected compatibility
+attempts. Local byte reductions are not provider-billed token counts or monetary savings.
 
 The module splits its features into independent switches, so you can enable only the parts you need. The UI is split into "Cleanup" and "Enhancements", each ending with its own advanced settings; free copy and bubble appearance live in the Enhancements column. The reorganisation kept existing switch values and behaviour; after enabling a host feature you usually need to restart Bilibili. If the current client version has no reliable enough adaptation entry point, the feature skips processing and leaves the host's original behaviour untouched.
 

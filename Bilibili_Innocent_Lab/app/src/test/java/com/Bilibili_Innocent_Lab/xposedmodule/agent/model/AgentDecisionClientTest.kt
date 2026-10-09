@@ -55,6 +55,8 @@ class AgentDecisionClientTest {
     private fun questions() = JSONObject().put("selection", JSONObject().put("type", "choice")
         .put("instructions", "Select one supported option.").put("criteria", JSONObject().put("first", "first").put("second", "second")))
 
+    private fun noulQuestions() = JSONObject().put("first", JSONObject().put("type", "noul").put("instructions", "Does this match?"))
+
     @Test fun `decision results stay typed and selection never emits tool arguments`() {
         val client = provedClient(AgentHttpTransport { _, bytes, _, _ ->
             val body = JSONObject(String(bytes, Charsets.UTF_8))
@@ -142,6 +144,143 @@ class AgentDecisionClientTest {
         assertTrue(requests[0].opt("state") is JSONObject)
         assertTrue(requests[2].opt("state") is String)
         assertTrue(requests[3].opt("state") is JSONObject)
+    }
+
+    @Test fun `explicit source state hint saves repeated rejected requests across formats and selection`() {
+        val requests = mutableListOf<JSONObject>()
+        val client = provedClient(AgentHttpTransport { _, bytes, _, _ ->
+            val body = JSONObject(String(bytes, Charsets.UTF_8)); requests += body
+            if (body.opt("state") !is String) throw schemaRejected("state")
+            response(body.getJSONObject("questions"))
+        })
+        client.probeEvaluate(source, state, questions(), timeoutMs = 5000) { false }
+        client.evaluate(source, state, noulQuestions(), timeoutMs = 5000) { false }
+        client.select(source, state, options, timeoutMs = 5000) { false }
+        assertEquals(4, requests.size)
+        assertTrue(requests[0].opt("state") is JSONObject)
+        assertTrue(requests.drop(1).all { it.opt("state") is String })
+    }
+
+    @Test fun `source hint does not remove the alternate shape for a format specific requirement`() {
+        val states = mutableListOf<Pair<String, Boolean>>()
+        val client = provedClient(AgentHttpTransport { _, bytes, _, _ ->
+            val body = JSONObject(String(bytes, Charsets.UTF_8))
+            val qs = body.getJSONObject("questions")
+            val format = qs.getJSONObject(qs.keys().next()).getString("type")
+            val text = body.opt("state") is String
+            states += format to text
+            if (text != (format == "choice")) throw schemaRejected("state")
+            response(qs)
+        })
+        client.evaluate(source, state, questions(), timeoutMs = 5000) { false }
+        client.evaluate(source, state, noulQuestions(), timeoutMs = 5000) { false }
+        client.evaluate(source, state, questions(), timeoutMs = 5000) { false }
+        assertEquals(listOf("choice" to false, "choice" to true, "noul" to true, "noul" to false, "choice" to true), states)
+    }
+
+    @Test fun `non state schema failures cannot teach source wide text shape`() {
+        val states = mutableListOf<Boolean>()
+        val client = provedClient(AgentHttpTransport { _, bytes, _, _ ->
+            val body = JSONObject(String(bytes, Charsets.UTF_8))
+            val text = body.opt("state") is String
+            states += text
+            if (!text) throw schemaRejected("type")
+            response(body.getJSONObject("questions"))
+        })
+        client.evaluate(source, state, questions(), timeoutMs = 5000) { false }
+        client.evaluate(source, state, noulQuestions(), timeoutMs = 5000) { false }
+        assertEquals(listOf(false, true, false, true), states)
+    }
+
+    @Test fun `source state hint expires rolls back and is isolated when credentials change`() {
+        var now = 10_000L
+        val states = mutableListOf<Boolean>()
+        val client = provedClient(AgentHttpTransport { _, bytes, _, _ ->
+            val body = JSONObject(String(bytes, Charsets.UTF_8))
+            val text = body.opt("state") is String
+            states += text
+            if (!text) throw schemaRejected("state")
+            response(body.getJSONObject("questions"))
+        }, clock = { now })
+        client.evaluate(source, state, questions(), timeoutMs = 5000) { false }
+        val changed = source.copy(apiKey = "replacement")
+        client.setCapabilities(changed, supported(checkedAt = now))
+        client.evaluate(changed, state, noulQuestions(), timeoutMs = 5000) { false }
+        now += AgentModelCapabilities.VALID_FOR_MS + 1
+        client.setCapabilities(source, supported(checkedAt = now))
+        client.evaluate(source, state, noulQuestions(), timeoutMs = 5000) { false }
+        now -= 100
+        client.setCapabilities(source, supported(checkedAt = now))
+        client.select(source, state, options, timeoutMs = 5000) { false }
+        assertEquals(listOf(false, true, false, true, false, true, false, true), states)
+    }
+
+    @Test fun `learned state hint fallback cannot restart the total deadline`() {
+        var delay = false
+        val states = mutableListOf<Boolean>()
+        val client = provedClient(AgentHttpTransport { _, bytes, _, _ ->
+            val body = JSONObject(String(bytes, Charsets.UTF_8))
+            val text = body.opt("state") is String
+            states += text
+            if (delay) {
+                Thread.sleep(140)
+                throw schemaRejected("state")
+            }
+            if (!text) throw schemaRejected("state")
+            response(body.getJSONObject("questions"))
+        })
+        client.evaluate(source, state, questions(), timeoutMs = 5000) { false }
+        delay = true
+        failure(AgentModelException.Reason.TIMEOUT) {
+            client.evaluate(source, state, noulQuestions(), timeoutMs = 100) { false }
+        }
+        assertEquals(listOf(false, true, true), states)
+    }
+
+    @Test fun `cancelled alternative response cannot publish learned shape or state hint`() {
+        var cancelled = false
+        val states = mutableListOf<Boolean>()
+        val client = provedClient(AgentHttpTransport { _, bytes, _, _ ->
+            val body = JSONObject(String(bytes, Charsets.UTF_8))
+            val text = body.opt("state") is String
+            states += text
+            if (!text) throw schemaRejected("state")
+            if (states.size == 2) cancelled = true
+            response(body.getJSONObject("questions"))
+        })
+        failure(AgentModelException.Reason.CANCELLED) {
+            client.evaluate(source, state, questions(), timeoutMs = 5000) { cancelled }
+        }
+        cancelled = false
+        client.evaluate(source, state, noulQuestions(), timeoutMs = 5000) { cancelled }
+        assertEquals(listOf(false, true, false, true), states)
+    }
+
+    @Test fun `text and image state keep full goal once ahead of unchanged structured evidence`() {
+        val original = JSONObject(state.toString()).put("instructions", "Only choose known candidates.")
+            .put("nested", JSONObject().put("verified", false)).put("cursor", "valid-next-page")
+        val before = original.toString()
+        val wireTexts = mutableListOf<String>()
+        val client = provedClient(AgentHttpTransport { _, bytes, _, _ ->
+            val body = JSONObject(String(bytes, Charsets.UTF_8))
+            val wire = body.opt("state")
+            if (wire is JSONObject) throw schemaRejected("state")
+            val text = if (wire is JSONArray) wire.getString(0) else wire as String
+            wireTexts += text
+            assertEquals(1, Regex(Regex.escape(original.getString("goal"))).findAll(text).count())
+            assertTrue(text.indexOf("User goal:") < text.indexOf("State:"))
+            val evidence = JSONObject(text.substring(text.indexOf("State: ") + "State: ".length))
+            assertFalse(evidence.has("goal"))
+            assertEquals(original.getString("instructions"), evidence.getString("instructions"))
+            assertEquals("valid-next-page", evidence.getString("cursor"))
+            assertFalse(evidence.getJSONObject("nested").getBoolean("verified"))
+            response(body.getJSONObject("questions"))
+        })
+        client.setCapabilities(source, supported(true))
+        client.evaluate(source, original, questions(), timeoutMs = 5000) { false }
+        client.evaluate(source, original, questions(), image, 5000) { false }
+        assertEquals(2, wireTexts.size)
+        assertEquals(before, original.toString())
     }
 
     @Test fun `learned shape expires and clock rollback cannot keep stale preference`() {

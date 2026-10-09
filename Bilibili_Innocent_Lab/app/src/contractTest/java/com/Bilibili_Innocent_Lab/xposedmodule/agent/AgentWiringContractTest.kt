@@ -52,7 +52,7 @@ class AgentWiringContractTest {
         assertTrue(image.after("data?.remove(\"image_data_url\")").contains("models.inspect(image, response)"))
         val cooperation = SourceContract.read("agent/AgentCooperation.kt")
         val inspect = cooperation.after("fun inspect(").before("private fun decisionTurn(")
-        assertTrue(inspect.contains("request<JSONObject>(AgentModelRole.VISION, route"))
+        assertTrue(inspect.contains("request<Auxiliary>(AgentModelRole.VISION, route"))
         assertTrue(inspect.contains("chat.generate(source, messages, JSONArray(), true, timeout, cancelled)"))
         assertTrue(cooperation.contains("AgentToolCatalog.tools(vision), false"))
         val history = SourceContract.read("agent/AgentConversation.kt")

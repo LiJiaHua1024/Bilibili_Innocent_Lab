@@ -86,7 +86,7 @@ class AgentCooperationTest {
         lease!!.use { assertEquals(1, it.source.index) }
         val next = cooperation.inspect(image, page)
         assertEquals(2, next.getInt("source_index"))
-        assertEquals(listOf(1, 2, 1), requests) // 已知普通 eyes 可复用；unknown 必须重新判断。
+        assertEquals(listOf(1, 2), requests) // 复用真实通过的eyes，未知结果本身仍未缓存。
     }
 
     @Test fun `ordinary eyes produce bounded text evidence for a nonvisual decision source`() {

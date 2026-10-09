@@ -23,16 +23,20 @@ internal class AgentCooperation(
     private val chat: AgentModelClient = AgentModelRuntime.chatClient,
     private val decisions: AgentDecisionClient = AgentModelRuntime.decisionClient,
     health: AgentHealthRegistry = AgentModelRuntime.health,
-    private val requestEvent: (AgentRequestUpdate) -> Unit = {}
+    private val requestEvent: (AgentRequestUpdate) -> Unit = {},
+    private val wallClock: () -> Long = System::currentTimeMillis
 ) {
     private val router = AgentSourceRouter(sources, caps, health)
     private val actions = AgentDecisionActions(goal, elapsed)
-    private val cache = AgentTaskCache(AgentTaskCache.VISION_CAPACITY, AgentTaskCache.VISION_TTL_MS)
+    private data class Auxiliary(val value: JSONObject, val usage: AgentModelUsage? = null, val cached: Boolean = false)
+    private val reviewCache = AgentTaskCache(AgentTaskCache.VISION_CAPACITY, AgentTaskCache.VISION_TTL_MS)
+    private val visionCache = AgentTaskCache(AgentTaskCache.VISION_CAPACITY, AgentTaskCache.VISION_TTL_MS)
     private val fixedDecision = sources.firstOrNull { it.index == route.fixedIndex && it.protocol == AgentSourceProtocol.DECISIONS }
     private val chatRoute = if (fixedDecision != null) AgentRoutePolicy(route.allowedSources, allowFallback = route.allowFallback) else route
     var plannerFingerprint: String = ""
         private set
     private var decisionPlanned = false
+    private var lastVisionSource: String? = null
 
     init { sources.forEach { source -> caps[source.fingerprint]?.let { chat.setCapabilities(source, it); decisions.setCapabilities(source, it) } } }
 
@@ -72,16 +76,18 @@ internal class AgentCooperation(
         val data = response.optJSONObject("data") ?: return
         if (!response.optBoolean("ok")) return
         try {
+            val evidence = actions.state()
             val result = request(AgentModelRole.DECISION, route, fixedDecision?.fingerprint) { source, timeout ->
-                val key = digest(source.fingerprint + ":review:" + actions.state().toString())
-                cache.get(key, elapsed()) ?: decisions.select(source, actions.state(), linkedMapOf(
+                val key = AgentEvidenceKey.of(source.fingerprint, "review:v3", evidence)
+                reviewCache.get(key, elapsed())?.let { Auxiliary(it, cached = true) } ?: decisions.select(source, evidence, linkedMapOf(
                     "more_evidence" to "现有候选仍需查询详情或出处证据", "report_candidates" to "可以报告现有候选，同时保留不确定性",
                     "different_query" to "现有候选相关度低，应该改善关键词"), timeoutMs = timeout, cancelled = cancelled).let {
-                    JSONObject().put("suggestion", it.choice ?: "unknown").put("provenance", it.provenance)
-                        .put("source_index", source.index).also { value -> cache.put(key, value, elapsed()) }
+                    val value = JSONObject().put("suggestion", it.choice ?: "unknown").put("provenance", it.provenance).put("source_index", source.index)
+                    if (it.choice != null) reviewCache.put(key, value, elapsed())
+                    Auxiliary(value, it.usage)
                 }
             }
-            data.put("decision_review", result).put("decision_review_is_unverified", true)
+            data.put("decision_review", result.value).put("decision_review_is_unverified", true)
         } catch (error: AgentModelException) {
             if (error.reason == AgentModelException.Reason.CANCELLED) throw error
             data.put("decision_review_status", "unavailable")
@@ -91,19 +97,26 @@ internal class AgentCooperation(
         }
     }
 
-    fun inspect(image: String, response: JSONObject): JSONObject = request<JSONObject>(AgentModelRole.VISION, route,
-        fixedDecision?.fingerprint, accept = { it.optString("page_assessment") != "unknown" }) { source, timeout ->
-        val key = digest(source.fingerprint + ":image:v2:" + digest(image) + ":" + AgentProgressGuard.stableDigest(response) + ":" + AgentProgressGuard.stableDigest(actions.state()))
-        cache.get(key, elapsed()) ?: if (source.protocol == AgentSourceProtocol.DECISIONS) {
-            decisions.select(source, actions.state(), linkedMapOf("relevant_search" to "画面是搜索页，标题可见且与用户目标相关，仍需核实出处",
+    fun inspect(image: String, response: JSONObject): JSONObject {
+        val evidence = actions.state().also { it.remove("visual_assessment") }
+        val identity = JSONObject().put("image", digest(image)).put("goal", goal)
+            .put("page", response.optJSONObject("data")?.opt("page") ?: JSONObject.NULL)
+        val previous = sources.firstOrNull { it.fingerprint == lastVisionSource }
+        val preferred = previous?.takeIf { visionCache.get(visionKey(it, identity, evidence), elapsed()) != null }?.fingerprint
+            ?: fixedDecision?.fingerprint
+        return request<Auxiliary>(AgentModelRole.VISION, route,
+        preferred, accept = { it.value.optString("page_assessment") != "unknown" }) { source, timeout ->
+        val key = visionKey(source, identity, evidence)
+        visionCache.get(key, elapsed())?.let { Auxiliary(it, cached = true) } ?: if (source.protocol == AgentSourceProtocol.DECISIONS) {
+            decisions.select(source, evidence, linkedMapOf("relevant_search" to "画面是搜索页，标题可见且与用户目标相关，仍需核实出处",
                 "relevant_video" to "画面是视频页，标题或发布者与用户目标相关，仍需核实出处",
                 "needs_details" to "画面无法提供足够目标或出处信息，需要结构化详情",
                 "blocked" to "画面有遮挡、错误、验证或授权弹窗", "unrelated" to "可见内容与用户目标无关"),
                 image, timeout, cancelled).let {
-                JSONObject().put("page_assessment", it.choice ?: "unknown").put("provenance", it.provenance)
-                    .put("source_index", source.index).put("is_unverified", true).also { value ->
-                        if (it.choice != null) cache.put(key, value, elapsed())
-                    }
+                val value = JSONObject().put("page_assessment", it.choice ?: "unknown").put("provenance", it.provenance)
+                    .put("source_index", source.index).put("is_unverified", true)
+                if (it.choice != null) visionCache.put(key, value, elapsed())
+                Auxiliary(value, it.usage)
             }
         } else {
             // 独立只读请求，原图不会进入规划历史或判断缓存；普通视觉模型可作为 JEV 的眼睛。
@@ -114,9 +127,20 @@ internal class AgentCooperation(
                     .put(JSONObject().put("type", "image_url").put("image_url", JSONObject().put("url", image)))))
             val turn = chat.generate(source, messages, JSONArray(), true, timeout, cancelled)
             if (turn.toolCalls.isNotEmpty() || turn.text.isBlank()) throw AgentModelException(AgentModelException.Reason.INVALID_RESPONSE)
-            JSONObject().put("description", turn.text.take(4000)).put("page_assessment", "unstructured_observation").put("source_index", source.index)
-                .put("provenance", "chat:image").put("is_unverified", true).also { cache.put(key, it, elapsed()) }
+            val value = JSONObject().put("description", turn.text.take(4000)).put("page_assessment", "unstructured_observation").put("source_index", source.index)
+                .put("provenance", "chat:image").put("is_unverified", true)
+            visionCache.put(key, value, elapsed())
+            Auxiliary(value, turn.usage)
         }
+        }.value.also { value ->
+            if (value.optString("page_assessment") != "unknown") lastVisionSource = sources.firstOrNull { it.index == value.optInt("source_index") }?.fingerprint
+        }
+    }
+
+    private fun visionKey(source: AgentModelSource, identity: JSONObject, evidence: JSONObject): String {
+        val input = JSONObject(identity.toString())
+        if (source.protocol == AgentSourceProtocol.DECISIONS) input.put("decision_state", evidence)
+        return AgentEvidenceKey.of(source.fingerprint, "vision:v3:${source.protocol.name}", input)
     }
 
     private fun decisionTurn(): AgentModelTurn {
@@ -145,17 +169,19 @@ internal class AgentCooperation(
         var failure: AgentModelException? = null
         var uncertain: T? = null
         while (!cancelled()) {
-            val lease = router.acquire(role, policy, System.currentTimeMillis(), excluded, preferred) ?: break
+            val lease = router.acquire(role, policy, wallClock(), excluded, preferred) ?: break
             lease.use {
                 val timeout = checkpoint() // 每个来源尝试前续租，8源回退也不会超出租期。
+                if (cancelled()) throw AgentModelException(AgentModelException.Reason.CANCELLED)
                 sourceChanged(lease.source.index)
                 val started = elapsed()
                 emit(AgentRequestUpdate(role, lease.source.index, AgentRequestStatus.STARTED))
                 try {
                     val result = block(lease.source, timeout)
-                    val cacheHit = result is JSONObject && result.optBoolean("cache_hit")
-                    val usage = when (result) { is AgentModelTurn -> result.usage; is AgentDecisionSelection -> result.usage; else -> null }
-                    if (result is JSONObject && result.optBoolean("cache_hit")) lease.close()
+                    if (cancelled()) throw AgentModelException(AgentModelException.Reason.CANCELLED)
+                    val cacheHit = result is Auxiliary && result.cached
+                    val usage = when (result) { is AgentModelTurn -> result.usage; is AgentDecisionSelection -> result.usage; is Auxiliary -> result.usage; else -> null }
+                    if (cacheHit) lease.close()
                     else lease.succeed(elapsed() - started)
                     if (accept(result)) {
                         emit(AgentRequestUpdate(role, lease.source.index, if (cacheHit) AgentRequestStatus.CACHE_HIT else AgentRequestStatus.SUCCEEDED,
@@ -170,7 +196,7 @@ internal class AgentCooperation(
                         error = error.reason, httpStatus = error.status))
                     failure = error
                     excluded += lease.source.fingerprint
-                    lease.fail(System.currentTimeMillis(), error.retryAfterMs, error)
+                    lease.fail(wallClock(), error.retryAfterMs, error)
                     if (error.reason == AgentModelException.Reason.CANCELLED) throw error
                 }
             }
@@ -180,7 +206,7 @@ internal class AgentCooperation(
         throw failure ?: IllegalStateException("${role.name.lowercase()}_route_unavailable")
     }
 
-    fun clear() = cache.clear()
+    fun clear() { reviewCache.clear(); visionCache.clear(); lastVisionSource = null }
     private fun emit(update: AgentRequestUpdate) { runCatching { requestEvent(update) } }
     private fun digest(value: String): String = MessageDigest.getInstance("SHA-256").digest(value.toByteArray(Charsets.UTF_8))
         .joinToString("") { "%02x".format(it.toInt() and 255) }

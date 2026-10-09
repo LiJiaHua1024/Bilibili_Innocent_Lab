@@ -59,7 +59,10 @@ internal class AgentCapabilityProbe(
             }
         }
         val vision = if (visionChallenge == null) ProbeResult(AgentCapabilityState.UNKNOWN, "未提供图片挑战")
-        else checkCapability(AgentModelException.Reason.VISION_UNSUPPORTED) {
+        else if (tools.failure?.let(::sharedFailure) == true) {
+            // 两个题型共用凭据、端点与总期限；共同故障不能靠再传一张图得到可靠能力证明。
+            ProbeResult(AgentCapabilityState.UNKNOWN, "共同的凭据或网络故障，本次未继续检测图片")
+        } else checkCapability(AgentModelException.Reason.VISION_UNSUPPORTED) {
             val content = JSONArray().put(JSONObject().put("type", "text").put("text",
                 "Read the characters shown in this image. Reply with those characters only; preserve capitalization."))
                 .put(JSONObject().put("type", "image_url").put("image_url", JSONObject().put("url", visionChallenge.dataUrl)))
@@ -75,7 +78,12 @@ internal class AgentCapabilityProbe(
         ).also { client.setCapabilities(source, it) }
     }
 
-    private data class ProbeResult(val state: AgentCapabilityState, val detail: String)
+    private data class ProbeResult(val state: AgentCapabilityState, val detail: String,
+                                   val failure: AgentModelException? = null)
+
+    private fun sharedFailure(error: AgentModelException): Boolean =
+        error.reason in setOf(AgentModelException.Reason.NETWORK, AgentModelException.Reason.TIMEOUT) ||
+            error.reason == AgentModelException.Reason.HTTP && error.status == 401
 
     private fun checkCapability(unsupported: AgentModelException.Reason, action: () -> Boolean): ProbeResult = try {
         if (action()) ProbeResult(AgentCapabilityState.SUPPORTED, "实际检测通过")
@@ -83,6 +91,6 @@ internal class AgentCapabilityProbe(
     } catch (e: AgentModelException) {
         if (e.reason == AgentModelException.Reason.CANCELLED) throw e
         if (e.reason == unsupported) ProbeResult(AgentCapabilityState.UNSUPPORTED, e.reason.description)
-        else ProbeResult(AgentCapabilityState.UNKNOWN, e.reason.description)
+        else ProbeResult(AgentCapabilityState.UNKNOWN, e.reason.description, e)
     }
 }

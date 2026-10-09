@@ -70,12 +70,57 @@ class AgentCapabilityProbeTest {
     }
 
     @Test fun `authentication network and timeouts cannot be mislabeled unsupported`() {
-        for (reason in listOf(AgentModelException.Reason.HTTP, AgentModelException.Reason.NETWORK, AgentModelException.Reason.TIMEOUT)) {
-            val client = AgentModelClient(AgentHttpTransport { _, _, _, _ -> throw AgentModelException(reason, 401) })
+        for ((reason, status) in listOf(AgentModelException.Reason.HTTP to 401,
+            AgentModelException.Reason.NETWORK to null, AgentModelException.Reason.TIMEOUT to null)) {
+            var requests = 0
+            val client = AgentModelClient(AgentHttpTransport { _, _, _, _ -> requests++; throw AgentModelException(reason, status) })
             val result = AgentCapabilityProbe(client).probe(source, challenge)
             assertEquals(AgentCapabilityState.UNKNOWN, result.toolState)
             assertEquals(AgentCapabilityState.UNKNOWN, result.visionState)
+            assertEquals(1, requests)
         }
+    }
+
+    @Test fun `generic tool rejection does not skip a potentially valid visual challenge`() {
+        // 403 也可能只是工具功能的独立权限限制，不能据此放弃视觉来源。
+        for (status in listOf(400, 403)) {
+            var requests = 0
+            val client = AgentModelClient(AgentHttpTransport { _, bytes, _, _ ->
+                requests++
+                if (JSONObject(String(bytes, Charsets.UTF_8)).has("tools")) throw AgentModelException(AgentModelException.Reason.HTTP, status)
+                response(challenge.expectedAnswer)
+            })
+            val result = AgentCapabilityProbe(client).probe(source, challenge)
+            assertEquals(AgentCapabilityState.UNKNOWN, result.toolState)
+            assertTrue(result.vision)
+            assertEquals(2, requests)
+        }
+    }
+
+    @Test fun `receipt authentication failure stops image request without accepting partial tool proof`() {
+        var requests = 0
+        val client = AgentModelClient(AgentHttpTransport { _, bytes, _, _ ->
+            requests++
+            if (requests == 1) echo(JSONObject(String(bytes, Charsets.UTF_8)))
+            else throw AgentModelException(AgentModelException.Reason.HTTP, 401)
+        })
+        val result = AgentCapabilityProbe(client).probe(source, challenge)
+        assertEquals(AgentCapabilityState.UNKNOWN, result.toolState)
+        assertEquals(AgentCapabilityState.UNKNOWN, result.visionState)
+        assertEquals(2, requests)
+    }
+
+    @Test fun `cancellation during a common failure still propagates and publishes no proof`() {
+        var cancelled = false
+        var requests = 0
+        val client = AgentModelClient(AgentHttpTransport { _, _, _, _ ->
+            requests++
+            cancelled = true
+            throw AgentModelException(AgentModelException.Reason.NETWORK)
+        })
+        try { AgentCapabilityProbe(client).probe(source, challenge, cancelled = { cancelled }); fail("cancel expected") }
+        catch (error: AgentModelException) { assertEquals(AgentModelException.Reason.CANCELLED, error.reason) }
+        assertEquals(1, requests)
     }
 
     @Test fun `explicit unsupported is distinct from inconclusive`() {
