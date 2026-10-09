@@ -108,7 +108,8 @@ internal class AgentConversation(private val system: String, private val goal: S
             }
         }
         value is JSONArray -> JSONArray().apply {
-            val limit = if (depth >= 4) 6 else 20
+            val uiNodes = value.optJSONObject(0)?.has("node_id") == true
+            val limit = if (uiNodes) 96 else if (depth >= 4) 6 else 20
             (0 until minOf(value.length(), limit)).forEach { put(sanitize(value.opt(it), depth + 1)) }
         }
         value is String -> if (value.contains("data:image/", true)) "[image omitted]" else value.take(if (depth >= 5) 300 else 4_000)

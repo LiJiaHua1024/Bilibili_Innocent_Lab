@@ -74,12 +74,15 @@ internal data class AgentModelCapabilities(
     val decisions: Boolean = false,
     val decisionState: AgentCapabilityState = if (decisions) AgentCapabilityState.SUPPORTED else AgentCapabilityState.UNKNOWN,
     val decisionFormats: Set<String> = emptySet(),
-    val decisionVisionFormats: Set<String> = emptySet()
+    val decisionVisionFormats: Set<String> = emptySet(),
+    val plainPlanning: Boolean = false,
+    val plainState: AgentCapabilityState = if (plainPlanning) AgentCapabilityState.SUPPORTED else AgentCapabilityState.UNKNOWN
 ) {
     init {
         require(tools == (toolState == AgentCapabilityState.SUPPORTED))
         require(vision == (visionState == AgentCapabilityState.SUPPORTED))
         require(decisions == (decisionState == AgentCapabilityState.SUPPORTED))
+        require(plainPlanning == (plainState == AgentCapabilityState.SUPPORTED))
         require(decisionFormats.all { it in setOf("choice", "noul", "score") })
         require(decisionVisionFormats.all { it in setOf("choice", "noul", "score") })
     }
@@ -92,6 +95,7 @@ internal data class AgentModelCapabilities(
         .put("decisions", decisions).put("decisionState", decisionState.name)
         .put("decisionFormats", JSONArray(decisionFormats.sorted()))
         .put("decisionVisionFormats", JSONArray(decisionVisionFormats.sorted()))
+        .put("plainPlanning", plainPlanning).put("plainState", plainState.name)
 
     companion object {
         const val VALID_FOR_MS = 24 * 60 * 60 * 1000L
@@ -108,7 +112,8 @@ internal data class AgentModelCapabilities(
                 } ?: emptySet(),
                 json.optJSONArray("decisionVisionFormats")?.let { formats ->
                     (0 until formats.length()).map { formats.getString(it) }.toSet()
-                } ?: emptySet())
+                } ?: emptySet(), json.optBoolean("plainPlanning", false),
+                AgentCapabilityState.valueOf(json.optString("plainState", AgentCapabilityState.UNKNOWN.name)))
         }.getOrNull()
     }
 }
@@ -146,6 +151,7 @@ internal class AgentModelException(
         TOKEN_PARAMETER("模型不接受当前输出预算参数"),
         OPTIONAL_PARAMETER("模型不接受当前思考控制参数"),
         DECISION_PARAMETER("判定接口不接受当前结构写法"),
-        TOOLS_UNSUPPORTED("接口明确不支持工具调用"), VISION_UNSUPPORTED("接口明确不支持图像输入")
+        TOOLS_UNSUPPORTED("接口明确不支持工具调用"), VISION_UNSUPPORTED("接口明确不支持图像输入"),
+        PLAIN_UNVERIFIED("该来源尚未通过普通文本规划检测")
     }
 }

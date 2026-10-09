@@ -7,6 +7,59 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class AgentCooperationTest {
+    @Test fun textOnlyPlannerReceivesOrdinaryDialogAndRealExecutionResults() {
+        val planner = source(1)
+        val proof = caps().copy(plainPlanning = true, plainState = AgentCapabilityState.SUPPORTED)
+        var count = 0
+        val transport = AgentHttpTransport { _, bytes, _, _ ->
+            val body = JSONObject(String(bytes, Charsets.UTF_8))
+            assertFalse(body.has("tools")); assertFalse(body.has("tool_choice"))
+            assertFalse(body.getJSONArray("messages").toString().contains("tool_call_id"))
+            count++
+            if (count == 1) chatResponse("{\"action\":\"get_host_state\",\"arguments\":{}}")
+            else { assertTrue(body.toString().contains("REAL_FACT")); chatResponse("{\"answer\":\"根据真实结果完成核对\"}") }
+        }
+        val cooperation = models(listOf(planner), mapOf(planner.fingerprint to proof), AgentRoutePolicy(setOf(1), 1), transport)
+        val history = AgentConversation(AgentToolCatalog.SYSTEM, goal)
+        val first = cooperation.next(history)
+        assertEquals("get_host_state", first.toolCalls.single().name)
+        val result = JSONObject().put("ok", true).put("data", JSONObject().put("fact", "REAL_FACT"))
+        history.append(first, result, planner.fingerprint); cooperation.record(first.toolCalls.single(), result)
+        assertEquals("根据真实结果完成核对", cooperation.next(history).text)
+        assertEquals(2, count)
+    }
+
+    @Test fun explicitToolRejectionProbesTextModeOnceWithoutExtendingVisionProof() {
+        val planner = source(1)
+        val original = caps(tools = true, vision = true).copy(checkedAtMs = System.currentTimeMillis() - 10_000)
+        var probes = 0
+        var tasks = 0
+        val changed = mutableListOf<AgentModelCapabilities>()
+        val transport = AgentHttpTransport { _, bytes, _, _ ->
+            val body = JSONObject(String(bytes, Charsets.UTF_8))
+            if (body.has("tools")) throw AgentModelException(AgentModelException.Reason.TOOLS_UNSUPPORTED)
+            val messages = body.getJSONArray("messages")
+            val initial = messages.getJSONObject(0).getString("content")
+            if (initial.contains("无副作用的文本指令检测")) {
+                probes++
+                if (messages.length() == 1) {
+                    val nonce = Regex("nonce '([^']+)'").find(initial)!!.groupValues[1]
+                    chatResponse(JSONObject().put("action", "capability_echo").put("arguments", JSONObject().put("nonce", nonce)).toString())
+                } else {
+                    val content = messages.getJSONObject(2).getString("content")
+                    val receipt = JSONObject(content.substring(content.indexOf('{'))).getString("receipt")
+                    chatResponse(JSONObject().put("answer", receipt).toString())
+                }
+            } else { tasks++; chatResponse("{\"action\":\"get_host_state\",\"arguments\":{}}") }
+        }
+        val cooperation = AgentCooperation(listOf(planner), mapOf(planner.fingerprint to original), AgentRoutePolicy(setOf(1), 1),
+            goal, false, { 5000 }, { false }, {}, { 1000 }, AgentModelClient(transport), AgentDecisionClient(transport),
+            capabilityChanged = { _, value -> changed += value })
+        repeat(2) { assertEquals("get_host_state", cooperation.next(AgentConversation(AgentToolCatalog.SYSTEM, goal)).toolCalls.single().name) }
+        assertEquals(2, probes); assertEquals(2, tasks); assertEquals(1, changed.size)
+        assertTrue(changed.single().plainPlanning); assertFalse(changed.single().tools)
+        assertTrue(changed.single().vision); assertEquals(original.checkedAtMs, changed.single().checkedAtMs)
+    }
     @Test fun `model request metrics preserve planning when a log observer fails`() {
         val planner = source(1)
         val updates = mutableListOf<AgentRequestUpdate>()

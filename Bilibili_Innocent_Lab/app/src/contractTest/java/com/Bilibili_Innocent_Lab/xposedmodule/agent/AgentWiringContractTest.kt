@@ -74,7 +74,7 @@ class AgentWiringContractTest {
         val router = SourceContract.read("agent/model/AgentSourceRouter.kt")
         assertTrue(router.contains("source.index in route.allowedSources"))
         assertTrue(router.contains("role != AgentModelRole.PLANNER || route.fixedIndex == null"))
-        assertTrue(router.contains("source.protocol == AgentSourceProtocol.CHAT && capability.tools"))
+        assertTrue(router.contains("source.protocol == AgentSourceProtocol.CHAT && (capability.tools || capability.plainPlanning)"))
         assertTrue(router.contains("source.protocol == AgentSourceProtocol.DECISIONS && capability.decisions"))
     }
     @Test fun unlimitedUserBudgetsKeepFiniteCommandLeasesAndBoundedConversation() {

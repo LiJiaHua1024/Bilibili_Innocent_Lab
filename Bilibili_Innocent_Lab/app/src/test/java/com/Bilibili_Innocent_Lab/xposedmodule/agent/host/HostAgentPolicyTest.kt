@@ -227,8 +227,8 @@ class HostAgentPolicyTest {
     @Test fun `capture denies every privacy or incomplete observation condition`() {
         fun refusal(authorized: Boolean = true, foreground: Boolean = true, taskPage: Boolean = true,
                     secure: Boolean = false, password: Boolean = false, editing: Boolean = false,
-                    complete: Boolean = true, accessibilityEnabled: Boolean? = false) = HostAgentScreenPolicy.refusal(authorized, foreground, taskPage,
-            secure, password, editing, complete, accessibilityEnabled)
+                    complete: Boolean = true) = HostAgentScreenPolicy.refusal(authorized, foreground, taskPage,
+            secure, password, editing, complete)
         assertNull(refusal())
         assertEquals("vision_not_authorized", refusal(authorized = false))
         assertEquals("host_not_foreground", refusal(foreground = false))
@@ -237,13 +237,7 @@ class HostAgentPolicyTest {
         assertEquals("screen_password", refusal(password = true))
         assertEquals("screen_input_active", refusal(editing = true))
         assertEquals("screen_inspection_incomplete", refusal(complete = false))
-        assertEquals("accessibility_control_unverified", refusal(accessibilityEnabled = true))
-        assertEquals("accessibility_control_unverified", refusal(accessibilityEnabled = null))
     }
 
-    @Test fun `control requires accessibility explicitly disabled rather than unknown`() {
-        assertTrue(HostAgentAccessibilityPolicy.mayControl(false))
-        assertFalse(HostAgentAccessibilityPolicy.mayControl(true))
-        assertFalse(HostAgentAccessibilityPolicy.mayControl(null))
-    }
+
 }

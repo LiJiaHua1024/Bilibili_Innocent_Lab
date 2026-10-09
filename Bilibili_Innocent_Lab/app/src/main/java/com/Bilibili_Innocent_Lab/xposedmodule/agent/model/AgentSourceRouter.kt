@@ -55,7 +55,7 @@ internal class AgentSourceRouter(
     ): Lease? {
         val role = if (requireTools) AgentModelRole.PLANNER else if (requireVision) AgentModelRole.VISION else AgentModelRole.PLANNER
         val candidates = eligible(role, route, nowMs, excludeFingerprints).filter {
-            !requireVision || known[it.fingerprint]?.vision == true
+            (!requireTools || known[it.fingerprint]?.tools == true) && (!requireVision || known[it.fingerprint]?.vision == true)
         }
         val requested = if (role == AgentModelRole.PLANNER) route.fixedIndex?.let { index ->
             candidates.firstOrNull { it.index == index }?.fingerprint
@@ -70,7 +70,7 @@ internal class AgentSourceRouter(
             val capability = known[source.fingerprint]
             source.index in route.allowedSources && source.fingerprint !in excluded && capability?.fresh(nowMs) == true &&
                 when (role) {
-                    AgentModelRole.PLANNER -> source.protocol == AgentSourceProtocol.CHAT && capability.tools
+                    AgentModelRole.PLANNER -> source.protocol == AgentSourceProtocol.CHAT && (capability.tools || capability.plainPlanning)
                     AgentModelRole.VISION -> capability.vision
                     AgentModelRole.DECISION -> source.protocol == AgentSourceProtocol.DECISIONS && capability.decisions
                 }

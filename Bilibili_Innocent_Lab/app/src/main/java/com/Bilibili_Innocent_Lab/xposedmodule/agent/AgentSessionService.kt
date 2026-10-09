@@ -5,17 +5,47 @@ import android.content.Intent
 import android.os.Binder
 import android.os.IBinder
 import android.os.Parcel
+import android.os.Build
+import android.os.Handler
+import android.os.Looper
+import android.content.pm.ServiceInfo
+import android.app.NotificationManager
+import android.Manifest
+import android.content.pm.PackageManager
 import com.Bilibili_Innocent_Lab.xposedmodule.agent.ui.AgentIslandOverlay
+import com.Bilibili_Innocent_Lab.xposedmodule.agent.ui.AgentTaskNotification
 
-/** 用户启动的短任务：宿主前台任务绑定保持模块生命周期，既不常驻也不自动恢复目标。 */
+/** 用户启动的任务由前台服务维持；结束即回收，不恢复或重放目标。 */
 class AgentSessionService : Service() {
     private var ownerTaskId: String? = null
     private var island: AgentIslandOverlay? = null
+    private val main = Handler(Looper.getMainLooper())
+    private var lastNotification = ""
+    private val update = Runnable {
+        val task = ownerTaskId ?: return@Runnable
+        val state = AgentController.state
+        if (!state.running || !AgentController.owns(task) || AgentNotificationReceiver.dismissed(task)) return@Runnable
+        val key = state.phase
+        if (lastNotification != key && (Build.VERSION.SDK_INT < 33 || checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED)) {
+            lastNotification = key
+            runCatching { getSystemService(NotificationManager::class.java).notify(AgentTaskNotification.ID,
+                AgentTaskNotification.create(this, task, state)) }
+        }
+    }
+    private val observer: (AgentTaskState) -> Unit = {
+        main.removeCallbacks(update)
+        if (!it.running) stopForeground(STOP_FOREGROUND_REMOVE) else main.postDelayed(update, 350)
+    }
     override fun onCreate() {
         super.onCreate()
         ownerTaskId = AgentController.currentTaskId()
         AgentExecutionLogStore.initialize(applicationContext)
-        island = runCatching { AgentIslandOverlay(this) }.getOrNull()
+        val task = ownerTaskId ?: return
+        val notification = AgentTaskNotification.create(this, task, AgentController.state)
+        if (Build.VERSION.SDK_INT >= 34) startForeground(AgentTaskNotification.ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE)
+        else startForeground(AgentTaskNotification.ID, notification)
+        if (!AgentUiPolicy.systemNotification(Build.VERSION.SDK_INT)) island = runCatching { AgentIslandOverlay(this) }.getOrNull()
+        AgentController.observe(observer)
     }
     private val endpoint = object : Binder() {
         override fun onTransact(code: Int, data: Parcel, reply: Parcel?, flags: Int): Boolean {
@@ -26,7 +56,7 @@ class AgentSessionService : Service() {
                 if (getCallingUid() != uid) return@runCatching false
                 data.enforceInterface(AgentWire.SERVICE_DESCRIPTOR)
                 if (!AgentController.owns(data.readString().orEmpty())) return@runCatching false
-                stopSelf()
+                // 前台服务要保留 started 所有权；宿主释放绑定不应停止正在运行的任务。
                 true
             }.getOrDefault(false)
         }
@@ -35,15 +65,23 @@ class AgentSessionService : Service() {
     override fun onBind(intent: Intent?): IBinder = endpoint
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         ownerTaskId = AgentController.currentTaskId()
-        if (!AgentController.state.running) stopSelf(startId)
+        val task = ownerTaskId
+        if (!AgentController.state.running || task == null) { stopForeground(STOP_FOREGROUND_REMOVE); stopSelf(startId) }
+        else {
+            val notification = AgentTaskNotification.create(this, task, AgentController.state)
+            if (Build.VERSION.SDK_INT >= 34) startForeground(AgentTaskNotification.ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE)
+            else startForeground(AgentTaskNotification.ID, notification)
+        }
         return START_NOT_STICKY
     }
     override fun onDestroy() {
         island?.close(); island = null
+        AgentController.removeObserver(observer)
+        main.removeCallbacks(update)
+        stopForeground(STOP_FOREGROUND_REMOVE)
         AgentExecutionLogStore.flush()
         ownerTaskId?.takeIf(AgentController::owns)?.let {
-            val accessibility = getSystemService(ACCESSIBILITY_SERVICE) as? android.view.accessibility.AccessibilityManager
-            AgentController.cancel(this, if (accessibility?.isEnabled != false) "accessibility_control_unverified" else "service_stopped")
+            AgentController.cancel(this, "service_stopped")
         }
         super.onDestroy()
     }

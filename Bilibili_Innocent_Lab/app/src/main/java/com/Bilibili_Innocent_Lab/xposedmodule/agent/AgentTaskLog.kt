@@ -9,11 +9,15 @@ internal object AgentTaskLog {
     fun phase(name: String) = when (name) {
         "connecting" -> AgentLogPhase.CONNECTING
         "thinking" -> AgentLogPhase.PLANNING
-        "waiting_response" -> AgentLogPhase.WAITING
+        "waiting_response", "waiting_host" -> AgentLogPhase.WAITING
         "search_videos" -> AgentLogPhase.SEARCHING
         "get_video_details" -> AgentLogPhase.READING
         "open_video" -> AgentLogPhase.OPENING
-        "inspect_screen", "analyzing_image", "get_host_state" -> AgentLogPhase.OBSERVING
+        "inspect_screen", "analyzing_image", "get_host_state", "get_ui_state" -> AgentLogPhase.OBSERVING
+        "click_ui", "tap_ui" -> AgentLogPhase.CLICKING
+        "swipe_ui" -> AgentLogPhase.SCROLLING
+        "input_ui_text" -> AgentLogPhase.INPUTTING
+        "press_back" -> AgentLogPhase.BACK
         "reviewing" -> AgentLogPhase.REVIEWING
         "stopping" -> AgentLogPhase.STOPPING
         else -> AgentLogPhase.COMPLETE
@@ -22,6 +26,8 @@ internal object AgentTaskLog {
         "get_host_state" -> AgentLogTool.HOST_STATE; "search_videos" -> AgentLogTool.SEARCH
         "get_video_details" -> AgentLogTool.DETAILS; "open_video" -> AgentLogTool.OPEN
         "inspect_screen" -> AgentLogTool.SCREEN; "renew" -> AgentLogTool.RENEW
+        "get_ui_state" -> AgentLogTool.UI_STATE; "click_ui", "tap_ui" -> AgentLogTool.CLICK
+        "swipe_ui" -> AgentLogTool.SWIPE; "input_ui_text" -> AgentLogTool.INPUT; "press_back" -> AgentLogTool.BACK
         else -> AgentLogTool.NONE
     }
     fun role(value: AgentModelRole?) = when (value) {
@@ -29,6 +35,9 @@ internal object AgentTaskLog {
         AgentModelRole.DECISION -> AgentLogRole.DECISION; null -> AgentLogRole.NONE
     }
     fun reason(code: String): AgentLogReason = when (code) {
+        "accessibility_not_connected", "accessibility_disconnected", "accessibility_host_unavailable" -> AgentLogReason.ACCESSIBILITY_REQUIRED
+        "sensitive_action_blocked", "screen_protected", "ui_protected_or_incomplete" -> AgentLogReason.PROTECTED_ACTION
+        "ui_snapshot_stale", "ui_target_missing", "visual_snapshot_required" -> AgentLogReason.STALE_UI
         "task_budget", "task_budget_exhausted" -> AgentLogReason.BUDGET
         "task_stalled", "repeated_operation_failed" -> AgentLogReason.STALLED
         "not_authorized" -> AgentLogReason.NOT_AUTHORIZED

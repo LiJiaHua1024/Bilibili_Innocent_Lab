@@ -13,7 +13,7 @@ internal class AgentProgressGuard(private val maximumStagnant: Int = 8) {
     init { require(maximumStagnant in 1..64) }
 
     fun observe(call: AgentModelToolCall, response: JSONObject): Boolean {
-        if (!response.optBoolean("ok") || call.name == "open_video") return stagnate()
+        if (!response.optBoolean("ok") || call.name == "open_video" || call.name in AgentToolCatalog.uiActions) return stagnate()
         val data = response.optJSONObject("data") ?: return stagnate()
         val facts = if (call.name == "search_videos") searchFacts(data) ?: return stagnate() else {
             if (data.length() == 0) return stagnate()
@@ -55,6 +55,7 @@ internal class AgentProgressGuard(private val maximumStagnant: Int = 8) {
     companion object {
         const val MAX_EVIDENCE = 128
         private val VOLATILE_KEYS = setOf("image_data_url", "capture_elapsed", "observed_at_elapsed", "cache_hit",
+            "snapshot_id", "offset", "next_offset",
             "deadline_elapsed", "lease_until", "step", "observations", "sequence", "source_index", "tool_call_id", "progress_digest",
             "decision_review", "decision_review_status", "decision_review_is_unverified", "visual_assessment", "visual_status")
 

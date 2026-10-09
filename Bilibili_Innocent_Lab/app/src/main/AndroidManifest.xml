@@ -50,6 +50,10 @@
     <uses-permission android:name="${applicationId}.permission.QUERY_HOST_RUNTIME_DIAGNOSTICS" />
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.POST_PROMOTED_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
     <uses-permission android:name="android.permission.VIBRATE" />
     <!-- 仅供自定义背景的相册兜底使用：系统照片选择器不可用时才会申请 -->
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32" />
@@ -94,7 +98,18 @@
         <!-- 仅用户启动的短任务；绑定事务验证宿主 UID，不接受外部 Intent 目标或命令。 -->
         <service
             android:name=".agent.AgentSessionService"
-            android:exported="true" />
+            android:exported="true"
+            android:foregroundServiceType="specialUse">
+            <property android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="User initiated Bilibili assistant task with visible progress and stop control" />
+        </service>
+
+        <service android:name=".agent.AgentAccessibilityService"
+            android:exported="true" android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">
+            <intent-filter><action android:name="android.accessibilityservice.AccessibilityService" /></intent-filter>
+            <meta-data android:name="android.accessibilityservice" android:resource="@xml/agent_accessibility_service" />
+        </service>
+        <receiver android:name=".agent.AgentNotificationReceiver" android:exported="false" />
 
         <provider
             android:name=".provider.HostAdmissionProvider"

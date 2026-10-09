@@ -8,6 +8,17 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class AgentConversationTest {
+    @Test fun currentUiKeepsLaterControlsWithoutImagesAndWithinTheResultBudget() {
+        val conversation = AgentConversation("system", "click control")
+        val nodes = JSONArray((0 until 64).map { index -> JSONObject().put("node_id", "0.$index")
+            .put("label", "\\\"".repeat(40)).put("clickable", true).put("bounds", JSONArray(listOf(1, 2, 300, 400))) })
+        conversation.append(turn(1, "get_ui_state", JSONObject()), JSONObject().put("ok", true).put("data", JSONObject()
+            .put("snapshot_id", "12345678-1234-1234-1234-123456789abc").put("nodes", nodes).put("image_data_url", "data:image/jpeg;base64,secret")))
+        val tool = conversation.messages().getJSONObject(3).getString("content")
+        assertTrue(tool.contains("0.63"))
+        assertFalse(tool.contains("image_data_url"))
+        assertTrue(tool.length <= AgentConversation.MAX_RESULT_CHARS)
+    }
     private fun turn(index: Int, reasoning: String = ""): AgentModelTurn {
         val arguments = JSONObject().put("query", "悟空 $index")
         return turn(index, "search_videos", arguments, reasoning)

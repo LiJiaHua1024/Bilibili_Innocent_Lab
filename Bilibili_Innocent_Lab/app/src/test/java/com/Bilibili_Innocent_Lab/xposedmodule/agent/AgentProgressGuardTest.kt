@@ -7,6 +7,16 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class AgentProgressGuardTest {
+    @Test fun newSnapshotIdsOffsetsAndDispatchedClicksCannotFakeUiProgress() {
+        val guard = AgentProgressGuard(3)
+        fun same(id: String, offset: Int) = JSONObject().put("ok", true).put("data", JSONObject()
+            .put("snapshot_id", id).put("offset", offset).put("next_offset", offset + 12)
+            .put("nodes", JSONArray().put(JSONObject().put("label", "相同界面"))))
+        assertTrue(guard.observe(call("get_ui_state"), same("one", 0)))
+        assertTrue(guard.observe(call("get_ui_state"), same("two", 12)))
+        assertTrue(guard.observe(call("click_ui"), JSONObject().put("ok", true).put("data", JSONObject().put("action", "dispatched"))))
+        assertFalse(guard.observe(call("get_ui_state"), same("three", 24)))
+    }
     private fun call(name: String = "get_host_state", args: JSONObject = JSONObject(), id: String = "fresh") =
         AgentModelToolCall(id, name, args)
     private fun state(time: Long = 1, page: String = "search") = JSONObject().put("ok", true).put("data", JSONObject()

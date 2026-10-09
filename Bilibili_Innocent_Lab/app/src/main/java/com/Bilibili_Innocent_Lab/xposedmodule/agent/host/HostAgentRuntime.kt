@@ -114,7 +114,6 @@ internal object HostAgentRuntime {
         private fun execute(request: Request, args: JSONObject, lease: HostAgentSession.Lease) {
             val value = try {
                 if (!session.isActive(lease, now())) throw HostAgentFailure("task_inactive")
-                windows.verifyAccessibilityControl(lease)
                 val result = when (request.operation) {
                     "begin" -> {
                         windows.awaitTaskWindow(lease)
@@ -319,7 +318,6 @@ internal object HostAgentRuntime {
                     // 取消后绝不交付成功结果（尤其截图）；已收敛的失败原因仍可用于解释禁用边界。
                     val activeValue = if (lease != null && value.optBoolean("ok")) {
                         if (!session.isActive(lease, now())) failure("task_inactive") else try {
-                            windows.verifyAccessibilityControl(lease)
                             value
                         } catch (caught: HostAgentFailure) { failure(caught.reason) }
                     } else value
