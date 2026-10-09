@@ -6,6 +6,8 @@ import org.luckypray.dexkit.query.enums.StringMatchType
 import java.lang.reflect.Method
 import java.lang.reflect.Modifier
 import com.Bilibili_Innocent_Lab.xposedmodule.hook.adapter.KotlinDefaultWordsLocator
+import com.Bilibili_Innocent_Lab.xposedmodule.hook.adapter.SponsorPlayerAccess
+import com.Bilibili_Innocent_Lab.xposedmodule.hook.adapter.SponsorPlayerLocator
 
 /**
  * DexKit 后台实现：只在常规 KavaRef 定位缺失时创建桥，并在每个代码 APK 查询后立即关闭。
@@ -64,6 +66,8 @@ internal object DexKitAssistEngine : DexAssistEngine {
         if (!ensureNativeLoaded()) return all(DexAssistResult.Reason.NATIVE_UNAVAILABLE)
 
         val methods = queries.associateWith { mutableListOf<Method>() }
+        val classes = queries.associateWith { linkedSetOf<Class<*>>() }
+        val related = queries.associateWith { linkedMapOf<Method, MutableSet<Class<*>>>() }
         val failed = mutableMapOf<DexAssistQuery, DexAssistResult.Reason>()
         val bridged = runCatching {
             paths.forEach { path ->
@@ -75,8 +79,28 @@ internal object DexKitAssistEngine : DexAssistEngine {
                                 if (matches.size + found.size > MAX_MATCHES) {
                                     failed[query] = DexAssistResult.Reason.TOO_MANY_MATCHES
                                 } else {
-                                    matches.mapNotNullTo(found) { data ->
-                                        runCatching { data.getMethodInstance(classLoader) }.getOrNull()
+                                    matches.forEach { data ->
+                                        if (query == DexAssistQuery.SPONSOR_CONTAINER_SCOPE) {
+                                            runCatching { data.getConstructorInstance(classLoader).declaringClass }
+                                                .getOrNull()?.let { classes.getValue(query) += it }
+                                        } else {
+                                            val method = runCatching { data.getMethodInstance(classLoader) }.getOrNull()
+                                                ?: return@forEach
+                                            found += method
+                                            if (query in SponsorPlayerLocator.queries) {
+                                                // 同一真实调用者的构造引用保持成对，不跨包装器拼接保护协程。
+                                                val invokes = data.invokes
+                                                if (invokes.size > 128) { failed[query] = DexAssistResult.Reason.TOO_MANY_MATCHES; return@forEach }
+                                                invokes.filter { it.name == "<init>" && it.paramCount in 2..4 &&
+                                                    it.declaredClassName.startsWith("com.bilibili.ship.theseus.") }
+                                                    .mapNotNull { runCatching { it.getConstructorInstance(classLoader).declaringClass }.getOrNull() }
+                                                    .forEach { related.getValue(query).getOrPut(method) { linkedSetOf() } += it }
+                                            }
+                                        }
+                                    }
+                                    if (classes.getValue(query).size > MAX_MATCHES ||
+                                        related.getValue(query).values.any { it.size > MAX_MATCHES }) {
+                                        failed[query] = DexAssistResult.Reason.TOO_MANY_MATCHES
                                     }
                                 }
                             }
@@ -88,13 +112,49 @@ internal object DexKitAssistEngine : DexAssistEngine {
         return queries.associateWith { query ->
             val reason = failed[query] ?: if (!bridged) DexAssistResult.Reason.QUERY_FAILED else null
             if (reason != null) return@associateWith DexAssistResult.Unavailable(reason)
-            methods.getValue(query).distinctBy(Method::toGenericString).takeIf(List<Method>::isNotEmpty)
-                ?.let(DexAssistResult::Candidates)
-                ?: DexAssistResult.Unavailable(DexAssistResult.Reason.NO_MATCH)
+            val found = methods.getValue(query).distinctBy(Method::toGenericString)
+            if (found.isEmpty() && classes.getValue(query).isEmpty()) DexAssistResult.Unavailable(DexAssistResult.Reason.NO_MATCH)
+            else DexAssistResult.Candidates(found, classes.getValue(query).toList(),
+                related.getValue(query).mapValues { it.value.toList() })
         }
     }
 
     private fun find(bridge: DexKitBridge, query: DexAssistQuery) = when (query) {
+        DexAssistQuery.SPONSOR_RUN_PLAYABLE -> bridge.findMethod {
+            searchPackages(SponsorPlayerLocator.FAMILY)
+            matcher {
+                returnType = "java.lang.Object"; paramCount(2)
+                usingStrings(listOf(SponsorPlayerLocator.COROUTINE_ERROR), StringMatchType.Equals)
+                addInvoke { declaredClass = "kotlinx.coroutines.sync.Mutex"; name = "lock"; paramCount(2) }
+                addInvoke { declaredClass = "kotlinx.coroutines.flow.MutableStateFlow"; name = "setValue"; paramCount(1) }
+            }
+        }
+        DexAssistQuery.SPONSOR_PLAYER_WRAPPER -> bridge.findMethod {
+            searchPackages(SponsorPlayerLocator.CONTAINER_PACKAGE)
+            matcher {
+                name = "seekTo"; returnType = "void"; paramTypes("int", "boolean")
+                declaredClass {
+                    addFieldForType(SponsorPlayerAccess.CORE_CLASS)
+                    addFieldForType("kotlinx.coroutines.CoroutineScope")
+                }
+                addInvoke { name = "<init>"; paramCount(4) }
+            }
+        }
+        DexAssistQuery.SPONSOR_CONTAINER_SCOPE -> bridge.findMethod {
+            searchPackages(SponsorPlayerLocator.CONTAINER_PACKAGE)
+            matcher {
+                name = "<init>"; paramCount(3, 16)
+                declaredClass {
+                    superClass = "kotlin.coroutines.jvm.internal.SuspendLambda"
+                    addFieldForType("android.content.Context")
+                    addFieldForType(SponsorPlayerAccess.CONTAINER_CLASS)
+                }
+                addInvoke {
+                    declaredClass = "kotlin.coroutines.jvm.internal.SuspendLambda"; name = "<init>"
+                    paramTypes("int", "kotlin.coroutines.Continuation")
+                }
+            }
+        }
         DexAssistQuery.BLOCK_UPDATE -> bridge.findMethod {
             matcher {
                 returnType = BLOCK_UPDATE_RETURN_TYPE

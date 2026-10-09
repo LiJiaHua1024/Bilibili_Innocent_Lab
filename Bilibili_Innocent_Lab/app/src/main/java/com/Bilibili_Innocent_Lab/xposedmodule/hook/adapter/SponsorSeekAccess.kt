@@ -10,8 +10,9 @@ internal class SponsorSeekAccess private constructor(val constructor: Constructo
     val invoke: Method, val label: Field, val unit: Any) {
     companion object {
         const val CLASS = SponsorPlayerAccess.WRAPPER_CLASS + "\$seekTo\$1"
-        fun resolve(loader: ClassLoader, player: SponsorPlayerAccess): SponsorSeekAccess? = runCatching {
-            val cls = Lookup.classOrNull(loader, CLASS) ?: return null
+        fun resolve(loader: ClassLoader, player: SponsorPlayerAccess,
+            className: String = player.wrapper.declaringClass.name + "\$seekTo\$1"): SponsorSeekAccess? = runCatching {
+            val cls = Lookup.classOrNull(loader, className) ?: return null
             val continuation = Lookup.classOrNull(loader, "kotlin.coroutines.Continuation") ?: return null
             val ctor = Lookup.declaredConstructors(cls, true) {
                 it.parameterTypes.toList() == listOf(player.run.declaringClass, Int::class.javaPrimitiveType,

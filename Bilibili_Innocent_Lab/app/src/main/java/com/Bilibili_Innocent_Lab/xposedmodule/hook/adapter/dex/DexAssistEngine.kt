@@ -33,11 +33,19 @@ internal enum class DexAssistQuery {
     COMMENT_REPLY_MAPPER,
 
     /** 泛型五参数回调 + 方法体调用 getDefaultWordsMethod；不依赖入口 owner／方法的混淆名。 */
-    SEARCH_DEFAULT_WORDS_KOTLIN
+    SEARCH_DEFAULT_WORDS_KOTLIN,
+
+    /** 普通播放器执行边界：协程错误常量 + Mutex.lock + MutableStateFlow.setValue。 */
+    SPONSOR_RUN_PLAYABLE,
+    /** 具有 core/scope 捕获字段、并创建 seek 协程的双参数包装入口。 */
+    SPONSOR_PLAYER_WRAPPER,
+    /** 明确捕获 Context/PlayerContainer 的 SuspendLambda 构造边界。 */
+    SPONSOR_CONTAINER_SCOPE
 }
 
 internal sealed interface DexAssistResult {
-    data class Candidates(val methods: List<Method>) : DexAssistResult
+    data class Candidates(val methods: List<Method>, val classes: List<Class<*>> = emptyList(),
+        val relatedClasses: Map<Method, List<Class<*>>> = emptyMap()) : DexAssistResult
     data class Unavailable(val reason: Reason) : DexAssistResult
 
     enum class Reason {
