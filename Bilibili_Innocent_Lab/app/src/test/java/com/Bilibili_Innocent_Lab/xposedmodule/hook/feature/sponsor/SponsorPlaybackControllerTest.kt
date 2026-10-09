@@ -68,6 +68,18 @@ class SponsorPlaybackControllerTest {
         }
     }
 
+    @Test fun confirmedUndoHintExpiresAfterSixSecondsAndLateActionCannotSeek() {
+        val h = Harness(); h.controller.start(); h.deliver(); h.controller.skip()
+        assertEquals(SponsorPlaybackController.Hint.NONE, h.hint)
+        assertTrue(h.execute())
+        h.time = 6_000; h.controller.refresh()
+        assertEquals(SponsorPlaybackController.Hint.UNDO, h.hint)
+        h.time = 6_001; h.timers.last().second()
+        assertEquals(SponsorPlaybackController.Hint.NONE, h.hint)
+        h.controller.undo()
+        assertEquals(1, h.seeks.size); assertEquals(1, h.applied)
+    }
+
     @Test fun manualScrubbingBeforeFetchReturnsCannotTriggerAnAutomaticSkip() {
         val h = Harness(true); h.controller.start()
         h.controller.externalSeekStarted(); h.position = 15_000; h.controller.seekCompleted()

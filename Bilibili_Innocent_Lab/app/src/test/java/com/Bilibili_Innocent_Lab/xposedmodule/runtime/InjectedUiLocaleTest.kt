@@ -50,4 +50,17 @@ class InjectedUiLocaleTest {
             ).replyTopologyEntryLabel
         )
     }
+
+    @Test fun sponsorReceiptAndShortUndoActionFollowTheSelectedLanguage() {
+        val expected = listOf(
+            Triple(InjectedUiLocale.TAG_ENGLISH, "Sponsor segment skipped", "Undo"),
+            Triple(InjectedUiLocale.TAG_SIMPLIFIED_CHINESE, "已跳过商单", "撤销"),
+            Triple(InjectedUiLocale.TAG_TRADITIONAL_CHINESE, "已略過商單", "復原")
+        )
+        expected.forEach { (tag, receipt, action) ->
+            val messages = InjectedUiLocale.messages(context = null, explicitSelectionTag = tag)
+            assertEquals(receipt, messages.sponsorSkipped)
+            assertEquals(action, messages.sponsorUndoAction)
+        }
+    }
 }

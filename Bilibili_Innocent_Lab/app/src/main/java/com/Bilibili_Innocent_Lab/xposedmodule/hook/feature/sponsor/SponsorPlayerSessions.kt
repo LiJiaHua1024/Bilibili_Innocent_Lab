@@ -3,14 +3,9 @@ package com.Bilibili_Innocent_Lab.xposedmodule.hook.feature.sponsor
 import android.app.Activity
 import android.content.Context
 import android.content.ContextWrapper
-import android.graphics.Color
-import android.graphics.drawable.GradientDrawable
 import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
-import android.view.Gravity
-import android.view.ViewGroup
-import android.widget.Button
 import android.widget.FrameLayout
 import com.Bilibili_Innocent_Lab.xposedmodule.hook.adapter.SponsorPlayerAccess
 import com.Bilibili_Innocent_Lab.xposedmodule.hook.adapter.SponsorSeekAccess
@@ -222,8 +217,15 @@ internal class SponsorPlayerSessions(private val env: HookEnvironment, private v
         private val progressQueued = AtomicBoolean(false)
         private val progressSeen = AtomicBoolean(false)
         private val unregister = mutableListOf<Pair<Method, Any>>()
-        private var button = WeakReference<Button>(null)
-        private var shown = SponsorPlaybackController.Hint.NONE
+        private val hintOverlay: SponsorHintOverlay
+        init {
+            val weak = WeakReference(this)
+            hintOverlay = SponsorHintOverlay(root) { hint -> weak.get()?.let { session ->
+                main { if (current === session) {
+                    if (hint == SponsorPlaybackController.Hint.UNDO) session.controller.undo() else session.controller.skip()
+                } }
+            } }
+        }
         val controller = SponsorPlaybackController(video, automatic, this, repository::lookup, ::main,
             { delay, block -> val task = Runnable(block); handler.postDelayed(task, delay)
                 SponsorSegmentRepository.Ticket { handler.removeCallbacks(task) } }, SystemClock::uptimeMillis,
@@ -321,39 +323,12 @@ internal class SponsorPlayerSessions(private val env: HookEnvironment, private v
 
         private fun render(hint: SponsorPlaybackController.Hint) {
             if (hint == SponsorPlaybackController.Hint.NONE) {
-                if (shown == hint && button.get() == null) return
-                button.get()?.let { (it.parent as? ViewGroup)?.removeView(it) }
-                button = WeakReference(null); shown = hint
+                hintOverlay.hide()
                 return
             }
             val activity = activity.get() ?: return
-            val root = root.get() ?: return
             if (!valid(video)) return
-            val messages = InjectedUiLocale.messages(activity)
-            val label = if (hint == SponsorPlaybackController.Hint.UNDO) messages.sponsorUndo else messages.sponsorSkip
-            val widget = button.get() ?: Button(activity).apply {
-                val density = resources.displayMetrics.density
-                fun dp(value: Int) = (value * density).toInt()
-                isAllCaps = false; textSize = 13f; setTextColor(Color.WHITE)
-                minHeight = dp(48); minimumWidth = dp(48)
-                setPadding(dp(16), dp(8), dp(16), dp(8))
-                background = GradientDrawable().apply { setColor(0xDD282828.toInt()); cornerRadius = dp(24).toFloat() }
-                elevation = dp(6).toFloat()
-                val weak = WeakReference(this@Session)
-                setOnClickListener { weak.get()?.let { session ->
-                    main { if (current === session) {
-                        if (session.shown == SponsorPlaybackController.Hint.UNDO) session.controller.undo() else session.controller.skip()
-                    } }
-                } }
-                root.addView(this, FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT,
-                    ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.BOTTOM or Gravity.END).apply {
-                    marginEnd = dp(16); bottomMargin = dp(80)
-                })
-                button = WeakReference(this)
-            }
-            if (widget.text != label) widget.text = label
-            if (widget.contentDescription != label) widget.contentDescription = label
-            shown = hint
+            hintOverlay.render(hint, InjectedUiLocale.messages(activity))
         }
     }
 
