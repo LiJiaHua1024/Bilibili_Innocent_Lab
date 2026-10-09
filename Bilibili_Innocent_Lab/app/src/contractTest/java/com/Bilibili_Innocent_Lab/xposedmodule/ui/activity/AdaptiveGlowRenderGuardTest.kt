@@ -14,14 +14,7 @@ import org.junit.Test
  */
 class AdaptiveGlowRenderGuardTest {
 
-    private fun source(relative: String): String {
-        val candidates = sequenceOf(
-            File("src/main/java/com/Bilibili_Innocent_Lab/xposedmodule/$relative"),
-            File("app/src/main/java/com/Bilibili_Innocent_Lab/xposedmodule/$relative")
-        )
-        return candidates.firstOrNull(File::isFile)?.readText()
-            ?: error("cannot locate $relative from ${File(".").absolutePath}")
-    }
+    private fun source(relative: String): String= com.Bilibili_Innocent_Lab.xposedmodule.contract.LceMotionSource.read(relative)
 
     private val surfaces = listOf(
         "ui/activity/ModernNavigationBar.kt",

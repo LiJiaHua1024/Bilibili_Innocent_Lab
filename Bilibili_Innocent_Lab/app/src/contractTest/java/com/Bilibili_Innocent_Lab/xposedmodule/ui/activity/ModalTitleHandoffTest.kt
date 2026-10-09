@@ -307,8 +307,8 @@ class ModalTitleHandoffTest {
         assertTrue(draw.indexOf("clipRect(") < draw.indexOf("layout.draw(this)"))
         // 目标标题仍必须独占一行，来源才允许多行。
         assertTrue(code.contains("targetLayout.lineCount != 1 || layout.lineCount < 1"))
-        assertTrue(code.contains("titleLineMatches(source.textToString(), title)"))
-        assertTrue(code.contains("matches(target.textToString(), title)"))
+        assertTrue(code.contains("titleLineMatches(source.text.toString(), title)"))
+        assertTrue(code.contains("matches(target.text.toString(), title)"))
     }
 
     /**

@@ -1,5 +1,7 @@
 package com.Bilibili_Innocent_Lab.xposedmodule.ui.skin.material
 
+import com.lumen.coacervation.engine.motion.LumenAnimator
+
 import android.annotation.SuppressLint
 import android.os.Build
 import android.util.Log
@@ -198,7 +200,7 @@ internal class FrostedMaterialRenderer(
         revealAnimator?.cancel()
         revealFraction = if (ValueAnimator.areAnimatorsEnabled()) 0f else 1f
         if (revealFraction == 0f) {
-            revealAnimator = ValueAnimator.ofFloat(0f, 1f).apply {
+            revealAnimator = LumenAnimator.ofFloat(0f, 1f).apply {
                 duration = 160L
                 addUpdateListener {
                     if (!closed && generation == token) {

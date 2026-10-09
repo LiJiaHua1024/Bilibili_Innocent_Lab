@@ -15,14 +15,7 @@ import com.Bilibili_Innocent_Lab.xposedmodule.contract.before
  */
 class SectionExpansionWiringTest {
 
-    private fun source(relative: String): String {
-        val candidates = sequenceOf(
-            File("src/main/java/com/Bilibili_Innocent_Lab/xposedmodule/$relative"),
-            File("app/src/main/java/com/Bilibili_Innocent_Lab/xposedmodule/$relative")
-        )
-        return candidates.firstOrNull(File::isFile)?.readText()
-            ?: error("cannot locate $relative from ${File(".").absolutePath}")
-    }
+    private fun source(relative: String): String= com.Bilibili_Innocent_Lab.xposedmodule.contract.LceMotionSource.read(relative)
 
     @Test fun sectionToggleDelegatesToTheProgressDrivenController() {
         val activity = source("ui/activity/MainActivity.kt")
@@ -69,7 +62,7 @@ class SectionExpansionWiringTest {
         assertTrue("卡片下边缘必须由逐帧圆角 outline 驱动（矩形 clipBounds 会切成直边截断）",
             controller.contains("clipToOutline") && controller.contains("invalidateOutline"))
         assertTrue("兄弟控件必须走 translationY 滑行（而非逐帧 relayout）",
-            controller.contains("offsets.follow(sibling, -controller.ownShrink)") && controller.contains("view.translationY = state.originalY"))
+            controller.contains("offsets.follow(sibling.view, -controller.shrinkThrough(controller.ownShrink, sibling.rowLevels))") && controller.contains("view.translationY = state.originalY"))
         assertTrue("文字行必须由揭示沿级联显影",
             controller.contains("ExpansionMotionPolicy.rowReveal"))
         assertTrue("文字行必须随进度折叠位移（原地淡出不算跟动）",
@@ -93,7 +86,7 @@ class SectionExpansionWiringTest {
         assertTrue("captureActors 必须能取到（函数名或结构变了就要同步这条护栏）",
             capture != "MISSING")
         assertTrue("祖先链上自己画东西的层必须进裁剪层列表",
-            capture.contains("parent.background != null") && capture.contains("clipLayer(parent)"))
+            capture.contains("parent.background != null") && capture.contains("clipLayer(parent, rowModels.size)"))
         assertTrue("高度不是 wrap 的层不会变矮，必须在加它之前断链——裁它等于凭空切内容",
             capture.indexOf("ViewGroup.LayoutParams.WRAP_CONTENT") <
                 capture.indexOf("if (parent !== card && parent.background != null)"))
@@ -106,7 +99,7 @@ class SectionExpansionWiringTest {
         assertTrue("所有层共用同一个收缩量（内容高度的未完成部分），否则各层不同速",
             applyClip.contains("val shrink = ownShrink"))
         assertTrue("每层的收缩量必须登记到按 View 共用的接管权上",
-            applyClip.contains("layer.takeover.press(layer.view, this, shrink)"))
+            applyClip.contains("layer.takeover.press(layer.view, this, shrinkThrough(shrink, layer.rowLevels))"))
     }
 
     /**
@@ -171,7 +164,7 @@ class SectionExpansionWiringTest {
             .substringBefore("private companion object", "MISSING")
         assertTrue(follow != "MISSING")
         assertTrue("共享视口终点按合成后的收缩量计算，不能重复扣子级",
-            follow.contains("maximum - target") && controller.contains("target += controller.targetShrink"))
+            follow.contains("maximum - target") && controller.contains("target += controller.shrinkThrough(controller.targetShrink, Int.MAX_VALUE)"))
         assertTrue("滚动在同一个 preDraw 内统一写回，用户滚动后整组永久让位",
             follow.contains("SCROLL_YIELD_PX") && follow.contains("yielded = true"))
     }

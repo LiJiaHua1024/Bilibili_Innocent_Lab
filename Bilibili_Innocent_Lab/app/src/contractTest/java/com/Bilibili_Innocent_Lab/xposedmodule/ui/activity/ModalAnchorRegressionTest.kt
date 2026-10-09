@@ -1,5 +1,7 @@
 package com.Bilibili_Innocent_Lab.xposedmodule.ui.activity
 
+import com.Bilibili_Innocent_Lab.xposedmodule.contract.LceMotionSource
+
 import java.io.File
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -12,7 +14,7 @@ import com.Bilibili_Innocent_Lab.xposedmodule.contract.before
 class ModalAnchorRegressionTest {
     private fun source(name: String): String {
         val path = "src/main/java/com/Bilibili_Innocent_Lab/xposedmodule/ui/activity/$name.kt"
-        return SourceContract.read(path)
+        return LceMotionSource.read(path)
     }
 
     @Test fun scannedAndUnscannedPanelsUseTheClickableSummaryNotTheEntireSettingsGroup() {

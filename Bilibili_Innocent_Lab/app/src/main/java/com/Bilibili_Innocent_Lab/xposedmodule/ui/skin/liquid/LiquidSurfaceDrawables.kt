@@ -19,11 +19,7 @@ import kotlin.math.floor
 // [LiquidActivityRenderer]，renderer 不泄漏给业务代码。
 
 /** 动态形变表面向 Liquid Drawable 暴露当前帧，不把 renderer 泄漏给业务 View。 */
-internal interface LiquidMotionSurfaceFrameProvider {
-    fun copyLiquidMotionBounds(outBounds: RectF)
-    fun liquidMotionCornerRadiusPx(): Float
-    fun liquidMotionFallbackColor(): Int
-}
+internal typealias LiquidMotionSurfaceFrameProvider = com.lumen.coacervation.engine.liquid.LiquidMotionSurfaceFrameProvider
 
 /** Surface 的真实 Drawable 几何；只在已有对象上更新，实时反馈遮罩逐帧零分配。 */
 internal class LiquidSurfaceFootprint {

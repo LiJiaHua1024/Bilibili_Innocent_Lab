@@ -1,5 +1,7 @@
 package com.Bilibili_Innocent_Lab.xposedmodule.ui.skin
 
+import com.Bilibili_Innocent_Lab.xposedmodule.contract.LceMotionSource
+
 import com.Bilibili_Innocent_Lab.xposedmodule.ui.skin.material.FrostedMotionSurfaceAlpha
 import com.Bilibili_Innocent_Lab.xposedmodule.ui.activity.DiagnosticsEntryVisualSpec
 import java.io.File
@@ -12,7 +14,7 @@ import com.Bilibili_Innocent_Lab.xposedmodule.contract.before
 class FrostedMotionSurfaceIntegrationTest {
     private fun source(relative: String): String {
         val path = "src/main/java/com/Bilibili_Innocent_Lab/xposedmodule/ui/$relative.kt"
-        return SourceContract.read(path)
+        return LceMotionSource.read(path)
     }
 
     @Test fun ordinaryDiagnosticEntryKeepsItsCallerArgbInSampledAndFallbackDrawing() {

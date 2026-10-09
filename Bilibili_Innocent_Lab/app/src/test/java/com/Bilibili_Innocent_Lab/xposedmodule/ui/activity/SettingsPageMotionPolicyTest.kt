@@ -50,7 +50,7 @@ class SettingsPageMotionPolicyTest {
 
     @Test fun edgeSamePageAndMissingPageNavigationNeverCancelAnExistingReveal() {
         for ((current, target, count) in listOf(Triple(0, -1, 4), Triple(3, 4, 4),
-            Triple(2, 2, 4), Triple(0, 0, 0), Triple(0, 1, 1), Triple(0, SettingsPageMotionPolicy.MAX_PAGES, 10))) {
+            Triple(2, 2, 4), Triple(0, 0, 0), Triple(0, 1, 1), Triple(0, 10, 10))) {
             var cancelled = 0
             var selected = 0
             assertFalse(SettingsPageUserNavigation.request(current, target, count,
@@ -250,7 +250,7 @@ class SettingsPageMotionPolicyTest {
         }
         assertEquals(2f, SettingsPageMotionContinuation(position, 2, 0f, 340L, 4).value(1f), 0f)
         assertEquals(0, SettingsPageMotionPolicy.selected(4, 0))
-        assertEquals(SettingsPageMotionPolicy.MAX_PAGES - 1, SettingsPageMotionPolicy.selected(99, 99))
+        assertEquals(98, SettingsPageMotionPolicy.selected(99, 99))
         assertEquals(180L, SettingsPageMotionPolicy.duration(1f, 1f))
         assertEquals(420L, SettingsPageMotionPolicy.duration(-1f, 99f))
     }

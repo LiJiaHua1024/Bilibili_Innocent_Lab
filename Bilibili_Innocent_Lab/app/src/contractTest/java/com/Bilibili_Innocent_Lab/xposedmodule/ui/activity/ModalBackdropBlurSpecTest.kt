@@ -1,5 +1,7 @@
 package com.Bilibili_Innocent_Lab.xposedmodule.ui.activity
 
+import com.Bilibili_Innocent_Lab.xposedmodule.contract.LceMotionSource
+
 import java.io.File
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -127,7 +129,7 @@ class ModalBackdropBlurSpecTest {
         assertFalse("must not gate on the third-party version helper",
             code.contains("AndroidVersion.isLessThan"))
         // 项目自定义 lint 规则会劝人换回那个助手，换了 NewApi 就报错——抑制必须留着。
-        assertTrue(code.contains("@file:Suppress(\"ReplaceWithAndroidVersion\")"))
+        assertFalse(code.contains("import com.highcapable.betterandroid"))
         assertTrue(code.contains("isCrossWindowBlurEnabled"))
         assertTrue(code.contains("FLAG_BLUR_BEHIND"))
         assertTrue(code.contains("params.blurBehindRadius"))
@@ -167,6 +169,6 @@ class ModalBackdropBlurSpecTest {
 
     private fun source(name: String): String {
         val path = "src/main/java/com/Bilibili_Innocent_Lab/xposedmodule/ui/activity/$name.kt"
-        return SourceContract.read(path)
+        return LceMotionSource.read(path)
     }
 }

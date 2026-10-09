@@ -1,5 +1,7 @@
 package com.Bilibili_Innocent_Lab.xposedmodule.ui.activity
 
+import com.Bilibili_Innocent_Lab.xposedmodule.contract.LceMotionSource
+
 import java.io.File
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -14,7 +16,7 @@ import com.Bilibili_Innocent_Lab.xposedmodule.contract.beforeOrRest
 class TelemetryMenuStructureTest {
     private val source by lazy {
         val path = "src/main/java/com/Bilibili_Innocent_Lab/xposedmodule/ui/activity/MainActivity.kt"
-        SourceContract.read(path)
+        LceMotionSource.read(path)
     }
 
     @Test

@@ -1,5 +1,7 @@
 package com.Bilibili_Innocent_Lab.xposedmodule.ui.skin
 
+import com.Bilibili_Innocent_Lab.xposedmodule.contract.LceMotionSource
+
 import com.Bilibili_Innocent_Lab.xposedmodule.contract.SourceContract
 import com.Bilibili_Innocent_Lab.xposedmodule.contract.after
 import com.Bilibili_Innocent_Lab.xposedmodule.contract.before
@@ -13,10 +15,10 @@ import org.junit.Test
  * （2026-09-26 真机：形变路径插桩确认原点 2273 → 2236，修复后录屏 0 跳变）。
  */
 class ModalSkinPositionContractTest {
-    private val main = SourceContract.read("ui/activity/MainActivity.kt")
+    private val main = LceMotionSource.read("ui/activity/MainActivity.kt")
 
     @Test fun defaultModalEntryNotifiesSkinEveryFrameAndAtTheEnd() {
-        val entry = main.after("container.post {\n            container.animate()\n                .scaleX(1f).scaleY(1f).alpha(1f)")
+        val entry = main.after("container.post {\n            LumenAnimator.property(container)\n                .scaleX(1f).scaleY(1f).alpha(1f)")
             .before("/**\n     * 勾选式屏蔽面板的")
         val update = entry.after(".setUpdateListener {").before(".withEndAction {")
         assertTrue(update.contains("notifyPreparedSkinPositionChanged()"))
@@ -41,7 +43,7 @@ class ModalSkinPositionContractTest {
 
     /** 锚点形变每帧平移卡片内容：平移写入之后必须通知皮肤（真机实证的跳变来源）。 */
     @Test fun anchoredMorphNotifiesSkinAfterMovingContent() {
-        val motion = SourceContract.read("ui/activity/IconAnchoredMotionController.kt")
+        val motion = LceMotionSource.read("ui/activity/IconAnchoredMotionController.kt")
         val frame = motion.after("content.translationX = frame.contentTranslationXPx").before("titleMotion?.apply(clamped)")
         assertTrue(frame.contains("onContentMoved()"))
         val settle = motion.after("private fun settleExpanded()").before("content.elevation = contentElevation")
@@ -55,7 +57,7 @@ class ModalSkinPositionContractTest {
      * 主窗口自己的滚动与二级页形变仍按原规则抑制。
      */
     @Test fun dialogWindowMotionDoesNotSuppressMainWindowSampling() {
-        val liquid = SourceContract.read("ui/skin/liquid/LiquidActivityRenderer.kt")
+        val liquid = LceMotionSource.read("ui/skin/liquid/LiquidActivityRenderer.kt")
         val flush = liquid.after("private fun flushSurfaceRefresh(").before("private fun isSurfacePotentiallyVisible(")
         assertTrue(flush.contains("if (originChanged && windowRoot === mainWindowRoot) surfaceMoved = true"))
         val register = liquid.after("internal fun registerSurfaceView(").before("footprint.update(bounds, radiusPx, originX, originY)")

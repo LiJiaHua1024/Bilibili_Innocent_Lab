@@ -1,6 +1,5 @@
 package com.Bilibili_Innocent_Lab.xposedmodule.ui.overlay
 
-import kotlin.math.roundToInt
 
 /**
  * 脉络悬浮窗折叠/展开的纯动效规格：时长、紧凑高度、透明度行高度与 alpha 的同步插值。
@@ -30,30 +29,15 @@ internal object ReplyTopologyCompactMotionSpec {
      * 校验展开/紧凑高度关系，非法输入直接抛出，避免动画以负值或倒置区间运行。
      * @return 校验通过的 (expandedPx, compactPx)
      */
-    fun requireHeights(expandedPx: Int, compactPx: Int): Pair<Int, Int> {
-        require(expandedPx > 0) { "expanded height must be positive: $expandedPx" }
-        require(compactPx > 0) { "compact height must be positive: $compactPx" }
-        require(expandedPx > compactPx) {
-            "expanded height $expandedPx must exceed compact height $compactPx"
-        }
-        return expandedPx to compactPx
-    }
+    fun requireHeights(expandedPx: Int, compactPx: Int): Pair<Int, Int> =
+        com.lumen.coacervation.engine.motion.CompactMotionPolicy.requireHeights(expandedPx, compactPx)
 
-    /** 进度 [0,1] 区间内的线性高度插值；越界进度被钳制，结果不小于 1px。 */
-    fun heightAt(progress: Float, fromPx: Int, toPx: Int): Int {
-        val clamped = progress.coerceIn(0f, 1f)
-        val value = fromPx + (toPx - fromPx) * clamped
-        return value.roundToInt().coerceAtLeast(1)
-    }
+    fun heightAt(progress: Float, fromPx: Int, toPx: Int): Int =
+        com.lumen.coacervation.engine.motion.CompactMotionPolicy.heightAt(progress, fromPx, toPx)
 
-    /**
-     * 透明度行 alpha 与其高度同相位：收起时随高度同步淡出，展开时随生长同步渐显。
-     * 占位与可见性同步消失/出现，是状态行文字保持位置连续的前提。
-     */
     fun opacityRowAlphaAt(progress: Float, collapsing: Boolean): Float =
-        progress.coerceIn(0f, 1f).let { if (collapsing) 1f - it else it }
+        com.lumen.coacervation.engine.motion.CompactMotionPolicy.rowAlphaAt(progress, collapsing)
 
-    /** 展开态高度在折叠期间保持不变；调用方无需自行缓存即可安全重入展开。 */
     fun requireExpandedHeight(expandedPx: Int, compactPx: Int): Int =
         requireHeights(expandedPx, compactPx).first
 }

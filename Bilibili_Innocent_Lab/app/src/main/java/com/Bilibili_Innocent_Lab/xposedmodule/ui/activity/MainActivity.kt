@@ -2,6 +2,8 @@
 
 package com.Bilibili_Innocent_Lab.xposedmodule.ui.activity
 
+import com.lumen.coacervation.engine.motion.LumenAnimator
+
 import com.Bilibili_Innocent_Lab.xposedmodule.hook.hostui.cards.HostVideoCardStyleSpec
 
 import com.Bilibili_Innocent_Lab.xposedmodule.runtime.compat.CommunicationCompatibilityStore
@@ -766,18 +768,18 @@ class MainActivity : SkinnedActivity() {
     internal fun renderUpdateBadge() {
         val badge = githubUpdateBadge ?: return
         val notice = ColdStartUpdateSession.state.noticeFor(UpdateChannelStore.read(applicationContext))
-        badge.animate().setListener(null).cancel()
+        LumenAnimator.property(badge).setListener(null).cancel()
         if (notice == null) {
             if (!updateUiResumed || badge.visibility != View.VISIBLE) {
                 badge.visibility = View.INVISIBLE
                 return
             }
-            badge.animate().alpha(0f).scaleX(0.55f).scaleY(0.7f)
+            LumenAnimator.property(badge).alpha(0f).scaleX(0.55f).scaleY(0.7f)
                 .setDuration(180L).setInterpolator(emphasizedDecelerate)
                 .setListener(object : AnimatorListenerAdapter() {
                     override fun onAnimationEnd(animation: Animator) {
                         badge.visibility = View.INVISIBLE
-                        badge.animate().setListener(null)
+                        LumenAnimator.property(badge).setListener(null)
                     }
                 }).start()
             return
@@ -794,7 +796,7 @@ class MainActivity : SkinnedActivity() {
         }
         badge.pivotX = 0f
         badge.pivotY = badge.height.toFloat()
-        badge.animate().alpha(1f).scaleX(1f).scaleY(1f).translationX(0f).translationY(0f)
+        LumenAnimator.property(badge).alpha(1f).scaleX(1f).scaleY(1f).translationX(0f).translationY(0f)
             .setDuration(320L).setInterpolator(emphasizedDecelerate).start()
     }
 
@@ -1253,7 +1255,7 @@ class MainActivity : SkinnedActivity() {
         onDismissed: () -> Unit
     ) {
         if (dialogAnchoredClosers[dialog]?.invoke(false, onDismissed) == true) return
-        container.animate()
+        LumenAnimator.property(container)
             .scaleX(0.92f).scaleY(0.92f).alpha(0f)
             .setDuration(180L)
             .setInterpolator(emphasizedAccelerate)
@@ -1864,16 +1866,16 @@ class MainActivity : SkinnedActivity() {
 
     /** 复用气泡亮暗说明的 120ms 淡出 / 180ms 淡入节奏，快速切换只保留最新文案。 */
     private fun animateTelemetrySummary(view: NativeTextView, text: String) {
-        view.animate().withEndAction(null).cancel()
+        LumenAnimator.property(view).withEndAction(null).cancel()
         if (!view.isAttachedToWindow) { view.text = text; view.alpha = 0.72f; return }
         if (view.text.toString() == text) {
-            view.animate().alpha(0.72f).setDuration(180L).setInterpolator(emphasizedDecelerate).start()
+            LumenAnimator.property(view).alpha(0.72f).setDuration(180L).setInterpolator(emphasizedDecelerate).start()
             return
         }
-        view.animate().alpha(0f).setDuration(120L).setInterpolator(emphasizedAccelerate)
+        LumenAnimator.property(view).alpha(0f).setDuration(120L).setInterpolator(emphasizedAccelerate)
             .withEndAction {
                 view.text = text
-                view.animate().alpha(0.72f).setDuration(180L)
+                LumenAnimator.property(view).alpha(0.72f).setDuration(180L)
                     .setInterpolator(emphasizedDecelerate).start()
             }.start()
     }
@@ -2758,7 +2760,7 @@ class MainActivity : SkinnedActivity() {
         // 回弹、松手提交时从当前预览状态无缝续接 180ms 退场（ViewPropertyAnimator
         // 天然从当前值起步）。API 33 的普通回调没有进度事件，保持松手才动画。
         // dismissing 防重入：退场动画一旦启动，后续手势/按键回调一律忽略——四个回调
-        // 都要判，`onBackStarted` 尤其不能漏，它才是调用 container.animate().cancel()
+        // 都要判，`onBackStarted` 尤其不能漏，它才是调用 LumenAnimator.property(container).cancel()
         // 的那处，取消在途退场会立刻触发收尾监听器（见该回调内注释）。
         var dismissing = false
         fun requestDismiss(interactiveCommit: Boolean = false) {
@@ -2789,7 +2791,7 @@ class MainActivity : SkinnedActivity() {
                             morphController.beginPredictiveBack()
                         } else {
                             // 中断在途动画（入场或回弹），后续属性由手势进度直接驱动
-                            container.animate().cancel()
+                            LumenAnimator.property(container).cancel()
                         }
                     }
                 },
@@ -2815,7 +2817,7 @@ class MainActivity : SkinnedActivity() {
                         } else if (morphController != null) {
                             morphController.cancelPredictiveBack()
                         } else {
-                            container.animate()
+                            LumenAnimator.property(container)
                                 .scaleX(1f).scaleY(1f).alpha(1f)
                                 .setDuration(260L)
                                 .setInterpolator(emphasizedDecelerate)
@@ -2828,7 +2830,7 @@ class MainActivity : SkinnedActivity() {
                                 }
                                 .withEndAction { notifyPreparedSkinPositionChanged() }
                                 .start()
-                            scrim?.animate()?.alpha(1f)
+                            scrim?.let(LumenAnimator::property)?.alpha(1f)
                                 ?.setDuration(260L)
                                 ?.setInterpolator(emphasizedDecelerate)
                                 ?.start()
@@ -2984,7 +2986,7 @@ class MainActivity : SkinnedActivity() {
             return
         }
         container.post {
-            container.animate()
+            LumenAnimator.property(container)
                 .scaleX(1f).scaleY(1f).alpha(1f)
                 .setDuration(260L)
                 .setInterpolator(emphasizedDecelerate)
@@ -3294,15 +3296,15 @@ class MainActivity : SkinnedActivity() {
             else R.string.free_copy_light_mode_tip
         )
         if (tv.textToString() == newText) return
-        tv.animate().cancel()
+        LumenAnimator.property(tv).cancel()
         // 淡出 → 换文本（此时不可见，父布局重排无割裂感）→ 淡入
-        tv.animate()
+        LumenAnimator.property(tv)
             .alpha(0f)
             .setDuration(120L)
             .setInterpolator(emphasizedAccelerate)
             .withEndAction {
                 tv.text = newText
-                tv.animate()
+                LumenAnimator.property(tv)
                     .alpha(0.6f)
                     .setDuration(180L)
                     .setInterpolator(emphasizedDecelerate)
@@ -3717,7 +3719,7 @@ class MainActivity : SkinnedActivity() {
         updateUiHandler.removeCallbacksAndMessages(null)
         ColdStartUpdateSession.state.pause(updateUiOwner)
         ColdStartUpdateSession.stopObserving(updateUiOwner)
-        githubUpdateBadge?.animate()?.setListener(null)?.cancel()
+        githubUpdateBadge?.let(LumenAnimator::property)?.setListener(null)?.cancel()
         // 诊断中心使用透明窗口，打开它不保证主页收到 onStop；暂停即结束回执会话，
         // 返回时由 onResume 重新查询，避免把旧宿主状态当作当前证据。
         lspatchActivationReceiptTracker.endSession()
@@ -3906,7 +3908,7 @@ class MainActivity : SkinnedActivity() {
                 targetView.overlay.add(highlightDrawable)
                 settingsSearchHighlightDrawable = highlightDrawable
 
-                val highlightAnimator = ValueAnimator.ofFloat(0f, 1f, 0f).apply {
+                val highlightAnimator = LumenAnimator.ofFloat(0f, 1f, 0f).apply {
                     duration = SETTINGS_SEARCH_HIGHLIGHT_DURATION_MS
                     interpolator = emphasizedDecelerate
                     addUpdateListener { animator ->
@@ -4024,7 +4026,7 @@ class MainActivity : SkinnedActivity() {
                 if (!ValueAnimator.areAnimatorsEnabled() || scrollView.scrollY == desiredY) {
                     scrollMotion.frame(scrollToken, 1f)
                 } else {
-                    scrollAnimator = ValueAnimator.ofFloat(0f, 1f).apply {
+                    scrollAnimator = LumenAnimator.ofFloat(0f, 1f).apply {
                         duration = 250L
                         interpolator = android.view.animation.DecelerateInterpolator()
                         addUpdateListener {
@@ -4092,7 +4094,7 @@ class MainActivity : SkinnedActivity() {
         settingsHome = null
         cancelSettingsReveal()
         compatibilityPendingRetry?.cancel()
-        compatibilityRetryHint?.animate()?.cancel()
+        compatibilityRetryHint?.let(LumenAnimator::property)?.cancel()
         compatibilityRetryHint = null
         compatibilityRetryButton = null
         compatibilityModeSwitch = null
@@ -4102,7 +4104,7 @@ class MainActivity : SkinnedActivity() {
         updateUiHandler.removeCallbacksAndMessages(null)
         ColdStartUpdateSession.state.pause(updateUiOwner)
         ColdStartUpdateSession.stopObserving(updateUiOwner)
-        githubUpdateBadge?.animate()?.setListener(null)?.cancel()
+        githubUpdateBadge?.let(LumenAnimator::property)?.setListener(null)?.cancel()
         githubUpdateBadge = null
         UserTermsAuthorizationCoordinator.removeListener(userTermsAuthorizationListener)
         RemoteHookConfigStore.removeStatusListener(frameworkStatusListener)
@@ -4124,24 +4126,24 @@ class MainActivity : SkinnedActivity() {
         liquidBackgroundTask = null
         liquidBackgroundWorker.shutdownNow()
         // 清理 View 引用字段，彻底断开对 hierarchy 的持有
-        appearanceContent?.animate()?.setListener(null)
-        appearanceContent?.animate()?.cancel()
-        appearanceChevron?.animate()?.cancel()
-        compatibilityContent?.animate()?.setListener(null)
-        compatibilityContent?.animate()?.cancel()
-        compatibilityChevron?.animate()?.cancel()
-        purificationAdvancedContent?.animate()?.setListener(null)
-        purificationAdvancedContent?.animate()?.cancel()
-        purificationAdvancedChevron?.animate()?.cancel()
-        enhancementAdvancedContent?.animate()?.setListener(null)
-        enhancementAdvancedContent?.animate()?.cancel()
-        enhancementAdvancedChevron?.animate()?.cancel()
+        appearanceContent?.let(LumenAnimator::property)?.setListener(null)
+        appearanceContent?.let(LumenAnimator::property)?.cancel()
+        appearanceChevron?.let(LumenAnimator::property)?.cancel()
+        compatibilityContent?.let(LumenAnimator::property)?.setListener(null)
+        compatibilityContent?.let(LumenAnimator::property)?.cancel()
+        compatibilityChevron?.let(LumenAnimator::property)?.cancel()
+        purificationAdvancedContent?.let(LumenAnimator::property)?.setListener(null)
+        purificationAdvancedContent?.let(LumenAnimator::property)?.cancel()
+        purificationAdvancedChevron?.let(LumenAnimator::property)?.cancel()
+        enhancementAdvancedContent?.let(LumenAnimator::property)?.setListener(null)
+        enhancementAdvancedContent?.let(LumenAnimator::property)?.cancel()
+        enhancementAdvancedChevron?.let(LumenAnimator::property)?.cancel()
         sectionExpansionControllers.values.forEach { it.cancel() }
         sectionExpansionControllers.clear()
         advancedCategorySections.values.forEach { section ->
-            section.content.animate().setListener(null)
-            section.content.animate().cancel()
-            section.chevron?.animate()?.cancel()
+            LumenAnimator.property(section.content).setListener(null)
+            LumenAnimator.property(section.content).cancel()
+            section.chevron?.let(LumenAnimator::property)?.cancel()
         }
         advancedCategorySections.clear()
         advancedCategoryMarkers.clear()
@@ -4575,7 +4577,7 @@ class MainActivity : SkinnedActivity() {
                                 topMargin = -5.dp
                             }
                         ) {
-                            githubUpdateBadge?.animate()?.setListener(null)?.cancel()
+                            githubUpdateBadge?.let(LumenAnimator::property)?.setListener(null)?.cancel()
                             githubUpdateBadge = this
                             // 角标不独占弹性手势：完整手势交给外层图标帧，长按拖动时
                             // 图标与角标作为一个整体形变（搜索/重启图标同款效果）。

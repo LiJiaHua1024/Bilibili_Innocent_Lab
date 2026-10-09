@@ -1,5 +1,7 @@
 package com.Bilibili_Innocent_Lab.xposedmodule.ui.activity
 
+import com.Bilibili_Innocent_Lab.xposedmodule.contract.LceMotionSource
+
 import com.Bilibili_Innocent_Lab.xposedmodule.contract.SourceContract
 import com.Bilibili_Innocent_Lab.xposedmodule.contract.after
 import com.Bilibili_Innocent_Lab.xposedmodule.contract.before
@@ -12,8 +14,8 @@ import org.junit.Test
  * 交给手指；文字链式联动只改绘制矩阵，不碰弹性交互与手风琴使用的 translation 属性。
  */
 class SettingsPageInterruptionContractTest {
-    private val pager = SourceContract.read("ui/activity/SettingsPagePager.kt")
-    private val chain = SourceContract.read("ui/activity/SettingsPageTextChain.kt")
+    private val pager = LceMotionSource.read("ui/activity/SettingsPagePager.kt")
+    private val chain = LceMotionSource.read("ui/activity/SettingsPageTextChain.kt")
 
     @Test fun downDoesNotFreezeTheRunningAnimation() {
         val begin = pager.after("private fun beginGesture(event: MotionEvent) {").before("private fun protectedChildAt(")
@@ -32,7 +34,7 @@ class SettingsPageInterruptionContractTest {
 
     @Test fun settleUsesVelocityMatchedHandoff() {
         val settle = pager.after("private fun settle(").before("private fun stopMotion()")
-        assertTrue(settle.contains("SettingsPageMotionPolicy.handoffDuration(base, position, target.toFloat(), velocity)"))
+        assertTrue(settle.contains("PageMotionPolicy.handoffDuration(base, position, target.toFloat(), velocity)"))
     }
 
     @Test fun textChainOnlyTouchesTheDrawMatrixAndSkipsSurfacedControls() {
@@ -43,7 +45,7 @@ class SettingsPageInterruptionContractTest {
         assertTrue(chain.contains("ElasticInteractionController.EXCLUDED_TAG"))
         val dispose = chain.after("fun dispose() {")
         assertTrue(dispose.contains("removeFrameCallback(frame)"))
-        val home = SourceContract.read("ui/activity/SettingsHomePresenter.kt")
+        val home = LceMotionSource.read("ui/activity/SettingsHomePresenter.kt")
         assertTrue(home.contains("textChain?.onPositionChanged()"))
         assertTrue(home.after("fun dispose() {").contains("textChain?.dispose()"))
     }
@@ -53,14 +55,14 @@ class SettingsPageInterruptionContractTest {
         assertTrue(chain.contains("val room = if (direction >= 0f) item.roomRight else item.roomLeft"))
         assertTrue(chain.contains("val goal = direction * minOf(room, limit) * share * bump"))
         assertTrue(chain.contains("private fun isClipBoundary(view: View): Boolean = view.clipToOutline"))
-        assertTrue(chain.contains("if (it is ScrollView || it is NestedScrollView) return@forEach"))
+        assertTrue(chain.contains("if (isScrollContainer(it)) return@forEach"))
         assertTrue(chain.contains("if (it.clipToPadding) relaxPadding += it"))
-        assertTrue(chain.contains("if (boundary !== page && boundary is ViewGroup && boundary.clipToPadding) relaxPadding += boundary"))
+        assertTrue(chain.contains("if (boundary !== page && boundary is ViewGroup && boundary.clipToPadding && !isScrollContainer(boundary)) relaxPadding += boundary"))
         assertTrue(chain.contains("relax.remove(page as? ViewGroup)"))
         assertTrue(chain.contains("relaxPadding.remove(page as? ViewGroup)"))
         val release = chain.after("private fun release(index: Int) {").before("private fun isClipBoundary(")
-        assertTrue(release.contains("relaxed[index]?.forEach { it.clipChildren = true }"))
-        assertTrue(release.contains("paddingRelaxed[index]?.forEach { it.clipToPadding = true }"))
+        assertTrue(release.contains("relaxed.remove(index)?.forEach { it.clipChildren = true }"))
+        assertTrue(release.contains("paddingRelaxed.remove(index)?.forEach { it.clipToPadding = true }"))
         assertTrue(chain.after("fun dispose() {").contains("release(index)"))
     }
 

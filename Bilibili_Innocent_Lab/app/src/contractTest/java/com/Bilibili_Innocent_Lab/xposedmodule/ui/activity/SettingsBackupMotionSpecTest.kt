@@ -1,5 +1,7 @@
 package com.Bilibili_Innocent_Lab.xposedmodule.ui.activity
 
+import com.Bilibili_Innocent_Lab.xposedmodule.contract.LceMotionSource
+
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -138,7 +140,7 @@ class SettingsBackupMotionSpecTest {
     @Test
     fun morphingContentIsPinnedToTheFrameTop() {
         val path = "src/main/java/com/Bilibili_Innocent_Lab/xposedmodule/ui/activity/SettingsBackupMotionHost.kt"
-        val host = SourceContract.read(path)
+        val host = LceMotionSource.read(path)
         val apply = host.after("fun applyExpansion(").before("fun applyFallbackExpansion(")
         assertTrue(apply.contains("(motionFrame.top - geometry.expandedBounds.top)"))
         // 只平移不缩放：玻璃卡片按屏幕位置采样背景，缩放会让卡片里的背景错位。
@@ -155,7 +157,7 @@ class SettingsBackupMotionSpecTest {
     fun movingPageContentNotifiesTheSkin() {
         fun read(name: String): String {
             val path = "src/main/java/com/Bilibili_Innocent_Lab/xposedmodule/ui/activity/$name.kt"
-            return SourceContract.read(path)
+            return LceMotionSource.read(path)
         }
         val host = read("SettingsBackupMotionHost")
         // 三处写正文位移的地方都要比对并回调。
@@ -163,8 +165,11 @@ class SettingsBackupMotionSpecTest {
         assertTrue(host.contains("onContentMoved?.invoke()"))
         for (activity in listOf("SettingsBackupActivity", "DiagnosticsActivity")) {
             val source = read(activity)
-            assertTrue(activity, source.contains("motionHost.onContentMoved = ::notifyPreparedSkinPositionChanged"))
-            assertTrue(activity, source.contains("motionHost.onContentMoved = null"))
+            assertTrue(activity, source.contains("notifyPositionChanged = ::notifyPreparedSkinPositionChanged"))
+            assertTrue(activity, source.contains("motionController.onDestroy()"))
         }
+        val controller = LceMotionSource.engine("motion/morph/ContainerMorphController.kt")
+        assertTrue(controller.contains("host.onContentMoved = notifyPositionChanged"))
+        assertTrue(controller.contains("host.onContentMoved = null"))
     }
 }

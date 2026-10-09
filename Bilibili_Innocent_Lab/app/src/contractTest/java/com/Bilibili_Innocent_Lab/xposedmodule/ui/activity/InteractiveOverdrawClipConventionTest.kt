@@ -1,5 +1,7 @@
 package com.Bilibili_Innocent_Lab.xposedmodule.ui.activity
 
+import com.Bilibili_Innocent_Lab.xposedmodule.contract.LceMotionSource
+
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -77,7 +79,7 @@ class InteractiveOverdrawClipConventionTest {
      * 由控制器临时解除、收尾统一恢复——否则溢出的拉伸/位移仍被裁成矩形断边。
      */
     @Test fun elasticDragRelievesAncestorClippingAtRuntime() {
-        val controller = SourceContract.read("src/main/java/com/Bilibili_Innocent_Lab/xposedmodule/ui/interaction/ElasticInteractionController.kt")
+        val controller = LceMotionSource.read("src/main/java/com/Bilibili_Innocent_Lab/xposedmodule/ui/interaction/ElasticInteractionController.kt")
         // 解除发生在进入 DRAG 的那一刻（PRESS 只有按压缩小、不会溢出）。
         val dragEntry = controller.after("motion = Motion.DRAG")
         assertTrue(dragEntry.contains("relieveAncestorClipping()"))

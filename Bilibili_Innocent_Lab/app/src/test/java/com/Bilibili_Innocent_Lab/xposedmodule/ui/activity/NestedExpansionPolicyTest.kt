@@ -65,8 +65,8 @@ class NestedExpansionPolicyTest {
     }
 
     @Test fun reversingEitherSpringDoesNotResetCompositeGeometry() {
-        val parent = ExpansionMotionPolicy.Spring(1f, 0f, 0f)
-        val child = ExpansionMotionPolicy.Spring(1f, 0f, 0f)
+        val parent = com.lumen.coacervation.engine.motion.expansion.ExpansionMotionPolicy.Spring(1f, 0f, 0f)
+        val child = com.lumen.coacervation.engine.motion.expansion.ExpansionMotionPolicy.Spring(1f, 0f, 0f)
         repeat(10) { child.step(1f / 120f) }
         repeat(12) { parent.step(1f / 120f); child.step(1f / 120f) }
         fun visible(): Float {
@@ -86,8 +86,8 @@ class NestedExpansionPolicyTest {
     }
 
     @Test fun longParentAndShortChildCanSettleOnDifferentFrames() {
-        val parent = ExpansionMotionPolicy.Spring(1f, 0f, 0f)
-        val child = ExpansionMotionPolicy.Spring(1f, 0f, 0f)
+        val parent = com.lumen.coacervation.engine.motion.expansion.ExpansionMotionPolicy.Spring(1f, 0f, 0f)
+        val child = com.lumen.coacervation.engine.motion.expansion.ExpansionMotionPolicy.Spring(1f, 0f, 0f)
         parent.adoptTravel(12000f)
         child.adoptTravel(800f)
         var childInLayout = true

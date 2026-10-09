@@ -1,5 +1,7 @@
 package com.Bilibili_Innocent_Lab.xposedmodule.ui.activity
 
+import com.lumen.coacervation.engine.motion.LumenAnimator
+
 import android.app.Dialog
 import android.graphics.Typeface
 import android.transition.ChangeBounds
@@ -114,7 +116,7 @@ internal fun MainActivity.updateCommunicationCompatibilityHint() {
             R.string.communication_compatibility_disable_tip else R.string.communication_compatibility_hint)
     }
     if (hint.isVisible == show) return
-    hint.animate().cancel()
+    LumenAnimator.property(hint).cancel()
     val root = (hint.parent as? ViewGroup)?.parent as? ViewGroup
     val curve = PathInterpolator(0.4f, 0f, 0.2f, 1f)
     val animated = android.animation.ValueAnimator.areAnimatorsEnabled()
@@ -126,7 +128,7 @@ internal fun MainActivity.updateCommunicationCompatibilityHint() {
     hint.isVisible = show
     if (show) {
         hint.translationY = if (animated) 24 * resources.displayMetrics.density else 0f
-        if (animated) hint.animate().translationY(0f).setDuration(320L).setInterpolator(curve).start()
+        if (animated) LumenAnimator.property(hint).translationY(0f).setDuration(320L).setInterpolator(curve).start()
         hint.announceForAccessibility(getString(R.string.communication_compatibility_hint))
     } else hint.translationY = 0f
 }

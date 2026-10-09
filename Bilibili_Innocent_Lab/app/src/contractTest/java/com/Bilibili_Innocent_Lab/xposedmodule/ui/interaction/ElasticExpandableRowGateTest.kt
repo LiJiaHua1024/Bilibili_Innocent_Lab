@@ -1,5 +1,7 @@
 package com.Bilibili_Innocent_Lab.xposedmodule.ui.interaction
 
+import com.Bilibili_Innocent_Lab.xposedmodule.contract.LceMotionSource
+
 import java.io.File
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -58,7 +60,12 @@ class ElasticExpandableRowGateTest {
         val body = interaction().after("private fun dragTo(")
             .before("\n    }")
         assertTrue(body.contains("clampToParent("))
-        assertTrue(body.contains("drag, limit)"))
+        assertTrue(body.contains("gapLeft, gapTop, gapRight, gapBottom, drag)"))
+        val capture = interaction().after("private fun captureGroupGaps(").before("private fun validGeometry()")
+        assertTrue(capture.contains("policy == ElasticTravelPolicy.PARENT_BOUNDS"))
+        assertTrue(capture.contains("Float.POSITIVE_INFINITY, limit, 0f, policy"))
+        val host = LceMotionSource.read("ui/skin/activity/SkinnedActivity.kt")
+        assertEquals(2, host.split("travelPolicy = com.lumen.coacervation.engine.interaction.ElasticTravelPolicy.PARENT_BOUNDS").size - 1)
     }
 
     /**
@@ -127,7 +134,7 @@ class ElasticExpandableRowGateTest {
     // 归一化 CRLF：autocrlf 检出会把源码写成 CRLF，substringBefore("\n    }\n")
     // 这类按行锚定的切片会失配、静默退化成整文件尾部（assertTrue 假性通过）。
     private fun source(relative: String): String =
-        SourceContract.read(relative).replace("\r\n", "\n")
+        LceMotionSource.read(relative).replace("\r\n", "\n")
 
     /**
      * 中性涟漪随主题（2026-09-24 用户报告：浅色下展开/收起条目时开头结尾压一层黑色遮罩；

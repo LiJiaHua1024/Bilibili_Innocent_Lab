@@ -1,5 +1,7 @@
 package com.Bilibili_Innocent_Lab.xposedmodule.ui.activity
 
+import com.lumen.coacervation.engine.motion.LumenAnimator
+
 import android.app.Dialog
 import android.text.Editable
 import android.text.TextWatcher
@@ -171,7 +173,7 @@ internal fun MainActivity.showSettingsFavoritesDialog(anchor: View? = null) {
                 draggedId = (adapter.itemAt(viewHolder.bindingAdapterPosition)
                     as? FavoriteRowItem.Row)?.id
                 viewHolder.itemView.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
-                viewHolder.itemView.animate()
+                LumenAnimator.property(viewHolder.itemView)
                     .scaleX(1.03f).scaleY(1.03f).alpha(0.9f)
                     .setInterpolator(SETTLE_EASE)
                     .setDuration(140).start()
@@ -199,7 +201,7 @@ internal fun MainActivity.showSettingsFavoritesDialog(anchor: View? = null) {
 
         override fun clearView(recyclerView: RecyclerView, viewHolder: RecyclerView.ViewHolder) {
             super.clearView(recyclerView, viewHolder)
-            viewHolder.itemView.animate()
+            LumenAnimator.property(viewHolder.itemView)
                 .scaleX(1f).scaleY(1f).alpha(1f)
                 .setInterpolator(SETTLE_EASE)
                 .setDuration(220).start()
@@ -423,9 +425,9 @@ private class FavoritesRowAdapter(
             val target = if (item.canDrag) 1f else 0f
             if (grip.alpha != target) {
                 if (animate) {
-                    grip.animate().alpha(target).setDuration(GRIP_FADE_MS).start()
+                    LumenAnimator.property(grip).alpha(target).setDuration(GRIP_FADE_MS).start()
                 } else {
-                    grip.animate().cancel()
+                    LumenAnimator.property(grip).cancel()
                     grip.alpha = target
                 }
             }

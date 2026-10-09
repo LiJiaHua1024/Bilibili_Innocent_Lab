@@ -2,6 +2,8 @@
 
 package com.Bilibili_Innocent_Lab.xposedmodule.ui.activity
 
+import com.lumen.coacervation.engine.motion.LumenAnimator
+
 import android.app.Dialog
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
@@ -539,7 +541,7 @@ internal fun MainActivity.showUserTermsDialog() {
     }
     renderTermsGateDiagnostics()
     container.post {
-        container.animate()
+        LumenAnimator.property(container)
             .scaleX(1f).scaleY(1f).alpha(1f)
             .setDuration(260L)
             .setInterpolator(emphasizedDecelerate)

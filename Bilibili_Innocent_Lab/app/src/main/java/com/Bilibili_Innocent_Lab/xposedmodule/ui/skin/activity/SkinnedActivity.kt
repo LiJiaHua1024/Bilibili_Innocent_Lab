@@ -58,6 +58,7 @@ abstract class SkinnedActivity : AppViewsActivity() {
             notifyPositionChanged = { notifyPreparedSkinPositionChanged() },
             highlightColor = monetColors.primary
         ).also { elasticInteraction = it }
+        controller.travelPolicy = com.lumen.coacervation.engine.interaction.ElasticTravelPolicy.PARENT_BOUNDS
         return controller.dispatch(event) { original -> super.dispatchTouchEvent(original) }
     }
 
@@ -75,6 +76,7 @@ abstract class SkinnedActivity : AppViewsActivity() {
         val controller = ElasticInteractionController(window.decorView,
             notifyPositionChanged = { notifyPreparedSkinPositionChanged() },
             highlightColor = monetColors.primary)
+        controller.travelPolicy = com.lumen.coacervation.engine.interaction.ElasticTravelPolicy.PARENT_BOUNDS
         val callback = object : Window.Callback by original {
             override fun dispatchTouchEvent(event: MotionEvent): Boolean =
                 controller.dispatch(event) { forwarded -> original.dispatchTouchEvent(forwarded) }

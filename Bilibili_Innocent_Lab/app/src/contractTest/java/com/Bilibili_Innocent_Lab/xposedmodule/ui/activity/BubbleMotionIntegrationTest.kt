@@ -1,5 +1,7 @@
 package com.Bilibili_Innocent_Lab.xposedmodule.ui.activity
 
+import com.Bilibili_Innocent_Lab.xposedmodule.contract.LceMotionSource
+
 import java.io.File
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -11,7 +13,7 @@ import com.Bilibili_Innocent_Lab.xposedmodule.contract.after
 class BubbleMotionIntegrationTest {
     private fun source(name: String): String {
         val path = "src/main/java/com/Bilibili_Innocent_Lab/xposedmodule/ui/activity/$name.kt"
-        return SourceContract.read(path)
+        return LceMotionSource.read(path)
     }
 
     @Test
@@ -27,10 +29,10 @@ class BubbleMotionIntegrationTest {
     @Test
     fun `retarget duration is scaled exactly once and predictive start is captured`() {
         val source = source("BubbleMotionController")
-        assertEquals(1, Regex("NavigationMotionPolicy.remainingDuration\\(").findAll(source).count())
+        assertEquals(1, Regex("InterruptibleMotionPolicy.remainingDuration\\(").findAll(source).count())
         assertTrue(source.contains("predictiveStartExpansion = expansion"))
         assertTrue(source.contains("BubbleMotionSpec.predictiveExpansion(predictiveStartExpansion, mapped)"))
-        assertTrue(source.contains("NavigationMotionContinuation(start, target, session.velocity(now), actualDuration)"))
+        assertTrue(source.contains("InterruptibleMotionContinuation(start, target, session.velocity(now), actualDuration)"))
     }
 
     @Test

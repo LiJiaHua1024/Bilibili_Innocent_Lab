@@ -1,5 +1,7 @@
 package com.Bilibili_Innocent_Lab.xposedmodule.ui.skin
 
+import com.Bilibili_Innocent_Lab.xposedmodule.contract.LceMotionSource
+
 import com.Bilibili_Innocent_Lab.xposedmodule.ui.skin.liquid.LiquidStretchEdge
 import com.Bilibili_Innocent_Lab.xposedmodule.ui.skin.liquid.LiquidStretchOverscrollPolicy
 import com.Bilibili_Innocent_Lab.xposedmodule.ui.skin.liquid.LiquidStretchUnconsumedAction
@@ -201,7 +203,7 @@ class LiquidStretchOverscrollPolicyTest {
     @Test
     fun `catching a rebound takes the whole gesture away from the content`() {
         val base = "src/main/java/com/Bilibili_Innocent_Lab/xposedmodule/ui"
-        fun read(path: String) = SourceContract.read("$base/$path")
+        fun read(path: String) = LceMotionSource.read("$base/$path")
         val viewport = read("skin/liquid/LiquidStretchViewport.kt")
         val dispatch = viewport.after("override fun dispatchTouchEvent(").before("override fun onInterceptTouchEvent(")
         assertTrue("只有真的接住了回弹才接管", dispatch.contains("stopEffectsForTouch()") &&

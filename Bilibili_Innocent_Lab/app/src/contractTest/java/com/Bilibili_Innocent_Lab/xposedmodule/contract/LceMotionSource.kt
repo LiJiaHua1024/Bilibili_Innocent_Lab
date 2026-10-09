@@ -1,0 +1,63 @@
+package com.Bilibili_Innocent_Lab.xposedmodule.contract
+
+import java.io.File
+
+/** 迁移后的语义护栏读取本轮 Gradle 实际编译的 LCE 源码；先核对模块确实委托到该类型。 */
+object LceMotionSource {
+    private val delegates = mapOf(
+        "LiquidStretchViewport.kt" to ("core/liquid/LiquidStretchViewport.kt" to "com.lumen.coacervation.engine.liquid.LiquidStretchViewport"),
+        "BubbleIconProxy.kt" to ("motion/modal/BubbleIconProxy.kt" to "com.lumen.coacervation.engine.motion.modal.BubbleIconProxy"),
+        "BubbleLayerMotionSpec.kt" to ("motion/modal/BubbleLayerMotionSpec.kt" to "com.lumen.coacervation.engine.motion.modal.BubbleLayerMotionSpec"),
+        "BubbleMotionController.kt" to ("motion/modal/BubbleMotionController.kt" to "com.lumen.coacervation.engine.motion.modal.BubbleMotionController"),
+        "BubblePanelLayer.kt" to ("motion/modal/BubblePanelLayer.kt" to "com.lumen.coacervation.engine.motion.modal.BubblePanelLayer"),
+        "BubblePlacementSpec.kt" to ("motion/modal/BubblePlacementSpec.kt" to "com.lumen.coacervation.engine.motion.modal.BubbleTailEdge"),
+        "BubbleSkinSurfaceView.kt" to ("motion/modal/BubbleSkinSurfaceView.kt" to "com.lumen.coacervation.engine.motion.modal.BubbleSkinSurfaceView"),
+        "BubbleSurfaceDrawable.kt" to ("motion/modal/BubbleSurfaceDrawable.kt" to "com.lumen.coacervation.engine.motion.modal.BubbleSurfaceDrawable"),
+        "IconAnchoredMotionController.kt" to ("motion/modal/IconAnchoredMotionController.kt" to "com.lumen.coacervation.engine.motion.modal.IconAnchoredMotionController"),
+        "IconAnchoredMotionLayer.kt" to ("motion/modal/IconAnchoredMotionLayer.kt" to "com.lumen.coacervation.engine.motion.modal.IconAnchoredMotionLayer"),
+        "IconAnchoredMotionSpec.kt" to ("motion/modal/IconAnchoredMotionSpec.kt" to "com.lumen.coacervation.engine.motion.modal.IconAnchoredContentTiming"),
+        "ModalBackdropBlur.kt" to ("motion/modal/ModalBackdropBlur.kt" to "com.lumen.coacervation.engine.motion.modal.ModalBackdropBlur"),
+        "ModalBackdropBlurSpec.kt" to ("motion/modal/ModalBackdropBlurSpec.kt" to "com.lumen.coacervation.engine.motion.modal.ModalBackdropBlurSpec"),
+        "ModalCardRoot.kt" to ("motion/modal/ModalCardRoot.kt" to "com.lumen.coacervation.engine.motion.modal.ModalCardRoot"),
+        "ModalTitleColorOwners.kt" to ("motion/modal/ModalTitleColorOwners.kt" to "com.lumen.coacervation.engine.motion.modal.ModalTitleColorOwners"),
+        "ModalTitleDescriptions.kt" to ("motion/modal/ModalTitleDescriptions.kt" to "com.lumen.coacervation.engine.motion.modal.ModalTitleDescriptions"),
+        "ModalTitleMotion.kt" to ("motion/modal/ModalTitleMotion.kt" to "com.lumen.coacervation.engine.motion.modal.ModalTitleMotionSpec"),
+        "ExpansionMotionPolicy.kt" to ("motion/expansion/ExpansionMotionPolicy.kt" to "com.lumen.coacervation.engine.motion.expansion.ExpansionMotionPolicy"),
+        "NestedExpansionPolicy.kt" to ("motion/expansion/NestedExpansionPolicy.kt" to "com.lumen.coacervation.engine.motion.expansion.NestedExpansionPolicy"),
+        "SectionExpansionController.kt" to ("motion/expansion/SectionExpansionController.kt" to "com.lumen.coacervation.engine.motion.expansion.SectionExpansionController"),
+        "SettingsPageMotionPolicy.kt" to ("motion/pager/PageMotionPolicy.kt" to "com.lumen.coacervation.engine.motion.pager.SwitchTouchBounds"),
+        "SettingsPageTextChain.kt" to ("motion/pager/PageTextChain.kt" to "com.lumen.coacervation.engine.motion.pager.PageTextChain"),
+        "SettingsRevealScrollMotion.kt" to ("motion/reveal/RevealScrollMotion.kt" to "com.lumen.coacervation.engine.motion.reveal.RevealScrollMotion"),
+        "SettingsRevealRequest.kt" to ("motion/reveal/RevealRequest.kt" to "com.lumen.coacervation.engine.motion.reveal.RevealRequest"),
+        "NavigationMotionPolicy.kt" to ("motion/InterruptibleMotion.kt" to "com.lumen.coacervation.engine.motion.InterruptibleMotionPhase"),
+        "SettingsBackupMotionSpec.kt" to ("motion/morph/ContainerMorphSpec.kt" to "com.lumen.coacervation.engine.motion.MotionRect"),
+        "SettingsBackupMotionHost.kt" to ("motion/morph/ContainerMorphHost.kt" to "com.lumen.coacervation.engine.motion.morph.ContainerMorphGeometry"),
+        "ElasticMotionGroupPolicy.kt" to ("interaction/ElasticMotionGroupPolicy.kt" to "com.lumen.coacervation.engine.interaction.ElasticGroupNode"),
+        "ElasticMotionPolicy.kt" to ("interaction/ElasticMotionPolicy.kt" to "com.lumen.coacervation.engine.interaction.ElasticGestureDecision"),
+        "ElasticInteractionController.kt" to ("interaction/ElasticInteractionController.kt" to "com.lumen.coacervation.engine.interaction.ElasticInteractionController"),
+        "SettingsPagePager.kt" to ("motion/pager/LumenPagePager.kt" to "com.lumen.coacervation.engine.motion.pager.LumenPagePager"),
+        "ModernNavigationMotion.kt" to ("widget/BoundedNavigationMotion.kt" to "com.lumen.coacervation.engine.widget.BoundedNavigationMotion"),
+        "CoverableRippleDrawable.kt" to ("widget/CoverableRippleDrawable.kt" to "com.lumen.coacervation.engine.widget.CoverableRippleDrawable"),
+    )
+
+    fun engine(path: String): String {
+        val root = System.getProperty("innocentLab.lumenSource")
+            ?: throw AssertionError("Missing compiled LCE source path")
+        val module = if (path.startsWith("core/")) "lumen-engine" else "lumen-motion"
+        val relative = path.removePrefix("core/")
+        val source = File(root, "$module/src/main/java/com/lumen/coacervation/engine/$relative")
+        if (!source.isFile) throw AssertionError("Compiled LCE source not found: $source")
+        return SourceContract.normalize(source.readText())
+    }
+
+    fun read(path: String): String {
+        val host = SourceContract.read(path)
+        val target = delegates[path.substringAfterLast('/')] ?: return host
+        val forwarded = if (path.endsWith("SettingsPagePager.kt")) host.contains(": LumenPagePager(")
+            else if (path.endsWith("ModernNavigationMotion.kt"))
+                host.contains("object ModernNavigationMotion : ${target.second}(8)")
+            else host.contains("typealias ") && host.contains(target.second)
+        if (!forwarded) throw AssertionError("Host no longer delegates $path to ${target.second}")
+        return engine(target.first)
+    }
+}

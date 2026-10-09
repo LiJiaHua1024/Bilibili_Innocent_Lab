@@ -96,7 +96,7 @@ internal object SettingsUiSource {
         val fileName = if (name.endsWith(".kt")) name else "$name.kt"
         val target = File(dir, fileName)
         require(target.isFile) { "missing source: $fileName" }
-        return target.readText()
+        return com.Bilibili_Innocent_Lab.xposedmodule.contract.LceMotionSource.read("$PACKAGE_DIR/$fileName")
     }
 
     /** MainActivity 的源码。 */

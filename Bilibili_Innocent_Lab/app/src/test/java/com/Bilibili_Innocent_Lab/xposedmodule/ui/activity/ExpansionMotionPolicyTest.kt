@@ -13,7 +13,7 @@ import org.junit.Test
  */
 class ExpansionMotionPolicyTest {
 
-    private fun stepUntilRest(spring: ExpansionMotionPolicy.Spring, maxFrames: Int = 600): Int {
+    private fun stepUntilRest(spring: com.lumen.coacervation.engine.motion.expansion.ExpansionMotionPolicy.Spring, maxFrames: Int = 600): Int {
         var frames = 0
         while (frames < maxFrames) {
             if (spring.step(1f / 60f)) break
@@ -24,7 +24,7 @@ class ExpansionMotionPolicyTest {
 
     @Test
     fun springSettlesOnTarget() {
-        val spring = ExpansionMotionPolicy.Spring(p = 0f, v = 0f, target = 1f)
+        val spring = com.lumen.coacervation.engine.motion.expansion.ExpansionMotionPolicy.Spring(p = 0f, v = 0f, target = 1f)
         val frames = stepUntilRest(spring)
         assertTrue("spring should settle well under the safety bound", frames in 5..120)
         assertEquals(1f, spring.p, 1e-4f)
@@ -34,7 +34,7 @@ class ExpansionMotionPolicyTest {
     @Test
     fun springOvershootStaysSmall() {
         // ζ=0.94 允许轻微过冲（空间弹簧质感），但不应超过 ~8%
-        val spring = ExpansionMotionPolicy.Spring(p = 0f, v = 0f, target = 1f)
+        val spring = com.lumen.coacervation.engine.motion.expansion.ExpansionMotionPolicy.Spring(p = 0f, v = 0f, target = 1f)
         var peak = 0f
         repeat(600) {
             spring.step(1f / 60f)
@@ -45,7 +45,7 @@ class ExpansionMotionPolicyTest {
 
     @Test
     fun reversalContinuesFromCurrentPositionAndVelocity() {
-        val spring = ExpansionMotionPolicy.Spring(p = 0f, v = 0f, target = 1f)
+        val spring = com.lumen.coacervation.engine.motion.expansion.ExpansionMotionPolicy.Spring(p = 0f, v = 0f, target = 1f)
         repeat(12) { spring.step(1f / 60f) }
         val midP = spring.p
         val midV = spring.v
@@ -62,14 +62,14 @@ class ExpansionMotionPolicyTest {
 
     @Test
     fun collapsedStateIsExactZero() {
-        val spring = ExpansionMotionPolicy.Spring(p = 0.8f, v = 0f, target = 0f)
+        val spring = com.lumen.coacervation.engine.motion.expansion.ExpansionMotionPolicy.Spring(p = 0.8f, v = 0f, target = 0f)
         stepUntilRest(spring)
         assertEquals(0f, spring.p, 0f)
     }
 
     @Test
     fun dtIsClampedAgainstFrameStall() {
-        val spring = ExpansionMotionPolicy.Spring(p = 0f, v = 0f, target = 1f)
+        val spring = com.lumen.coacervation.engine.motion.expansion.ExpansionMotionPolicy.Spring(p = 0f, v = 0f, target = 1f)
         spring.step(10f) // 模拟 10 秒卡顿：应被钳到 MAX_STEP_SECONDS 的一步，而不是爆发
         // 50ms 步长下 v=15、p=0.75 是有界的正常弹簧步；不钳制会得到天文数字。
         assertTrue("p must stay within the target gap", spring.p in 0f..1f)
@@ -155,8 +155,8 @@ class ExpansionMotionPolicyTest {
     /** 收紧阈值只延长尾段，不能把整段动画拖长到另一个量级。 */
     @Test
     fun tighterThresholdsOnlyExtendTheTail() {
-        val loose = ExpansionMotionPolicy.Spring(p = 0f, target = 1f)
-        val tight = ExpansionMotionPolicy.Spring(p = 0f, target = 1f).apply { adoptTravel(1700f) }
+        val loose = com.lumen.coacervation.engine.motion.expansion.ExpansionMotionPolicy.Spring(p = 0f, target = 1f)
+        val tight = com.lumen.coacervation.engine.motion.expansion.ExpansionMotionPolicy.Spring(p = 0f, target = 1f).apply { adoptTravel(1700f) }
         val looseFrames = stepUntilRest(loose)
         val tightFrames = stepUntilRest(tight)
         assertTrue("收紧后仍必须收敛", tightFrames in (looseFrames + 1)..(looseFrames * 2 + 12))

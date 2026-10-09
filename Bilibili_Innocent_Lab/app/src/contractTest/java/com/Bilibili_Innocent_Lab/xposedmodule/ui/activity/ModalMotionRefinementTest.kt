@@ -1,5 +1,7 @@
 package com.Bilibili_Innocent_Lab.xposedmodule.ui.activity
 
+import com.Bilibili_Innocent_Lab.xposedmodule.contract.LceMotionSource
+
 import java.io.File
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -154,7 +156,7 @@ class ModalMotionRefinementTest {
 
     private fun source(name: String): String {
         val path = "src/main/java/com/Bilibili_Innocent_Lab/xposedmodule/ui/activity/$name.kt"
-        return SourceContract.read(path)
+        return LceMotionSource.read(path)
     }
 
     @Test fun missingSnapshotUsesSameAnchoredRuleEditorWithoutChangingSelectionRules() {
@@ -194,7 +196,7 @@ class ModalMotionRefinementTest {
         assertTrue(controller.contains("titleMotion?.expanded()"))
         assertTrue(controller.contains("title.finishAfterSourceDraw(onClosed)"))
         assertTrue(controller.contains("titleMotion?.dispose()"))
-        assertEquals(1, Regex("NavigationMotionPolicy.remainingDuration\\(").findAll(controller).count())
+        assertEquals(1, Regex("InterruptibleMotionPolicy.remainingDuration\\(").findAll(controller).count())
     }
 
     @Test fun theMotionLayerOwnsTheShadowAcrossMorphAndRest() {

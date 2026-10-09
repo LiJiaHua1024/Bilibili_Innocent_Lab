@@ -1,5 +1,7 @@
 package com.Bilibili_Innocent_Lab.xposedmodule.ui.interaction
 
+import com.Bilibili_Innocent_Lab.xposedmodule.contract.LceMotionSource
+
 import java.io.File
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -46,5 +48,5 @@ class ElasticCaptureGateTest {
     }
 
     private fun source(relative: String): String =
-        SourceContract.read(relative)
+        LceMotionSource.read(relative)
 }

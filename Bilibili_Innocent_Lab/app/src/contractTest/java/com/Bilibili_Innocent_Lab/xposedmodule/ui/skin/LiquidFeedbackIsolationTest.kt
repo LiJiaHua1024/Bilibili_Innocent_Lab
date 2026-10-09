@@ -1,5 +1,7 @@
 package com.Bilibili_Innocent_Lab.xposedmodule.ui.skin
 
+import com.Bilibili_Innocent_Lab.xposedmodule.contract.LceMotionSource
+
 import com.Bilibili_Innocent_Lab.xposedmodule.ui.skin.liquid.LiquidRealtimeCapturePolicy as Policy
 import java.io.File
 import org.junit.Assert.*
@@ -359,9 +361,9 @@ class LiquidFeedbackIsolationTest {
         assertTrue(dispatch.contains("notifyGestureActive(false)"))
     }
 
-    private fun source2(relative: String): String = SourceContract.read("src/main/java/com/Bilibili_Innocent_Lab/xposedmodule/$relative")
+    private fun source2(relative: String): String = LceMotionSource.read("src/main/java/com/Bilibili_Innocent_Lab/xposedmodule/$relative")
 
-    private fun source(name: String): String = SourceContract.read("src/main/java/com/Bilibili_Innocent_Lab/xposedmodule/ui/skin/liquid/$name.kt")
+    private fun source(name: String): String = LceMotionSource.read("src/main/java/com/Bilibili_Innocent_Lab/xposedmodule/ui/skin/liquid/$name.kt")
 
     /**
      * 形变表面（二级页容器展开/收回、预测式返回）只改内部矩形、View 不动，必须同样触发抑制：
@@ -399,12 +401,12 @@ class LiquidFeedbackIsolationTest {
         assertTrue(request.contains("staticBackdropHost"))
         for (name in listOf("SettingsBackupActivity", "DiagnosticsActivity")) {
             val path = "src/main/java/com/Bilibili_Innocent_Lab/xposedmodule/ui/activity/$name.kt"
-            val activity = SourceContract.read(path)
+            val activity = LceMotionSource.read(path)
             assertTrue(name, activity.contains("LiquidStaticBackdropHost {"))
         }
         // 主界面必须保留实时截图：悬浮栏与卡片背后有滚动内容。
         val mainPath = "src/main/java/com/Bilibili_Innocent_Lab/xposedmodule/ui/activity/MainActivity.kt"
-        val main = SourceContract.read(mainPath)
+        val main = LceMotionSource.read(mainPath)
         assertFalse(main.contains("LiquidStaticBackdropHost"))
     }
 

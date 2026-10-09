@@ -1,5 +1,7 @@
 package com.Bilibili_Innocent_Lab.xposedmodule.ui.skin
 
+import com.Bilibili_Innocent_Lab.xposedmodule.contract.LceMotionSource
+
 import com.Bilibili_Innocent_Lab.xposedmodule.ui.skin.liquid.LiquidSurfaceRefreshState
 import java.io.File
 import org.junit.Assert.*
@@ -10,7 +12,7 @@ import com.Bilibili_Innocent_Lab.xposedmodule.contract.SourceContract
 class SettingsPagePositionRefreshTest {
     private fun source(relative: String): String {
         val path = "src/main/java/com/Bilibili_Innocent_Lab/xposedmodule/ui/$relative.kt"
-        return SourceContract.read(path)
+        return LceMotionSource.read(path)
     }
 
     private fun function(source: String, signature: String): String {

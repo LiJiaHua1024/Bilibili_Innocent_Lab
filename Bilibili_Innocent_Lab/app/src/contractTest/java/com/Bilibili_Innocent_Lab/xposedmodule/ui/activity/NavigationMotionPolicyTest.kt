@@ -1,5 +1,7 @@
 package com.Bilibili_Innocent_Lab.xposedmodule.ui.activity
 
+import com.Bilibili_Innocent_Lab.xposedmodule.contract.LceMotionSource
+
 import java.io.File
 import kotlin.math.abs
 import org.junit.Assert.*
@@ -103,24 +105,29 @@ class NavigationMotionPolicyTest {
 
     private fun source(name: String): String {
         val path = "src/main/java/com/Bilibili_Innocent_Lab/xposedmodule/ui/activity/$name.kt"
-        return SourceContract.read(path)
+        return LceMotionSource.read(path)
     }
     @Test fun bothPagesFreezeTheVisualProfileAndInvalidatePostedEntryWork() {
+        val code = LceMotionSource.engine("motion/morph/ContainerMorphController.kt")
         for (page in listOf("SettingsBackupActivity", "DiagnosticsActivity")) {
-            val code = source(page)
+            assertTrue(source(page).contains("motionController = ContainerMorphController("))
+            assertTrue(source(page).contains("motionController.start(savedInstanceState == null)"))
+            assertTrue(source(page).contains("motionController.onDestroy()"))
             val prepare = code.after("private fun prepareExitMotion(").before("private fun requestClose(")
-            assertTrue(prepare.indexOf("NavigationMotionPolicy.preserveFrame(motionState)") < prepare.indexOf("resolveMotionGeometry("))
+            assertTrue(prepare.indexOf("InterruptibleMotionPolicy.preserveFrame(motionState)") < prepare.indexOf("resolveMotionGeometry("))
             assertTrue(prepare.before("resolveMotionGeometry(").contains("return"))
             assertTrue(code.contains("!motionSession.owns(entryToken)"))
             assertTrue(code.contains("!motionSession.owns(finishToken)"))
             assertTrue(code.contains("motionState == MotionState.CLOSING"))
-            assertTrue(code.contains("current && !cancelled && !isFinishing && !isDestroyed"))
+            assertTrue(code.contains("current && !cancelled && !activity.isFinishing && !activity.isDestroyed"))
             assertTrue(code.contains("animator.removeAllListeners()"))
         }
     }
     @Test fun transitionsDoNotAllocateFrameSnapshotsOrRebuildListsPerFrame() {
+        val apply = LceMotionSource.engine("motion/morph/ContainerMorphController.kt")
+            .after("private fun applyMotionExpansion(").before("private fun completeExpandedMotion(")
         for (page in listOf("SettingsBackupActivity", "DiagnosticsActivity")) {
-            val apply = source(page).after("private fun applyMotionExpansion(").before("private fun completeExpandedMotion(")
+            assertFalse(source(page).contains("private fun animateMotionTo("))
             for (forbidden in listOf("snapshot()", "Bitmap", "resolveMotionGeometry", "renderHome", "removeAllViews")) {
                 assertFalse(forbidden, apply.contains(forbidden))
             }

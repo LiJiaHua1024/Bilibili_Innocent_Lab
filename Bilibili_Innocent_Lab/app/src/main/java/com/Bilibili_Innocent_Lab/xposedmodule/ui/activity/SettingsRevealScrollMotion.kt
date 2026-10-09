@@ -1,34 +1,4 @@
 package com.Bilibili_Innocent_Lab.xposedmodule.ui.activity
 
-import kotlin.math.roundToInt
-
-/** Request-owned scroll frames; cancellation never writes another position or affects a newer owner. */
-internal class SettingsRevealScrollMotion(
-    private val currentPosition: () -> Int,
-    private val setPosition: (Int) -> Unit
-) {
-    private var generation = 0L
-    private var active = false
-    private var from = 0
-    private var to = 0
-
-    fun retarget(destination: Int): Long {
-        generation++
-        from = currentPosition().coerceAtLeast(0)
-        to = destination.coerceAtLeast(0)
-        active = true
-        return generation
-    }
-
-    fun frame(token: Long, fraction: Float): Boolean {
-        if (!active || token != generation) return false
-        val progress = if (fraction.isFinite()) fraction.coerceIn(0f, 1f) else 1f
-        setPosition((from.toDouble() + (to.toDouble() - from) * progress).roundToInt())
-        return true
-    }
-
-    fun cancel() {
-        generation++
-        active = false
-    }
-}
+/** Compatibility names; all motion state and rendering are owned by LCE. */
+internal typealias SettingsRevealScrollMotion = com.lumen.coacervation.engine.motion.reveal.RevealScrollMotion

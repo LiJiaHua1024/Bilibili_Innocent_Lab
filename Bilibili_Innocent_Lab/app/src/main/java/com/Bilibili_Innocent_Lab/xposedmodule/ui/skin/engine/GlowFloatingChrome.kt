@@ -1,5 +1,7 @@
 package com.Bilibili_Innocent_Lab.xposedmodule.ui.skin.engine
 
+import com.lumen.coacervation.engine.motion.LumenAnimator
+
 import android.animation.ValueAnimator
 import android.graphics.RectF
 import android.util.Log
@@ -318,7 +320,7 @@ internal class GlowFloatingChrome(
         surface.goal = next
         surface.animator?.cancel()
         val from = surface.applied
-        surface.animator = ValueAnimator.ofFloat(0f, 1f).apply {
+        surface.animator = LumenAnimator.ofFloat(0f, 1f).apply {
             duration = TRANSITION_MS
             interpolator = DecelerateInterpolator()
             addUpdateListener { animator ->

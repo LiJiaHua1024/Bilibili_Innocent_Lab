@@ -1,5 +1,7 @@
 package com.Bilibili_Innocent_Lab.xposedmodule.ui.activity
 
+import com.lumen.coacervation.engine.motion.LumenAnimator
+
 import com.highcapable.betterandroid.ui.extension.view.firstChildOrNull
 import com.highcapable.betterandroid.ui.extension.view.childOrNull
 import android.animation.ArgbEvaluator
@@ -745,7 +747,7 @@ private fun MainActivity.createSlidingChoice(
         val fromColor = titleOf(previous)?.currentTextColor ?: normalColor
         val intoColor = titleOf(index)?.currentTextColor ?: normalColor
         val evaluator = ArgbEvaluator()
-        animator = ValueAnimator.ofFloat(0f, 1f).apply {
+        animator = LumenAnimator.ofFloat(0f, 1f).apply {
             duration = SELECTION_SLIDE_MS
             interpolator = selectionSlideCurve
             addUpdateListener { anim ->

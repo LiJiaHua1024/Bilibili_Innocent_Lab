@@ -1,5 +1,9 @@
 package com.Bilibili_Innocent_Lab.xposedmodule.ui.overlay
 
+import com.lumen.coacervation.engine.motion.LumenEasing
+
+import com.lumen.coacervation.engine.motion.LumenAnimator
+
 import android.animation.ValueAnimator
 import android.content.ClipData
 import android.content.ClipboardManager
@@ -27,7 +31,6 @@ import android.widget.Toast
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.Bilibili_Innocent_Lab.xposedmodule.hook.hostui.overlays.HostOverlaySurfaces
-import com.lumen.coacervation.engine.motion.LumenEasing
 import com.Bilibili_Innocent_Lab.xposedmodule.runtime.HostThreadGuard
 import com.Bilibili_Innocent_Lab.xposedmodule.runtime.replytopology.ReplyTopologyClipboardWrite
 import com.Bilibili_Innocent_Lab.xposedmodule.runtime.replytopology.ReplyTopologyExportText
@@ -392,7 +395,7 @@ internal class ReplyTopologyPanelView(
         val keywordToPx = if (collapsed) 1 else keywordFullPx
         val explorationFromPx = if (collapsed) explorationFullPx else 1
         val explorationToPx = if (collapsed) 1 else explorationFullPx
-        val animator = ValueAnimator.ofFloat(0f, 1f).apply {
+        val animator = LumenAnimator.ofFloat(0f, 1f).apply {
             duration = if (collapsed) {
                 ReplyTopologyCompactMotionSpec.COLLAPSE_DURATION_MS
             } else {
@@ -722,7 +725,7 @@ internal class ReplyTopologyPanelView(
             parent.addView(viewer, params)
             viewer.submit(graph, rpid, initialPath = rpid.takeIf { path })
             viewer.alpha = 0f
-            viewer.animate().alpha(1f).setDuration(160L).setInterpolator(LumenEasing.standardDecelerate()).start()
+            LumenAnimator.property(viewer).alpha(1f).setDuration(160L).setInterpolator(LumenEasing.standardDecelerate()).start()
         }.onFailure { closeTreeExplorer(viewer) }
     }
 

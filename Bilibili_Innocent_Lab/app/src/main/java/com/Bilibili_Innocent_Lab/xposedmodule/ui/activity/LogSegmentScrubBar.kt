@@ -1,5 +1,7 @@
 package com.Bilibili_Innocent_Lab.xposedmodule.ui.activity
 
+import com.lumen.coacervation.engine.motion.LumenAnimator
+
 import android.animation.Animator
 import android.animation.AnimatorListenerAdapter
 import android.animation.ValueAnimator
@@ -325,7 +327,7 @@ class LogSegmentScrubBar(context: Context, attrs: AttributeSet?) : FrameLayout(c
         }
         val token = pressGeneration
         val spring = ModernNavigationSpring(press, target, pressVelocity)
-        val animation = ValueAnimator.ofFloat(0f, ModernNavigationMotion.SPRING_DURATION_MS / 1000f).apply {
+        val animation = LumenAnimator.ofFloat(0f, ModernNavigationMotion.SPRING_DURATION_MS / 1000f).apply {
             duration = ModernNavigationMotion.SPRING_DURATION_MS
             interpolator = LinearInterpolator()
             addUpdateListener {
@@ -360,7 +362,7 @@ class LogSegmentScrubBar(context: Context, attrs: AttributeSet?) : FrameLayout(c
         val y = ModernNavigationSpring(offsetY, 0f, offsetVelocityY)
         val indicator = ModernNavigationSpring(displayedPosition, target)
         indicatorSettling = true
-        val animation = ValueAnimator.ofFloat(0f, 1f).apply {
+        val animation = LumenAnimator.ofFloat(0f, 1f).apply {
             duration = ModernNavigationMotion.SPRING_DURATION_MS
             interpolator = LinearInterpolator()
             addUpdateListener {
