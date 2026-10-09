@@ -4,6 +4,9 @@ import android.app.Dialog
 import android.content.Intent
 import android.net.Uri
 import android.provider.Settings
+import android.os.Build
+import android.Manifest
+import android.content.pm.PackageManager
 import android.annotation.SuppressLint
 import android.graphics.Typeface
 import android.text.InputFilter
@@ -23,6 +26,8 @@ import com.Bilibili_Innocent_Lab.xposedmodule.agent.AgentTaskState
 import com.Bilibili_Innocent_Lab.xposedmodule.agent.AgentTaskLimits
 import com.Bilibili_Innocent_Lab.xposedmodule.agent.AgentVisionChallenge
 import com.Bilibili_Innocent_Lab.xposedmodule.agent.AgentWire
+import com.Bilibili_Innocent_Lab.xposedmodule.agent.AgentAccessibility
+import com.Bilibili_Innocent_Lab.xposedmodule.agent.ui.AgentTaskNotification
 import com.Bilibili_Innocent_Lab.xposedmodule.agent.ui.AgentStatusText
 import com.Bilibili_Innocent_Lab.xposedmodule.agent.model.AgentCapabilityProbe
 import com.Bilibili_Innocent_Lab.xposedmodule.agent.model.AgentModelRuntime
@@ -48,6 +53,12 @@ internal fun MainActivity.showAgentDialog(anchor: View? = null) {
     val taskInputs = mutableListOf<View>()
     val density = resources.displayMetrics.density
     fun dp(value: Int) = (value * density).toInt()
+    fun actionLayout() = LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(8) }
+    fun EditText.styleInput() {
+        textSize = 14f
+        minHeight = dp(44)
+        setPadding(dp(10), dp(8), dp(10), dp(8))
+    }
     val dialog = Dialog(this).also { installDialogElasticInteraction(it) }
     val container = createModalContainer()
     container.addView(TextView(this).apply {
@@ -67,6 +78,7 @@ internal fun MainActivity.showAgentDialog(anchor: View? = null) {
     var restoringEnabled = false
     val enabled = CheckBox(this).apply {
         text = getString(R.string.agent_enable)
+        textSize = 13f
         textColor = getColor(R.color.colorTextDark)
         isChecked = prefs().getBoolean(AgentPreferences.ENABLED, false)
         setOnCheckedChangeListener { button, checked ->
@@ -90,6 +102,7 @@ internal fun MainActivity.showAgentDialog(anchor: View? = null) {
     var restoringIsland = false
     body.addView(CheckBox(this).apply {
         text = getString(R.string.agent_island_enable); textColor = getColor(R.color.colorTextDark)
+        textSize = 13f
         isChecked = AgentPreferences.islandAllowed(activity)
         setOnCheckedChangeListener { button, checked ->
             if (restoringIsland) return@setOnCheckedChangeListener
@@ -101,16 +114,40 @@ internal fun MainActivity.showAgentDialog(anchor: View? = null) {
         }
     }.also(taskInputs::add))
     label(getString(R.string.agent_island_help), true)
-    body.addView(createTermsActionButton(getString(R.string.agent_island_permission), filled = false) {
+    if (Build.VERSION.SDK_INT >= 33) body.addView(createTermsActionButton(getString(R.string.agent_notification_permission), filled = false) {
+        if (Build.VERSION.SDK_INT >= 33 && checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
+            requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS), 7301)
+            return@createTermsActionButton
+        }
+        runCatching { startActivity(AgentTaskNotification.settingsIntent(activity)) }
+            .onFailure { toast(getString(R.string.agent_island_permission_failed)) }
+    }.also(taskInputs::add), actionLayout())
+    if (Build.VERSION.SDK_INT < 36) body.addView(createTermsActionButton(getString(R.string.agent_island_permission), filled = false) {
         runCatching { startActivity(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:$packageName"))) }
             .onFailure { toast(getString(R.string.agent_island_permission_failed)) }
-    }.also(taskInputs::add), LinearLayout.LayoutParams(-1, -2))
+    }.also(taskInputs::add), actionLayout())
+    val accessibilityStatus = label("", true)
+    fun refreshAccessibility() {
+        accessibilityStatus.text = getString(when (AgentAccessibility.state(activity)) {
+            AgentAccessibility.State.CONNECTED -> R.string.agent_accessibility_connected
+            AgentAccessibility.State.ENABLED_PENDING -> R.string.agent_accessibility_pending
+            AgentAccessibility.State.DISABLED -> R.string.agent_accessibility_disabled
+            AgentAccessibility.State.UNKNOWN -> R.string.agent_accessibility_unknown
+        })
+    }
+    refreshAccessibility()
+    body.addView(createTermsActionButton(getString(R.string.agent_accessibility_permission), filled = false) {
+        runCatching { startActivity(AgentAccessibility.settingsIntent(activity)) }
+            .onFailure { toast(getString(R.string.agent_permission_failed)) }
+    }.also(taskInputs::add), actionLayout())
+    val focusRefresh = android.view.ViewTreeObserver.OnWindowFocusChangeListener { focused -> if (focused) refreshAccessibility() }
+    container.viewTreeObserver.addOnWindowFocusChangeListener(focusRefresh)
     body.addView(createTermsActionButton(getString(R.string.agent_logs_title), filled = false) {
         dismissWithAnimation(dialog, container) { showAgentLogsDialog(anchor) }
-    }, LinearLayout.LayoutParams(-1, -2))
+    }, actionLayout())
     body.addView(createTermsActionButton(getString(R.string.agent_configure_sources), filled = false) {
         dismissWithAnimation(dialog, container) { showSemanticJevSettingsDialog(anchor) {} }
-    }.also(taskInputs::add), LinearLayout.LayoutParams(-1, -2))
+    }.also(taskInputs::add), actionLayout())
 
     label(getString(R.string.agent_source_scope))
     val sources = AgentPreferences.sources(this)
@@ -132,7 +169,7 @@ internal fun MainActivity.showAgentDialog(anchor: View? = null) {
         sourceViews.forEach { (source, view) ->
             val caps = AgentPreferences.capabilities(activity, source)
             view.text = getString(R.string.agent_source_capability, source.index, source.model.take(64),
-                capabilityText(caps?.toolState), capabilityText(caps?.decisionState), capabilityText(caps?.visionState))
+                capabilityText(caps?.toolState), capabilityText(caps?.decisionState), capabilityText(caps?.visionState), capabilityText(caps?.plainState))
         }
     }
     updateCapabilities()
@@ -140,6 +177,7 @@ internal fun MainActivity.showAgentDialog(anchor: View? = null) {
     label(getString(R.string.agent_fixed_source))
     @SuppressLint("SetTextI18n") // 来源编号是 ASCII 协议标识，与路由 ID 一致，不做本地化数字替换。
     val fixed = EditText(this).apply {
+        styleInput()
         inputType = InputType.TYPE_CLASS_NUMBER
         filters = arrayOf(InputFilter.LengthFilter(1))
         setSingleLine(true)
@@ -189,11 +227,12 @@ internal fun MainActivity.showAgentDialog(anchor: View? = null) {
                 probeStatus.post { if (!closed.get()) probeStatus.text = getString(R.string.agent_probe_failed) }
             } finally { probing.set(false) }
         } }.onFailure { probing.set(false); probeStatus.text = getString(R.string.agent_probe_busy) }
-    }.also(taskInputs::add), LinearLayout.LayoutParams(-1, -2))
+    }.also(taskInputs::add), actionLayout())
     label(getString(R.string.agent_probe_help), true)
     val savedLimits = AgentPreferences.limits(activity)
     @SuppressLint("SetTextI18n") // 预算字段使用 ASCII 整数；0 是固定的无限预算协议值。
     fun budgetInput(value: Long): EditText = EditText(activity).apply {
+        styleInput()
         inputType = InputType.TYPE_CLASS_NUMBER
         filters = arrayOf(InputFilter.LengthFilter(19))
         setSingleLine(true)
@@ -207,6 +246,7 @@ internal fun MainActivity.showAgentDialog(anchor: View? = null) {
     label(getString(R.string.agent_budget_help), true)
     label(getString(R.string.agent_goal_label))
     val goal = EditText(this).apply {
+        styleInput()
         inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_MULTI_LINE
         filters = arrayOf(InputFilter.LengthFilter(AgentWire.MAX_GOAL_LENGTH))
         minLines = 2
@@ -230,7 +270,10 @@ internal fun MainActivity.showAgentDialog(anchor: View? = null) {
     AgentController.observe(render)
     container.addOnAttachStateChangeListener(object : View.OnAttachStateChangeListener {
         override fun onViewAttachedToWindow(view: View) = Unit
-        override fun onViewDetachedFromWindow(view: View) { closed.set(true); AgentController.removeObserver(render) }
+        override fun onViewDetachedFromWindow(view: View) {
+            closed.set(true); AgentController.removeObserver(render)
+            if (view.viewTreeObserver.isAlive) view.viewTreeObserver.removeOnWindowFocusChangeListener(focusRefresh)
+        }
     })
     container.addView(MaxHeightScrollView(this, minOf(dp(520), (resources.displayMetrics.heightPixels * 0.64f).toInt())).apply {
         addView(body, FrameLayout.LayoutParams(-1, -2))
@@ -240,7 +283,7 @@ internal fun MainActivity.showAgentDialog(anchor: View? = null) {
         buttons.addView(createTermsActionButton(label, filled = primary) { action() }.apply {
             if (primary) { taskInputs += this; isEnabled = !AgentController.state.running }
         },
-            LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply { marginStart = dp(4) })
+            LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply { if (buttons.childCount > 0) marginStart = dp(8) })
     }
     button(getString(R.string.dialog_cancel)) { dismissWithAnimation(dialog, container) {} }
     button(getString(R.string.agent_stop)) { AgentController.cancel(activity) }
@@ -277,6 +320,9 @@ internal fun MainActivity.showAgentDialog(anchor: View? = null) {
 }
 
 private fun MainActivity.agentError(reason: String): String = getString(when (reason) {
+    "accessibility_not_connected", "accessibility_disconnected", "accessibility_host_unavailable" -> R.string.agent_accessibility_required
+    "sensitive_action_blocked", "ui_protected_or_incomplete", "screen_protected", "opaque_target_unverified" -> R.string.agent_sensitive_blocked
+    "ui_snapshot_stale", "ui_target_missing", "ui_snapshot_required", "visual_snapshot_required", "ui_verification_required" -> R.string.agent_ui_stale
     "accessibility_control_unverified" -> R.string.agent_accessibility_unverified
     "invalid_goal" -> R.string.agent_invalid_goal
     "no_sources", "model_route_unavailable", "planner_route_unavailable", "decision_route_unavailable", "vision_route_unavailable" -> R.string.agent_choose_sources
@@ -287,6 +333,7 @@ private fun MainActivity.agentError(reason: String): String = getString(when (re
     "cancelled", "service_stopped", "task_inactive" -> R.string.agent_cancelled
     "task_budget", "context_budget" -> R.string.agent_limited
     else -> R.string.agent_error_detail
-}, *if (reason !in setOf("accessibility_control_unverified", "invalid_goal", "no_sources", "model_route_unavailable", "planner_route_unavailable", "decision_route_unavailable", "vision_route_unavailable", "probe_required",
+}, *if (reason !in setOf("accessibility_not_connected", "accessibility_disconnected", "accessibility_host_unavailable", "sensitive_action_blocked", "ui_protected_or_incomplete", "screen_protected", "opaque_target_unverified",
+        "ui_snapshot_stale", "ui_target_missing", "ui_snapshot_required", "visual_snapshot_required", "ui_verification_required", "accessibility_control_unverified", "invalid_goal", "no_sources", "model_route_unavailable", "planner_route_unavailable", "decision_route_unavailable", "vision_route_unavailable", "probe_required",
         "already_running", "not_authorized", "host_unavailable_restart", "host_unavailable", "host_launch_failed", "host_disconnected",
         "cancelled", "service_stopped", "task_inactive", "task_budget", "context_budget")) arrayOf(reason.take(100)) else emptyArray())

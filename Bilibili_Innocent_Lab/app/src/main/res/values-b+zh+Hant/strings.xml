@@ -1263,12 +1263,12 @@
     <string name="sponsorblock_automatic">自動略過商單片段</string>
     <string name="sponsorblock_tip">開啟提示後，將使用影片編號的雜湊前綴查詢社群服務 www.bsbsb.top。僅支援普通影片詳情頁中的商單片段；自動略過須同時開啟提示，暫停和手動拖動優先。社群標註可能不準確，跳轉確認後 6 秒內可復原。不傳送投稿、投票或帳戶資料。修改後需重新啟動嗶哩嗶哩。</string>
     <string name="agent_title">AI 任務助手（實驗性）</string>
-    <string name="agent_help">輸入目標後，助手可在嗶哩嗶哩中搜尋、讀取候選並按要求開啟影片。目標與必要的公開內容會傳送給所選 API；不支援按讚、留言、投幣或付款。對話模型與 JEV 模型按實測能力協作。預設執行 12 步、持續 2 分鐘，兩項均可調節或設為無限。執行時觸摸或按鍵會接管並停止任務。</string>
+    <string name="agent_help">開啟模組無障礙後，助手可在嗶哩嗶哩介面內點擊、滑動、輸入一般文字和返回；未開啟時仍可使用原有搜尋及影片工具。密碼、實名驗證和付款等敏感操作受保護。目標與必要的介面內容會傳送給所選 API，可隨時點擊停止接管。時間和步數均可設為無限。</string>
     <string name="agent_enable">啟用宿主任務介面</string>
     <string name="agent_restart_hint">任務介面開關需重新啟動嗶哩嗶哩後生效</string>
     <string name="agent_configure_sources">設定 API 來源（最多 8 個）</string>
     <string name="agent_source_scope">允許本任務使用的來源</string>
-    <string name="agent_source_capability">來源 %1$d · %2$s\n工具：%3$s　決策：%4$s　視覺：%5$s</string>
+    <string name="agent_source_capability">來源 %1$d · %2$s\n工具：%3$s　決策：%4$s\n視覺：%5$s　文字規劃：%6$s</string>
     <string name="agent_detected">已檢測通過</string>
     <string name="agent_unverified">未驗證</string>
     <string name="agent_unsupported">不支援</string>
@@ -1309,7 +1309,7 @@
     <string name="agent_current_source"> · 來源 %1$d</string>
     <string name="agent_save_failed">儲存失敗，未開始任務</string>
     <string name="agent_choose_sources">請勾選可用來源，固定編號必須屬於所選來源；視覺任務還需要已驗證的視覺來源。</string>
-    <string name="agent_probe_required">請先檢測所選來源，至少一個來源需通過工具或決策檢測</string>
+    <string name="agent_probe_required">請先檢測所選來源，至少一個來源需通過工具、文字規劃或決策檢測</string>
     <string name="agent_already_running">已有任務在執行，請先停止</string>
     <string name="agent_not_enabled">請先啟用任務介面並完成模組授權</string>
     <string name="agent_invalid_goal">請輸入有效目標（最多 2000 字元）</string>
@@ -1322,9 +1322,9 @@
     <string name="agent_island_operating_short">正在操作</string>
     <string name="agent_island_enable">顯示 Agent 狀態島</string>
     <string name="agent_island_permission">允許顯示在其他應用程式上層</string>
-    <string name="agent_island_help">狀態島使用安卓懸浮視窗權限，位於系統列下方，能識別挖孔時按攝影機橫向位置對齊。未授權仍可執行任務和查看模組內日誌。</string>
+    <string name="agent_island_help">Android 16 及以上使用系統即時通知，狀態列或島的外觀由系統及通知設定決定；較低版本可選用懸浮視窗。點擊通知可查看執行日誌。</string>
     <string name="agent_island_collapse">收起</string>
-    <string name="agent_island_permission_failed">無法開啟懸浮視窗授權頁面。</string>
+    <string name="agent_island_permission_failed">無法開啟系統狀態提示授權介面。</string>
     <string name="agent_tip_connect">正在連接宿主</string>
     <string name="agent_tip_planning">正在查找</string>
     <string name="agent_tip_waiting">等待回應</string>
@@ -1364,4 +1364,21 @@
     <string name="agent_log_stalled">沒有新證據，已停止</string>
     <string name="agent_log_unknown">暫無詳細原因</string>
     <string name="agent_logs_no_usage">用量未提供</string>
+    <string name="agent_accessibility_description">僅在您明確啟動任務後讀取和操作嗶哩嗶哩的可見介面，支援點擊、滑動和一般文字輸入；攔截帳戶安全、實名和付款等受保護操作，不自動啟動任務。</string>
+    <string name="agent_accessibility_permission">開啟助手無障礙輔助</string>
+    <string name="agent_accessibility_connected">無障礙已連接：可操作宿主內的一般介面控制項。</string>
+    <string name="agent_accessibility_pending">無障礙已開啟，等待系統連接；必要時在系統設定中重新開啟。</string>
+    <string name="agent_accessibility_disabled">模組無障礙未開啟；仍可執行原有搜尋任務。</string>
+    <string name="agent_accessibility_unknown">暫時無法讀取模組無障礙狀態；仍可使用原有搜尋工具。</string>
+    <string name="agent_notification_permission">任務通知與即時狀態設定</string>
+    <string name="agent_notification_title">Agent 正在操作</string>
+    <string name="agent_permission_failed">無法開啟系統授權介面。</string>
+    <string name="agent_tip_click">點擊控制項</string>
+    <string name="agent_tip_swipe">滑動頁面</string>
+    <string name="agent_tip_input">輸入文字</string>
+    <string name="agent_tip_back">返回頁面</string>
+    <string name="agent_accessibility_required">一般介面操作需要先開啟並連接模組無障礙服務。</string>
+    <string name="agent_sensitive_blocked">此操作涉及受保護內容，請由您手動處理。</string>
+    <string name="agent_ui_stale">介面已變化，需要重新觀察後再操作。</string>
+    <string name="agent_waiting_host">等待返回嗶哩嗶哩</string>
 </resources>

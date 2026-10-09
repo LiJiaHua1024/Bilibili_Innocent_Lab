@@ -93,7 +93,7 @@ class AgentCapabilityProbeTest {
             val result = AgentCapabilityProbe(client).probe(source, challenge)
             assertEquals(AgentCapabilityState.UNKNOWN, result.toolState)
             assertTrue(result.vision)
-            assertEquals(2, requests)
+            assertEquals(3, requests) // 工具之外还独立尝试一次文本指令检测；错误格式不会授予规划能力。
         }
     }
 

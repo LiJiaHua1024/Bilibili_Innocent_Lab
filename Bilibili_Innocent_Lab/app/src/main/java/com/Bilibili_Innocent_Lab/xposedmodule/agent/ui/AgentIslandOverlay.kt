@@ -84,6 +84,7 @@ internal class AgentIslandOverlay(private val service: Context) : android.conten
     }
 
     private fun apply(next: AgentTaskState) {
+        if (Build.VERSION.SDK_INT >= 36) { remove(); return }
         state = next
         try {
         if (closed || !next.running || AgentController.currentTaskId() == null || !AgentPreferences.islandAllowed(service) ||

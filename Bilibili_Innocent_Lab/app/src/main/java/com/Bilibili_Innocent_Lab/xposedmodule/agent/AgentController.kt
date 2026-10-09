@@ -46,6 +46,7 @@ internal object AgentController {
         val sequence = AtomicLong()
         val cancelled = AtomicBoolean()
         val closing = AtomicBoolean()
+        val accessibility = AgentAccessibilityService.connected()
         var future: Future<*>? = null
         fun stopped() = cancelled.get() || Thread.currentThread().isInterrupted || limits.timeExceeded(startedAt, SystemClock.elapsedRealtime()) ||
             !context.prefs().getBoolean(AgentPreferences.ENABLED, false)
@@ -69,6 +70,8 @@ internal object AgentController {
     fun observe(observer: (AgentTaskState) -> Unit) { observers += observer; observer(state) }
     fun removeObserver(observer: (AgentTaskState) -> Unit) { observers -= observer }
     fun currentTaskId(): String? = active?.id
+    fun usesAccessibility(): Boolean = active?.accessibility == true
+    fun actionAuthorized(taskId: String): Boolean = active?.let { it.id == taskId && owns(taskId) && authorized(it) } == true
     fun owns(taskId: String): Boolean = active?.let { it.id == taskId && !it.cancelled.get() && !it.closing.get() &&
         !it.limits.timeExceeded(it.startedAt, SystemClock.elapsedRealtime()) } == true
 
@@ -76,8 +79,6 @@ internal object AgentController {
     @Synchronized fun start(context: Context, goal: String, selected: Set<Int>, fixed: Int?, allowVision: Boolean,
                             limits: AgentTaskLimits = AgentTaskLimits(), fallback: Boolean = false): String? {
         if (active != null) return "already_running"
-        val accessibility = context.getSystemService(Context.ACCESSIBILITY_SERVICE) as? android.view.accessibility.AccessibilityManager
-        if (accessibility == null || accessibility.isEnabled) return "accessibility_control_unverified"
         if (goal.isBlank() || goal.length > AgentWire.MAX_GOAL_LENGTH || goal.any { it.isISOControl() && !it.isWhitespace() }) return "invalid_goal"
         if (!context.prefs().getBoolean(AgentPreferences.ENABLED, false) || !UserTermsConsentStore.readOrInitialize(context).isAuthorized)
             return "not_authorized"
@@ -85,7 +86,7 @@ internal object AgentController {
         if (sources.isEmpty() || (fixed != null && sources.none { it.index == fixed })) return "no_sources"
         val capabilities = sources.associate { it.fingerprint to AgentPreferences.capabilities(context, it) }
         if (sources.none { (fixed == null || fallback || it.index == fixed) &&
-                (capabilities[it.fingerprint]?.tools == true || capabilities[it.fingerprint]?.decisions == true) }) return "probe_required"
+                (capabilities[it.fingerprint]?.tools == true || capabilities[it.fingerprint]?.plainPlanning == true || capabilities[it.fingerprint]?.decisions == true) }) return "probe_required"
         val policy = AgentRoutePolicy(sources.mapTo(linkedSetOf()) { it.index }, fixed, fallback)
         val app = context.applicationContext as? Application ?: return "not_authorized"
         val task = Task(app, goal.trim(), sources, policy, allowVision, limits)
@@ -93,12 +94,12 @@ internal object AgentController {
         AgentExecutionLogStore.begin(task.id)
         active = task
         return try {
-            app.startService(Intent(app, classOf<AgentSessionService>()))
+            publish(task, AgentTaskState(true, "connecting"))
+            app.startForegroundService(Intent(app, classOf<AgentSessionService>()))
             val launch = context.packageManager.getLaunchIntentForPackage(AgentWire.TARGET_PACKAGE)
                 ?: throw IllegalStateException("host_missing")
             launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             context.startActivity(launch)
-            publish(task, AgentTaskState(true, "connecting"))
             task.future = worker.submit { run(app, task) }
             null
         } catch (_: Exception) {
@@ -122,7 +123,7 @@ internal object AgentController {
         notifyObservers()
         runCatching { cancellations.execute {
             try {
-                AgentHostClient.request(task.id, task.sequence.incrementAndGet(), SystemClock.elapsedRealtime() + 3_000, "cancel")
+                if (!task.accessibility) AgentHostClient.request(task.id, task.sequence.incrementAndGet(), SystemClock.elapsedRealtime() + 3_000, "cancel")
             } finally { completeClose(context.applicationContext, task, state.copy(running = false, phase = "cancelled", detail = reason)) }
         } }.onFailure { completeClose(context.applicationContext, task, state.copy(running = false, phase = "cancelled", detail = reason)) }
     }
@@ -133,6 +134,7 @@ internal object AgentController {
         var conversation: AgentConversation? = null
         var cooperation: AgentCooperation? = null
         val progress = AgentProgressGuard()
+        var verificationPending = false
         val preferences = context.prefs()
         val sourceKeys = (1..SemanticSource.MAX_SOURCES).flatMap { index ->
             val keys = FeaturePreferences.semanticSourceKeys(index)
@@ -148,18 +150,29 @@ internal object AgentController {
         UserTermsAuthorizationCoordinator.addListener(termsListener)
         try {
             val readyDeadline = task.deadline(AgentWire.IPC_TIMEOUT_MS)
-            check(AgentHostClient.awaitReady(readyDeadline, task::stopped)) { "host_unavailable_restart" }
+            if (task.accessibility) {
+                var ready = false
+                while (!task.stopped() && SystemClock.elapsedRealtime() < readyDeadline) {
+                    val response = AgentAccessibilityService.request(task.id, "get_ui_state", JSONObject(), task::stopped)
+                    if (response.optBoolean("ok")) { ready = true; break }
+                    Thread.sleep(150)
+                }
+                check(ready) { "accessibility_host_unavailable" }
+            } else check(AgentHostClient.awaitReady(readyDeadline, task::stopped)) { "host_unavailable_restart" }
             val capabilities = task.sources.mapNotNull { source -> AgentPreferences.capabilities(context, source)?.let { source.fingerprint to it } }.toMap()
             val canSee = task.vision && task.sources.any { source ->
                 capabilities[source.fingerprint]?.vision == true
             }
-            val begin = host(task, "begin", JSONObject().put("allow_vision", canSee).put("lease_until", leaseUntil(task)))
-            check(begin.optBoolean("ok")) { begin.optString("error", "host_rejected") }
+            if (!task.accessibility) {
+                val begin = host(task, "begin", JSONObject().put("allow_vision", canSee).put("lease_until", leaseUntil(task)))
+                check(begin.optBoolean("ok")) { begin.optString("error", "host_rejected") }
+            }
             val history = AgentConversation(AgentToolCatalog.SYSTEM, task.goal).also { conversation = it }
             val models = AgentCooperation(task.sources, capabilities, task.route, task.goal, canSee,
                 checkpoint = { renew(task); (task.deadline(30_000) - SystemClock.elapsedRealtime()).coerceIn(1, 30_000).toInt() },
                 cancelled = task::stopped, sourceChanged = { index -> publish(task, AgentTaskState(true, "thinking", steps, index,
                     observations = observed, maximumSteps = task.limits.maximumSteps)) }, elapsed = SystemClock::elapsedRealtime,
+                capabilityChanged = { source, updated -> if (authorized(task)) AgentPreferences.saveCapabilities(context, source, updated) },
                 requestEvent = { update ->
                     if (active === task && !task.cancelled.get()) {
                         if (update.status == AgentRequestStatus.STARTED) publish(task, AgentTaskState(true,
@@ -176,6 +189,7 @@ internal object AgentController {
                 check(task.sources.all { currentSources[it.index]?.fingerprint == it.fingerprint }) { "source_config_changed" }
                 val turn = models.next(history)
                 if (turn.toolCalls.isEmpty()) {
+                    check(!verificationPending) { "ui_verification_required" }
                     check(observed > 0) { "no_observation" }
                     check(turn.text.isNotBlank()) { "empty_answer" }
                     publish(task, AgentTaskState(false, "finished", steps, detail = turn.text.take(6_000), observations = observed))
@@ -192,8 +206,14 @@ internal object AgentController {
                     role = if (planner?.protocol == com.Bilibili_Innocent_Lab.xposedmodule.agent.model.AgentSourceProtocol.DECISIONS) AgentModelRole.DECISION else AgentModelRole.PLANNER))
                 renew(task)
                 val response = host(task, call.name, call.arguments)
+                if (task.accessibility && response.optString("error") in setOf("host_not_foreground", "device_locked", "accessibility_not_connected"))
+                    throw IllegalStateException(response.optString("error"))
+                if (response.optBoolean("ok")) {
+                    if (call.name in AgentToolCatalog.uiActions || call.name == "open_video") verificationPending = true
+                    else if (call.name in setOf("get_host_state", "get_ui_state", "inspect_screen")) verificationPending = false
+                }
                 check(response.optString("error") !in setOf("task_inactive", "closed_task", "task_budget_exhausted", "host_disconnected")) { "task_inactive" }
-                if (response.optBoolean("ok") && call.name != "open_video") observed++
+                if (response.optBoolean("ok") && call.name !in AgentToolCatalog.uiActions && call.name != "open_video") observed++
                 val data = response.optJSONObject("data")
                 val image = data?.optString("image_data_url").orEmpty()
                 if (image.isNotEmpty()) {
@@ -239,7 +259,7 @@ internal object AgentController {
             if (!task.cancelled.get()) {
                 task.closing.set(true)
                 try {
-                    AgentHostClient.request(task.id, task.sequence.incrementAndGet(), SystemClock.elapsedRealtime() + 3_000, "finish")
+                    if (!task.accessibility) AgentHostClient.request(task.id, task.sequence.incrementAndGet(), SystemClock.elapsedRealtime() + 3_000, "finish")
                 } finally { completeClose(context, task) }
             }
         }
@@ -254,7 +274,23 @@ internal object AgentController {
     private fun host(task: Task, operation: String, args: JSONObject = JSONObject()): JSONObject {
         check(authorized(task)) { "not_authorized" }
         val started = SystemClock.elapsedRealtime()
-        return AgentHostClient.request(task.id, task.sequence.incrementAndGet(), task.deadline(AgentWire.IPC_TIMEOUT_MS), operation, args, task::stopped).also {
+        val response = if (task.accessibility) AgentAccessibilityService.request(task.id, operation, args, task::stopped)
+            else if (operation == "get_ui_state" || operation in AgentToolCatalog.uiActions) JSONObject().put("ok", false).put("error", "accessibility_not_connected")
+            else AgentHostClient.request(task.id, task.sequence.incrementAndGet(), task.deadline(AgentWire.IPC_TIMEOUT_MS), operation, args, task::stopped)
+        val visibleResponse = if (task.accessibility && response.optString("error") == "host_not_foreground" &&
+            AgentAccessibilityService.foreground() == AgentAccessibilityService.Foreground.MODULE) {
+            // 用户从通知查看模块日志时等待；返回宿主后要求新的观察，不重放已计划的动作。
+            AgentAccessibilityService.clear(task.id)
+            publish(task, state.copy(running = true, phase = "waiting_host", detail = ""))
+            var foreground = AgentAccessibilityService.Foreground.MODULE
+            while (authorized(task) && foreground == AgentAccessibilityService.Foreground.MODULE) {
+                Thread.sleep(750)
+                foreground = AgentAccessibilityService.foreground()
+            }
+            check(authorized(task)) { "task_inactive" }
+            JSONObject().put("ok", false).put("error", if (foreground == AgentAccessibilityService.Foreground.HOST) "ui_snapshot_stale" else "host_not_foreground")
+        } else response
+        return visibleResponse.also {
             AgentTaskLog.host(task.id, operation, it, (SystemClock.elapsedRealtime() - started).coerceAtLeast(0), state)
         }
     }
@@ -262,6 +298,10 @@ internal object AgentController {
     private fun leaseUntil(task: Task): Long = task.deadline(AgentWire.MAX_LEASE_MS)
 
     private fun renew(task: Task) {
+        if (task.accessibility) {
+            check(authorized(task) && AgentAccessibilityService.connected()) { "accessibility_disconnected" }
+            return
+        }
         val response = host(task, "renew", JSONObject().put("lease_until", leaseUntil(task)))
         check(response.optBoolean("ok")) { "task_inactive" }
     }
@@ -273,6 +313,7 @@ internal object AgentController {
                 state = (finalState ?: if (task.cancelled.get()) AgentTaskState(phase = "cancelled", detail = state.detail)
                     else state).copy(running = false, maximumSteps = task.limits.maximumSteps)
                 active = null
+                AgentAccessibilityService.clear(task.id)
                 AgentTaskLog.state(task.id, state)
                 context.stopService(Intent(context, classOf<AgentSessionService>()))
                 notifyObservers()

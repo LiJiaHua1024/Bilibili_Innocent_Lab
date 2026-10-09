@@ -1263,12 +1263,12 @@
     <string name="sponsorblock_automatic">Automatically skip sponsor segments</string>
     <string name="sponsorblock_tip">Enable prompts to query the community service www.bsbsb.top using a video ID hash prefix. Only sponsor segments in ordinary video details are supported. Automatic skipping also requires prompts to be enabled; pause and manual scrubbing take priority. Community markings may be inaccurate. A confirmed skip can be undone for 6 seconds. No submissions, votes or account data are sent. Restart Bilibili after changing these settings.</string>
     <string name="agent_title">AI task assistant (experimental)</string>
-    <string name="agent_help">Search, inspect candidates and open requested videos in Bilibili. Your goal and necessary public content are sent to selected APIs. Account writes and payments are unavailable. Chat and JEV models cooperate according to verified capabilities. The default budget is 12 steps and 2 minutes; both can be adjusted or unlimited. Touching or pressing a key takes over and stops the task.</string>
+    <string name="agent_help">The assistant can click, scroll, enter ordinary text and go back in Bilibili after you enable its accessibility service. Without it, search and video tools remain available. Passwords, identity verification and payments are protected. Your goal and necessary on-screen content go to selected APIs. Use Stop to take over. Time and step budgets can be unlimited.</string>
     <string name="agent_enable">Enable host task interface</string>
     <string name="agent_restart_hint">Restart Bilibili to apply this interface setting</string>
     <string name="agent_configure_sources">Configure API sources (up to 8)</string>
     <string name="agent_source_scope">Sources allowed for this task</string>
-    <string name="agent_source_capability">Source %1$d · %2$s\nTools: %3$s   Decisions: %4$s   Vision: %5$s</string>
+    <string name="agent_source_capability">Source %1$d · %2$s\nTools: %3$s   Decisions: %4$s\nVision: %5$s   Text planning: %6$s</string>
     <string name="agent_detected">Verified</string>
     <string name="agent_unverified">Unverified</string>
     <string name="agent_unsupported">Unsupported</string>
@@ -1309,7 +1309,7 @@
     <string name="agent_current_source"> · Source %1$d</string>
     <string name="agent_save_failed">Save failed; task was not started</string>
     <string name="agent_choose_sources">Select available sources. A fixed source must be selected; visual tasks also require verified vision support.</string>
-    <string name="agent_probe_required">Test selected sources first; at least one must pass tools or decision tests</string>
+    <string name="agent_probe_required">Test selected sources first; at least one must pass tools, text planning or decision tests</string>
     <string name="agent_already_running">A task is running; stop it first</string>
     <string name="agent_not_enabled">Enable the task interface and authorize the module first</string>
     <string name="agent_invalid_goal">Enter a goal (up to 2000 characters)</string>
@@ -1322,9 +1322,9 @@
     <string name="agent_island_operating_short">Working</string>
     <string name="agent_island_enable">Show Agent status island</string>
     <string name="agent_island_permission">Allow display over other apps</string>
-    <string name="agent_island_help">The status island uses Android overlay permission. It stays below system bars and aligns around the camera projection when available. Without permission, tasks and in-app logs remain available.</string>
+    <string name="agent_island_help">Android 16 and later use system Live Update notifications. The chip/island appearance depends on the system and notification settings. Earlier Android versions can use an optional overlay. Tap the notification to read logs.</string>
     <string name="agent_island_collapse">Collapse</string>
-    <string name="agent_island_permission_failed">Cannot open the overlay permission screen.</string>
+    <string name="agent_island_permission_failed">Cannot open the system status permission screen.</string>
     <string name="agent_tip_connect">Connecting to host</string>
     <string name="agent_tip_planning">Planning next action</string>
     <string name="agent_tip_waiting">Waiting for response</string>
@@ -1364,4 +1364,21 @@
     <string name="agent_log_stalled">No new evidence; stopped</string>
     <string name="agent_log_unknown">No detailed reason available</string>
     <string name="agent_logs_no_usage">Usage not reported</string>
+    <string name="agent_accessibility_description">Operate only Bilibili during a task you explicitly start. Read visible controls, click, scroll and enter ordinary text. Protected account and payment operations are blocked. No task runs automatically.</string>
+    <string name="agent_accessibility_permission">Enable assistant accessibility</string>
+    <string name="agent_accessibility_connected">Accessibility connected: general interface actions available.</string>
+    <string name="agent_accessibility_pending">Accessibility enabled, waiting for the system to connect. Reopen the service setting if necessary.</string>
+    <string name="agent_accessibility_disabled">Assistant accessibility is off. Native search tools remain available.</string>
+    <string name="agent_accessibility_unknown">Cannot read this service status. Native search tools remain available.</string>
+    <string name="agent_notification_permission">Task notification settings</string>
+    <string name="agent_notification_title">Agent is operating</string>
+    <string name="agent_permission_failed">Cannot open the system permission screen.</string>
+    <string name="agent_tip_click">Clicking control</string>
+    <string name="agent_tip_swipe">Scrolling page</string>
+    <string name="agent_tip_input">Entering text</string>
+    <string name="agent_tip_back">Going back</string>
+    <string name="agent_accessibility_required">Enable and connect assistant accessibility for general interface actions.</string>
+    <string name="agent_sensitive_blocked">This is a protected operation. Please complete it yourself.</string>
+    <string name="agent_ui_stale">The interface changed. Observe it again before acting.</string>
+    <string name="agent_waiting_host">Waiting for return to Bilibili</string>
 </resources>

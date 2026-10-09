@@ -94,29 +94,39 @@ the tool/decision/vision capability test. Tests make real API requests and use q
 JEV/Decisions endpoints participate. Leave the main-source field blank for automatic routing. A fixed
 main source is tried first; another main source takes over only with explicit fallback enabled.
 Selected, verified vision and decision helpers can cooperate independently of the main source.
+Ordinary chat models without native tool support can plan after a separate text-command/receipt
+challenge. Instructions and execution results use normal dialog, without tools, tool-role messages or
+JSON-mode API requirements. Only a complete validated single-action packet can execute; arbitrary
+prose never becomes a guessed command. At most one format correction shares the original deadline.
 
 Optional screenshots require separate consent and a successful random-image challenge. Automatic
 routing can use a tool planner, a vision-capable JEV, or an ordinary vision model as a text-only JEV's
 eyes. Only selected sources with real vision proof receive images; images never enter planner history.
-Secure/input screens and uninspectable WebView/Compose pages are
-rejected. Tasks are unavailable while accessibility services are enabled because accessibility takeover
-has not yet been reliably adapted; enabling such a service during a task also stops it.
-Touching, pressing a key, leaving the task context or using the host stop button takes over
-and stops the task. Duration in seconds and tool steps are independently configurable, defaulting to
+Enable the module service through the assistant accessibility entry for general Bilibili interface
+actions: observed-control clicks, scrolling, ordinary text input and Back. Unavailable or unknown
+service status does not block the original search tools. Each action needs a fresh observation;
+protected account, identity and financial operations remain blocked independently of model output.
+The original business mode retains touch/key takeover and the host stop button.
+Duration in seconds and tool steps are independently configurable, defaulting to
 120 seconds and 12 steps; zero means unlimited. Individual requests and renewable host leases remain
 bounded, and repeated operations with no new evidence stop. Tasks are not resumed after process
 death. Bounded conversation rounds, historical summaries and task-local detail/vision caches preserve
-observation time without retaining images or replacing current authorization. Arbitrary coordinates, shell, account writes and
-payments are unavailable.
+observation time without retaining images or replacing current authorization. General screenshots use
+Android 14's host-window screenshot API and exclude other apps, keyboards and module status windows.
+Older Android versions use accessibility controls; original search/video PixelCopy remains available
+in business mode. Secure windows, protected inputs and incomplete inspections cannot be captured.
+Visual taps need current consent, verified vision support, a recent matching snapshot and a
+verifiable ordinary target. Completely opaque regions, shell and cross-app control are unavailable.
 
-An optional Agent status island shows the module icon and animated operating state. Expand it for
-the current action tip, then open the execution log. Grant Android display-over-other-apps permission
-in task settings; without it, task execution remains available. The public overlay stays below system
-bars. Narrow centered cutouts align the two sides to the camera horizontal projection; edge holes,
-notches, landscape and unavailable cutout data use a safe centered fallback. Ordinary apps cannot
-guarantee placement around a physical camera inside the system status bar.
-During a task, logs use a separate non-focusable overlay and stay outside the host PixelCopy surface.
-Afterward, use the module settings log entry; switching activities still invokes existing takeover rules.
+Android 16 and later use system Live Update notifications with current status, log and stop actions.
+Promotion to a status chip or vendor island depends on the OS and user notification settings;
+unsupported promotion keeps a normal task notification and never creates an overlay on these versions.
+Earlier Android versions can use an optional non-focusable status island with overlay permission.
+Its module icon, animated status, tips and read-only logs do not take host focus. Cutout information
+is best-effort and does not guarantee placement around a physical camera.
+General mode waits while module logs are open, then requires a new observation on return to Bilibili
+without replaying the previous action. Other-app navigation or locking stops operation. Original
+business-mode activity takeover rules remain in place.
 Private logs store only stages, source numbers, roles, timing, outcomes, token counts and cache flags,
 never goals, keys, images, reasoning or raw replies. Four tasks, 256 events per task and a 64 KiB total
 budget bound retention, with visible omission counts. Interrupted tasks are recorded without replay.

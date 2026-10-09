@@ -26,7 +26,6 @@ import android.view.ViewGroup
 import android.view.ViewTreeObserver
 import android.view.Window
 import android.view.WindowManager
-import android.view.accessibility.AccessibilityManager
 import android.widget.Button
 import android.widget.FrameLayout
 import android.widget.TextView
@@ -63,8 +62,6 @@ internal class HostAgentWindow(
     private var pageReadyElapsed = 0L
     private var ownershipGeneration: Long? = null
     private val control = HostAgentWindowPolicy()
-    private val accessibilityManager by lazy { application.getSystemService(classOf<AccessibilityManager>()) }
-    private var accessibilityWatch: AccessibilityWatch? = null // 仅主线程注册和移除
 
     init { application.registerActivityLifecycleCallbacks(this) }
 
@@ -113,12 +110,10 @@ internal class HostAgentWindow(
 
     /** 开始时只接受实际拥有焦点的宿主窗口，之后任何用户输入都会撤销这一所有权。 */
     private fun beginTask(lease: HostAgentSession.Lease) {
-        verifyAccessibilityControl(lease)
         val current = activity() ?: throw HostAgentFailure("host_not_foreground")
         removeNavigationObserver()
         ownershipGeneration = lease.generation
         control.begin(lease.generation, windowSerial)
-        watchAccessibility(lease)
         installCallback(current, lease)
         showStop(lease)
     }
@@ -169,48 +164,11 @@ internal class HostAgentWindow(
     fun releaseTask(lease: HostAgentSession.Lease) {
         if (ownershipGeneration != lease.generation) return
         ownershipGeneration = null
-        removeAccessibilityWatch(lease.generation)
         control.revoke(lease.generation)
         detachCallback()
         removeNavigationObserver()
         removeStop()
     }
-
-    /** 可从后台动作/响应边界调用；只读系统状态，取消立即生效，View 和监听清理仍交主线程。 */
-    fun verifyAccessibilityControl(lease: HostAgentSession.Lease) {
-        if (HostAgentAccessibilityPolicy.mayControl(accessibilityState())) return
-        session.cancel(lease, now())
-        if (Looper.myLooper() == main.looper) stopTask(lease) else main.post { stopTask(lease) }
-        throw HostAgentFailure(HostAgentAccessibilityPolicy.REASON)
-    }
-
-    private fun accessibilityState(): Boolean? = runCatching { accessibilityManager?.isEnabled }.getOrNull()
-
-    private fun watchAccessibility(lease: HostAgentSession.Lease) {
-        accessibilityWatch?.let { removeAccessibilityWatch(it.generation) }
-        val manager = accessibilityManager ?: throw HostAgentFailure(HostAgentAccessibilityPolicy.REASON)
-        val listener = AccessibilityManager.AccessibilityStateChangeListener { enabled ->
-            if (enabled && accessibilityWatch?.generation == lease.generation && session.isTaskActive(lease, now())) stopTask(lease)
-        }
-        accessibilityWatch = AccessibilityWatch(lease.generation, manager, listener)
-        try {
-            manager.addAccessibilityStateChangeListener(listener, main)
-            // 先注册再复核，封住检查后、监听前启用无障碍的窗口。
-            verifyAccessibilityControl(lease)
-        } catch (_: Throwable) {
-            removeAccessibilityWatch(lease.generation)
-            throw HostAgentFailure(HostAgentAccessibilityPolicy.REASON)
-        }
-    }
-
-    private fun removeAccessibilityWatch(generation: Long) {
-        val watch = accessibilityWatch?.takeIf { it.generation == generation } ?: return
-        accessibilityWatch = null
-        runCatching { watch.manager.removeAccessibilityStateChangeListener(watch.listener) }
-    }
-
-    private data class AccessibilityWatch(val generation: Long, val manager: AccessibilityManager,
-        val listener: AccessibilityManager.AccessibilityStateChangeListener)
 
     /** 必须在 BLRouter.open 之前调用；仅租借一次短导航窗口，不允许模型从任意前台页重新接管。 */
     fun prepareNavigation(lease: HostAgentSession.Lease, query: String?, video: String?): Activity {
@@ -243,7 +201,6 @@ internal class HostAgentWindow(
     }
 
     private fun observeContext(current: Activity, lease: HostAgentSession.Lease): HostAgentWindowPolicy.Observation {
-        verifyAccessibilityControl(lease)
         val callback = ownedCallback.get()
         if (!session.isActive(lease, now()) || callback?.lease?.generation != lease.generation ||
             ownedWindow.get() !== current.window || current.window.callback !== callback) {
@@ -452,7 +409,7 @@ internal class HostAgentWindow(
         return HostAgentScreenPolicy.refusal(session.allowVision(lease, now()), this.activity() === activity,
             page(activity, lease).taskPage && observation == HostAgentWindowPolicy.Observation.READY && control.isTaskPage(lease.generation),
             activity.window.attributes.flags and WindowManager.LayoutParams.FLAG_SECURE != 0,
-            protection.password, protection.editing, protection.complete, accessibilityState())
+            protection.password, protection.editing, protection.complete)
     }
 
     /** 在后台等待 PixelCopy；超时后由迟到回调回收 Bitmap，不在仍被原生写入时提前 recycle。 */
@@ -511,14 +468,12 @@ internal class HostAgentWindow(
         }
         return try {
             if (!session.isActive(lease, now())) throw HostAgentFailure("task_inactive")
-            verifyAccessibilityControl(lease)
             val bytes = sequenceOf(75, 55, 35).map { quality ->
                 ByteArrayOutputStream().use { stream ->
                     check(capture.bitmap.compress(Bitmap.CompressFormat.JPEG, quality, stream))
                     stream.toByteArray()
                 }
             }.firstOrNull { it.size <= MAX_JPEG_BYTES } ?: throw HostAgentFailure("screen_too_large")
-            verifyAccessibilityControl(lease)
             JSONObject().put("image_data_url", "data:image/jpeg;base64," + Base64.encodeToString(bytes, Base64.NO_WRAP))
                 .put("page", capture.page).put("capture_elapsed", capture.elapsed)
                 .put("width", capture.bitmap.width).put("height", capture.bitmap.height)

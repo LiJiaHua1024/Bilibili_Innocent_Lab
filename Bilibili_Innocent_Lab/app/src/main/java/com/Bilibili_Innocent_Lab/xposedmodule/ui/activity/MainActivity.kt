@@ -3652,6 +3652,11 @@ class MainActivity : SkinnedActivity() {
         controller.setExpanded(expanded)
     }
 
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+    }
+
     override fun onStart() {
         super.onStart()
         UserTermsAuthorizationCoordinator.addListener(userTermsAuthorizationListener)
@@ -3693,6 +3698,10 @@ class MainActivity : SkinnedActivity() {
         scheduleColdStartUpdate()
         renderUpdateBadge()
         if (!userTermsDecision.isAuthorized) return
+        if (intent?.action == com.Bilibili_Innocent_Lab.xposedmodule.agent.ui.AgentTaskNotification.OPEN_LOGS) {
+            intent.action = null
+            window.decorView.post { if (!isFinishing && !isDestroyed && userTermsDecision.isAuthorized) showAgentLogsDialog() }
+        }
         val selectionTag = InjectedUiLocale.syncFromAppCompat(applicationContext)
         InjectedUiLocale.setMirrorAndBroadcast(applicationContext, selectionTag)
         val framework = RemoteHookConfigStore.status()

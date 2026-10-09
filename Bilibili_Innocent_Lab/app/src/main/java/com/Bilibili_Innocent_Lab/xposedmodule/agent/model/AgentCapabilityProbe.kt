@@ -70,11 +70,18 @@ internal class AgentCapabilityProbe(
             val turn = client.probeGenerate(source, messages, JSONArray(), true, remaining(), cancelled)
             turn.toolCalls.isEmpty() && turn.text.trim() == visionChallenge.expectedAnswer
         }
+        val plain = if (tools.state == AgentCapabilityState.SUPPORTED) ProbeResult(AgentCapabilityState.UNKNOWN, "优先使用已验证工具模式")
+        else if (tools.failure?.let(::sharedFailure) == true || vision.failure?.let(::sharedFailure) == true)
+            ProbeResult(AgentCapabilityState.UNKNOWN, "共同故障，本次未继续检测文本规划")
+        else checkCapability(AgentModelException.Reason.PLAIN_UNVERIFIED) {
+            AgentTextPlanner(client, clock).probe(source, remaining(), cancelled)
+        }
         if (cancelled()) throw AgentModelException(AgentModelException.Reason.CANCELLED)
         return AgentModelCapabilities(
             tools.state == AgentCapabilityState.SUPPORTED,
             vision.state == AgentCapabilityState.SUPPORTED,
-            clock(), "工具：${tools.detail}；视觉：${vision.detail}", tools.state, vision.state
+            clock(), "工具：${tools.detail}；文本：${plain.detail}；视觉：${vision.detail}", tools.state, vision.state,
+            plainPlanning = plain.state == AgentCapabilityState.SUPPORTED, plainState = plain.state
         ).also { client.setCapabilities(source, it) }
     }
 

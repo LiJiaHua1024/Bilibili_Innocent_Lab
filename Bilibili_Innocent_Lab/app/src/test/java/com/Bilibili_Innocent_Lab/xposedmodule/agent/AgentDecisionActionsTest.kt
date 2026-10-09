@@ -8,6 +8,26 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class AgentDecisionActionsTest {
+    @Test fun uiMenusAreBoundedAndCannotFinishBeforeAnActionIsObserved() {
+        val actions = AgentDecisionActions("搜索悟空")
+        val id = "12345678-1234-1234-1234-123456789abc"
+        val nodes = JSONArray((0 until 64).map { index -> JSONObject().put("node_id", "0.$index")
+            .put("label", "普通按钮$index").put("clickable", true).put("enabled", true).put("protected", index == 0) })
+        val response = JSONObject().put("ok", true).put("data", JSONObject().put("backend", "accessibility")
+            .put("snapshot_id", id).put("nodes", nodes).put("next_offset", 12))
+        actions.record(call("get_ui_state"), response)
+        val menu = actions.menu(true)
+        assertTrue(menu.size <= AgentDecisionClient.MAX_OPTIONS)
+        assertFalse(menu.values.any { it.second.optString("node_id") == "0.0" })
+        assertTrue(menu.values.any { it.first == "get_ui_state" && it.second.optString("offset") == "12" })
+        menu.values.filter { it.first != "finish" }.forEach { assertTrue(AgentToolCatalog.valid(it.first, it.second, true)) }
+        actions.record(call("click_ui"), JSONObject().put("ok", true).put("data", JSONObject().put("action", "dispatched")))
+        assertFalse(actions.menu(true).containsKey("finish"))
+        assertFalse(actions.menu(true).values.any { it.first == "click_ui" })
+        actions.record(call("get_ui_state"), response)
+        assertTrue(actions.menu(true).containsKey("finish"))
+        assertFalse(actions.report().contains("视频候选"))
+    }
     private fun call(name: String, arguments: JSONObject = JSONObject()) = AgentModelToolCall("test_call", name, arguments)
     private fun video(id: Int, title: String = "演示标题_$id", author: String = "发布者_$id") = JSONObject()
         .put("video_id", "av$id").put("title", title).put("author", author).put("author_uid", id.toString())

@@ -246,11 +246,9 @@ internal object HostAgentScreenPolicy {
         secure: Boolean,
         password: Boolean,
         editableFocus: Boolean,
-        completeInspection: Boolean,
-        accessibilityEnabled: Boolean?
+        completeInspection: Boolean
     ): String? = when {
         !authorized -> "vision_not_authorized"
-        !HostAgentAccessibilityPolicy.mayControl(accessibilityEnabled) -> HostAgentAccessibilityPolicy.REASON
         !foreground -> "host_not_foreground"
         !taskPage -> "screen_not_task_page"
         secure -> "screen_secure"
@@ -259,12 +257,6 @@ internal object HostAgentScreenPolicy {
         !completeInspection -> "screen_inspection_incomplete"
         else -> null
     }
-}
-
-/** 无障碍可绕过 Window 的触摸/按键分派，首版只接受明确的关闭状态，未知同样拒绝。 */
-internal object HostAgentAccessibilityPolicy {
-    const val REASON = "accessibility_control_unverified"
-    fun mayControl(enabled: Boolean?): Boolean = enabled == false
 }
 
 /**

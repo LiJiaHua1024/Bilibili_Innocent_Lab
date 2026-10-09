@@ -13,9 +13,11 @@ class AgentLongTaskWiringContractTest {
         val input = window.after("private inner class TaskCallback").before("// 此 View 注入宿主窗口")
         assertTrue(input.contains("session.isTaskActive(lease, now())"))
         assertFalse(input.contains("session.isActive(lease, now())"))
-        val accessibility = window.after("val listener = AccessibilityManager.AccessibilityStateChangeListener")
-            .before("accessibilityWatch = AccessibilityWatch")
-        assertTrue(accessibility.contains("session.isTaskActive(lease, now())"))
+        assertFalse(window.contains("AccessibilityStateChangeListener"))
+        val service = SourceContract.read("agent/AgentAccessibilityService.kt")
+        assertTrue(service.contains("AgentController.actionAuthorized(task)"))
+        assertTrue(service.contains("if (AgentController.usesAccessibility())"))
+        assertTrue(service.contains("AgentController.cancel(this, \"accessibility_disconnected\")"))
     }
 
     @Test fun serviceLifetimeSurvivesRenewalWhileActionsAndResponsesKeepTheirOwnDeadline() {

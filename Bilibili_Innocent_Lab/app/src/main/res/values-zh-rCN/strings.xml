@@ -1263,12 +1263,12 @@
     <string name="sponsorblock_automatic">自动跳过商单片段</string>
     <string name="sponsorblock_tip">开启提示后，将使用视频编号的哈希前缀查询社区服务 www.bsbsb.top。仅支持普通视频详情页中的商单片段；自动跳过须同时开启提示，暂停和手动拖动优先。社区标注可能不准确，跳转确认后 6 秒内可撤销。不发送投稿、投票或账户数据。修改后需重启哔哩哔哩。</string>
     <string name="agent_title">AI 任务助手（实验性）</string>
-    <string name="agent_help">输入目标后，助手可在哔哩哔哩中搜索、读取候选并按要求打开视频。目标与必要的公开内容会发送给所选 API；不支持点赞、评论、投币或付款。对话模型与 JEV 模型按实测能力协作。默认执行 12 步、持续 2 分钟，两项均可调节或设为无限。运行时触摸或按键会接管并停止任务。</string>
+    <string name="agent_help">开启模块无障碍后，助手可在哔哩哔哩界面内点击、滑动、输入普通文本和返回；未开启时仍可使用原有搜索及视频工具。密码、实名验证和付款等敏感操作受保护。目标与必要的界面内容会发送给所选 API，可随时点击停止接管。时间和步数均可设为无限。</string>
     <string name="agent_enable">启用宿主任务接口</string>
     <string name="agent_restart_hint">任务接口开关需重启哔哩哔哩后生效</string>
     <string name="agent_configure_sources">配置 API 来源（最多 8 个）</string>
     <string name="agent_source_scope">允许本任务使用的来源</string>
-    <string name="agent_source_capability">来源 %1$d · %2$s\n工具：%3$s　决策：%4$s　视觉：%5$s</string>
+    <string name="agent_source_capability">来源 %1$d · %2$s\n工具：%3$s　决策：%4$s\n视觉：%5$s　文本规划：%6$s</string>
     <string name="agent_detected">已检测通过</string>
     <string name="agent_unverified">未验证</string>
     <string name="agent_unsupported">不支持</string>
@@ -1309,7 +1309,7 @@
     <string name="agent_current_source"> · 来源 %1$d</string>
     <string name="agent_save_failed">保存失败，未开始任务</string>
     <string name="agent_choose_sources">请勾选可用来源，固定编号必须属于所选来源；视觉任务还需要已验证的视觉来源。</string>
-    <string name="agent_probe_required">请先检测所选来源，至少一个来源需通过工具或决策检测</string>
+    <string name="agent_probe_required">请先检测所选来源，至少一个来源需通过工具、文本规划或决策检测</string>
     <string name="agent_already_running">已有任务在运行，请先停止</string>
     <string name="agent_not_enabled">请先启用任务接口并完成模块授权</string>
     <string name="agent_invalid_goal">请输入有效目标（最多 2000 字符）</string>
@@ -1322,9 +1322,9 @@
     <string name="agent_island_operating_short">正在操作</string>
     <string name="agent_island_enable">显示 Agent 状态岛</string>
     <string name="agent_island_permission">允许显示在其他应用上层</string>
-    <string name="agent_island_help">状态岛使用安卓悬浮窗口权限，位于系统栏下方，能识别挖孔时按摄像头横向位置对齐。未授权仍可执行任务和查看模块内日志。</string>
+    <string name="agent_island_help">Android 16 及以上使用系统实时通知，状态栏或岛的外观由系统及通知设置决定；较低版本可选用悬浮窗。点击通知可查看执行日志。</string>
     <string name="agent_island_collapse">收起</string>
-    <string name="agent_island_permission_failed">无法打开悬浮窗口授权页面。</string>
+    <string name="agent_island_permission_failed">无法打开系统状态提示授权界面。</string>
     <string name="agent_tip_connect">正在连接宿主</string>
     <string name="agent_tip_planning">正在查找</string>
     <string name="agent_tip_waiting">等待响应</string>
@@ -1364,4 +1364,21 @@
     <string name="agent_log_stalled">没有新证据，已停止</string>
     <string name="agent_log_unknown">暂无详细原因</string>
     <string name="agent_logs_no_usage">用量未提供</string>
+    <string name="agent_accessibility_description">仅在您明确启动任务后读取和操作哔哩哔哩的可见界面，支持点击、滑动和普通文本输入；拦截账户安全、实名和付款等受保护操作，不自动启动任务。</string>
+    <string name="agent_accessibility_permission">开启助手无障碍辅助</string>
+    <string name="agent_accessibility_connected">无障碍已连接：可操作宿主内的普通界面控件。</string>
+    <string name="agent_accessibility_pending">无障碍已开启，等待系统连接；必要时在系统设置中重新开启。</string>
+    <string name="agent_accessibility_disabled">模块无障碍未开启；仍可执行原有搜索任务。</string>
+    <string name="agent_accessibility_unknown">暂时无法读取模块无障碍状态；仍可使用原有搜索工具。</string>
+    <string name="agent_notification_permission">任务通知与实时状态设置</string>
+    <string name="agent_notification_title">Agent 正在操作</string>
+    <string name="agent_permission_failed">无法打开系统授权界面。</string>
+    <string name="agent_tip_click">点击控件</string>
+    <string name="agent_tip_swipe">滑动页面</string>
+    <string name="agent_tip_input">输入文本</string>
+    <string name="agent_tip_back">返回页面</string>
+    <string name="agent_accessibility_required">通用界面操作需要先开启并连接模块无障碍服务。</string>
+    <string name="agent_sensitive_blocked">此操作涉及受保护内容，请由您手动处理。</string>
+    <string name="agent_ui_stale">界面已变化，需要重新观察后再操作。</string>
+    <string name="agent_waiting_host">等待返回哔哩哔哩</string>
 </resources>
