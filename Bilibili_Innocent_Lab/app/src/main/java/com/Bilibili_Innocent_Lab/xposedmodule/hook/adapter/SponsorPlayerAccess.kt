@@ -12,6 +12,8 @@ import java.lang.reflect.Modifier
 internal class SponsorPlayerAccess private constructor(
     val run: Method,
     val wrapper: Constructor<*>,
+    val wrapperOwnerIndex: Int,
+    val wrapperCoreIndex: Int,
     val scope: Constructor<*>?,
     val containerScope: ContainerScope?,
     val active: Method,
@@ -43,6 +45,7 @@ internal class SponsorPlayerAccess private constructor(
 ) {
     class ContainerScope(val constructor: Constructor<*>, val contextIndex: Int, val containerIndex: Int,
         val core: Method)
+    class WrapperBinding(val constructor: Constructor<*>, val ownerIndex: Int, val coreIndex: Int)
     /** runPlayable 正常播放时保持挂起；只接受已激活的实参或 label=2 的播放续体。 */
     fun bound(owner: Any, requested: Any?, resumed: Any?): Boolean = runCatching {
         val current = active.invoke(owner) ?: return false
@@ -124,10 +127,7 @@ internal class SponsorPlayerAccess private constructor(
             val parameters = Lookup.methods(run.parameterTypes[0], true, true) {
                 !Modifier.isStatic(it.modifiers) && it.parameterCount == 0 && it.returnType == params
             }.distinctBy { it.name to it.parameterTypes.toList() }.singleOrNull() ?: return null
-            val constructor = Lookup.declaredConstructors(wrapper, true) {
-                it.parameterTypes.map(Class<*>::getName) == listOf(CORE_CLASS, owner.name, "kotlinx.coroutines.CoroutineScope")
-            }.singleOrNull() ?: return null
-            if (!core.isAssignableFrom(wrapper)) return null
+            val binding = resolveWrapper(wrapper, core, owner) ?: return null
             // 与 owner 显式成对的宿主 Context；不按当前 Activity 猜测播放器归属。
             val context = Lookup.classOrNull(loader, "android.content.Context") ?: return null
             val scope = Lookup.classOrNull(loader, SCOPE_CLASS)?.let { cls ->
@@ -159,7 +159,8 @@ internal class SponsorPlayerAccess private constructor(
             val ugc = Lookup.fieldOrNull(business.returnType, "UGC")?.takeIf {
                 Modifier.isStatic(it.modifiers) && it.type == business.returnType
             }?.get(null) ?: return null
-            SponsorPlayerAccess(run, constructor, scope, containerScope, active, continuation, continuationOwner, runLabel, parameters,
+            SponsorPlayerAccess(run, binding.constructor, binding.ownerIndex, binding.coreIndex,
+                scope, containerScope, active, continuation, continuationOwner, runLabel, parameters,
                 method(params, "getBvId", classOf<String>()) ?: return null,
                 method(params, "getCid", classOf<Long>()) ?: return null,
                 method(params, "getAvid", classOf<Long>()) ?: return null, business, ugc,
@@ -177,6 +178,19 @@ internal class SponsorPlayerAccess private constructor(
                 method(core, "removePlayerReleaseObserver", Void.TYPE, release) ?: return null,
                 progress, seekObserver, stateObserver, release)
         }.getOrNull()
+
+        /** 9.12.0 为 owner/scope/core，其余样本为 core/owner/scope；仍只接受精确的三种类型。 */
+        fun resolveWrapper(wrapper: Class<*>, core: Class<*>, owner: Class<*>): WrapperBinding? {
+            if (core == owner || !core.isAssignableFrom(wrapper)) return null
+            val constructor = Lookup.declaredConstructors(wrapper, true) {
+                val types = it.parameterTypes
+                types.size == 3 && types.count { type -> type == core } == 1 &&
+                    types.count { type -> type == owner } == 1 &&
+                    types.count { type -> type.name == "kotlinx.coroutines.CoroutineScope" } == 1
+            }.singleOrNull() ?: return null
+            return WrapperBinding(constructor, constructor.parameterTypes.indexOf(owner),
+                constructor.parameterTypes.indexOf(core))
+        }
 
         private fun method(owner: Class<*>, name: String, result: Class<*>, vararg parameters: Class<*>): Method? =
             Lookup.inheritedMethodOrNull(owner, name, *parameters)?.takeIf {

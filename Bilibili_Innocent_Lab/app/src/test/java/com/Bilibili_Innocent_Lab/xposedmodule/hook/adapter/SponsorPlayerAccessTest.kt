@@ -8,6 +8,9 @@ import com.bilibili.ship.theseus.keel.player.TheseusKeelPlayer
 import com.bilibili.ship.theseus.keel.player.`TheseusKeelPlayer$runPlayable$1`
 import org.junit.Assert.*
 import org.junit.Test
+import kotlinx.coroutines.CoroutineScope
+import kotlin.coroutines.EmptyCoroutineContext
+import tv.danmaku.biliplayerv2.service.IPlayerCoreService
 
 class SponsorPlayerAccessTest {
     private val loader = javaClass.classLoader!!
@@ -25,6 +28,7 @@ class SponsorPlayerAccessTest {
         assertEquals(SponsorPlayerAccess.CONTAINER_INTERFACE, container.core.declaringClass.name)
         assertEquals(listOf(Int::class.javaPrimitiveType, Boolean::class.javaPrimitiveType), access.seek.parameterTypes.toList())
         assertEquals(SponsorVideoId("BV14741127BN", 1), access.video(TheseusKeelPlayer(playable())))
+        assertEquals(1, access.wrapperOwnerIndex); assertEquals(0, access.wrapperCoreIndex)
     }
 
     @Test fun identityAlwaysReadsTheActivePartAndRejectsNonUgcOrInvalidMedia() {
@@ -112,5 +116,29 @@ class SponsorPlayerAccessTest {
         val fallback = requireNotNull(SponsorPlayerAccess.resolve(hiding(SponsorPlayerAccess.CONTAINER_SCOPE_CLASS)))
         assertNotNull(fallback.scope); assertNull(fallback.containerScope)
         assertNull(SponsorPlayerAccess.resolve(hiding(SponsorPlayerAccess.SCOPE_CLASS, SponsorPlayerAccess.CONTAINER_SCOPE_CLASS)))
+    }
+
+    private class ReorderedWrapper(val owner: TheseusKeelPlayer, val scope: CoroutineScope,
+        val core: IPlayerCoreService) : IPlayerCoreService by core
+    private class AmbiguousWrapper(core: IPlayerCoreService, owner: TheseusKeelPlayer,
+        scope: CoroutineScope) : IPlayerCoreService by core {
+        constructor(owner: TheseusKeelPlayer, scope: CoroutineScope, core: IPlayerCoreService) : this(core, owner, scope)
+    }
+    private class ExtraArgumentWrapper(core: IPlayerCoreService, owner: TheseusKeelPlayer,
+        scope: CoroutineScope, extra: Any) : IPlayerCoreService by core
+
+    @Test fun reordered912ConstructorCapturesTheActualOwnerAndCoreAndRejectsAmbiguousShapes() {
+        val core = object : IPlayerCoreService {}
+        val owner = TheseusKeelPlayer(playable())
+        val scope = CoroutineScope(EmptyCoroutineContext)
+        val binding = requireNotNull(SponsorPlayerAccess.resolveWrapper(ReorderedWrapper::class.java,
+            IPlayerCoreService::class.java, TheseusKeelPlayer::class.java))
+        val args = arrayOf(owner, scope, core)
+        val constructed = binding.constructor.newInstance(*args) as ReorderedWrapper
+        assertSame(constructed.owner, args[binding.ownerIndex])
+        assertSame(constructed.core, args[binding.coreIndex])
+        for (type in listOf(AmbiguousWrapper::class.java, ExtraArgumentWrapper::class.java, String::class.java)) {
+            assertNull(SponsorPlayerAccess.resolveWrapper(type, IPlayerCoreService::class.java, TheseusKeelPlayer::class.java))
+        }
     }
 }

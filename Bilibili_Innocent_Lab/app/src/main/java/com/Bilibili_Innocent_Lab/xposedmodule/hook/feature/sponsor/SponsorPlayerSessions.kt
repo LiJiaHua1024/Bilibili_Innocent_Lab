@@ -44,9 +44,9 @@ internal class SponsorPlayerSessions(private val env: HookEnvironment, private v
             after {
                 diagnostics.record("callback.wrapper", "active=${active.get()} receiver=${instance != null} failed=$hasThrowable")
                 if (!active.get() || hasThrowable) return@after
-                val owner = argOrNull(1) ?: return@after
+                val owner = argOrNull(access.wrapperOwnerIndex) ?: return@after
                 val wrapper = instance ?: return@after
-                val core = argOrNull(0) ?: return@after
+                val core = argOrNull(access.wrapperCoreIndex) ?: return@after
                 bindings.wrapper(owner, wrapper, core)
                 diagnostics.record("binding.wrapper")
                 main { reconcile() }
