@@ -1,6 +1,7 @@
 package com.Bilibili_Innocent_Lab.xposedmodule.hook.feature
 
 import android.app.Activity
+import android.app.Instrumentation
 import com.Bilibili_Innocent_Lab.xposedmodule.BuildConfig
 import com.Bilibili_Innocent_Lab.xposedmodule.hook.adapter.SponsorPlayerAccess
 import com.Bilibili_Innocent_Lab.xposedmodule.hook.adapter.SponsorSeekAccess
@@ -19,8 +20,10 @@ internal class SponsorBlockFeatureInstaller(private val enabled: Boolean, privat
         val seek = SponsorSeekAccess.resolve(loader, player) ?: return FeatureInstallResult.Skipped("missing-seek-guard")
         val detail = Lookup.classOrNull(loader, DETAIL)?.takeIf { Activity::class.java.isAssignableFrom(it) }
             ?: return FeatureInstallResult.Skipped("missing-detail-activity")
-        val lifecycle = listOf("onResume", "onPause", "onDestroy").map { name ->
-            Lookup.inheritedMethodOrNull(detail, name)?.takeIf { it.returnType == Void.TYPE }
+        val lifecycle = listOf("callActivityOnResume", "callActivityOnPause", "callActivityOnDestroy").map { name ->
+            Lookup.methodOrNull(Instrumentation::class.java, name, Activity::class.java)?.takeIf {
+                it.returnType == Void.TYPE && it.parameterTypes.toList() == listOf(Activity::class.java)
+            }
                 ?: return FeatureInstallResult.Skipped("missing-detail-lifecycle")
         }
         val seekMethod = Lookup.methodOrNull(player.wrapper.declaringClass, "seekTo", Int::class.javaPrimitiveType!!,

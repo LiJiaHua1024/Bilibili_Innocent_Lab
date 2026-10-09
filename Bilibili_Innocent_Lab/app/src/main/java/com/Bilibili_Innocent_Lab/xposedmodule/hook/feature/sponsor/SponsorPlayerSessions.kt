@@ -146,18 +146,21 @@ internal class SponsorPlayerSessions(private val env: HookEnvironment, private v
             env.registrar.exact("sponsorblock.lifecycle.$index", method.declaringClass, method.name, *method.parameterTypes) {
                 if (index == 0) {
                     before {
-                        diagnostics.record("callback.resume", "active=${active.get()} activity=${instance is Activity} " +
-                            "type=${instance?.let(detail::isInstance)} name=${instance?.javaClass?.name == detail.name}")
+                        val target = argOrNull(0) as? Activity
+                        if (target?.componentName?.className == detail.name || target?.javaClass?.name == detail.name) {
+                            diagnostics.record("callback.resume", "active=${active.get()} type=${detail.isInstance(target)} " +
+                                "name=${target?.javaClass?.name == detail.name} loader=${target?.classLoader === env.classLoader}")
+                        }
                     }
                     after {
-                        val activity = instance as? Activity ?: return@after
+                        val activity = argOrNull(0) as? Activity ?: return@after
                         if (!active.get() || hasThrowable || !detail.isInstance(activity)) return@after
                         foreground = WeakReference(activity)
                         diagnostics.record("binding.foreground")
                         main { if (foreground.get() === activity) reconcile() }
                     }
                 } else before {
-                    val activity = instance as? Activity ?: return@before
+                    val activity = argOrNull(0) as? Activity ?: return@before
                     if (!active.get() || !detail.isInstance(activity)) return@before
                     if (foreground.get() === activity) {
                         foreground = WeakReference(null)

@@ -1,6 +1,8 @@
 package com.Bilibili_Innocent_Lab.xposedmodule.hook.feature
 
 import com.Bilibili_Innocent_Lab.xposedmodule.hook.HookPointRegistry
+import android.app.Activity
+import android.app.Instrumentation
 import org.junit.Assert.*
 import org.junit.Test
 
@@ -43,5 +45,15 @@ class SponsorBlockFeatureInstallerTest {
             .inheritedMethodOrNull(LifecycleDetail::class.java, "onResume")
         assertEquals(LifecycleDetail::class.java, method?.declaringClass)
         assertEquals(0, method?.parameterCount)
+    }
+
+    @Test fun frameworkLifecycleDispatchersCarryTheActualActivityAsAnArgument() {
+        for (name in listOf("callActivityOnResume", "callActivityOnPause", "callActivityOnDestroy")) {
+            val method = com.Bilibili_Innocent_Lab.xposedmodule.runtime.KavaMemberLookup
+                .methodOrNull(Instrumentation::class.java, name, Activity::class.java)
+            assertNotNull(method)
+            assertEquals(Void.TYPE, method?.returnType)
+            assertEquals(listOf(Activity::class.java), method?.parameterTypes?.toList())
+        }
     }
 }
