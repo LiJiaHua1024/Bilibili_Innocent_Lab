@@ -6,6 +6,8 @@ import android.content.SharedPreferences
 import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Color
+import android.graphics.BitmapFactory
+import android.graphics.Rect
 import android.net.Uri
 import android.os.SystemClock
 import android.view.View
@@ -15,6 +17,8 @@ import androidx.test.platform.app.InstrumentationRegistry
 import com.Bilibili_Innocent_Lab.xposedmodule.ui.skin.background.LiquidBackgroundImportResult
 import com.Bilibili_Innocent_Lab.xposedmodule.ui.skin.background.LiquidBackgroundStore
 import com.Bilibili_Innocent_Lab.xposedmodule.ui.skin.material.FrostedMaterialRenderer
+import com.Bilibili_Innocent_Lab.xposedmodule.ui.skin.liquid.LiquidBackdropSource
+import com.Bilibili_Innocent_Lab.xposedmodule.ui.skin.liquid.LiquidBackdropSizingPolicy
 import com.Bilibili_Innocent_Lab.xposedmodule.ui.skin.model.SkinId
 import com.Bilibili_Innocent_Lab.xposedmodule.ui.theme.MonetColors
 import java.io.File
@@ -31,7 +35,7 @@ class FrostedCustomBackgroundInstrumentedTest {
     private val customColor = Color.rgb(220, 20, 200)
     private val baseColor = Color.rgb(16, 17, 20)
 
-    private inner class Fixture(corrupt: Boolean = false, bind: Boolean = true) : AutoCloseable {
+    private inner class Fixture(corrupt: Boolean = false, bind: Boolean = true, detailed: Boolean = false) : AutoCloseable {
         private val target = instrumentation.targetContext
         private val namespace = "frosted-background-test-" + UUID.randomUUID()
         val directory = File(target.cacheDir, namespace).apply { mkdirs() }
@@ -51,9 +55,14 @@ class FrostedCustomBackgroundInstrumentedTest {
 
         init {
             val input = File(directory, "input.png")
-            val bitmap = Bitmap.createBitmap(120, 200, Bitmap.Config.ARGB_8888)
+            val bitmap = Bitmap.createBitmap(if (detailed) 480 else 120, if (detailed) 800 else 200, Bitmap.Config.ARGB_8888)
             try {
-                bitmap.eraseColor(customColor)
+                if (detailed) {
+                    val pixels = IntArray(bitmap.width * bitmap.height) { i ->
+                        if (i % bitmap.width / 2 % 2 == 0) Color.BLACK else Color.WHITE
+                    }
+                    bitmap.setPixels(pixels, 0, bitmap.width, 0, 0, bitmap.width, bitmap.height)
+                } else bitmap.eraseColor(customColor)
                 input.outputStream().use { assertTrue(bitmap.compress(Bitmap.CompressFormat.PNG, 100, it)) }
             } finally { bitmap.recycle() }
             assertTrue(LiquidBackgroundStore.importFromUri(context, Uri.fromFile(input)) is LiquidBackgroundImportResult.Success)
@@ -106,6 +115,18 @@ class FrostedCustomBackgroundInstrumentedTest {
             return colors
         }
 
+        fun detailContrast(): Int {
+            var contrast = 0
+            instrumentation.runOnMainSync {
+                val bitmap = Bitmap.createBitmap(root.width, root.height, Bitmap.Config.ARGB_8888)
+                try {
+                    root.draw(Canvas(bitmap))
+                    contrast = abs(Color.red(bitmap.getPixel(240, 400)) - Color.red(bitmap.getPixel(242, 400)))
+                } finally { bitmap.recycle() }
+            }
+            return contrast
+        }
+
         override fun close() {
             instrumentation.runOnMainSync { renderer.close(); root.background = null }
             assertTrue(directory.canonicalPath.startsWith(target.cacheDir.canonicalPath + File.separator))
@@ -116,6 +137,60 @@ class FrostedCustomBackgroundInstrumentedTest {
                     target.deleteSharedPreferences(name)
                 }
             }
+        }
+    }
+
+    @Test fun ordinaryBackgroundRetainsTwoPixelDetailsAcrossMemoryReleaseAndResume() {
+        Fixture(detailed = true).use { fixture ->
+            fixture.waitUntilLoaded()
+            assertTrue("Native two-pixel lines were blurred", fixture.detailContrast() > 180)
+            instrumentation.runOnMainSync { fixture.renderer.onLowMemory() }
+            assertTrue(fixture.detailContrast() > 180)
+            instrumentation.runOnMainSync { fixture.renderer.stop(); fixture.renderer.resume() }
+            fixture.waitUntilLoaded()
+            assertTrue(fixture.detailContrast() > 180)
+        }
+    }
+
+    @Test fun liquidBackgroundRetainsDetailsWhileStandardOpticsStayQuarterResolution() {
+        Fixture(bind = false, detailed = true).use { fixture ->
+            for (crisp in listOf(false, true)) {
+                val bitmap = requireNotNull(LiquidBackgroundStore.decodeBackdrop(fixture.context,
+                    fixture.config, 480, 800, baseColor, true))
+                val source = LiquidBackdropSource.fromCustomBitmap(bitmap, "detail-fixture", 480, 800, 1f, crisp)
+                val rendered = Bitmap.createBitmap(480, 800, Bitmap.Config.ARGB_8888)
+                try {
+                    source.drawRoot(Canvas(rendered), Rect(0, 0, 480, 800), 255)
+                    assertTrue(abs(Color.red(rendered.getPixel(240, 400)) -
+                        Color.red(rendered.getPixel(242, 400))) > 180)
+                    val sample = LiquidBackdropSizingPolicy.resolve(480, 800)
+                    assertEquals(if (crisp) 480 else sample.width, source.refractionWidth)
+                    assertEquals(if (crisp) 800 else sample.height, source.refractionHeight)
+                } finally { rendered.recycle(); source.discardUnpublished() }
+            }
+        }
+    }
+
+    @Test fun opaqueImageImportPreservesColorValuesWithoutLossyReencoding() {
+        Fixture(bind = false).use { fixture ->
+            val input = File(fixture.directory, "colors.png")
+            val bitmap = Bitmap.createBitmap(480, 800, Bitmap.Config.ARGB_8888)
+            val pixels = IntArray(480 * 800) { i ->
+                Color.rgb((i * 17) and 255, (i * 37) and 255, (i * 61) and 255)
+            }
+            try {
+                bitmap.setPixels(pixels, 0, 480, 0, 0, 480, 800)
+                bitmap.setHasAlpha(false)
+                input.outputStream().use { assertTrue(bitmap.compress(Bitmap.CompressFormat.PNG, 100, it)) }
+            } finally { bitmap.recycle() }
+            assertTrue(LiquidBackgroundStore.importFromUri(fixture.context, Uri.fromFile(input)) is LiquidBackgroundImportResult.Success)
+            val asset = fixture.directory.walkTopDown().single { it.isFile && it.name.endsWith(".img") }
+            val decoded = requireNotNull(BitmapFactory.decodeFile(asset.absolutePath))
+            try {
+                val actual = IntArray(pixels.size)
+                decoded.getPixels(actual, 0, 480, 0, 0, 480, 800)
+                assertArrayEquals(pixels, actual)
+            } finally { decoded.recycle() }
         }
     }
 

@@ -7,6 +7,34 @@ import org.junit.Test
 
 class LiquidBackdropSizingPolicyTest {
 
+    @Test fun `custom presentation retains native phone pixels`() {
+        for ((width, height) in listOf(1080 to 2340, 1440 to 3200, 3200 to 1440)) {
+            val size = LiquidBackdropSizingPolicy.resolvePresentation(width, height)
+            assertEquals(width, size.width)
+            assertEquals(height, size.height)
+        }
+    }
+
+    @Test fun `oversized presentation preserves aspect ratio within its own budget`() {
+        val size = LiquidBackdropSizingPolicy.resolvePresentation(16000, 4000)
+        assertEquals(4.0, size.width.toDouble() / size.height, 0.02)
+        assertTrue(size.width.toLong() * size.height <= LiquidBackdropSizingPolicy.MAX_PRESENTATION_PIXELS)
+    }
+
+    @Test fun `extreme presentation dimensions remain bounded`() {
+        for ((width, height) in listOf(Int.MAX_VALUE to 1, 1 to Int.MAX_VALUE,
+            Int.MAX_VALUE to Int.MAX_VALUE)) {
+            val size = LiquidBackdropSizingPolicy.resolvePresentation(width, height)
+            assertTrue(size.width > 0 && size.height > 0)
+            assertTrue(size.width.toLong() * size.height <= LiquidBackdropSizingPolicy.MAX_PRESENTATION_PIXELS)
+        }
+    }
+
+    @Test(expected = IllegalArgumentException::class)
+    fun `unmeasured presentation is rejected`() {
+        LiquidBackdropSizingPolicy.resolvePresentation(1080, 0)
+    }
+
     @Test
     fun `normal display uses quarter resolution`() {
         val size = LiquidBackdropSizingPolicy.resolve(1080, 2400)

@@ -131,7 +131,7 @@ class LiquidSurfaceMappingInstrumentedTest {
     }
 
     @Test fun foreignFallbackUsesTheSameCustomImageProfileAsRefraction() {
-        val size = LiquidBackdropSizingPolicy.resolve(800, 600)
+        val size = LiquidBackdropSizingPolicy.resolvePresentation(800, 600)
         for (crisp in listOf(false, true)) {
             val bitmap = Bitmap.createBitmap(size.width, size.height, Bitmap.Config.ARGB_8888)
             val pixels = IntArray(size.width * size.height) { i ->

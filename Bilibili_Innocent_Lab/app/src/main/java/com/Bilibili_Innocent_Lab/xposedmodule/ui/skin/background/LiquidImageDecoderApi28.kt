@@ -17,7 +17,8 @@ internal object LiquidImageDecoderApi28 {
                 info.size.height
             )
             decoder.allocator = ImageDecoder.ALLOCATOR_SOFTWARE
-            decoder.memorySizePolicy = ImageDecoder.MEMORY_POLICY_LOW_RAM
+            // LOW_RAM 可把不透明图片解码为 RGB_565，丢失原图色阶。
+            decoder.memorySizePolicy = ImageDecoder.MEMORY_POLICY_DEFAULT
             decoder.setTargetSize(orientedSize.width, orientedSize.height)
         }
     }.getOrNull()
