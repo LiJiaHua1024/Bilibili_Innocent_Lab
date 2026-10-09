@@ -34,17 +34,19 @@ internal class LiquidBlurBackendApi31(
         check(!source.isClosed) { "Cannot bind a closed Liquid backdrop" }
         val node = renderNode ?: RenderNode("BilibiliInnocentLab-LiquidBackdrop")
         node.discardDisplayList()
-        check(node.setPosition(0, 0, source.bitmap.width, source.bitmap.height)) {
+        val sample = LiquidBackdropSizingPolicy.resolve(source.fullWidth, source.fullHeight)
+        check(node.setPosition(0, 0, sample.width, sample.height)) {
             "Unable to position Liquid blur RenderNode"
         }
-        val recordingCanvas = node.beginRecording(source.bitmap.width, source.bitmap.height)
+        val recordingCanvas = node.beginRecording(sample.width, sample.height)
         try {
-            recordingCanvas.drawBitmap(source.bitmap, 0f, 0f, bitmapPaint)
+            // 显示照片可以是全分辨率；GPU 模糊图层仍使用原来的采样预算。
+            recordingCanvas.drawBitmap(source.bitmap, null, Rect(0, 0, sample.width, sample.height), bitmapPaint)
         } finally {
             node.endRecording()
         }
-        backdropScaleX = source.fullWidth.toFloat() / source.bitmap.width.toFloat()
-        backdropScaleY = source.fullHeight.toFloat() / source.bitmap.height.toFloat()
+        backdropScaleX = source.fullWidth.toFloat() / sample.width.toFloat()
+        backdropScaleY = source.fullHeight.toFloat() / sample.height.toFloat()
         val nextBlurRadius = (
             blurRadiusPx / maxOf(backdropScaleX, backdropScaleY)
             ).coerceAtLeast(0.1f)

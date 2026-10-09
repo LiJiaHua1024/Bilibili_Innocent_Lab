@@ -400,6 +400,8 @@
     <string name="hide_comment_section">Hide the comment section</string>
     <string name="hide_comment_section_tip">Removes the comment tab from video details while leaving the introduction and other tabs available. Restart Bilibili to apply.</string>
     <string name="reply_topology_enabled">Reply context map</string>
+    <string name="comment_classic_style">Restore classic comments</string>
+    <string name="comment_classic_style_tip">Restores the classic comment layout. Fetches up to three replies when previews are missing. Tap to view more replies. Fetching may slightly increase comment loading time. Restart Bilibili to apply.</string>
     <string name="highlights_reply_topology_keyword_export">Filter reply context by author or reply keywords while keeping ancestor replies, and copy the visible reply previews to the clipboard.</string>
     <string name="highlights_reply_topology_tree_explorer">Deep replies show their actual levels. Open the full tree to pan and zoom freely, or view a reply’s recent ancestors and direct replies through a separate path entry.</string>
     <string name="reply_topology_enabled_tip">Adds a “Trace” entry to top-level comments with replies and presents the actual reply relationships in a draggable, navigable workflow view. Data is loaded only while the panel is open. Restart Bilibili to apply.</string>
@@ -1251,9 +1253,9 @@
     <string name="update_canary_actions">Actions APK</string>
     <string name="update_canary_telegram">Telegram channel</string>
     <string name="host_bottom_bar_compact">Compact bottom bar</string>
-    <string name="host_bottom_bar_compact_tip">Reduces the bottom bar height. Restart Bilibili to apply.</string>
+    <string name="host_bottom_bar_compact_tip">Requires the floating bottom capsule. Reduces the capsule height. Restart Bilibili to apply.</string>
     <string name="host_bottom_bar_icon_only">Icon-only bottom bar</string>
-    <string name="host_bottom_bar_icon_only_tip">Hides tab labels, centers icons vertically, and reduces vertical space. Can be combined with compact mode. Restart Bilibili to apply.</string>
+    <string name="host_bottom_bar_icon_only_tip">Requires the floating bottom capsule. Hides capsule tab labels, centers icons vertically, and reduces space. Can be combined with compact mode. Restart Bilibili to apply.</string>
     <string name="sponsorblock_title">SponsorBlock</string>
     <string name="highlights_sponsorblock">Ordinary video details can show community sponsor-segment prompts, with optional automatic skipping and undo. Disabled by default; enabling it queries www.bsbsb.top.</string>
     <string name="highlights_host_glass_materials">Choose soft lens or Liquid glass materials and rendering modes independently for the host top and bottom bars.</string>

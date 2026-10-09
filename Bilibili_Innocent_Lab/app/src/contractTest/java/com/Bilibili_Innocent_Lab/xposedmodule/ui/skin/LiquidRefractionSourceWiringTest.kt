@@ -80,15 +80,15 @@ class LiquidRefractionSourceWiringTest {
         assertTrue(suspend.contains("invalidateRegisteredSurfaces()"))
     }
 
-    @Test fun customImageDimensionsAndAllocationBudgetStayOnCurrentMainPolicy() {
+    @Test fun customPresentationAndOpticalSampleUseSeparateBudgets() {
         val backdrop = source("LiquidBackdropSource")
         val custom = backdrop.after("fun fromCustomBitmap(").before("fun fromRealtimeBitmap(")
         assertTrue(custom.contains("LiquidBackdropSizingPolicy.resolve(fullWidth, fullHeight)"))
-        assertTrue(custom.contains("createBitmap(bitmap.width, bitmap.height, Bitmap.Config.ARGB_8888)"))
+        assertTrue(custom.contains("createBitmap(sample.width, sample.height, Bitmap.Config.ARGB_8888)"))
         assertTrue(custom.contains("LiquidOpticalSamplingPolicy.soften("))
-        assertFalse(custom.contains("resolvePresentation"))
+        assertTrue(custom.contains("resolvePresentation(fullWidth, fullHeight)"))
         val renderer = source("LiquidActivityRenderer")
-        assertFalse(renderer.contains("resolvePresentation"))
+        assertTrue(renderer.contains("resolvePresentation(width, height)"))
         val sizing = source("LiquidCapabilityPolicy")
         assertTrue(sizing.contains("const val MAX_BUFFER_BYTES = 2L * 1024L * 1024L"))
     }

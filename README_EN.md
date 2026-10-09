@@ -322,6 +322,10 @@ Every category is judged precisely from the public structured type in the adapte
 
 > The four criteria share the same comment list read boundary, so enabling one more does not attach another hook. Filtering covers adapted top-level comments, pinned comments and nested reply lists, reading only the information needed to decide; when nothing matches, the host's original list is kept, and a filtered copy is created only when something matches. It is independent of free copy, and the two can be enabled or disabled separately.
 
+#### Comment layout
+
+Classic comments can be restored under Enhancement → Advanced enhancement settings → Comment reading and interaction. When a comment has replies but no preview, the option fetches up to three replies through Bilibili’s detail API and shows them below the parent comment. Tap to view more replies. Only the first detail page is requested, with at most four concurrent requests and a 2.5-second wait budget for the entire comment page. Timeouts or failures preserve the original reply entry. Fetching may increase loading time. The option is off by default and requires restarting Bilibili.
+
 ### 📋 Free copy for comments and descriptions
 
 #### Free copy in the comment section

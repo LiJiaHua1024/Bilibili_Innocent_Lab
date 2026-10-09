@@ -321,18 +321,22 @@ internal class LiquidBackdropSource private constructor(
             }
             require(!bitmap.isRecycled) { "Custom backdrop bitmap is recycled" }
             require(assetId.isNotBlank()) { "Custom backdrop asset id is blank" }
-            val expected = LiquidBackdropSizingPolicy.resolve(fullWidth, fullHeight)
+            val expected = LiquidBackdropSizingPolicy.resolvePresentation(fullWidth, fullHeight)
             require(bitmap.width == expected.width && bitmap.height == expected.height) {
-                "Custom backdrop bitmap does not match the bounded sample size"
+                "Custom backdrop bitmap does not match the bounded presentation size"
             }
-            val pixels = IntArray(bitmap.width * bitmap.height)
-            bitmap.getPixels(pixels, 0, bitmap.width, 0, 0, bitmap.width, bitmap.height)
-            val softened = LiquidOpticalSamplingPolicy.soften(pixels, bitmap.width, bitmap.height,
-                fullWidth, density)
-            if (Thread.currentThread().isInterrupted) throw InterruptedException("Backdrop replaced")
-            val optical = createBitmap(bitmap.width, bitmap.height, Bitmap.Config.ARGB_8888)
+            // 显示图保留原生像素；仅缩小光学副本，避免全分辨率 CPU 模糊。
+            val sample = LiquidBackdropSizingPolicy.resolve(fullWidth, fullHeight)
+            val optical = createBitmap(sample.width, sample.height, Bitmap.Config.ARGB_8888)
             try {
-                optical.setPixels(softened, 0, bitmap.width, 0, 0, bitmap.width, bitmap.height)
+                Canvas(optical).drawBitmap(bitmap, null, Rect(0, 0, sample.width, sample.height),
+                    Paint(Paint.FILTER_BITMAP_FLAG or Paint.DITHER_FLAG))
+                val pixels = IntArray(sample.width * sample.height)
+                optical.getPixels(pixels, 0, sample.width, 0, 0, sample.width, sample.height)
+                val softened = LiquidOpticalSamplingPolicy.soften(pixels, sample.width, sample.height,
+                    fullWidth, density)
+                if (Thread.currentThread().isInterrupted) throw InterruptedException("Backdrop replaced")
+                optical.setPixels(softened, 0, sample.width, 0, 0, sample.width, sample.height)
                 return LiquidBackdropSource(
                     bitmap = bitmap,
                     customAssetId = assetId,

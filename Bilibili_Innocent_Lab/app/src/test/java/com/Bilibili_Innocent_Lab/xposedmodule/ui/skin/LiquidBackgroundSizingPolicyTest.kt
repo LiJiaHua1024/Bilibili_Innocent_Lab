@@ -11,10 +11,31 @@ class LiquidBackgroundSizingPolicyTest {
     fun `normalization preserves aspect ratio within hard limits`() {
         val size = LiquidBackgroundSizingPolicy.resolveNormalizedSize(8000, 4000)
 
-        assertEquals(2048, size.width)
-        assertEquals(1024, size.height)
+        assertEquals(4096, size.width)
+        assertEquals(2048, size.height)
         assertTrue(size.width.toLong() * size.height <=
             LiquidBackgroundSizingPolicy.MAX_NORMALIZED_PIXELS)
+    }
+
+    @Test fun `camera photo retains enough pixels after portrait center crop`() {
+        val size = LiquidBackgroundSizingPolicy.resolveNormalizedSize(4000, 3000)
+        assertEquals(4000, size.width)
+        assertEquals(3000, size.height)
+        val crop = LiquidBackgroundSizingPolicy.centerCrop(size.width, size.height, 1080, 2400)
+        assertTrue(crop.scale <= 1f)
+    }
+
+    @Test fun `square import is bounded by both edge and pixel limits`() {
+        val size = LiquidBackgroundSizingPolicy.resolveNormalizedSize(8000, 8000)
+        assertEquals(size.width, size.height)
+        assertTrue(size.width <= LiquidBackgroundSizingPolicy.MAX_EDGE)
+        assertTrue(size.width.toLong() * size.height <= LiquidBackgroundSizingPolicy.MAX_NORMALIZED_PIXELS)
+    }
+
+    @Test fun `normalization rounding cannot exceed the config pixel limit`() {
+        val size = LiquidBackgroundSizingPolicy.resolveNormalizedSize(4001, 3500)
+        assertTrue(size.width.toLong() * size.height <= LiquidBackgroundSizingPolicy.MAX_NORMALIZED_PIXELS)
+        assertEquals(4001.0 / 3500, size.width.toDouble() / size.height, 0.001)
     }
 
     @Test

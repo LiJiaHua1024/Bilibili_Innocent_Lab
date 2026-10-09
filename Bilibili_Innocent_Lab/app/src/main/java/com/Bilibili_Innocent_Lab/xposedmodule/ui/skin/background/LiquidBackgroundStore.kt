@@ -53,7 +53,6 @@ internal object LiquidBackgroundStore {
     private const val ASSET_SUFFIX = ".img"
     private const val TEMP_PREFIX = "liquid_import_"
     private const val COPY_BUFFER_BYTES = 64 * 1024
-    private const val JPEG_QUALITY = 92
 
     private val lock = Any()
 
@@ -169,7 +168,7 @@ internal object LiquidBackgroundStore {
         true
     }
 
-    /** 后台线程调用；返回的 Bitmap 已是最终 backdrop 尺寸并由调用方接管。 */
+    /** 后台线程调用；target 是显示尺寸，低分辨率光学副本由渲染器另行生成。 */
     fun decodeBackdrop(
         context: Context,
         config: LiquidBackgroundConfig,
@@ -351,11 +350,10 @@ internal object LiquidBackgroundStore {
     @Suppress("DEPRECATION")
     private fun encodeNormalized(bitmap: Bitmap, destination: File): Boolean = runCatching {
         FileOutputStream(destination).use { output ->
-            val format = if (bitmap.hasAlpha()) Bitmap.CompressFormat.PNG else {
-                if (Build.VERSION.SDK_INT >= 30) Bitmap.CompressFormat.WEBP_LOSSY
-                else Bitmap.CompressFormat.WEBP
-            }
-            if (!bitmap.compress(format, JPEG_QUALITY, output)) return@runCatching false
+            // 重编码去除外部元数据，但不再对不透明照片额外施加有损压缩。
+            val format = if (Build.VERSION.SDK_INT >= 30) Bitmap.CompressFormat.WEBP_LOSSLESS
+                else Bitmap.CompressFormat.PNG
+            if (!bitmap.compress(format, 100, output)) return@runCatching false
             output.fd.sync()
         }
         true

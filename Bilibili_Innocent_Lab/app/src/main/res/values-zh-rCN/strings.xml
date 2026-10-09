@@ -400,6 +400,8 @@
     <string name="hide_comment_section">完全隐藏评论区</string>
     <string name="hide_comment_section_tip">开启后，移除视频详情页的评论标签，简介等其他标签不受影响。重启哔哩哔哩后生效。</string>
     <string name="reply_topology_enabled">回复脉络图</string>
+    <string name="comment_classic_style">恢复旧版评论区</string>
+    <string name="comment_classic_style_tip">恢复旧版评论布局。楼中楼预览为空时自动补取最多三条回复，更多回复仍可点击查看。补取可能稍微增加评论加载时间。重启哔哩哔哩后生效。</string>
     <string name="highlights_reply_topology_keyword_export">回复脉络支持按作者或回复关键词筛选，保留上级回复关系，并可将当前可见的回复预览复制到剪贴板。</string>
     <string name="highlights_reply_topology_tree_explorer">深层回复显示真实层级，可打开完整树状图自由拖动缩放，也可通过独立入口查看最近上级与直接回复。</string>
     <string name="reply_topology_enabled_tip">开启后，有回复的一级评论会显示“脉络”入口，可查看回复关系并定位评论；仅打开面板时加载数据。重启哔哩哔哩后生效。</string>
@@ -1251,9 +1253,9 @@
     <string name="update_canary_actions">Actions 安装包</string>
     <string name="update_canary_telegram">Telegram 频道</string>
     <string name="host_bottom_bar_compact">小底栏</string>
-    <string name="host_bottom_bar_compact_tip">缩小底栏高度，减少占用空间。重启哔哩哔哩后生效。</string>
+    <string name="host_bottom_bar_compact_tip">需开启底栏悬浮胶囊。缩小胶囊高度，减少占用空间。重启哔哩哔哩后生效。</string>
     <string name="host_bottom_bar_icon_only">底栏无字模式</string>
-    <string name="host_bottom_bar_icon_only_tip">隐藏首页、动态等标签，仅保留图标并上下居中，同时缩减上下留白。可与小底栏叠加使用，重启哔哩哔哩后生效。</string>
+    <string name="host_bottom_bar_icon_only_tip">需开启底栏悬浮胶囊。隐藏胶囊中的标签，仅保留图标并上下居中，同时缩减留白。可与小底栏叠加使用，重启哔哩哔哩后生效。</string>
     <string name="sponsorblock_title">商单片段 · SponsorBlock</string>
     <string name="highlights_sponsorblock">普通视频详情页可提示社区标注的商单片段，另可选择自动跳过并撤销。默认关闭，开启后会查询 www.bsbsb.top 社区服务。</string>
     <string name="highlights_host_glass_materials">新增顶栏与底栏独立的柔光、液态玻璃材质及渲染方式选择。</string>

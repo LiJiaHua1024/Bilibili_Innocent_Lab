@@ -2,7 +2,6 @@ package com.Bilibili_Innocent_Lab.xposedmodule.ui.skin.background
 
 import kotlin.math.max
 import kotlin.math.min
-import kotlin.math.roundToInt
 
 internal enum class LiquidBackgroundMode {
     AUTOMATIC,
@@ -167,10 +166,12 @@ internal data class LiquidCenterCropTransform(
 
 /** 导入和运行时共享的纯尺寸策略；源图再大也不会突破规范化资产边界。 */
 internal object LiquidBackgroundSizingPolicy {
-    const val MAX_EDGE = 2048
-    const val MAX_NORMALIZED_PIXELS = 4L * 1024L * 1024L
+    // 保留 12MP 照片中心裁剪后足够覆盖手机屏幕的细节；旧资产配置仍兼容。
+    const val MAX_EDGE = 4096
+    const val MAX_NORMALIZED_PIXELS = 12_000_000L
     const val MAX_INPUT_BYTES = 32L * 1024L * 1024L
-    const val MAX_ASSET_BYTES = 16L * 1024L * 1024L
+    // 无损编码的最坏情况约为 12MP × 4 字节，另留编码开销。
+    const val MAX_ASSET_BYTES = 64L * 1024L * 1024L
     const val MAX_DECLARED_EDGE = 16_384
     const val MAX_DECLARED_PIXELS = 64L * 1024L * 1024L
 
@@ -182,8 +183,8 @@ internal object LiquidBackgroundSizingPolicy {
         )
         val scale = min(1.0, min(edgeScale, pixelScale))
         return LiquidNormalizedImageSize(
-            width = (width * scale).roundToInt().coerceIn(1, MAX_EDGE),
-            height = (height * scale).roundToInt().coerceIn(1, MAX_EDGE)
+            width = (width * scale).toInt().coerceIn(1, MAX_EDGE),
+            height = (height * scale).toInt().coerceIn(1, MAX_EDGE)
         )
     }
 

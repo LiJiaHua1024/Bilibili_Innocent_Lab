@@ -8,7 +8,9 @@
 
 `surface-parity.patch` 增加可选的上下缘 ARGB 渐变描边与独立采样层 `backdropOpacity`，同步接入静态、GPU、软件和预设导入导出。未传参数时保留上游行为。公共 `LumenSurfaceLegibilityController` 复用引擎原有 `GlowContentProbe` 与 `GlowLegibilityPolicy`，为保留原生前景色的深色宿主栏提供局部 8Hz 内容统计、迟滞、240ms 色罩过渡与显式资源释放。业务适配只配置基色、前景色和绑定，不触碰内部探针。
 
-该补丁还增加可空的 `softwareBlurRadiusDp`，让同一表面分别声明 RenderEffect 半径与软件盒式模糊半径；不传时保留上游算法与取整方式，宿主传 GPU 17dp / 软件 10dp。预设 JSON 同步往返软件半径与 `fadeCurve`。FROSTED 在无折射 GPU 路径补齐原提亮，在自定义形状 AGSL 路径使用原柔光 C¹ 透镜函数、边界收敛和预乘提亮；LIQUID 保留其折射与色散。自定义形状仍使用引擎后台原始纹理，软件兼容回退仍是模糊加裁剪，不能视为原即时 GPU 或完整软件透镜。普通展开胶囊的 GPU/软件效果分别由模块保留的原算法作像素参照，实机帧统计按 VSYNC 去重。
+该补丁还增加可空的 `softwareBlurRadiusDp`，让同一表面分别声明 RenderEffect 半径与软件盒式模糊半径；不传时保留上游算法与取整方式，宿主传 GPU 17dp / 软件 10dp。预设 JSON 同步往返软件半径与 `fadeCurve`。FROSTED 在无折射 GPU 路径补齐原提亮，在高级形状 AGSL 路径使用原柔光 C¹ 透镜函数、边界收敛和预乘提亮；LIQUID 保留其折射与色散。普通展开胶囊的 GPU/软件效果分别由模块保留的原算法作像素参照，实机帧统计按 VSYNC 去重。
+
+单个圆角矩形的形状动画沿用常规内容节点 GPU 管线，按当前形状更新取样区域、透镜尺寸与像素预算；软件兼容沿用已存在的柔光采样并裁剪输出。进入或清除这类形状不丢弃已有背景，避免滚动后首次收起时等待后台纹理而闪出回退底色。双形状、融合、自定义角、光照、按压、渐进模糊等高级效果仍走原 AGSL / 软件轮廓管线。`HostTopIslandTransitionInstrumentedTest` 检查柔光 GPU、软件兼容和 Liquid 的真实窗口收起第一帧及内容换色，覆盖同位置重复收起。
 
 可读性扩展必须保留调用方的 `backdropOpacity`，只调整色罩。完整帧的柔光采样 alpha 经归一化后为 1；将其重写为 `1 - tintOpacity` 会使未模糊内容透出，浅深色不能使用不同的合成规则。外观验收同时使用完整模块 renderer 和细条纹/文字背景，不能只对照旧宿主单层透明算法或低频色块。
 

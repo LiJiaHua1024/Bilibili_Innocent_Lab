@@ -270,6 +270,9 @@ internal object ReleaseHighlightsCatalog {
     )), ReleaseHighlightsBatch(11, listOf(
         ReleaseHighlight("agent-task-assistant", HighlightKind.NEW, R.string.highlights_agent,
             HighlightDestination(com.Bilibili_Innocent_Lab.xposedmodule.agent.AgentPreferences.CATALOG_ID))
+    )), ReleaseHighlightsBatch(12, listOf(
+        ReleaseHighlight("comment-classic-style", HighlightKind.NEW, R.string.comment_classic_style_tip,
+            HighlightDestination("comments.classic_style.enabled"))
     )))
     val currentRevision: Int get() = batches.maxOf { it.revision }
     val destinations get() = batches.sortedByDescending { it.revision }.flatMap { it.entries }

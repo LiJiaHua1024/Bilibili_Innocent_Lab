@@ -62,7 +62,9 @@ class FrostedMaterialLifecycleTest {
         assertTrue(delivery.indexOf("!lifecycle.accepts(token)") < delivery.indexOf("frame = result"))
         val registration = renderer.after("internal fun register").before("fun notifyPositionChanged")
         assertTrue(registration.indexOf("!lifecycle.canWork") < registration.indexOf("surfaces[view]"))
-        assertFalse(renderer.contains(".recycle()"))
+        // 已交付帧继续由生命周期管理；后台工厂可清理尚未交付的失败分配。
+        assertFalse(renderer.before("private data class ModernBackdropFrame").contains(".recycle()"))
+        assertFalse(renderer.after("private class ModernSurfaceDrawable").contains(".recycle()"))
         assertTrue(renderer.contains("val recipient = WeakReference(this)"))
         // 休眠的柔光回退引擎必须同样跟随生命周期（Liquid 可能在前台会话中途失败切过来）：
         // 会话把启停发给**全部**引擎，柔光的启停就是 resume/stop。

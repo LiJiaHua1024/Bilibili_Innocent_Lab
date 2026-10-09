@@ -1094,7 +1094,7 @@ internal class LiquidActivityRenderer(
         ) {
             return
         }
-        val target = LiquidBackdropSizingPolicy.resolve(width, height)
+        val target = LiquidBackdropSizingPolicy.resolvePresentation(width, height)
         val request = "$assetId:${target.width}x${target.height}:$width:$height"
         if (customBackdropRequest == request && customBackdropFuture?.isDone == false) return
 
@@ -1147,7 +1147,7 @@ internal class LiquidActivityRenderer(
                     ?: activity.resources.displayMetrics.widthPixels.coerceAtLeast(1)
                 val currentHeight = root.height.takeIf { it > 0 }
                     ?: activity.resources.displayMetrics.heightPixels.coerceAtLeast(1)
-                val currentTarget = LiquidBackdropSizingPolicy.resolve(currentWidth, currentHeight)
+                val currentTarget = LiquidBackdropSizingPolicy.resolvePresentation(currentWidth, currentHeight)
                 if (currentWidth != width || currentHeight != height || currentTarget != target) {
                     source.discardUnpublished()
                     customBackdropRequest = null

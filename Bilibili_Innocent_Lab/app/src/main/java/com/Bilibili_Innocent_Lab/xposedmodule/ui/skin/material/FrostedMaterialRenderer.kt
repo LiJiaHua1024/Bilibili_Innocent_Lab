@@ -35,6 +35,7 @@ import com.Bilibili_Innocent_Lab.xposedmodule.ui.skin.background.LiquidBackgroun
 import com.Bilibili_Innocent_Lab.xposedmodule.ui.skin.engine.GlowEngine
 import com.Bilibili_Innocent_Lab.xposedmodule.ui.skin.engine.GlowEngineCallbacks
 import com.Bilibili_Innocent_Lab.xposedmodule.ui.skin.model.SkinId
+import com.Bilibili_Innocent_Lab.xposedmodule.ui.skin.liquid.LiquidBackdropSizingPolicy
 import com.Bilibili_Innocent_Lab.xposedmodule.ui.skin.liquid.LiquidMotionSurfaceFrameProvider
 import com.Bilibili_Innocent_Lab.xposedmodule.ui.skin.geometry.SamplingMatrixMath
 import com.Bilibili_Innocent_Lab.xposedmodule.ui.skin.geometry.ScrollSurfaceScope
@@ -500,18 +501,26 @@ private object ModernBackdropFactory {
     ): ModernBackdropFrame {
         val (w, h) = ModernMaterialPolicy.sampleSize(width, height)
         // 自定义资产解码/哈希只在已有后台线程执行；失败只回退自动背景。
-        val original = runCatching { customBackground?.invoke(w, h) }.getOrNull()
+        val presentation = LiquidBackdropSizingPolicy.resolvePresentation(width, height)
+        val original = runCatching { customBackground?.invoke(presentation.width, presentation.height) }.getOrNull()
             ?: createBitmap(w, h, Bitmap.Config.ARGB_8888).also { bitmap ->
                 val dark = ColorUtils.calculateLuminance(palette.background) < .5
                 val canvas = Canvas(bitmap)
                 AmbientBackdropScene.paint(canvas, palette, w, h, dark)
             }
-        val pixels = IntArray(w * h)
-        original.getPixels(pixels, 0, w, 0, 0, w, h)
-        val blurredPixels = ModernBackdropBlur.blur(pixels, w, h, ModernMaterialPolicy.blurRadius(w, width, density))
         val blurred = createBitmap(w, h, Bitmap.Config.ARGB_8888)
-        blurred.setPixels(blurredPixels, 0, w, 0, 0, w, h)
-        // 低分辨率背景放大后不再带颗粒斑块；磨砂采样仍使用独立的模糊副本。
+        try {
+            Canvas(blurred).drawBitmap(original, null, Rect(0, 0, w, h),
+                Paint(Paint.FILTER_BITMAP_FLAG or Paint.DITHER_FLAG))
+            val pixels = IntArray(w * h)
+            blurred.getPixels(pixels, 0, w, 0, 0, w, h)
+            val blurredPixels = ModernBackdropBlur.blur(pixels, w, h, ModernMaterialPolicy.blurRadius(w, width, density))
+            blurred.setPixels(blurredPixels, 0, w, 0, 0, w, h)
+        } catch (failure: Throwable) {
+            original.recycle(); blurred.recycle()
+            throw failure
+        }
+        // 自定义显示图与磨砂副本分别保留显示和光学采样的分辨率。
         original.prepareToDraw(); blurred.prepareToDraw()
         return ModernBackdropFrame(original, blurred)
     }

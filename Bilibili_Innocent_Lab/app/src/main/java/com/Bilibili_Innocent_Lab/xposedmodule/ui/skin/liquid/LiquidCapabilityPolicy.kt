@@ -64,12 +64,26 @@ internal data class LiquidBackdropSize(
         get() = width.toLong() * height.toLong() * LiquidBackdropSizingPolicy.BYTES_PER_PIXEL
 }
 
-/** 静态 backdrop 固定 0.25x 采样，并把单个 ARGB_8888 缓冲限制在 2 MiB 内。 */
+/** 光学采样限制为 0.25x / 2 MiB；自定义图片的显示底图使用独立的原生分辨率预算。 */
 internal object LiquidBackdropSizingPolicy {
     const val SAMPLE_SCALE = 0.25
     const val MAX_BUFFER_BYTES = 2L * 1024L * 1024L
     const val BYTES_PER_PIXEL = 4L
+    const val MAX_PRESENTATION_PIXELS = 8L * 1024L * 1024L
     private const val MAX_PIXELS = MAX_BUFFER_BYTES / BYTES_PER_PIXEL
+
+    /** 覆盖手机原生分辨率；极大窗口等比缩小，极窄窗口也不能突破预算。 */
+    fun resolvePresentation(fullWidth: Int, fullHeight: Int): LiquidBackdropSize {
+        require(fullWidth > 0 && fullHeight > 0) { "Backdrop dimensions must be positive" }
+        val pixels = fullWidth.toLong() * fullHeight.toLong()
+        if (pixels <= MAX_PRESENTATION_PIXELS) return LiquidBackdropSize(fullWidth, fullHeight)
+        val scale = minOf(sqrt(MAX_PRESENTATION_PIXELS.toDouble() / pixels),
+            MAX_PRESENTATION_PIXELS.toDouble() / fullWidth,
+            MAX_PRESENTATION_PIXELS.toDouble() / fullHeight)
+        val height = (fullHeight * scale).toInt().coerceAtLeast(1)
+        val width = (fullWidth * scale).toInt().coerceIn(1, (MAX_PRESENTATION_PIXELS / height).toInt())
+        return LiquidBackdropSize(width, height)
+    }
 
     /** 预览按控件的实际像素解码，超过现有位图预算才等比缩小。 */
     fun resolvePreview(viewWidth: Int, viewHeight: Int): LiquidBackdropSize {

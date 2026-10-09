@@ -6,6 +6,18 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class SettingsImportPlannerTest {
+    @Test fun `next v46 classic comment intent survives merged catalog v48`() {
+        val spec = SettingsCatalog.byId.getValue("comments.classic_style.enabled")
+        val current = snapshot(spec to StoredSetting(false, SettingValue.Bool(false)))
+        val source = document(46, listOf(record(spec, true, SettingValue.Bool(true))))
+        val plan = SettingsImportPlanner(listOf(spec), 48).plan(source, current)
+        assertEquals(ImportStatus.EXACT, plan.entries.single().status)
+        assertEquals(SettingValue.Bool(true), plan.writes.single().value)
+        val missing = SettingsImportPlanner(listOf(spec), 48).plan(document(47, emptyList()), current)
+        assertEquals(ImportStatus.NEW_IN_CURRENT, missing.entries.single().status)
+        assertTrue(missing.writes.isEmpty())
+    }
+
     @Test fun `older backups preserve all four newly added source configurations`() {
         val specs = SettingsCatalog.specs.filter { it.introducedCatalogVersion == 46 }
         val current = snapshot(*specs.map { spec ->

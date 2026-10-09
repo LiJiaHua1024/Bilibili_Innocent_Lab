@@ -18,8 +18,9 @@ class FrostedCustomBackgroundContractTest {
         assertFalse(worker.contains("SkinRepository"))
         val factory = renderer.after("private object ModernBackdropFactory").before("private class ModernSurfaceDrawable")
         assertTrue(factory.contains("ModernMaterialPolicy.sampleSize(width, height)"))
-        assertTrue(factory.indexOf("customBackground?.invoke(w, h)") >= 0)
-        assertTrue(factory.indexOf("customBackground?.invoke(w, h)") < factory.indexOf("AmbientBackdropScene.paint"))
+        assertTrue(factory.contains("LiquidBackdropSizingPolicy.resolvePresentation(width, height)"))
+        assertTrue(factory.indexOf("customBackground?.invoke(presentation.width, presentation.height)") >= 0)
+        assertTrue(factory.indexOf("customBackground?.invoke(presentation.width, presentation.height)") < factory.indexOf("AmbientBackdropScene.paint"))
         assertFalse(renderer.contains("PixelCopy"))
     }
 

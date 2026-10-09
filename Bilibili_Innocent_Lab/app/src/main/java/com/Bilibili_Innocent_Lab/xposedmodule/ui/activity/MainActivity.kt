@@ -400,6 +400,7 @@ class MainActivity : SkinnedActivity() {
     private var blockCommentQuickReply = false
     private var hideCommentSection = false
     private var replyTopologyEnabled = false
+    private var commentClassicStyle = false
     private var commentKeywordFilterEnabled = false
     private var commentFilterKeywords = ""
     private var commentMinLevelFilterEnabled = false
@@ -4403,6 +4404,7 @@ class MainActivity : SkinnedActivity() {
         blockCommentQuickReply = uiSettings.bool(FeaturePreferences.BLOCK_COMMENT_QUICK_REPLY)
         hideCommentSection = uiSettings.bool(FeaturePreferences.HIDE_COMMENT_SECTION)
         replyTopologyEnabled = uiSettings.bool(FeaturePreferences.REPLY_TOPOLOGY_ENABLED)
+        commentClassicStyle = uiSettings.bool(FeaturePreferences.COMMENT_CLASSIC_STYLE)
         commentKeywordFilterEnabled = uiSettings.bool(FeaturePreferences.COMMENT_KEYWORD_FILTER_ENABLED)
         commentFilterKeywords = uiSettings.string(FeaturePreferences.COMMENT_FILTER_KEYWORDS)
         commentMinLevelFilterEnabled = uiSettings.bool(FeaturePreferences.COMMENT_MIN_LEVEL_FILTER_ENABLED)
@@ -10136,6 +10138,33 @@ class MainActivity : SkinnedActivity() {
             textColor = monetColors.primary
             textSize = 12f
             typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+        }
+        MaterialSwitch(
+            lparams = LayoutParams(widthMatchParent = true) {
+                bottomMargin = 5.dp
+            }
+        ) {
+            bindFavoriteSwitch(this, FeaturePreferences.COMMENT_CLASSIC_STYLE, directToggle = true)
+            text = stringResource(R.string.comment_classic_style)
+            isAllCaps = false
+            textColor = colorResource(R.color.colorTextGray)
+            textSize = 15f
+            isChecked = commentClassicStyle
+            setOnCheckedChangeListener { _, checked ->
+                commentClassicStyle = checked
+                prefs().edit { putBoolean(FeaturePreferences.COMMENT_CLASSIC_STYLE, checked) }
+            }
+        }
+        TextView(
+            lparams = LayoutParams(widthMatchParent = true) {
+                bottomMargin = 12.dp
+            }
+        ) {
+            alpha = 0.6f
+            setLineSpacing(6f, 1f)
+            text = stringResource(R.string.comment_classic_style_tip)
+            textColor = colorResource(R.color.colorTextDark)
+            textSize = 12f
         }
         MaterialSwitch(
             lparams = LayoutParams(widthMatchParent = true) {

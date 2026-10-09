@@ -13,6 +13,7 @@ internal data class HostBottomBarFxConfig(
 ) {
     val heightDp: Float
         get() = when {
+            !liquidGlass -> HostNavigationMotion.BAR_HEIGHT_DP.toFloat()
             compact && iconOnly -> 44f
             iconOnly -> 48f
             compact -> 52f
@@ -20,7 +21,8 @@ internal data class HostBottomBarFxConfig(
         }
 
     fun horizontalMarginDp(parentWidthDp: Float, tabCount: Int): Float {
-        val baseMargin = if (liquidGlass) 16f else 0f
+        if (!liquidGlass) return 0f
+        val baseMargin = 16f
         if (!iconOnly) return baseMargin
         val normalWidth = (parentWidthDp - baseMargin * 2f).coerceAtLeast(0f)
         // 收窄实际布局，让图标、滑块与触控坐标一起适配；窄屏仍保留每项 44dp 的空间。

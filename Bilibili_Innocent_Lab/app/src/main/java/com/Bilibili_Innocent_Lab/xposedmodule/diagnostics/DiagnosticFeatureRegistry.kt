@@ -155,6 +155,7 @@ internal object DiagnosticFeatureRegistry {
             runtimeEvidenceExpected = true
         ),
         DiagnosticFeatureDescriptor("comment_section", DiagnosticFeatureCategory.COMMENTS),
+        DiagnosticFeatureDescriptor("comment_classic_style", DiagnosticFeatureCategory.COMMENTS, runtimeEvidenceExpected = true),
         DiagnosticFeatureDescriptor(
             "comment_purify",
             DiagnosticFeatureCategory.COMMENTS,
