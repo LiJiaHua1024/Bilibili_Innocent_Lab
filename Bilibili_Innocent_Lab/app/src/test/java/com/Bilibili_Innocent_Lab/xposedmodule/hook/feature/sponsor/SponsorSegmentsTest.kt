@@ -24,6 +24,7 @@ class SponsorSegmentsTest {
         val body = payload(good, segment("other-part").put("cid", "1"), segment("point").put("actionType", "poi"),
             segment("intro").put("category", "intro"))
         assertEquals(listOf(SponsorSegment("abc", 10_250, 20_500, 100_000)), SponsorSegmentParser.parse(body, id))
+        assertEquals(SponsorParseSummary(4, 1, 1, 1, 0), SponsorSegmentParser.parseDetailed(body, id).summary)
         assertTrue(SponsorSegmentParser.parse(body, id.copy(bvid = "BV1Q8P7z8Exw")).isEmpty())
     }
     @Test fun invalidRangesAndDuplicateContradictionsCannotBecomeSkips() {
@@ -38,5 +39,29 @@ class SponsorSegmentsTest {
         val item = SponsorSegment("id", 10_000, 20_000, 100_000)
         assertTrue(item.fits(100_000)); assertTrue(item.fits(102_000)); assertFalse(item.fits(103_000))
         assertFalse(item.fits(0)); assertFalse(item.copy(endMs = 110_000).fits(100_000))
+    }
+
+    @Test fun malformedRangesAndMissingCidAreReportedWithoutRelaxingPartChecks() {
+        val missing = segment("missing").apply { remove("cid") }
+        val parsed = SponsorSegmentParser.parseDetailed(payload(missing,
+            segment("invalid").put("segment", JSONArray(listOf(20, 10)))), id)
+        assertTrue(parsed.segments.isEmpty())
+        assertEquals(SponsorParseSummary(2, 0, 0, 1, 1), parsed.summary)
+    }
+
+    @Test fun reportedVideoWithLargeCidAcceptsItsActualSponsorAndProducesTheExpectedJump() {
+        // 2026-10-09 反馈视频的公开接口向量，离线验证解析与跳转策略，不依赖网络。
+        val video = SponsorVideoId("BV1FnhC6qEck", 42_072_543_108L)
+        val body = """[{"videoID":"BV1FnhC6qEck","segments":[{
+            "UUID":"f64c944a842c28eb2df0b60ae108285d74aa4b4abe6791d178abf85f4f1ca70c7",
+            "cid":"42072543108","category":"sponsor","actionType":"skip",
+            "segment":[450.415,509.762],"videoDuration":654}]}]"""
+        val parsed = SponsorSegmentParser.parseDetailed(body, video)
+        assertEquals("de1d", video.hashPrefix)
+        assertEquals(SponsorParseSummary(1, 0, 0, 0, 0), parsed.summary)
+        assertEquals(1, parsed.segments.size); assertTrue(parsed.segments.single().fits(654_000))
+        val policy = SponsorPlaybackPolicy(true).apply { load(parsed.segments); progress(450_415, 654_000, 0) }
+        assertEquals(509_762L, policy.request(true, 0)?.targetMs)
+        assertTrue(policy.confirm(509_762, 1)); assertTrue(policy.canUndo(2))
     }
 }

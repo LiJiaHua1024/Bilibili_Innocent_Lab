@@ -21,7 +21,8 @@ internal class SponsorPlaybackController(
     private val after: (Long, () -> Unit) -> SponsorSegmentRepository.Ticket,
     private val now: () -> Long,
     private val hint: (Hint) -> Unit,
-    private val applied: () -> Unit
+    private val applied: () -> Unit,
+    private val diagnostic: (String, String) -> Unit = { _, _ -> }
 ) {
     enum class Hint { NONE, SKIP, UNDO }
     private val policy = SponsorPlaybackPolicy(automatic)
@@ -29,6 +30,10 @@ internal class SponsorPlaybackController(
     private val gate = AtomicReference<SponsorPlaybackPolicy.Request?>()
     private val executed = AtomicBoolean(false)
     private var query: SponsorSegmentRepository.Ticket? = null
+    private var queryRetry: SponsorSegmentRepository.Ticket? = null
+    private var queryAttempts = 0
+    private var segments = emptyList<SponsorSegment>()
+    private var durationReported = false
     private var deadline: SponsorSegmentRepository.Ticket? = null
     private var undoExpiry: SponsorSegmentRepository.Ticket? = null
     private var seekRecovery: SponsorSegmentRepository.Ticket? = null
@@ -36,18 +41,57 @@ internal class SponsorPlaybackController(
     private var confirmedTarget: Long? = null
 
     fun start() {
+        if (!live() || queryAttempts != 0) return
+        fetch()
+        refresh()
+    }
+
+    private fun fetch() {
         if (!live()) return
+        val attempt = ++queryAttempts
+        val delivered = AtomicBoolean(false)
+        diagnostic("query.started", "attempt=$attempt")
         query = lookup(video) { result -> main {
-            if (!live()) return@main
-            policy.load((result as? SponsorFetchResult.Available)?.segments.orEmpty())
+            if (!live() || attempt != queryAttempts || !delivered.compareAndSet(false, true)) return@main
+            when (result) {
+                is SponsorFetchResult.Available -> {
+                    segments = result.segments
+                    policy.load(segments)
+                    diagnostic("query.available", "accepted=${segments.size}")
+                    result.summary?.let { summary ->
+                        diagnostic("query.parsed", "total=${summary.total} accepted=${segments.size}")
+                        if (summary.category > 0) diagnostic("filter.category", "count=${summary.category}")
+                        if (summary.action > 0) diagnostic("filter.action", "count=${summary.action}")
+                        if (summary.cid > 0) diagnostic("filter.cid", "count=${summary.cid}")
+                        if (summary.invalid > 0) diagnostic("filter.invalid", "count=${summary.invalid}")
+                    }
+                }
+                is SponsorFetchResult.Unavailable -> {
+                    diagnostic("query.failed.${result.reason}", "attempt=$attempt")
+                    if (result.retryAfterMs > 0 && queryAttempts < 3) {
+                        val delay = result.retryAfterMs.coerceIn(1_000, 60_000)
+                        diagnostic("query.retry", "delayMs=$delay")
+                        queryRetry = after(delay) {
+                            queryRetry = null
+                            if (live() && attempt == queryAttempts) fetch()
+                        }
+                    }
+                }
+            }
             refresh()
         } }
-        refresh()
     }
 
     fun refresh() {
         if (!live()) { stop(); return }
-        policy.progress(player.position(), player.duration(), now())
+        val duration = player.duration()
+        policy.progress(player.position(), duration, now())
+        if (!durationReported && segments.isNotEmpty() && duration > 0) {
+            durationReported = true
+            val rejected = segments.count { !it.fits(duration) }
+            diagnostic("progress.ready", "durationMs=$duration")
+            if (rejected > 0) diagnostic("filter.duration", "count=$rejected")
+        }
         if (policy.pending == null) gate.set(null)
         val request = policy.request(player.playing(), now())
         if (request != null) send(request, automatic = true)
@@ -105,6 +149,7 @@ internal class SponsorPlaybackController(
             confirmedTarget = position
             gate.set(null); deadline?.cancel(); deadline = null
             applied()
+            diagnostic("seek.confirmed", "")
             undoExpiry?.cancel()
             undoExpiry = after(6_001) { if (live()) refresh() }
         } else {
@@ -128,6 +173,7 @@ internal class SponsorPlaybackController(
         if (!alive.getAndSet(false)) return
         gate.set(null)
         query?.cancel(); query = null
+        queryRetry?.cancel(); queryRetry = null
         deadline?.cancel(); deadline = null
         undoExpiry?.cancel(); undoExpiry = null
         seekRecovery?.cancel(); seekRecovery = null

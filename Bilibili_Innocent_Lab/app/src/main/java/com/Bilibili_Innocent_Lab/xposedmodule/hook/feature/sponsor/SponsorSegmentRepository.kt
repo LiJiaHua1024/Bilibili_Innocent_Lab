@@ -41,7 +41,9 @@ internal class SponsorSegmentRepository(
             val hit = cache[video]?.takeIf { it.expires > now() }
             if (closed) { immediate = SponsorFetchResult.Unavailable("closed"); null }
             else if (hit != null) { immediate = hit.result; null }
-            else if (rateLimitedUntil > now()) { immediate = SponsorFetchResult.Unavailable("rate-limited"); null }
+            else if (rateLimitedUntil > now()) {
+                immediate = SponsorFetchResult.Unavailable("rate-limited", (rateLimitedUntil - now()).coerceAtLeast(1)); null
+            }
             else {
                 cache.remove(video)
                 val existing = flights[video]
@@ -54,10 +56,10 @@ internal class SponsorSegmentRepository(
                     value.listeners[key] = listener
                     flights[video] = value
                     try {
-                        value.timeout = timer.schedule({ finish(video, value, SponsorFetchResult.Unavailable("timeout"), true) }, timeoutMs, TimeUnit.MILLISECONDS)
+                        value.timeout = timer.schedule({ finish(video, value, SponsorFetchResult.Unavailable("timeout", 2_000), true) }, timeoutMs, TimeUnit.MILLISECONDS)
                         value.task = executor.submit {
                             val result = runCatching { source.fetch(video, value.cancellation) }
-                                .getOrElse { SponsorFetchResult.Unavailable("network-or-response") }
+                                .getOrElse { SponsorFetchResult.Unavailable("network-or-response", 2_000) }
                             finish(video, value, result, false)
                         }
                     } catch (_: RejectedExecutionException) {

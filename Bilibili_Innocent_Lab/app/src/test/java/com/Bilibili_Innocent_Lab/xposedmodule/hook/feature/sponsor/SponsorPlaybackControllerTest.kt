@@ -8,7 +8,8 @@ class SponsorPlaybackControllerTest {
         val id = SponsorVideoId("BV14741127BN", 1)
         var identity = id; var foreground = true; var playing = true; var position = 12_000L
         var progressAvailable = true
-        var time = 0L; var applied = 0; var cancelled = 0
+        var time = 0L; var applied = 0; var cancelled = 0; var queries = 0
+        val diagnostics = mutableListOf<String>()
         var hint = SponsorPlaybackController.Hint.NONE
         lateinit var result: (SponsorFetchResult) -> Unit
         data class Seek(val target: Int, val valid: () -> Boolean, val executing: () -> Unit)
@@ -16,12 +17,12 @@ class SponsorPlaybackControllerTest {
         val queue = ArrayDeque<() -> Unit>()
         val timers = mutableListOf<Pair<Long, () -> Unit>>()
         val controller = SponsorPlaybackController(id, auto, this,
-            { _, callback -> result = callback; SponsorSegmentRepository.Ticket { cancelled++ } },
+            { _, callback -> queries++; result = callback; SponsorSegmentRepository.Ticket { cancelled++ } },
             { queue.add(it) }, { delay, callback ->
                 var active = true
                 timers += delay to { if (active) callback() }
                 SponsorSegmentRepository.Ticket { active = false }
-            }, { time }, { hint = it }, { applied++ })
+            }, { time }, { hint = it }, { applied++ }, { event, _ -> diagnostics += event })
         override fun valid(video: SponsorVideoId) = foreground && identity == video
         override fun position() = if (progressAvailable) position else -1L
         override fun duration() = if (progressAvailable) 100_000L else 0L
@@ -131,5 +132,56 @@ class SponsorPlaybackControllerTest {
         assertEquals(SponsorPlaybackController.Hint.NONE, h.hint)
         h.progressAvailable = true; h.controller.refresh()
         assertEquals(1, h.seeks.size)
+    }
+
+    @Test fun transientQueryFailureRetriesAndCanRecoverWithinTheSamePlayback() {
+        val h = Harness(true); h.controller.start()
+        h.result(SponsorFetchResult.Unavailable("network-error", 2_000)); h.drain()
+        assertEquals(2_000L, h.timers.single().first)
+        assertTrue(h.seeks.isEmpty())
+        h.timers.single().second(); assertEquals(2, h.queries)
+        h.deliver(); assertEquals(1, h.seeks.size)
+        assertTrue(h.diagnostics.contains("query.failed.network-error"))
+        assertTrue(h.execute()); assertTrue(h.diagnostics.contains("seek.confirmed"))
+    }
+
+    @Test fun persistentFailureStopsAfterThreeAttemptsAndDuplicateResultsDoNotScheduleMoreWork() {
+        val h = Harness(); h.controller.start()
+        repeat(3) { attempt ->
+            h.result(SponsorFetchResult.Unavailable("timeout", 2_000)); h.drain()
+            h.result(SponsorFetchResult.Unavailable("timeout", 2_000)); h.drain()
+            if (attempt < 2) h.timers.last().second()
+        }
+        assertEquals(3, h.queries); assertEquals(2, h.timers.size)
+        assertTrue(h.seeks.isEmpty())
+    }
+
+    @Test fun stoppingOrChangingTheVideoPreventsPendingRetries() {
+        for (stop in listOf(true, false)) {
+            val h = Harness(); h.controller.start()
+            h.result(SponsorFetchResult.Unavailable("network-error", 2_000)); h.drain()
+            if (stop) h.controller.stop() else h.identity = h.id.copy(cid = 2)
+            h.timers.single().second()
+            assertEquals(1, h.queries); assertTrue(h.seeks.isEmpty())
+        }
+    }
+
+    @Test fun rateLimitWaitsForBackoffButPermanentErrorsAndEmptyResultsDoNotRetry() {
+        val limited = Harness(); limited.controller.start()
+        limited.result(SponsorFetchResult.Unavailable("rate-limited", 60_000)); limited.drain()
+        assertEquals(60_000L, limited.timers.single().first)
+        for (result in listOf(SponsorFetchResult.Unavailable("invalid-response"),
+            SponsorFetchResult.Unavailable("http-403"), SponsorFetchResult.Available(emptyList()))) {
+            val h = Harness(); h.controller.start(); h.result(result); h.drain()
+            assertTrue(h.timers.isEmpty()); assertEquals(1, h.queries)
+        }
+    }
+
+    @Test fun retryDoesNotAcceptALateResultFromThePreviousAttempt() {
+        val h = Harness(true); h.controller.start(); val old = h.result
+        old(SponsorFetchResult.Unavailable("timeout", 2_000)); h.drain()
+        h.timers.single().second()
+        old(SponsorFetchResult.Available(listOf(SponsorSegment("old", 10_000, 20_000, 100_000)))); h.drain()
+        assertTrue(h.seeks.isEmpty()); h.deliver(); assertEquals(1, h.seeks.size)
     }
 }
