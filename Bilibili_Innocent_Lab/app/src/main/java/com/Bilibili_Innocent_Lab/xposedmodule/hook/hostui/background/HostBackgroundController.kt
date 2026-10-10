@@ -14,9 +14,17 @@ internal class HostBackgroundController(private val config: HostBackgroundConfig
     private var requested = false
     private var applied = false
 
+    fun scroll(list: ViewGroup, dy: Int) {
+        if (dy == 0 || config.preset == HostBackgroundPreset.CUSTOM) return
+        val surface = surfaces[list] ?: return
+        surface.scrollOffset = (surface.scrollOffset + dy).coerceAtLeast(0L)
+    }
+
     fun apply(list: ViewGroup, night: Boolean) {
         if (!config.enabled) return
         val surface = surfaces.getOrPut(list) { HostBackgroundDrawable(config, night, image) }
+        // 回到顶部或刷新后从原点重新对齐；不能用 RecyclerView.scrollY（通常始终为 0）。
+        if (config.preset != HostBackgroundPreset.CUSTOM && list.childCount > 0 && !list.canScrollVertically(-1)) surface.scrollOffset = 0L
         if (surface.night != night) { surface.night = night; surface.invalidateSelf() }
         if (list.background !== surface) list.background = surface
         if (!applied) { applied = true; onApplied() }

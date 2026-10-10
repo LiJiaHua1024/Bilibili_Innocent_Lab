@@ -16,7 +16,7 @@ import android.os.SystemClock
 import androidx.core.graphics.ColorUtils
 import java.lang.ref.WeakReference
 
-/** 静态柔光，几何变化时才重建 shader；不在滚动帧中分配位图或运行模糊。 */
+/** 内置预设使用连续世界坐标；自定义图片保持原有缩放与遮罩缓存。 */
 internal class HostBackgroundDrawable(
     private val config: HostBackgroundConfig,
     var night: Boolean = false,
@@ -27,13 +27,18 @@ internal class HostBackgroundDrawable(
     private var base: Shader? = null
     private var glow: Shader? = null
     private var accent: Shader? = null
-    private var celestial: HostBackgroundCelestialArtwork? = null
+    private val scene = if (config.preset != HostBackgroundPreset.CUSTOM && config.preset != HostBackgroundPreset.OFF) {
+        val owner = WeakReference(this)
+        HostBackgroundScene(config) { owner.get()?.invalidateSelf() }
+    } else null
+    internal var scrollOffset = 0L
+        set(value) { if (field != value) { field = value; invalidateSelf() } }
     private val destination = RectF()
     private var shaderNight: Boolean? = null
     private var drawableAlpha = 255
     private var key: HostBackgroundRasterCache.Key? = null
     private var raster: Bitmap? = null
-    internal val isRasterReady get() = raster != null
+    internal val isRasterReady get() = scene?.isReady ?: (raster != null)
     private var requestScheduled = false
     private var requestedKey: HostBackgroundRasterCache.Key? = null
     private val cacheRequest = Runnable {
@@ -53,6 +58,7 @@ internal class HostBackgroundDrawable(
     override fun onBoundsChange(bounds: Rect) { rebuild() }
 
     private fun rebuild() {
+        if (scene != null) { shaderNight = night; return }
         unscheduleSelf(cacheRequest)
         requestScheduled = false
         requestedKey = null
@@ -80,7 +86,6 @@ internal class HostBackgroundDrawable(
         if (night && !config.preset.isCelestial) for (i in colors.indices) colors[i] = ColorUtils.blendARGB(colors[i], 0xff10121b.toInt(), .86f)
         val w = bounds.width().toFloat().coerceAtLeast(1f)
         val h = bounds.height().toFloat().coerceAtLeast(1f)
-        celestial = HostBackgroundCelestialArtwork.create(config.preset, w, h)
         base = LinearGradient(0f, 0f, w, h, colors[0], colors[1], Shader.TileMode.CLAMP)
         glow = RadialGradient(w * .05f, h * .26f, maxOf(w, h) * .65f,
             colors[2], Color.TRANSPARENT, Shader.TileMode.CLAMP)
@@ -96,6 +101,11 @@ internal class HostBackgroundDrawable(
     }
 
     override fun draw(canvas: Canvas) {
+        scene?.let {
+            it.draw(canvas, bounds, scrollOffset, night, drawableAlpha, paint.colorFilter,
+                synchronous = !cacheEnabled || !canvas.isHardwareAccelerated)
+            return
+        }
         if (shaderNight != night) rebuild()
         if (drawableAlpha == 0) return
         paint.alpha = drawableAlpha
@@ -125,13 +135,6 @@ internal class HostBackgroundDrawable(
             canvas.drawRect(bounds, paint)
             paint.shader = accent
             canvas.drawRect(bounds, paint)
-            celestial?.let {
-                val saved = canvas.save()
-                canvas.clipRect(bounds)
-                canvas.translate(bounds.left.toFloat(), bounds.top.toFloat())
-                it.draw(canvas, drawableAlpha, paint.colorFilter)
-                canvas.restoreToCount(saved)
-            }
         }
         paint.shader = null
         if (config.veil == 0) return

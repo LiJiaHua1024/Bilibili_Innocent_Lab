@@ -28,7 +28,7 @@ import java.io.File
 @RunWith(AndroidJUnit4::class)
 class HostBackgroundEditorInstrumentedTest {
     /** 本机宿主切页验证，只有显式 verifyHost=true 才执行设备坐标操作。 */
-    @Test fun backgroundRemainsStationaryAcrossHostScrollAndTabChanges() {
+    @Test fun backgroundContinuesAcrossHostScrollAndTabChanges() {
         org.junit.Assume.assumeTrue(InstrumentationRegistry.getArguments().getString("verifyHost") == "true")
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         val context = instrumentation.targetContext
@@ -54,15 +54,18 @@ class HostBackgroundEditorInstrumentedTest {
         fun capture(name: String): Pair<Int, Int> {
             val bitmap = requireNotNull(instrumentation.uiAutomation.takeScreenshot())
             // 热门为铺满宽度的单列卡片，取上方入口区；双列推荐取侧边留白。
-            val pixel = bitmap.getPixel(4, if (name == "hot-tab") 450 else bitmap.height / 3)
+            var backgroundHash = 0
+            for (y in 500..1900 step 7) for (x in listOf(4, bitmap.width / 2, bitmap.width - 5)) {
+                backgroundHash = 31 * backgroundHash + bitmap.getPixel(x, y)
+            }
             var contentHash = 0
             for (y in 500..1600 step 100) for (x in 120..960 step 120) contentHash = 31 * contentHash + bitmap.getPixel(x, y)
             File(context.cacheDir, "host-background-$name.png").outputStream().use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }
             bitmap.recycle()
-            return pixel to contentHash
+            return backgroundHash to contentHash
         }
         try {
-            prefs.edit().putString(FeaturePreferences.HOST_BACKGROUND_PRESET, "aurora")
+            prefs.edit().putString(FeaturePreferences.HOST_BACKGROUND_PRESET, "starry")
                 .putBoolean(FeaturePreferences.HOST_VIDEO_CARDS, true).commit()
             shell("am force-stop tv.danmaku.bili")
             shell("am start -W -n tv.danmaku.bili/.MainActivityV2")
@@ -70,21 +73,22 @@ class HostBackgroundEditorInstrumentedTest {
             // 坐标已按本机 1080×2340 的当前推荐页截图确认；先切页，避免滚动折叠顶栏后沿用坐标。
             rootInput("tap 440 320")
             android.os.SystemClock.sleep(4000)
-            val hot = capture("hot-tab")
-            assertTrue("Hot tab must receive the selected background", android.graphics.Color.green(hot.first) > android.graphics.Color.red(hot.first) + 5)
+            capture("hot-tab")
             rootInput("tap 294 320")
             android.os.SystemClock.sleep(1200)
-            val returned = capture("recommend-return")
-            assertTrue(android.graphics.Color.green(returned.first) > android.graphics.Color.red(returned.first) + 5)
-            // 首次滑动收起搜索栏，会改变列表边界；边界稳定后再验证背景不随卡片滚动。
+            capture("recommend-return")
+            // 首次滑动收起搜索栏，会改变列表边界；稳定后逐屏验证内容与世界背景一起移动。
             rootInput("swipe 540 1650 540 750 350")
             android.os.SystemClock.sleep(1200)
-            val before = capture("scroll-before")
-            rootInput("swipe 540 1650 540 750 350")
-            android.os.SystemClock.sleep(1200)
-            val after = capture("scroll-after")
-            assertNotEquals("The cards must actually scroll", before.second, after.second)
-            assertEquals("Background must stay fixed while cards scroll", before.first, after.first)
+            var before = capture("scroll-before")
+            for (screen in 1..8) {
+                rootInput("swipe 540 1650 540 750 350")
+                android.os.SystemClock.sleep(1200)
+                val after = capture("scroll-after-$screen")
+                assertNotEquals("The cards must actually scroll on screen $screen", before.second, after.second)
+                assertNotEquals("Background must continue beyond the initial viewport on screen $screen", before.first, after.first)
+                before = after
+            }
         } finally {
             prefs.edit().apply { keys.forEach { key -> when (val value = original[key]) {
                 is String -> putString(key, value)

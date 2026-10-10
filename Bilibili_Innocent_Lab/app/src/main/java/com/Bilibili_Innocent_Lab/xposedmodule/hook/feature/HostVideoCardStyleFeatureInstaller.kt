@@ -8,6 +8,8 @@ import com.Bilibili_Innocent_Lab.xposedmodule.hook.hostui.background.HostBackgro
 import com.Bilibili_Innocent_Lab.xposedmodule.hook.hostui.background.HostBackgroundController
 
 import android.view.View
+import android.view.ViewGroup
+import com.Bilibili_Innocent_Lab.xposedmodule.hook.hostui.background.HostBackgroundPreset
 import com.Bilibili_Innocent_Lab.xposedmodule.runtime.KavaMemberLookup
 import java.util.concurrent.atomic.AtomicBoolean
 
@@ -52,6 +54,20 @@ internal class HostVideoCardStyleFeatureInstaller(
             }
         })
         return runCatching {
+            var scrollHooks = 0
+            if (backgroundConfig.enabled && backgroundConfig.preset != HostBackgroundPreset.CUSTOM) {
+                val recycler = KavaMemberLookup.classOrNull(loader, "androidx.recyclerview.widget.RecyclerView")
+                    ?: error("Missing RecyclerView for background scrolling")
+                environment.registrar.exact("$id.background_scroll", recycler, "dispatchOnScrolled",
+                    Int::class.javaPrimitiveType!!, Int::class.javaPrimitiveType!!) {
+                    after {
+                        if (hasThrowable) return@after
+                        val list = instance as? ViewGroup ?: return@after
+                        background.scroll(list, argOrNull(1) as? Int ?: 0)
+                    }
+                }
+                scrollHooks = 1
+            }
             if (grid != null) {
                 // assignSpans 已完成，直接参与宿主当前测量，避免布局后再重测整列表。
                 val measure = grid.measureChild
@@ -74,7 +90,7 @@ internal class HostVideoCardStyleFeatureInstaller(
                 }
             }
             environment.logInfo("${id}_installed", "[BIL] 视频列表美化安装成功（测量前留白=${grid != null}）")
-            FeatureInstallResult.Installed(if (grid != null) 2 else 1, complete = !enabled || grid != null)
+            FeatureInstallResult.Installed((if (grid != null) 2 else 1) + scrollHooks, complete = !enabled || grid != null)
         }.getOrElse {
             environment.logError("${id}_error", "[BIL] 视频列表美化安装失败: $it")
             FeatureInstallResult.Skipped("registration-failed")
@@ -100,7 +116,7 @@ internal class HostVideoCardStyleFeatureInstaller(
                     if (!backgroundConfig.enabled) FeatureInstallResult.Skipped("disabled")
                     else when (val shared = install(environment)) {
                         // 背景覆盖同一个 bind Hook；不依赖卡片的 GridLayoutManager 测量点。
-                        is FeatureInstallResult.Installed -> FeatureInstallResult.Installed(1)
+                        is FeatureInstallResult.Installed -> FeatureInstallResult.Installed(if (backgroundConfig.preset == HostBackgroundPreset.CUSTOM) 1 else 2)
                         is FeatureInstallResult.Skipped -> if (enabled && shared.reason == "registration-failed") {
                             // 卡片测量点失败时，背景仍可独立使用 bind；保持原有故障隔离。
                             HostVideoCardStyleFeatureInstaller(false, radiusDp, backgroundConfig, BACKGROUND_ID).install(environment)
