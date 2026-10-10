@@ -27,6 +27,7 @@ internal class HostBackgroundDrawable(
     private var base: Shader? = null
     private var glow: Shader? = null
     private var accent: Shader? = null
+    private var celestial: HostBackgroundCelestialArtwork? = null
     private val destination = RectF()
     private var shaderNight: Boolean? = null
     private var drawableAlpha = 255
@@ -71,11 +72,15 @@ internal class HostBackgroundDrawable(
             HostBackgroundPreset.OCEAN -> intArrayOf(0xffe4f3fa.toInt(), 0xffe3eafb.toInt(), 0xff8bd7d8.toInt())
             HostBackgroundPreset.SUNSET -> intArrayOf(0xffffeddf.toInt(), 0xfff3e6f7.toInt(), 0xffffbb9c.toInt())
             HostBackgroundPreset.MIST -> intArrayOf(0xffedf1ee.toInt(), 0xffe2e8ed.toInt(), 0xffb5c9be.toInt())
+            HostBackgroundPreset.STARRY -> intArrayOf(0xff02030b.toInt(), 0xff090f25.toInt(), 0xff122756.toInt())
+            HostBackgroundPreset.NEBULA -> intArrayOf(0xff03020c.toInt(), 0xff10051e.toInt(), 0xff26114c.toInt())
+            HostBackgroundPreset.METEOR -> intArrayOf(0xff02040d.toInt(), 0xff070d22.toInt(), 0xff102a4a.toInt())
             else -> intArrayOf(0xffe8f3f1.toInt(), 0xffeae7fa.toInt(), 0xffa8d8cc.toInt())
         }
-        if (night) for (i in colors.indices) colors[i] = ColorUtils.blendARGB(colors[i], 0xff10121b.toInt(), .86f)
+        if (night && !config.preset.isCelestial) for (i in colors.indices) colors[i] = ColorUtils.blendARGB(colors[i], 0xff10121b.toInt(), .86f)
         val w = bounds.width().toFloat().coerceAtLeast(1f)
         val h = bounds.height().toFloat().coerceAtLeast(1f)
+        celestial = HostBackgroundCelestialArtwork.create(config.preset, w, h)
         base = LinearGradient(0f, 0f, w, h, colors[0], colors[1], Shader.TileMode.CLAMP)
         glow = RadialGradient(w * .05f, h * .26f, maxOf(w, h) * .65f,
             colors[2], Color.TRANSPARENT, Shader.TileMode.CLAMP)
@@ -120,10 +125,18 @@ internal class HostBackgroundDrawable(
             canvas.drawRect(bounds, paint)
             paint.shader = accent
             canvas.drawRect(bounds, paint)
+            celestial?.let {
+                val saved = canvas.save()
+                canvas.clipRect(bounds)
+                canvas.translate(bounds.left.toFloat(), bounds.top.toFloat())
+                it.draw(canvas, drawableAlpha, paint.colorFilter)
+                canvas.restoreToCount(saved)
+            }
         }
         paint.shader = null
         if (config.veil == 0) return
-        paint.color = ColorUtils.setAlphaComponent(if (night) 0xff10121b.toInt() else Color.WHITE,
+        val veilColor = if (config.preset.isCelestial) Color.BLACK else if (night) 0xff10121b.toInt() else Color.WHITE
+        paint.color = ColorUtils.setAlphaComponent(veilColor,
             (config.veil * drawableAlpha / 100).coerceIn(0, 255))
         canvas.drawRect(bounds, paint)
     }

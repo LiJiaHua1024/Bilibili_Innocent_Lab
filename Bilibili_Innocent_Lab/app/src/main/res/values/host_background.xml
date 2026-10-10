@@ -9,6 +9,9 @@
     <string name="host_background_ocean">Ocean glass</string>
     <string name="host_background_sunset">Peach sunset</string>
     <string name="host_background_mist">Forest mist</string>
+    <string name="host_background_starry">Quiet starfield</string>
+    <string name="host_background_nebula">Dream nebula</string>
+    <string name="host_background_meteor">Meteor dusk</string>
     <string name="host_background_custom">Custom image</string>
     <string name="host_background_choose">Choose or replace an image</string>
     <string name="host_background_use_saved">Use saved image</string>

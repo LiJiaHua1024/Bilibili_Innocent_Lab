@@ -44,6 +44,9 @@ internal fun MainActivity.backgroundLabel(preset: HostBackgroundPreset): String 
     HostBackgroundPreset.OCEAN -> R.string.host_background_ocean
     HostBackgroundPreset.SUNSET -> R.string.host_background_sunset
     HostBackgroundPreset.MIST -> R.string.host_background_mist
+    HostBackgroundPreset.STARRY -> R.string.host_background_starry
+    HostBackgroundPreset.NEBULA -> R.string.host_background_nebula
+    HostBackgroundPreset.METEOR -> R.string.host_background_meteor
     HostBackgroundPreset.CUSTOM -> R.string.host_background_custom
 })
 

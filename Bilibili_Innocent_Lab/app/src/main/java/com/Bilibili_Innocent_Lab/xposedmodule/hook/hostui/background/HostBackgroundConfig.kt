@@ -1,7 +1,10 @@
 package com.Bilibili_Innocent_Lab.xposedmodule.hook.hostui.background
 
 internal enum class HostBackgroundPreset(val value: String) {
-    OFF("off"), AURORA("aurora"), SAKURA("sakura"), OCEAN("ocean"), SUNSET("sunset"), MIST("mist"), CUSTOM("custom");
+    OFF("off"), AURORA("aurora"), SAKURA("sakura"), OCEAN("ocean"), SUNSET("sunset"), MIST("mist"),
+    STARRY("starry"), NEBULA("nebula"), METEOR("meteor"), CUSTOM("custom");
+
+    val isCelestial get() = this == STARRY || this == NEBULA || this == METEOR
 
     companion object {
         fun read(value: String) = entries.firstOrNull { it.value == value } ?: OFF

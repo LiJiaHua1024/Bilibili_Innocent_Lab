@@ -158,7 +158,8 @@ class HostBackgroundEditorInstrumentedTest {
                 button(R.string.dialog_cancel).perform(click())
                 assertEquals(original[FeaturePreferences.HOST_BACKGROUND_PRESET], prefs.all[FeaturePreferences.HOST_BACKGROUND_PRESET])
                 for ((label, value) in listOf(R.string.host_background_aurora to "aurora", R.string.host_background_sakura to "sakura",
-                    R.string.host_background_ocean to "ocean", R.string.host_background_sunset to "sunset", R.string.host_background_mist to "mist")) {
+                    R.string.host_background_ocean to "ocean", R.string.host_background_sunset to "sunset", R.string.host_background_mist to "mist",
+                    R.string.host_background_starry to "starry", R.string.host_background_nebula to "nebula", R.string.host_background_meteor to "meteor")) {
                     open()
                     button(label).perform(click())
                     button(R.string.dialog_confirm).perform(click())
@@ -180,7 +181,7 @@ class HostBackgroundEditorInstrumentedTest {
                 button(R.string.dialog_confirm).perform(click())
                 assertEquals("custom", prefs.getString(FeaturePreferences.HOST_BACKGROUND_PRESET, ""))
                 assertTrue(prefs.getString(FeaturePreferences.HOST_BACKGROUND_ASSET, "").orEmpty().isNotEmpty())
-                assertEquals(6, saved)
+                assertEquals(9, saved)
                 if (verifyHost) {
                     captureHost("custom")
                     prefs.edit().putBoolean(FeaturePreferences.HOST_VIDEO_CARDS, false).commit()
@@ -190,6 +191,10 @@ class HostBackgroundEditorInstrumentedTest {
                     captureHost("aurora")
                     prefs.edit().putString(FeaturePreferences.HOST_BACKGROUND_PRESET, "sunset").commit()
                     captureHost("sunset")
+                    for (preset in listOf("starry", "nebula", "meteor")) {
+                        prefs.edit().putString(FeaturePreferences.HOST_BACKGROUND_PRESET, preset).commit()
+                        captureHost(preset)
+                    }
                 }
             }
         } finally {

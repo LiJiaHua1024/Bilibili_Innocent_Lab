@@ -9,6 +9,9 @@
     <string name="host_background_ocean">海鹽琉璃</string>
     <string name="host_background_sunset">蜜桃落日</string>
     <string name="host_background_mist">森林晨霧</string>
+    <string name="host_background_starry">靜謐星空</string>
+    <string name="host_background_nebula">綺夢星雲</string>
+    <string name="host_background_meteor">流星夜幕</string>
     <string name="host_background_custom">自訂圖片</string>
     <string name="host_background_choose">選擇或更換圖片</string>
     <string name="host_background_use_saved">使用已儲存圖片</string>

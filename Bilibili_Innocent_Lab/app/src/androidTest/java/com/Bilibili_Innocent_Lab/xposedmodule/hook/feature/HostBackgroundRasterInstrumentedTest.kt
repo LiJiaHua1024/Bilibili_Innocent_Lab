@@ -25,6 +25,39 @@ import java.util.concurrent.TimeUnit
 
 @RunWith(AndroidJUnit4::class)
 class HostBackgroundRasterInstrumentedTest {
+    @Test fun celestialArtworkIsStableAcrossThemeAndSizeChanges() {
+        val output = File(InstrumentationRegistry.getInstrumentation().targetContext.cacheDir, "host-background-raster-qa").apply { mkdirs() }
+        val montage = Bitmap.createBitmap(1080, 1440, Bitmap.Config.ARGB_8888)
+        val presets = listOf(HostBackgroundPreset.STARRY, HostBackgroundPreset.NEBULA, HostBackgroundPreset.METEOR)
+        try {
+            for ((column, preset) in presets.withIndex()) {
+                val drawable = HostBackgroundDrawable(HostBackgroundConfig(preset), cacheEnabled = false)
+                drawable.setBounds(0, 0, 360, 720)
+                val day = Bitmap.createBitmap(360, 720, Bitmap.Config.ARGB_8888)
+                val night = Bitmap.createBitmap(360, 720, Bitmap.Config.ARGB_8888)
+                val restored = Bitmap.createBitmap(360, 720, Bitmap.Config.ARGB_8888)
+                try {
+                    drawable.draw(Canvas(day))
+                    drawable.night = true
+                    drawable.draw(Canvas(night))
+                    assertTrue("Celestial artwork must retain its night sky in either app theme: $preset", day.sameAs(night))
+                    drawable.setBounds(0, 0, 720, 360)
+                    drawable.draw(Canvas(restored))
+                    restored.eraseColor(Color.TRANSPARENT)
+                    drawable.setBounds(0, 0, 360, 720)
+                    drawable.night = false
+                    drawable.draw(Canvas(restored))
+                    assertTrue("Star positions must survive theme and size changes for $preset", day.sameAs(restored))
+                    Canvas(montage).apply {
+                        drawBitmap(day, column * 360f, 0f, null)
+                        drawBitmap(night, column * 360f, 720f, null)
+                    }
+                } finally { day.recycle(); night.recycle(); restored.recycle() }
+            }
+            File(output, "celestial-presets.png").outputStream().use { montage.compress(Bitmap.CompressFormat.PNG, 100, it) }
+        } finally { montage.recycle() }
+    }
+
     @Test fun recycledSourceDoesNotBreakCacheEviction() {
         val source = Bitmap.createBitmap(40, 80, Bitmap.Config.ARGB_8888).apply { eraseColor(Color.WHITE); setHasAlpha(false) }
         fun request(key: HostBackgroundRasterCache.Key) {
@@ -112,12 +145,16 @@ class HostBackgroundRasterInstrumentedTest {
                     val mean = difference.toDouble() / count
                     rows += "$index preset=${config.preset} night=$night veil=${config.veil} alpha=${image?.hasAlpha()} maxError=$maxError meanError=$mean"
                     File(output, "results.txt").writeText(rows.joinToString("\n"))
-                    if (index == 0 || index == 6 || index == 12 || maxError > 3 || mean > .7) {
+                    if (index == 0 || index == 6 || index in 10..15 || maxError > 3 || mean > .7) {
                         File(output, "$index-before.png").outputStream().use { before.compress(Bitmap.CompressFormat.PNG, 100, it) }
                         File(output, "$index-after.png").outputStream().use { after.compress(Bitmap.CompressFormat.PNG, 100, it) }
                     }
                     before.recycle(); after.recycle()
-                    assertTrue("Visible raster difference: ${rows.last()}", maxError <= 3 && mean <= .7)
+                    // 代码云气纹理的 CPU/GPU 双线性取样与多层混色存在颜色舍入差异。
+                    // 保留旧预设门禁；新预设仍限制单点与整图误差，拒绝星点丢失、移位或大面积变色。
+                    val matches = if (config.preset.isCelestial) maxError <= 8 && mean <= 1.25
+                        else maxError <= 3 && mean <= .7
+                    assertTrue("Visible raster difference: ${rows.last()}", matches)
                 }
                 scenario.onActivity { surface.background = null; (surface.parent as ViewGroup).removeView(surface) }
             }
