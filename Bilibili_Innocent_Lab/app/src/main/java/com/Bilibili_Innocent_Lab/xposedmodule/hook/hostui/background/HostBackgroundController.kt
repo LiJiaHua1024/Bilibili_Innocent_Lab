@@ -11,6 +11,7 @@ internal class HostBackgroundController(private val config: HostBackgroundConfig
     private val onApplied: () -> Unit = {}) {
     private class Surface(val drawable: HostBackgroundDrawable, val position: HostBackgroundListPosition)
     private val surfaces = WeakHashMap<ViewGroup, Surface>()
+    private val loadingFooter = HostBackgroundLoadingFooter()
     private var image: Bitmap? = null
     private var requested = false
     private var applied = false
@@ -32,6 +33,8 @@ internal class HostBackgroundController(private val config: HostBackgroundConfig
         if (config.preset != HostBackgroundPreset.CUSTOM && surface.scrollOffset != 0L && state.position.isAtTop(list)) surface.scrollOffset = 0L
         if (surface.night != night) { surface.night = night; surface.invalidateSelf() }
         if (list.background !== surface) list.background = surface
+        // 加载更多尾项有独立的换肤背景，绘制前透出同一条连续壁纸。
+        loadingFooter.apply(list)
         if (!applied) { applied = true; onApplied() }
         if (config.preset != HostBackgroundPreset.CUSTOM || requested) return
         requested = true

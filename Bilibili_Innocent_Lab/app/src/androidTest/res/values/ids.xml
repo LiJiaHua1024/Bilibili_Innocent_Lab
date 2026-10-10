@@ -1,0 +1,5 @@
+<resources>
+    <item name="loading" type="id" />
+    <item name="tv_left" type="id" />
+    <item name="tv_right" type="id" />
+</resources>
