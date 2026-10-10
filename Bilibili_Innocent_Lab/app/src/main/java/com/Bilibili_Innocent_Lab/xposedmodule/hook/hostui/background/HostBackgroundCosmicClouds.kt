@@ -6,7 +6,6 @@ import android.graphics.Matrix
 import android.graphics.Shader
 import kotlin.math.abs
 import kotlin.math.exp
-import kotlin.math.sin
 
 /** 每个区块按全局坐标取样，同一云气跨区块连续延伸，不拉伸或重复整张图片。 */
 internal object HostBackgroundCosmicClouds {
@@ -49,7 +48,7 @@ internal object HostBackgroundCosmicClouds {
             val mixed = blend(blend(palette[0], palette[1], field), palette[2], detail * .7)
             return if (night) blend(mixed, 0xff10121b.toInt(), .86) else mixed
         }
-        val center = .42 * sin(ny * 2.8) + .13 * sin(ny * 7.5)
+        val center = HostBackgroundWorld.galaxyCenter(ny)
         val distance = nx - center + warp * .25
         val galaxy = preset == HostBackgroundPreset.STARRY
         val envelope = exp(-distance * distance / if (galaxy) .065 else .55)

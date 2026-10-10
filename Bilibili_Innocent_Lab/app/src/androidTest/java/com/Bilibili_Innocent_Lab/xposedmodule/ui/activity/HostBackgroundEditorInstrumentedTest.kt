@@ -89,6 +89,20 @@ class HostBackgroundEditorInstrumentedTest {
                 assertNotEquals("Background must continue beyond the initial viewport on screen $screen", before.first, after.first)
                 before = after
             }
+            for (round in 1..3) {
+                // 积累到较深的位置，再以高速反向手势触发子项重绑及顶栏展开。
+                repeat(6) {
+                    rootInput("swipe 540 1650 540 650 110")
+                    android.os.SystemClock.sleep(300)
+                }
+                android.os.SystemClock.sleep(1200)
+                val deep = capture("reverse-deep-$round")
+                rootInput("swipe 540 550 540 1450 110")
+                android.os.SystemClock.sleep(600)
+                val reversed = capture("reverse-up-$round")
+                assertNotEquals("Reverse gesture must move the feed in round $round", deep.second, reversed.second)
+                assertNotEquals("Background must follow the fast upward gesture in round $round", deep.first, reversed.first)
+            }
         } finally {
             prefs.edit().apply { keys.forEach { key -> when (val value = original[key]) {
                 is String -> putString(key, value)

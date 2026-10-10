@@ -9,22 +9,27 @@ import java.util.concurrent.Executors
 /** 仅挂在已识别为视频卡片列表的背景，不插入叠层、不修改 Fragment 可见性。 */
 internal class HostBackgroundController(private val config: HostBackgroundConfig, private val onError: (Throwable) -> Unit,
     private val onApplied: () -> Unit = {}) {
-    private val surfaces = WeakHashMap<ViewGroup, HostBackgroundDrawable>()
+    private class Surface(val drawable: HostBackgroundDrawable, val position: HostBackgroundListPosition)
+    private val surfaces = WeakHashMap<ViewGroup, Surface>()
     private var image: Bitmap? = null
     private var requested = false
     private var applied = false
 
     fun scroll(list: ViewGroup, dy: Int) {
         if (dy == 0 || config.preset == HostBackgroundPreset.CUSTOM) return
-        val surface = surfaces[list] ?: return
-        surface.scrollOffset = (surface.scrollOffset + dy).coerceAtLeast(0L)
+        val surface = surfaces[list]?.drawable ?: return
+        // 列表可能在中途恢复或替换；原点尚未确认时也必须响应向上滚动，不能锁死在零。
+        surface.scrollOffset += dy
     }
 
     fun apply(list: ViewGroup, night: Boolean) {
         if (!config.enabled) return
-        val surface = surfaces.getOrPut(list) { HostBackgroundDrawable(config, night, image) }
-        // 回到顶部或刷新后从原点重新对齐；不能用 RecyclerView.scrollY（通常始终为 0）。
-        if (config.preset != HostBackgroundPreset.CUSTOM && list.childCount > 0 && !list.canScrollVertically(-1)) surface.scrollOffset = 0L
+        val state = surfaces.getOrPut(list) {
+            Surface(HostBackgroundDrawable(config, night, image), HostBackgroundListPosition(list.javaClass))
+        }
+        val surface = state.drawable
+        // 稳定布局中首条内容确实回到顶部才归零，不能依赖滚动条的临时边界报告。
+        if (config.preset != HostBackgroundPreset.CUSTOM && surface.scrollOffset != 0L && state.position.isAtTop(list)) surface.scrollOffset = 0L
         if (surface.night != night) { surface.night = night; surface.invalidateSelf() }
         if (list.background !== surface) list.background = surface
         if (!applied) { applied = true; onApplied() }
@@ -41,8 +46,8 @@ internal class HostBackgroundController(private val config: HostBackgroundConfig
                     image = loaded
                     // 每个列表持有自己的 Drawable，共享只读位图，避免 Drawable callback 串页。
                     for ((view, old) in surfaces.toMap()) {
-                        val next = HostBackgroundDrawable(config, old.night, loaded)
-                        surfaces[view] = next
+                        val next = HostBackgroundDrawable(config, old.drawable.night, loaded)
+                        surfaces[view] = Surface(next, old.position)
                         view.background = next
                     }
                 }

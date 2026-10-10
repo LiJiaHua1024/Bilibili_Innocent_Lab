@@ -16,6 +16,7 @@ import java.util.Random
 import kotlin.math.atan2
 import kotlin.math.hypot
 import kotlin.math.sin
+import kotlin.math.cos
 
 /** 按世界区带生成装饰，跨界光晕和流星由相邻区带共同绘制。 */
 internal class HostBackgroundCelestialArtwork private constructor(
@@ -31,12 +32,12 @@ internal class HostBackgroundCelestialArtwork private constructor(
     init {
         val unit = width
         val random = Random(HostBackgroundWorld.seed(band, preset))
-        val count = 800
+        val count = 700 + random.nextInt(251)
         stars = List(count) { index ->
             val ny = random.nextFloat()
             val nx = if (preset == HostBackgroundPreset.STARRY && index % 3 == 0) {
                 val worldY = (band.toDouble() + ny) * 2 - 1
-                (.5 + .21 * sin(worldY * 2.8) + .065 * sin(worldY * 7.5) + random.nextGaussian() * .07).toFloat()
+                (.5 + HostBackgroundWorld.galaxyCenter(worldY) * .5 + random.nextGaussian() * .07).toFloat()
             } else random.nextFloat()
             val x = width * nx
             val y = width * ny
@@ -53,11 +54,13 @@ internal class HostBackgroundCelestialArtwork private constructor(
                 155 + random.nextInt(101)))
         }
         if (preset == HostBackgroundPreset.METEOR) {
-            repeat(4) { index ->
+            repeat(3 + random.nextInt(3)) {
                 val sx = -.15f + random.nextFloat() * .6f
-                val sy = index * .25f + random.nextFloat() * .16f
-                meteor(sx, sy, sx + .5f + random.nextFloat() * .3f,
-                    sy + .25f + random.nextFloat() * .15f, unit)
+                val sy = random.nextFloat()
+                val length = .5f + random.nextFloat() * .4f
+                val angle = Math.toRadians(19.0 + random.nextDouble() * 16).toFloat()
+                meteor(sx, sy, sx + cos(angle) * length, sy + sin(angle) * length,
+                    unit * (.0035f + random.nextFloat() * .003f))
             }
         }
     }
@@ -69,12 +72,11 @@ internal class HostBackgroundCelestialArtwork private constructor(
             setLocalMatrix(Matrix().apply { setScale(rx, ry); postTranslate(x, y) })
         })
 
-    private fun meteor(startX: Float, startY: Float, endX: Float, endY: Float, unit: Float) {
+    private fun meteor(startX: Float, startY: Float, endX: Float, endY: Float, thickness: Float) {
         val sx = width * startX
         val sy = width * startY
         val ex = width * endX
         val ey = width * endY
-        val thickness = unit * .005f
         val length = hypot(ex - sx, ey - sy)
         val mask = RadialGradient(0f, 0f, 1f, intArrayOf(Color.WHITE, Color.WHITE, Color.TRANSPARENT),
             floatArrayOf(0f, .65f, 1f), Shader.TileMode.CLAMP).apply {

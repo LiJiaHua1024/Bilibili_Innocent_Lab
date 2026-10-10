@@ -4,6 +4,10 @@ import kotlin.math.floor
 
 /** 世界坐标不依赖视口高度或已加载条目数；Long 保留长列表累计距离。 */
 internal object HostBackgroundWorld {
+    /** 非周期的平滑走向；与星点密集带共用，避免正弦曲线反复出现相同蛇形。 */
+    fun galaxyCenter(y: Double): Double =
+        (fractal(3.4, y * .28) - .5) * 1.2 + (fractal(18.2, y * 1.3) - .5) * .45
+
     fun seed(band: Long, preset: HostBackgroundPreset): Long {
         var value = band + when (preset) {
             HostBackgroundPreset.NEBULA -> 7021L
