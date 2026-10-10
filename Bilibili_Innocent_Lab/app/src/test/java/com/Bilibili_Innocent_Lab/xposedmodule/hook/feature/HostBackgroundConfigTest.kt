@@ -11,10 +11,10 @@ import org.junit.Test
 
 class HostBackgroundConfigTest {
     @Test fun backgroundIsPublishedAfterTheClassicCommentCatalogVersions() {
-        val background = SettingsCatalog.specs.filter { it.introducedCatalogVersion > 46 }
+        val background = SettingsCatalog.specs.filter { it.introducedCatalogVersion > 48 }
         assertEquals(setOf("host.background.preset", "host.background.blur", "host.background.saturation",
             "host.background.veil", "host.background.asset"), background.map { it.id }.toSet())
-        assertTrue(background.all { it.introducedCatalogVersion == 47 })
+        assertTrue(background.all { it.introducedCatalogVersion == 49 })
         val capabilities = DiagnosticCapabilityCatalog.definitions.filter { it.introducedCatalogVersion > 20 }
         assertEquals(listOf("host_background"), capabilities.map { it.id })
         assertTrue(capabilities.all { it.introducedCatalogVersion == 21 })
