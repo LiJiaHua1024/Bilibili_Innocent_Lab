@@ -6,6 +6,7 @@ import com.Bilibili_Innocent_Lab.xposedmodule.hook.hostui.cards.HostVideoCardSty
 import com.Bilibili_Innocent_Lab.xposedmodule.hook.hostui.cards.HostVideoCardStyleSpec
 import com.Bilibili_Innocent_Lab.xposedmodule.hook.hostui.background.HostBackgroundConfig
 import com.Bilibili_Innocent_Lab.xposedmodule.hook.hostui.background.HostBackgroundController
+import com.Bilibili_Innocent_Lab.xposedmodule.hook.hostui.background.HostBackgroundTheme
 
 import android.view.View
 import android.view.ViewGroup
@@ -114,14 +115,24 @@ internal class HostVideoCardStyleFeatureInstaller(
                 FunctionalFeatureInstaller(BACKGROUND_ID) { environment ->
                     delegate.backgroundEnvironment = environment
                     if (!backgroundConfig.enabled) FeatureInstallResult.Skipped("disabled")
-                    else when (val shared = install(environment)) {
-                        // 背景覆盖同一个 bind Hook；不依赖卡片的 GridLayoutManager 测量点。
-                        is FeatureInstallResult.Installed -> FeatureInstallResult.Installed(if (backgroundConfig.preset == HostBackgroundPreset.CUSTOM) 1 else 2)
-                        is FeatureInstallResult.Skipped -> if (enabled && shared.reason == "registration-failed") {
-                            // 卡片测量点失败时，背景仍可独立使用 bind；保持原有故障隔离。
-                            HostVideoCardStyleFeatureInstaller(false, radiusDp, backgroundConfig, BACKGROUND_ID).install(environment)
-                        } else shared
-                        else -> shared
+                    else {
+                        val themeHooks = HostBackgroundTheme.install(environment, backgroundConfig.preset)
+                        val themeReady = !backgroundConfig.preset.isCelestial || themeHooks == 2
+                        when (val shared = install(environment)) {
+                            // 背景覆盖同一个 bind Hook；不依赖卡片的 GridLayoutManager 测量点。
+                            is FeatureInstallResult.Installed -> FeatureInstallResult.Installed(
+                                (if (backgroundConfig.preset == HostBackgroundPreset.CUSTOM) 1 else 2) + themeHooks,
+                                complete = themeReady)
+                            is FeatureInstallResult.Skipped -> if (enabled && shared.reason == "registration-failed") {
+                                // 卡片测量点失败时，背景仍可独立使用 bind；保持原有故障隔离。
+                                when (val fallback = HostVideoCardStyleFeatureInstaller(false, radiusDp, backgroundConfig, BACKGROUND_ID).install(environment)) {
+                                    is FeatureInstallResult.Installed -> fallback.copy(hookCount = fallback.hookCount + themeHooks, complete = themeReady)
+                                    else -> fallback
+                                }
+                            } else if (shared.reason == "non-main-process" && themeHooks > 0) FeatureInstallResult.Installed(themeHooks)
+                            else shared
+                            else -> shared
+                        }
                     }
                 }
             )

@@ -90,6 +90,7 @@ internal class HostBackgroundEditor(private val activity: MainActivity, private 
     private val options = mutableMapOf<HostBackgroundPreset, TextView>()
     private var useSaved: View? = null
     private val customControls = mutableListOf<View>()
+    private val previewCards = mutableListOf<Pair<GradientDrawable, TextView>>()
     private var rendered: Bitmap? = null
     private var generation = 0
     private var active = true
@@ -119,12 +120,15 @@ internal class HostBackgroundEditor(private val activity: MainActivity, private 
         repeat(2) { index ->
             cards.addView(LinearLayout(activity).apply {
                 orientation = LinearLayout.VERTICAL
-                background = GradientDrawable().apply { setColor(if (night) 0xff222631.toInt() else Color.WHITE); cornerRadius = dp(14).toFloat() }
+                val surface = GradientDrawable().apply { cornerRadius = dp(14).toFloat() }
+                background = surface
                 addView(View(activity).apply {
                     background = GradientDrawable(GradientDrawable.Orientation.TL_BR,
                         if (index == 0) intArrayOf(0xff729caa.toInt(), 0xffbec8dd.toInt()) else intArrayOf(0xffc9a6a8.toInt(), 0xffe3ccc1.toInt()))
                 }, LinearLayout.LayoutParams(-1, dp(64)))
-                addView(label(activity.getString(R.string.host_background_preview_card), 12f).apply { setPadding(dp(10), dp(12), dp(10), dp(12)) })
+                val title = label(activity.getString(R.string.host_background_preview_card), 12f).apply { setPadding(dp(10), dp(12), dp(10), dp(12)) }
+                addView(title)
+                previewCards += surface to title
             }, LinearLayout.LayoutParams(0, -2, 1f).apply { if (index == 0) marginEnd = dp(10) })
         }
         preview.addView(cards, FrameLayout.LayoutParams(-1, -2, Gravity.CENTER))
@@ -194,6 +198,12 @@ internal class HostBackgroundEditor(private val activity: MainActivity, private 
     private fun refresh() {
         useSaved?.visibility = if (draft.asset.isEmpty()) View.GONE else View.VISIBLE
         selected.text = activity.backgroundLabel(draft.preset)
+        val previewNight = night || draft.preset.isCelestial
+        previewCards.forEach { (surface, title) ->
+            surface.setColor(if (previewNight) 0xff222631.toInt() else Color.WHITE)
+            title.textColor = if (previewNight) 0xffe6e8ed.toInt() else activity.getColor(R.color.colorTextDark)
+        }
+        if (draft.preset.isCelestial) selected.append("\n" + activity.getString(R.string.host_background_night_theme_tip))
         preview.background = if (draft.enabled) HostBackgroundDrawable(draft, night, rendered) else GradientDrawable().apply { setColor(if (night) 0xff14151a.toInt() else 0xfff4f4f4.toInt()) }
         options.forEach { (preset, view) ->
             view.background = GradientDrawable().apply {
