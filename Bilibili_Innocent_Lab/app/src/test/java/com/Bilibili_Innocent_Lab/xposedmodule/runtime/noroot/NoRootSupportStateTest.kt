@@ -104,6 +104,82 @@ class NoRootSupportStateTest {
     }
 
     @Test
+    fun `scope removal overrides a matching heartbeat but unknown keeps it`() {
+        val snapshot = snapshot()
+        val matching = status(
+            desired = true,
+            state = NoRootSupportStore.SyncState.ACTIVE,
+            heartbeatRevision = snapshot.revision,
+            heartbeatModuleVersion = snapshot.moduleVersionCode,
+            heartbeatTargetVersion = TARGET_VERSION,
+            heartbeatTargetUpdateTime = TARGET_UPDATE_TIME,
+            heartbeatTargetPackage = NoRootSupportState.TARGET_PACKAGE,
+            heartbeatReceivedAt = 1_700_000_000_000L
+        )
+
+        assertEquals(
+            NoRootDisplayState.SCOPE_MISSING,
+            NoRootSupportState.displayState(
+                28,
+                matching,
+                snapshot,
+                TARGET_VERSION,
+                TARGET_UPDATE_TIME,
+                scope = NPatchScopeProbe.ScopeState.OUT_OF_SCOPE
+            )
+        )
+        // Provider 读不到只能算未知；不能让一次临时查询失败把已激活降级。
+        assertEquals(
+            NoRootDisplayState.ACTIVE,
+            NoRootSupportState.displayState(
+                28,
+                matching,
+                snapshot,
+                TARGET_VERSION,
+                TARGET_UPDATE_TIME,
+                scope = NPatchScopeProbe.ScopeState.UNKNOWN
+            )
+        )
+        assertEquals(
+            NoRootDisplayState.ACTIVE,
+            NoRootSupportState.displayState(
+                28,
+                matching,
+                snapshot,
+                TARGET_VERSION,
+                TARGET_UPDATE_TIME,
+                scope = NPatchScopeProbe.ScopeState.IN_SCOPE
+            )
+        )
+        // 开关已关闭时作用域不再影响状态文案。
+        assertEquals(
+            NoRootDisplayState.DISABLED,
+            NoRootSupportState.displayState(
+                28,
+                matching.copy(desiredEnabled = false),
+                snapshot,
+                TARGET_VERSION,
+                TARGET_UPDATE_TIME,
+                scope = NPatchScopeProbe.ScopeState.OUT_OF_SCOPE
+            )
+        )
+    }
+
+    @Test
+    fun `scope removal wins over a confirmed LSPatch receipt`() {
+        assertEquals(
+            ActivationDisplayState.SCOPE_MISSING,
+            NoRootSupportState.activationDisplayState(
+                rootActive = true,
+                frameworkCheckPending = false,
+                displayState = NoRootDisplayState.SCOPE_MISSING,
+                lspatchFramework = true,
+                lspatchHostState = LspatchHostReceiptState.CONFIRMED
+            )
+        )
+    }
+
+    @Test
     fun `transport states map without claiming activation`() {
         val expected = mapOf(
             NoRootSupportStore.SyncState.DISABLED to NoRootDisplayState.CHECKING,

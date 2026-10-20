@@ -948,6 +948,7 @@ class DiagnosticsActivity : SkinnedActivity(),
         DiagnosticNoRootState.CHECKING -> R.string.no_root_status_checking
         DiagnosticNoRootState.MANAGER_MISSING -> R.string.no_root_status_manager_missing
         DiagnosticNoRootState.MODULE_NOT_REGISTERED -> R.string.no_root_status_module_not_registered
+        DiagnosticNoRootState.SCOPE_MISSING -> R.string.no_root_status_scope_missing
         DiagnosticNoRootState.SYNCING -> R.string.no_root_status_syncing
         DiagnosticNoRootState.RESTART_REQUIRED -> R.string.no_root_status_restart_required
         DiagnosticNoRootState.DISABLE_RESTART_REQUIRED,

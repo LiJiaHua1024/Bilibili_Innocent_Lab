@@ -19,6 +19,8 @@
         <package android:name="com.android.shell" />
         <!-- NPatch Local/Manager 模式的 Remote API Provider 可见性。 -->
         <provider android:authorities="top.nkbe.npatch.remote" />
+        <!-- 只读查询哔哩哔哩当前的作用域，用于发现作用域被移除后仍显示已激活。 -->
+        <provider android:authorities="top.nkbe.npatch.manager.provider.config" />
     </queries>
 
     <!--

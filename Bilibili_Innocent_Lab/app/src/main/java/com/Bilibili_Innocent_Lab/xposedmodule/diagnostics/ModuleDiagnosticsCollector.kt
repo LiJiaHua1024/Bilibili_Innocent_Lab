@@ -10,6 +10,7 @@ import com.Bilibili_Innocent_Lab.xposedmodule.runtime.noroot.ActivationDisplaySt
 import com.Bilibili_Innocent_Lab.xposedmodule.runtime.noroot.NoRootDisplayState
 import com.Bilibili_Innocent_Lab.xposedmodule.runtime.noroot.NoRootSupportState
 import com.Bilibili_Innocent_Lab.xposedmodule.runtime.noroot.NoRootSupportStore
+import com.Bilibili_Innocent_Lab.xposedmodule.runtime.noroot.NPatchScopeProbe
 import com.Bilibili_Innocent_Lab.xposedmodule.settings.backup.RestorePolicy
 import com.Bilibili_Innocent_Lab.xposedmodule.settings.backup.SettingsCatalog
 import com.Bilibili_Innocent_Lab.xposedmodule.settings.modulePreferences
@@ -45,7 +46,12 @@ internal object ModuleDiagnosticsCollector {
             status = noRootStatus,
             currentSnapshot = NoRootSupportStore.readSnapshot(appContext),
             currentTargetVersionCode = targetVersionCode,
-            currentTargetUpdateTime = targetUpdateTime
+            currentTargetUpdateTime = targetUpdateTime,
+            scope = if (noRootStatus.desiredEnabled) {
+                NPatchScopeProbe.cached()
+            } else {
+                NPatchScopeProbe.ScopeState.UNKNOWN
+            }
         )
         val framework = RemoteHookConfigStore.status()
         val lspatchHostState = NoRootSupportState.lspatchHostReceiptState(
@@ -187,5 +193,6 @@ internal fun ActivationDisplayState.toDiagnosticActivationState() = when (this) 
     ActivationDisplayState.ACTIVE_LSPATCH -> DiagnosticActivationState.ACTIVE_LSPOSED
     ActivationDisplayState.LSPATCH_WAITING_FOR_HOST -> DiagnosticActivationState.CHECKING
     ActivationDisplayState.LSPATCH_HOST_FAILED -> DiagnosticActivationState.UNAVAILABLE
+    ActivationDisplayState.SCOPE_MISSING -> DiagnosticActivationState.UNAVAILABLE
     else -> DiagnosticActivationState.valueOf(name)
 }

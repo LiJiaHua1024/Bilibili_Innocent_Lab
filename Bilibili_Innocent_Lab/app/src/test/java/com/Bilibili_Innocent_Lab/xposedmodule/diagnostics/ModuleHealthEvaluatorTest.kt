@@ -46,6 +46,25 @@ class ModuleHealthEvaluatorTest {
     }
 
     @Test
+    fun `missing NPatch scope requires action even with a stored heartbeat`() {
+        val snapshot = ModuleHealthEvaluator.evaluate(
+            inputs(
+                activationState = DiagnosticActivationState.UNAVAILABLE,
+                frameworkConnected = true,
+                frameworkCapable = true,
+                noRootDesiredEnabled = true,
+                noRootState = DiagnosticNoRootState.SCOPE_MISSING
+            )
+        )
+
+        assertEquals(DiagnosticSeverity.ACTION_REQUIRED, snapshot.overallSeverity)
+        assertEquals(
+            DiagnosticSeverity.ATTENTION,
+            snapshot.item(DiagnosticItemId.NO_ROOT).severity
+        )
+    }
+
+    @Test
     fun `remote read-back failure remains visible even while activated`() {
         val snapshot = ModuleHealthEvaluator.evaluate(
             inputs(

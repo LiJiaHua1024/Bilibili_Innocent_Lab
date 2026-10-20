@@ -45,6 +45,7 @@ internal enum class DiagnosticNoRootState {
     CHECKING,
     MANAGER_MISSING,
     MODULE_NOT_REGISTERED,
+    SCOPE_MISSING,
     SYNCING,
     RESTART_REQUIRED,
     DISABLE_RESTART_REQUIRED,
@@ -381,6 +382,7 @@ internal object ModuleHealthEvaluator {
             DiagnosticNoRootState.RESTART_REQUIRED,
             DiagnosticNoRootState.MANAGER_MISSING,
             DiagnosticNoRootState.MODULE_NOT_REGISTERED,
+            DiagnosticNoRootState.SCOPE_MISSING,
             DiagnosticNoRootState.CONNECTION_TIMEOUT,
             DiagnosticNoRootState.ERROR -> DiagnosticSeverity.ATTENTION
             else -> DiagnosticSeverity.INFO

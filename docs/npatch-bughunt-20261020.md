@@ -8,7 +8,8 @@
 - **分类**：真正的 NPatch 专项 **9 条**（B1、B2、B3、B4、B6、B9、B10、B11、B12）；另有 3 条经复核**不属于 NPatch 问题**（B5、B7、B8），已在各条目内标注。
 - 最严重：**B12**（Manager 进程被回收后模块静默完全失效且无任何提示）；其次 **B1**（关闭免 Root 后仍照装 Hook）。
 - 已量化影响：B11 使每次冷启动多等约 2 秒、首帧多约 3 秒。
-- **修复决策已完成**，见下方「修复决策记录」；本文档目前只承载调研与决策结论，尚未改动任何源码。
+- **修复决策已完成**，见下方「修复决策记录」。
+- **实施进度（2026-10-20）**：B10 的“作用域探测 + 状态降级”已实现并在测试机验证（见 B10 节末「状态」）；其余条目尚未改动。
 
 ---
 
@@ -357,6 +358,17 @@ W/BilibiliInnocentLab: publish remote hook config failed: NPatch selected
 - 给心跳加时效与存活判据：例如要求 `heartbeatReceivedAt` 在合理窗口内，或校验宿主当前是否真的在运行；
 - 至少在文案上区分“最近一次已验证”与“当前正在生效”，不要用现在时断言；
 - 作用域被移除时应能探测到（`NPatchRemoteGateway` 的 Provider 查询返回 `No result found` 是现成信号）。
+
+### 状态（2026-10-20）：部分完成
+
+- **已完成（建议第 3 条）**：作用域探测 + 状态降级。新增 `runtime/noroot/NPatchScopeProbe.kt`
+  只读查询 Manager 的 `top.nkbe.npatch.manager.provider.config`，作用域移除后进入新的
+  `SCOPE_MISSING` 状态，激活卡片、免 Root 状态行与诊断页均不再宣称已激活；查询失败/超时
+  只返回 `UNKNOWN`，不误降级。实机验证：`captures/npatch-scope-probe/`（`IN_SCOPE →
+  OUT_OF_SCOPE → IN_SCOPE` 三段日志与 `scope-out.png` / `scope-back2.png` 截图）。
+- **待做（建议第 1、2 条）**：心跳时效与“最近一次已验证”文案。当前
+  `heartbeatReceivedAt` 仍是“收到过即算数”，宿主运行但模块未加载的场景要靠 B12 的
+  存活探测一起解决。
 
 ---
 

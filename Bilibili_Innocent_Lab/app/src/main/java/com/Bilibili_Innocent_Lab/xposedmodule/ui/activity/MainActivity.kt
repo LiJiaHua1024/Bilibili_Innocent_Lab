@@ -129,6 +129,7 @@ import com.Bilibili_Innocent_Lab.xposedmodule.runtime.noroot.NoRootDisplayState
 import com.Bilibili_Innocent_Lab.xposedmodule.runtime.noroot.NoRootSupportController
 import com.Bilibili_Innocent_Lab.xposedmodule.runtime.noroot.NoRootSupportState
 import com.Bilibili_Innocent_Lab.xposedmodule.runtime.noroot.NoRootSupportStore
+import com.Bilibili_Innocent_Lab.xposedmodule.runtime.noroot.NPatchScopeProbe
 import com.Bilibili_Innocent_Lab.xposedmodule.settings.backup.SettingsImportApplier
 import com.Bilibili_Innocent_Lab.xposedmodule.settings.backup.ModuleSettingsStore
 import com.Bilibili_Innocent_Lab.xposedmodule.settings.appearance.ModalBackdropBlurStore
@@ -869,12 +870,18 @@ class MainActivity : SkinnedActivity() {
 
     internal fun currentNoRootDisplayState(): NoRootDisplayState {
         val appContext = applicationContext
+        val desired = NoRootSupportStore.isDesiredEnabled(appContext)
         return NoRootSupportState.displayState(
             sdkInt = AndroidVersion.code,
             status = NoRootSupportStore.readStatus(appContext),
             currentSnapshot = NoRootSupportStore.readSnapshot(appContext),
             currentTargetVersionCode = installedBilibiliVersionCode(),
-            currentTargetUpdateTime = installedBilibiliLastUpdateTime()
+            currentTargetUpdateTime = installedBilibiliLastUpdateTime(),
+            scope = if (desired) {
+                NPatchScopeProbe.cached()
+            } else {
+                NPatchScopeProbe.ScopeState.UNKNOWN
+            }
         )
     }
 
@@ -895,6 +902,7 @@ class MainActivity : SkinnedActivity() {
         NoRootDisplayState.CHECKING -> R.string.no_root_status_checking
         NoRootDisplayState.MANAGER_MISSING -> R.string.no_root_status_manager_missing
         NoRootDisplayState.MODULE_NOT_REGISTERED -> R.string.no_root_status_module_not_registered
+        NoRootDisplayState.SCOPE_MISSING -> R.string.no_root_status_scope_missing
         NoRootDisplayState.SYNCING -> R.string.no_root_status_syncing
         NoRootDisplayState.RESTART_REQUIRED -> R.string.no_root_status_restart_required
         NoRootDisplayState.DISABLE_RESTART_REQUIRED ->
@@ -923,6 +931,21 @@ class MainActivity : SkinnedActivity() {
         noRootStatusView?.setText(noRootStatusText(state))
 
         renderActivationUi(noRootState = state)
+        refreshNoRootScope()
+    }
+
+    /**
+     * 作用域查询只在设置页前台、免 Root 已开启时低频执行。结果变化才重新渲染，
+     * 避免探测回调与 renderNoRootUi 互相触发。
+     */
+    private fun refreshNoRootScope() {
+        val appContext = applicationContext
+        if (!NoRootSupportStore.isDesiredEnabled(appContext)) return
+        NPatchScopeProbe.refreshAsync(appContext) {
+            runOnUiThread {
+                if (!isFinishing && !isDestroyed) renderNoRootUi()
+            }
+        }
     }
 
     /**
@@ -985,6 +1008,8 @@ class MainActivity : SkinnedActivity() {
                     R.string.module_activation_lspatch_waiting_host_title
                 ActivationDisplayState.LSPATCH_HOST_FAILED ->
                     R.string.module_activation_lspatch_host_failed_title
+                ActivationDisplayState.SCOPE_MISSING ->
+                    R.string.module_activation_scope_missing_title
                 ActivationDisplayState.UNAVAILABLE -> R.string.module_activation_not_detected
             }
         )
@@ -1011,6 +1036,8 @@ class MainActivity : SkinnedActivity() {
                     getString(R.string.module_activation_lspatch_waiting_host)
                 ActivationDisplayState.LSPATCH_HOST_FAILED ->
                     getString(R.string.module_activation_lspatch_host_failed)
+                ActivationDisplayState.SCOPE_MISSING ->
+                    getString(R.string.module_activation_scope_missing)
                 ActivationDisplayState.CHECKING ->
                     getString(R.string.module_activation_waiting_framework)
                 ActivationDisplayState.UNAVAILABLE -> when {
@@ -1037,8 +1064,9 @@ class MainActivity : SkinnedActivity() {
             text = listOfNotNull(baseText, mismatchText).joinToString(separator = "\n")
             val showsLspatchAction = displayState == ActivationDisplayState.LSPATCH_WAITING_FOR_HOST ||
                 displayState == ActivationDisplayState.LSPATCH_HOST_FAILED
-            // 多用户和 LSPatch 操作提示都必须完整可见；正常状态仍保持单行省略。
-            if (showsUserSpaceHint || showsLspatchAction) {
+            val showsScopeAction = displayState == ActivationDisplayState.SCOPE_MISSING
+            // 多用户和 LSPatch/作用域操作提示都必须完整可见；正常状态仍保持单行省略。
+            if (showsUserSpaceHint || showsLspatchAction || showsScopeAction) {
                 isSingleLine = false
                 maxLines = Int.MAX_VALUE
             } else {
@@ -1053,6 +1081,7 @@ class MainActivity : SkinnedActivity() {
             val noRootNeedsAttention = when (noRootState) {
                 NoRootDisplayState.MANAGER_MISSING,
                 NoRootDisplayState.MODULE_NOT_REGISTERED,
+                NoRootDisplayState.SCOPE_MISSING,
                 NoRootDisplayState.RESTART_REQUIRED,
                 NoRootDisplayState.DISABLE_RESTART_REQUIRED,
                 NoRootDisplayState.DISABLE_RESTART_REQUIRED_ACTIVE,

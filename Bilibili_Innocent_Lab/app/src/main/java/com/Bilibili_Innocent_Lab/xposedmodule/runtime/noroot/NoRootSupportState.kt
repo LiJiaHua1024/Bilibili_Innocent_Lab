@@ -10,6 +10,7 @@ internal enum class NoRootDisplayState {
     CHECKING,
     MANAGER_MISSING,
     MODULE_NOT_REGISTERED,
+    SCOPE_MISSING,
     SYNCING,
     RESTART_REQUIRED,
     DISABLE_RESTART_REQUIRED,
@@ -31,6 +32,7 @@ internal enum class ActivationDisplayState {
     ACTIVE_NPATCH,
     LSPATCH_WAITING_FOR_HOST,
     LSPATCH_HOST_FAILED,
+    SCOPE_MISSING,
     UNAVAILABLE
 }
 
@@ -50,7 +52,8 @@ internal object NoRootSupportState {
         status: NoRootSupportStore.Status,
         currentSnapshot: NoRootConfigSnapshot?,
         currentTargetVersionCode: Long,
-        currentTargetUpdateTime: Long
+        currentTargetUpdateTime: Long,
+        scope: NPatchScopeProbe.ScopeState = NPatchScopeProbe.ScopeState.UNKNOWN
     ): NoRootDisplayState {
         if (sdkInt < MIN_SUPPORTED_SDK) return NoRootDisplayState.UNSUPPORTED_OS
         if (!status.desiredEnabled) {
@@ -63,6 +66,11 @@ internal object NoRootSupportState {
             } else {
                 NoRootDisplayState.DISABLED
             }
+        }
+        // 作用域被 Manager 移除后，历史心跳仍可能逐项匹配；此时不能再宣称已激活。
+        // UNKNOWN 只代表本次没读到，不改变原有判定。
+        if (scope == NPatchScopeProbe.ScopeState.OUT_OF_SCOPE) {
+            return NoRootDisplayState.SCOPE_MISSING
         }
         val heartbeatMatches = currentSnapshot?.let { snapshot ->
             snapshot.enabled &&
@@ -146,6 +154,10 @@ internal object NoRootSupportState {
         lspatchFramework: Boolean = false,
         lspatchHostState: LspatchHostReceiptState = LspatchHostReceiptState.WAITING
     ): ActivationDisplayState = when {
+        // 作用域缺失时 Manager 仍可能提供 Modern 服务并留下旧回执；它比任何“已激活”
+        // 断言都更像当前事实，必须最先判定。
+        displayState == NoRootDisplayState.SCOPE_MISSING ->
+            ActivationDisplayState.SCOPE_MISSING
         rootActive && lspatchFramework &&
             lspatchHostState == LspatchHostReceiptState.CONFIRMED ->
             ActivationDisplayState.ACTIVE_LSPATCH

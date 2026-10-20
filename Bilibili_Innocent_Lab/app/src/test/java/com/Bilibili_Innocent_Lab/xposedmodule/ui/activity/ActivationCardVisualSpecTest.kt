@@ -37,6 +37,10 @@ class ActivationCardVisualSpecTest {
             DiagnosticStatusTone.ACTION_REQUIRED,
             ActivationCardVisualSpec.tone(ActivationDisplayState.UNAVAILABLE)
         )
+        assertEquals(
+            DiagnosticStatusTone.ACTION_REQUIRED,
+            ActivationCardVisualSpec.tone(ActivationDisplayState.SCOPE_MISSING)
+        )
     }
 
     @Test
@@ -76,6 +80,15 @@ class ActivationCardVisualSpecTest {
                 displayState = ActivationDisplayState.LSPATCH_HOST_FAILED,
                 publishFailed = true,
                 skinFallback = true,
+                noRootNeedsAttention = true
+            )
+        )
+        assertEquals(
+            ActivationSummaryState.ACTION_REQUIRED,
+            ActivationCardVisualSpec.diagnosticsSummaryState(
+                displayState = ActivationDisplayState.SCOPE_MISSING,
+                publishFailed = false,
+                skinFallback = false,
                 noRootNeedsAttention = true
             )
         )

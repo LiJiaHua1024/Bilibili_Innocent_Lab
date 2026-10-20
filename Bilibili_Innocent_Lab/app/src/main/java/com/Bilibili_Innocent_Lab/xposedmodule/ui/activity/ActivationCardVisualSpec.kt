@@ -25,6 +25,7 @@ internal object ActivationCardVisualSpec {
         ActivationDisplayState.CHECKING,
         ActivationDisplayState.LSPATCH_WAITING_FOR_HOST -> DiagnosticStatusTone.INFO
         ActivationDisplayState.LSPATCH_HOST_FAILED,
+        ActivationDisplayState.SCOPE_MISSING,
         ActivationDisplayState.UNAVAILABLE -> DiagnosticStatusTone.ACTION_REQUIRED
     }
 
@@ -36,7 +37,8 @@ internal object ActivationCardVisualSpec {
         noRootNeedsAttention: Boolean
     ): ActivationSummaryState = when {
         displayState == ActivationDisplayState.UNAVAILABLE ||
-            displayState == ActivationDisplayState.LSPATCH_HOST_FAILED ->
+            displayState == ActivationDisplayState.LSPATCH_HOST_FAILED ||
+            displayState == ActivationDisplayState.SCOPE_MISSING ->
             ActivationSummaryState.ACTION_REQUIRED
         publishFailed -> ActivationSummaryState.ATTENTION
         displayState == ActivationDisplayState.CHECKING ||
