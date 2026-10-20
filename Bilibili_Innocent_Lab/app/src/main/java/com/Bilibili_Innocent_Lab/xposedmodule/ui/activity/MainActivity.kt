@@ -1201,7 +1201,9 @@ class MainActivity : SkinnedActivity() {
                     displayState = displayState,
                     publishFailed = publishState == RemoteHookConfigPublishState.FAILED,
                     skinFallback = skinFallback,
-                    noRootNeedsAttention = noRootNeedsAttention
+                    noRootNeedsAttention = noRootNeedsAttention,
+                    standardPublisherBypassed = com.Bilibili_Innocent_Lab.xposedmodule.settings.remote.StandardPublisherPolicy
+                        .isBypassed(NoRootSupportStore.isDesiredEnabled(applicationContext))
                 )
             ) {
                 ActivationSummaryState.ACTION_REQUIRED ->

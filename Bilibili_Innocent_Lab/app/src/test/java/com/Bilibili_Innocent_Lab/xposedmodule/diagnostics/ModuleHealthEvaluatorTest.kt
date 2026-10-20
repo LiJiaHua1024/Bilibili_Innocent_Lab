@@ -122,6 +122,17 @@ class ModuleHealthEvaluatorTest {
     }
 
     @Test
+    fun `explicit bypass state keeps a healthy NPatch report ready`() {
+        val selected = ModuleHealthEvaluator.evaluate(inputs(
+            activationState = DiagnosticActivationState.ACTIVE_NPATCH,
+            frameworkConnected = true, frameworkCapable = true,
+            remotePublishState = DiagnosticRemotePublishState.BYPASSED,
+            noRootDesiredEnabled = true, noRootState = DiagnosticNoRootState.ACTIVE))
+        assertEquals(DiagnosticSeverity.INFO, selected.item(DiagnosticItemId.REMOTE_CONFIG).severity)
+        assertEquals(DiagnosticSeverity.OK, selected.overallSeverity)
+    }
+
+    @Test
     fun `bypassed standard publisher is informational once NPatch is selected`() {
         // 选中 NPatch 时 RemoteHookConfigStore 故意返回 "NPatch selected"（FAILED/publish_failed）；
         // 那是设计内状态，不该把整份诊断染成“需要留意”。
@@ -253,6 +264,7 @@ class ModuleHealthEvaluatorTest {
     @Test
     fun `bypassed-publisher predicate covers exactly the states the bypass leaves idle`() {
         val expectedIdle = setOf(
+            DiagnosticRemotePublishState.BYPASSED,
             DiagnosticRemotePublishState.FAILED,
             DiagnosticRemotePublishState.WAITING_FOR_SERVICE,
             DiagnosticRemotePublishState.NOT_INITIALIZED

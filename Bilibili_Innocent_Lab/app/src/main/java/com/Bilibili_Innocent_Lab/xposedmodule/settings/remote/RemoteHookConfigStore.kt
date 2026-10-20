@@ -42,6 +42,7 @@ internal enum class RemoteHookConfigPublishState {
     WAITING_FOR_SERVICE,
     PUBLISHING,
     READY,
+    BYPASSED,
     FAILED
 }
 
@@ -241,8 +242,8 @@ internal object RemoteHookConfigStore {
             publishPending = true
         )
         val result = when {
-            com.Bilibili_Innocent_Lab.xposedmodule.runtime.noroot.NoRootSupportStore.isDesiredEnabled(appContext) ->
-                RemoteHookConfigPublishResult.Failure("NPatch selected")
+            StandardPublisherPolicy.isBypassed(com.Bilibili_Innocent_Lab.xposedmodule.runtime.noroot.NoRootSupportStore.isDesiredEnabled(appContext)) ->
+                RemoteHookConfigPublishResult.Failure(StandardPublisherPolicy.NPATCH_SELECTED)
             activeService == null -> RemoteHookConfigPublishResult.Failure(
                 "Xposed service is not connected"
             )
@@ -271,12 +272,12 @@ internal object RemoteHookConfigStore {
                 publishPending = false
             )
             is RemoteHookConfigPublishResult.Failure -> publishDiagnostics.copy(
-                state = if (activeService == null) {
-                    RemoteHookConfigPublishState.WAITING_FOR_SERVICE
-                } else {
-                    RemoteHookConfigPublishState.FAILED
+                state = when {
+                    result.isStandardPublisherBypass -> RemoteHookConfigPublishState.BYPASSED
+                    activeService == null -> RemoteHookConfigPublishState.WAITING_FOR_SERVICE
+                    else -> RemoteHookConfigPublishState.FAILED
                 },
-                failureCode = result.toFailureCode(),
+                failureCode = if (result.isStandardPublisherBypass) null else result.toFailureCode(),
                 publishPending = false
             )
         }

@@ -37,14 +37,15 @@ internal object ActivationCardVisualSpec {
         displayState: ActivationDisplayState,
         publishFailed: Boolean,
         skinFallback: Boolean,
-        noRootNeedsAttention: Boolean
+        noRootNeedsAttention: Boolean,
+        standardPublisherBypassed: Boolean = false
     ): ActivationSummaryState = when {
         displayState == ActivationDisplayState.UNAVAILABLE ||
             displayState == ActivationDisplayState.LSPATCH_HOST_FAILED ||
             displayState == ActivationDisplayState.SCOPE_MISSING ||
             displayState == ActivationDisplayState.NOT_RUNNING ->
             ActivationSummaryState.ACTION_REQUIRED
-        publishFailed -> ActivationSummaryState.ATTENTION
+        publishFailed && !standardPublisherBypassed -> ActivationSummaryState.ATTENTION
         displayState == ActivationDisplayState.UNCONFIRMED ->
             ActivationSummaryState.ATTENTION
         displayState == ActivationDisplayState.CHECKING ||

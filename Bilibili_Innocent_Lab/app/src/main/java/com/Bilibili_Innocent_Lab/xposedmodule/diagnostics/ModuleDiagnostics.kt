@@ -1,5 +1,7 @@
 package com.Bilibili_Innocent_Lab.xposedmodule.diagnostics
 
+import com.Bilibili_Innocent_Lab.xposedmodule.settings.remote.StandardPublisherPolicy
+
 internal enum class DiagnosticSeverity {
     OK,
     INFO,
@@ -63,6 +65,7 @@ internal enum class DiagnosticRemotePublishState {
     WAITING_FOR_SERVICE,
     PUBLISHING,
     READY,
+    BYPASSED,
     FAILED
 }
 
@@ -187,7 +190,7 @@ internal data class ModuleDiagnosticInputs(
  * 都必须经过这一个入口，免得发布器的短路条件改了、诊断这边某一处没跟着改。
  */
 internal val ModuleDiagnosticInputs.standardPublisherBypassed: Boolean
-    get() = noRootDesiredEnabled
+    get() = StandardPublisherPolicy.isBypassed(noRootDesiredEnabled)
 
 /**
  * 标准发布器旁路期间"永远不会推进"的状态：既不是故障也不是"等待服务后发布"。
@@ -197,6 +200,7 @@ internal fun ModuleDiagnosticInputs.isIdleUnderStandardPublisherBypass(): Boolea
     standardPublisherBypassed && remotePublishState in BYPASSED_IDLE_PUBLISH_STATES
 
 private val BYPASSED_IDLE_PUBLISH_STATES = setOf(
+    DiagnosticRemotePublishState.BYPASSED,
     DiagnosticRemotePublishState.FAILED,
     DiagnosticRemotePublishState.WAITING_FOR_SERVICE,
     DiagnosticRemotePublishState.NOT_INITIALIZED

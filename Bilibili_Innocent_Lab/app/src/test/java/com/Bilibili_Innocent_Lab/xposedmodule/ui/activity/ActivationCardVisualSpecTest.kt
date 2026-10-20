@@ -6,6 +6,14 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class ActivationCardVisualSpecTest {
+    @Test fun `NPatch bypass does not warn but preserves real failures and attention`() {
+        fun summary(bypass: Boolean, attention: Boolean = false) = ActivationCardVisualSpec.diagnosticsSummaryState(
+            ActivationDisplayState.ACTIVE_NPATCH, publishFailed = true, skinFallback = false,
+            noRootNeedsAttention = attention, standardPublisherBypassed = bypass)
+        assertEquals(ActivationSummaryState.READY, summary(true))
+        assertEquals(ActivationSummaryState.ATTENTION, summary(false))
+        assertEquals(ActivationSummaryState.ATTENTION, summary(true, attention = true))
+    }
 
     @Test
     fun `activation states map to stable semantic tones`() {
