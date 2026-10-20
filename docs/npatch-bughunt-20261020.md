@@ -320,25 +320,21 @@ Provider 与备用 Binder 会产生重复/乱序副本。同一已验证会话�
 - `captures/npatch-bughunt-20261020/detail-open2.png`、`player-controls.png`、`ctl-now.png`（三张均可见“活动”标签）
 - 诊断页“详细项”里“详情推广·广告推荐视图：尚无独立的子能力证据 · 无可信回执”
 
-### 归因（2026-10-20 追查结论）
-负责该设置项的功能是 `detail_app_promotion`（设置项文案 `hide_video_detail_app_promotion`，
-「隐藏视频详细页话题推广」→「开启后隐藏视频播放器下方的话题、活动等推广」，
-映射见 `ui/activity/DiagnosticsActivity.kt:965`）。宿主回执显示：
+### 归因更正与状态（2026-10-20）：已修复并实机闭环
 
-- 父能力 `detail_app_promotion` = **INSTALLED，3 个 Hook**；
-- 宿主日志确认 `[BIL] 视频详细页广告门面拦截器已就绪(underPlayer=true,relate=true)`；
-- 但它声明的 5 个子能力中有 4 个处于 `UNKNOWN / CAPABILITY_UNVERIFIED`
-  （`detail_promotion_nest`、`detail_promotion_list`、`detail_promotion_hd`、`detail_promotion_related_ad`），
-  即“已声明但拿不到任何安装证据”（产生点 `hook/feature/FeatureInstaller.kt:177-194`，
-  `runtime/HostRuntimeDiagnosticsBridge.kt:235-237`）。
+标题前的角标由 `detail_united_presentation_purify` 处理，对应「详细页组件 → 隐藏热搜横条与角标」
+（`remove_detail_hot_banner`），与播放器下方推广卡的 `detail_app_promotion` 是不同功能。此前把两者混为一谈的归因不成立。
 
-**结论：配置下发与 Hook 安装链路在 NPatch 下是通的，Hook 确实装上了**；问题在于装上之后没能匹配当前
-B站 8.90.2 的界面结构。这些 Hook 与适配逻辑全部运行在宿主进程内部，与“配置从哪条通道传来”无关，
-换 LSPosed 也会装同一批 Hook、跑同一套适配。
+测试机原来没有开启此开关；开启后仍可复现。读取 8.90.2 的实际 `HeadlineData.label` 确认：
+`Label(type=2, url=https://www.bilibili.com/blackboard/era/sEUlB5cmkNeH3izK.html?from_spmid=united.player-video-detail.0.0)`。
+既有模型形状和 Hook 均匹配，但判据只接受 `bilibili://search`，因此漏掉运营活动页跳转。
 
-> 因此本条**不计入 NPatch 专项**，作为模块对当前宿主版本的适配覆盖问题单独跟踪。
-> 唯一无法 100% 排除的原因是本机没有 LSPosed 环境可对照。
-> 与 `docs/npatch-compatibility-plan.md` 19.2 节记录的“详情页仍有广告卡片”属同类问题，本次是第三次独立复现。
+现已在原有开关下补齐 HTTPS、`www.bilibili.com`、`/blackboard/era/<活动 ID>.html` 的精确路由判定，
+继续按 URI 分类，不按“活动”文字或图片文件名删除。正常视频标识及其它网页不命中，未扩展到播放器下广告卡。
+
+同一视频 `117365501138651` 实测：开关开启后标题前活动角标消失，关闭后角标恢复、播放正常；测试后已恢复用户原值（关闭）。
+证据 `captures/npatch-closure/b7-before.png`、`b7-after.png`（旧规则漏网）、`b7-fixed.png`、`b7-switch-restored.png`。
+临时数据诊断日志已移除。Debug 构建、3649 个 JVM 测试（0 失败、1 跳过）、快速 Lint 通过，Gradle/Kotlin 守护进程已退出。
 
 ---
 
