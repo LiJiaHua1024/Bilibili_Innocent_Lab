@@ -10,7 +10,7 @@
 - 已量化影响：B11 使每次冷启动多等约 2 秒、首帧多约 3 秒。
 - **修复决策已完成**，见下方「修复决策记录」。
 - **实施进度（2026-10-20）**：B10 的作用域探测、B12 的存活探测/状态降级、B1 的“关闭即全停用”
-  均已实现并在测试机 `13a7a291` 验证（见各节末「状态」）；B11、B3、B4、B2 已完成；B9、B6 待继续。
+  均已实现并在测试机 `13a7a291` 验证（见各节末「状态」）；B11、B3、B4、B2、B9 已完成；B6 待继续。
 
 ---
 
@@ -348,6 +348,14 @@ W/BilibiliInnocentLab: publish remote hook config failed: NPatch selected
 但它同时污染了用户日志，会让真正的发布失败难以发现。
 
 位置：`settings/remote/RemoteHookConfigStore.kt:373-376`（`logFailure`）+ `:244-245`（短路点）。
+
+### 状态（2026-10-20）：已实现
+
+只把已识别的标准发布器主动旁路降为 `Log.d`（`standard remote hook config publisher bypassed`）；其余失败仍走原 `Log.w`，保留异常信息。沿用 B2 的旁路分类，避免按模糊文本吞掉真实故障。
+
+实机同一操作（关闭再恢复「捕捉日志」，最终值保持开启）：修复前产生两条 `W ... publish remote hook config failed: NPatch selected`，修复后为两条 `D ... publisher bypassed: NPatch selected`。证据 `captures/npatch-remaining/b9-before.log`、`b9-after.log`。
+
+Debug 构建及快速 Lint 通过；日志级别修改复用 B2 已通过的旁路逻辑回归，未重复运行 JVM 全量测试。
 
 ---
 
@@ -754,7 +762,7 @@ B10 让状态停留在 ACTIVE；B12 让模块真的没跑。两者组合后：
 2. **B1**（关闭免 Root 未真正停用）——决策为「关闭 = 真的全停用」，依据是引入时的 README 原文。**已实施**。
 3. **B11**（授权通道依赖模块应用进程，每次冷启动白等 2 秒 / 首帧多 3 秒）——**已实施并实机验证**，授权 2007ms → 69ms。
 4. **B3**（状态永不清除）+ **B4**（误判 MODULE_NOT_REGISTERED）——**均已实施并实机验证**。
-5. **B2**（徽章误报）——**已实施并实机验证**；接着处理 **B9**（日志噪声）。
+5. **B2**（徽章误报）+ **B9**（日志噪声）——**均已实施并实机验证**。
 6. **B6**（回执被丢弃）——影响诊断可信度。
 
 ## 建议补充的自动化回归

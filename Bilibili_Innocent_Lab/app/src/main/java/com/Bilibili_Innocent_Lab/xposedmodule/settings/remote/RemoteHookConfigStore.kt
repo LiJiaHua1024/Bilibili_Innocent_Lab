@@ -380,6 +380,10 @@ internal object RemoteHookConfigStore {
 
     fun logFailure(result: RemoteHookConfigPublishResult) {
         if (result !is RemoteHookConfigPublishResult.Failure || result.reason == "publication_pending") return
+        if (result.isStandardPublisherBypass) {
+            Log.d(TAG, "standard remote hook config publisher bypassed: ${result.reason}")
+            return
+        }
         Log.w(TAG, "publish remote hook config failed: ${result.reason}", result.throwable)
     }
 
