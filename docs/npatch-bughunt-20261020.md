@@ -525,6 +525,91 @@ B10 让状态停留在 ACTIVE；B12 让模块真的没跑。两者组合后：
 
 ---
 
+## B12 判据设计（2026-10-20）
+
+### 结论
+
+普通 App 无法读取其他应用进程；NPatch Manager 1.0.9 的公开 Provider（`ConfigProvider`）只接受
+`?package=` 并返回作用域模块列表，不暴露“模块是否已加载”。因此 B12 不能在模块侧“自动确认
+宿主在运行但模块没加载”，只能把结论分成三档：
+
+1. **已配置**：作用域包含模块 + 配置/心跳匹配（历史证据）。
+2. **当前已确认运行**：设置页向宿主发一次带 nonce 的存活探测，宿主进程内的动态接收器在
+   1.5 秒内回复。
+3. **验证失败**：用户点“验证”启动哔哩哔哩后，15 秒内既没有探测回复也没有新心跳，才判定
+   “模块未生效”。
+
+`ACTIVE` 从此只由第 2 档支撑；第 1 档改为 `UNCONFIRMED`（信息态），不再宣称已激活。
+
+### 为什么心跳不够
+
+- heartbeat 持久化在模块 App，只证明“过去某个时刻宿主装过 Hook”，进程死亡/重启不可见。
+- B12 的静默失败正是“上次心跳还在、这次宿主根本没执行模块代码”。
+- 心跳改为前台续期也只能覆盖“宿主最近活跃”，不能区分“宿主没运行”和“宿主运行但模块没加载”。
+
+### 探测通道
+
+请求（模块 App → 宿主主进程）：
+
+- action `com.Bilibili_Innocent_Lab.xposedmodule.PROBE_HOST_RUNTIME`，
+  `setPackage("tv.danmaku.bili")`。
+- extras：`nonce`、`moduleVersion`、`callerProof`（模块 App 创建的 immutable PendingIntent）。
+- 宿主动态接收器（只在主进程注册，`RECEIVER_EXPORTED`）校验：
+  - API 34+ `sentFromPackage == 模块包名`；
+  - 所有版本 `callerProof.creatorPackage == 模块包名`（包名由系统按 UID 生成，不可伪造）；
+  - nonce 合法；不写任何状态。
+- 不声明 manifest receiver，因此宿主没运行时广播不会拉起 B站进程。
+
+回复（宿主 → 模块 App）：
+
+- 显式广播到 `RoamingOpenReceiver`，携带 `nonce`、`hostPid`、`hostStartElapsedMs`
+  （`Process.getStartElapsedRealtime()`）、`hooksInstalled`、`noRootRevision`、`hostProof`
+  （宿主创建的 PendingIntent）。
+- 模块侧校验 `sentFromPackage` / `creatorPackage == tv.danmaku.bili` 和 nonce；只接受当前
+  未过期的单次探测（TTL 30 秒，单飞）。
+- 不传配置内容、用户数据或日志。
+
+### 状态机
+
+| 条件 | 状态 | 语气 | 用户可见 |
+|---|---|---|---|
+| 开关关闭 | `DISABLED` / `DISABLE_RESTART_REQUIRED*` | 原样 | 原样 |
+| 作用域明确不含模块 | `SCOPE_MISSING` | ACTION_REQUIRED | 模块不在作用域；打开 Manager |
+| 心跳不匹配 | 原有 `SYNCING` / `RESTART_REQUIRED` / `MANAGER_MISSING` 等 | 原样 | 原样 |
+| 心跳匹配 + 探测中 | `CHECKING` | INFO | 正在确认模块运行状态… |
+| 心跳匹配 + 探测回复 | `ACTIVE` | OK | 当前已确认模块正在运行 |
+| 心跳匹配 + 无探测回复 + 未验证 | `UNCONFIRMED`（新） | INFO | 未确认当前是否运行；最近回执 X 前；[验证] |
+| 心跳匹配 + 验证启动宿主后超时 | `NOT_RUNNING`（新） | ACTION_REQUIRED | 模块未生效：已启动哔哩哔哩但未收到回执；[打开 Manager][重试] |
+
+- `UNCONFIRMED` 不算故障，诊断徽章显示 INFO；只有 `NOT_RUNNING` 才升级为 ACTION_REQUIRED。
+- `ACTIVE` 要求 heartbeatMatches && liveProbeReplied，避免“历史心跳 = 已激活”。
+
+### 验证流程
+
+1. 用户在 `UNCONFIRMED` 点“验证”。
+2. 记录 `attemptStartedAt`，置 `PROBING`，`getLaunchIntentForPackage("tv.danmaku.bili")` 启动宿主。
+3. 发探测；同时监听新 heartbeat（`heartbeatReceivedAt > attemptStartedAt`）。
+4. 15 秒内收到探测回复或新心跳 → `ACTIVE`（心跳不匹配则仍 `RESTART_REQUIRED`）。
+5. 超时 → `NOT_RUNNING`，提供打开 NPatch Manager。
+6. 启动失败/无入口 → 保留 `UNCONFIRMED` 并提示，不误判为未生效。
+
+### 边界
+
+- 宿主未运行：`UNCONFIRMED`，不是 `NOT_RUNNING`；只有用户主动验证后才可能判定失败。
+- 宿主运行但模块未加载：探测无回复；验证流程在启动后仍无回复 → `NOT_RUNNING`。
+- 后台广播延迟：resume 探测 1.5 秒超时只降为 `UNCONFIRMED`；验证时宿主被拉到前台，
+  15 秒窗口足够。
+- 子进程：只在主进程注册；子进程不响应。
+- LSPosed：探测通道同样可用，但只在 `desiredEnabled` 时启用，不改变 LSPosed 状态语义。
+- 安全：PendingIntent 包名 + API 34 `sentFromPackage` + nonce/TTL；不响应其他应用。
+
+### 实施拆分（每步一个原子提交）
+
+1. 宿主动态探测响应器 + 模块探测客户端 + 接收器分支 + 纯 JVM 测试。
+2. 状态机/枚举/文案/诊断 + 纯 JVM 测试。
+3. 激活卡操作行（验证 / 打开 Manager）+ 验证流程 + 实机验证。
+4. 文档与 B12 复测记录。
+
 ## 已确认正常、无需处理的项（避免误报）
 
 | 项 | 结论 |
