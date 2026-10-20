@@ -84,7 +84,7 @@ internal object HostAdmissionClient {
 
     private const val TAG = "BilibiliInnocentLab"
 
-    fun admit(context: Context, normal: RemoteHookConfigSnapshot?, normalFailure: String?): Result {
+    fun admit(context: Context, normal: RemoteHookConfigSnapshot?, normalFailure: String?, nPatchRuntime: Boolean = false): Result {
         val app = context.applicationContext ?: context
         val deadline = SystemClock.elapsedRealtime() + HostAdmissionContract.BOOTSTRAP_TIMEOUT_MS
         val responses = LinkedBlockingQueue<Routed>(4)
@@ -170,26 +170,26 @@ internal object HostAdmissionClient {
             while (completed < calls.size) {
                 val remaining = deadline - SystemClock.elapsedRealtime()
                 if (remaining <= 0L) {
-                    return finishAdmit(normal, normalFailure, drainRouted(collect, responses, acceptGrant = false))
+                    return finishAdmit(normal, normalFailure, drainRouted(collect, responses, acceptGrant = false), nPatchRuntime)
                 }
                 val routed = responses.poll(remaining, TimeUnit.MILLISECONDS)
                 if (routed == null) {
                     val timedOut = drainRouted(collect, responses, acceptGrant = false)
                     val failure = if (timedOut.sawDenied) timedOut.failure else Result(reason = "admission_timeout")
-                    return remoteConfigFallback(normal, normalFailure, timedOut.sawDenied, failure)
+                    return remoteConfigFallback(normal, normalFailure, timedOut.sawDenied, failure, nPatchRuntime)
                 }
                 completed += 1
                 collect = collect.accept(routed.result, acceptGrant = true)
                 collect.grant?.let { return it }
                 if (collect.sawDenied) {
-                    return finishAdmit(normal, normalFailure, drainRouted(collect, responses, acceptGrant = false))
+                    return finishAdmit(normal, normalFailure, drainRouted(collect, responses, acceptGrant = false), nPatchRuntime)
                 }
                 when (HostAdmissionRoutePlan.followUp(routed.route, broadcastStarted)) {
                     HostAdmissionRoutePlan.FollowUp.START_BROADCAST -> startBroadcast()
                     HostAdmissionRoutePlan.FollowUp.NONE -> Unit
                 }
             }
-            return finishAdmit(normal, normalFailure, drainRouted(collect, responses, acceptGrant = false))
+            return finishAdmit(normal, normalFailure, drainRouted(collect, responses, acceptGrant = false), nPatchRuntime)
         } catch (_: InterruptedException) {
             Thread.currentThread().interrupt()
             return Result()
@@ -306,9 +306,10 @@ internal object HostAdmissionClient {
         normal: RemoteHookConfigSnapshot?,
         normalFailure: String?,
         collect: HostAdmissionCollect,
+        nPatchRuntime: Boolean,
     ): Result {
         collect.grant?.takeIf { !collect.sawDenied }?.let { return it }
-        return remoteConfigFallback(normal, normalFailure, collect.sawDenied, collect.failure)
+        return remoteConfigFallback(normal, normalFailure, collect.sawDenied, collect.failure, nPatchRuntime)
     }
 
     /**
@@ -320,7 +321,8 @@ internal object HostAdmissionClient {
         normal: RemoteHookConfigSnapshot?,
         normalFailure: String?,
         sawDenied: Boolean,
-        failure: Result
+        failure: Result,
+        nPatchRuntime: Boolean
     ): Result {
         val snapshot = normal ?: return failure
         if (HostAdmissionRouteClassifier.allowRemoteConfigFallback(
@@ -328,7 +330,9 @@ internal object HostAdmissionClient {
                 normalFailure,
                 snapshot.authorized,
                 snapshot.moduleVersionCode == BuildConfig.VERSION_CODE.toLong(),
-                snapshot.generation
+                snapshot.generation,
+                nPatchRuntime = nPatchRuntime,
+                noRootRevision = snapshot.noRootRevision
             )
         ) {
             Log.w(TAG, "[BIL] 启动授权传输不可达，采用已校验 Remote Preferences 回退")
@@ -336,6 +340,10 @@ internal object HostAdmissionClient {
                 Grant(snapshot = snapshot, source = "remote_config_transport_fallback"),
                 reason = ""
             )
+        }
+        if (nPatchRuntime && snapshot.authorized && snapshot.noRootRevision <= 0L) {
+            Log.w(TAG, "[BIL] NPatch 拒绝旧标准文档回退，需重新同步免 Root 配置")
+            return Result(reason = "manager_sync_required")
         }
         return failure
     }

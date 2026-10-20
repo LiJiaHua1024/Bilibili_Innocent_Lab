@@ -5016,7 +5016,11 @@ class HookEntry : XposedModule() {
                     frameworkLog("[BIL] 启动授权尝试(process=$processName)")
                 }
                 val admissionStartedAtMs = android.os.SystemClock.elapsedRealtime()
-                val admission = com.Bilibili_Innocent_Lab.xposedmodule.runtime.HostAdmissionClient.admit(appContext, normal, reason)
+                val runtimeMode = com.Bilibili_Innocent_Lab.xposedmodule.runtime.noroot.NoRootRuntimeDetector.detect(
+                    appContext, XposedModule::class.java.classLoader, HookEntry::class.java.classLoader)
+                val admission = com.Bilibili_Innocent_Lab.xposedmodule.runtime.HostAdmissionClient.admit(
+                    appContext, normal, reason,
+                    nPatchRuntime = runtimeMode == com.Bilibili_Innocent_Lab.xposedmodule.runtime.noroot.HookRuntimeMode.NPATCH_LEGACY)
                 val admissionElapsedMs =
                     android.os.SystemClock.elapsedRealtime() - admissionStartedAtMs
                 if (processName == TARGET_PACKAGE) {

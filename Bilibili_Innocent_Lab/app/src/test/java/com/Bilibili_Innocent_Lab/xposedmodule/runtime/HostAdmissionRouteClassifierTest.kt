@@ -3,6 +3,14 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class HostAdmissionRouteClassifierTest {
+    @Test fun npatchCannotReviveAnOldStandardDocumentWhileLSPosedStillCanUseIt() {
+        fun allowed(npatch: Boolean, revision: Long) = HostAdmissionRouteClassifier.allowRemoteConfigFallback(
+            false, null, true, true, 1L, nPatchRuntime = npatch, noRootRevision = revision)
+        assertFalse(allowed(true, 0L))
+        assertFalse(allowed(true, -1L))
+        assertTrue(allowed(true, 42L))
+        assertTrue(allowed(false, 0L))
+    }
     @Test fun endpointStatusesAreClassifiedExhaustively() {
         val expected = mapOf(
             "prepared" to HostAdmissionRouteClassifier.StatusClass.PREPARED,

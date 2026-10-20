@@ -58,9 +58,12 @@ internal object HostAdmissionRouteClassifier {
         authorized: Boolean,
         moduleVersionMatches: Boolean,
         generation: Long,
+        nPatchRuntime: Boolean = false,
+        noRootRevision: Long = 0L,
     ): Boolean = !sawDenied &&
         normalFailure == null &&
         authorized &&
         moduleVersionMatches &&
-        generation > 0L
+        generation > 0L &&
+        (!nPatchRuntime || noRootRevision > 0L)
 }

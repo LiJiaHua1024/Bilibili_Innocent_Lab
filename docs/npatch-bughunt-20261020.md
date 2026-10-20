@@ -93,9 +93,9 @@ prefs: desired_enabled=false, sync_state=DISABLE_RESTART_REQUIRED, disable_was_a
 `modeOffRejectsDirectButKeepsCurrentNormalDocument` 也钉着这条）。改为按通道判定：只有 NPatch
 通道（或文档确实来自免 Root 通道）才被总开关门禁拦住，标准通道语义不变。
 
-**已知边界**：模块 App 进程完全不可达（B11 场景）且 Remote Store 里还留着旧版本写入的可授权标准
-文档时，宿主的 `remote_config_transport_fallback` 仍可能为那一次启动装上 Hook；层 2 的清理会在
-模块 App 下次运行时修正。完整兜底要宿主侧接入 `NoRootRuntimeDetector`（运行模式探测），留作后续。
+**旧标准文档回退边界已闭环（2026-10-20）**：宿主授权入口现已接入 `NoRootRuntimeDetector`，最终回退额外检查实际运行模式；NPatch 不接受 `noRootRevision <= 0` 的历史标准文档作为回退许可。模块进程不可达时同样成立，无需等待设置 App 下次运行清理旧数据。标准 LSPosed 的正常文档不受此条件影响。
+
+验证：新增 JVM 模式/文档矩阵；测试机 `13a7a291` 上新增 3 项真实 IPC 回归，用模块 UID 无法获得宿主许可的通道验证最终回退，分别确认「NPatch + 旧标准文档拒绝」「标准框架 + 标准文档允许」「NPatch + 有效免 Root 文档允许」，均通过。测试文档仅在内存构造，不改写用户配置。真实宿主开/关冷启动路径也已复测。Debug 与测试 APK、3647 项 JVM 回归（0 失败、1 跳过）、快速 Lint 通过；实机日志在 `captures/npatch-closure/b1-*.log`。
 
 ---
 
