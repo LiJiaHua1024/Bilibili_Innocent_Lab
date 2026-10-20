@@ -30,6 +30,7 @@ internal object NoRootSupportStore {
     private const val KEY_HEARTBEAT_TARGET_UPDATE_TIME = "heartbeat_target_update_time"
     private const val KEY_HEARTBEAT_TARGET_PACKAGE = "heartbeat_target_package"
     private const val KEY_HEARTBEAT_RECEIVED_AT = "heartbeat_received_at"
+    private const val KEY_RUNTIME_REPLY_RECEIVED_AT = "runtime_reply_received_at"
     private const val KEY_DISABLE_WAS_ACTIVE = "disable_was_active"
 
     enum class SyncState {
@@ -99,6 +100,7 @@ internal object NoRootSupportStore {
                 .remove(KEY_HEARTBEAT_TARGET_UPDATE_TIME)
                 .remove(KEY_HEARTBEAT_TARGET_PACKAGE)
                 .remove(KEY_HEARTBEAT_RECEIVED_AT)
+                .remove(KEY_RUNTIME_REPLY_RECEIVED_AT)
                 .remove(KEY_DISABLE_WAS_ACTIVE)
                 .commit()
         }
@@ -156,6 +158,7 @@ internal object NoRootSupportStore {
             .remove(KEY_HEARTBEAT_TARGET_UPDATE_TIME)
             .remove(KEY_HEARTBEAT_TARGET_PACKAGE)
             .remove(KEY_HEARTBEAT_RECEIVED_AT)
+            .remove(KEY_RUNTIME_REPLY_RECEIVED_AT)
             .commit()
     }
 
@@ -194,6 +197,23 @@ internal object NoRootSupportStore {
             heartbeatTargetPackage = prefs.getString(KEY_HEARTBEAT_TARGET_PACKAGE, null),
             heartbeatReceivedAt = prefs.getLong(KEY_HEARTBEAT_RECEIVED_AT, 0L),
             disableWasActive = prefs.getBoolean(KEY_DISABLE_WAS_ACTIVE, false)
+        )
+    }
+
+    /** 只记录已通过身份、nonce 和 Hook 安装校验的存活回执，不提升安装/同步状态。 */
+    fun recordRuntimeReply(context: Context, receivedAt: Long = System.currentTimeMillis()) =
+        synchronized(ioLock) {
+            if (isDesiredEnabled(context) && receivedAt > 0L) {
+                prefs(context).edit { putLong(KEY_RUNTIME_REPLY_RECEIVED_AT, receivedAt) }
+            }
+        }
+
+    /** 冷启动心跳与存活探测都算回执；旧版本尚无探测时间时回落到心跳时间。 */
+    fun lastReceiptReceivedAt(context: Context): Long {
+        val prefs = prefs(context)
+        return maxOf(
+            prefs.getLong(KEY_HEARTBEAT_RECEIVED_AT, 0L),
+            prefs.getLong(KEY_RUNTIME_REPLY_RECEIVED_AT, 0L)
         )
     }
 
@@ -395,6 +415,7 @@ internal object NoRootSupportStore {
             remove(KEY_HEARTBEAT_TARGET_UPDATE_TIME)
             remove(KEY_HEARTBEAT_TARGET_PACKAGE)
             remove(KEY_HEARTBEAT_RECEIVED_AT)
+            remove(KEY_RUNTIME_REPLY_RECEIVED_AT)
         }
     }
 

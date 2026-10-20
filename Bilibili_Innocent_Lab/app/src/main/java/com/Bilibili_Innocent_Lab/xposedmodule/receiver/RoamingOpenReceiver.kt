@@ -93,7 +93,7 @@ class RoamingOpenReceiver : BroadcastReceiver() {
             return
         }
         if (intent.action == HostRuntimeProbeContract.ACTION_REPLY) {
-            receiveHostRuntimeProbeReply(intent)
+            receiveHostRuntimeProbeReply(context, intent)
             return
         }
         if (intent.action != ACTION_OPEN_ROAMING_SETTINGS) return
@@ -240,7 +240,7 @@ class RoamingOpenReceiver : BroadcastReceiver() {
      * 存活探测回执：宿主自建 PendingIntent 证明身份，nonce 只属于本次探测窗口。
      * 回执本身即“模块代码此刻在宿主主进程运行”的证据，B12 的静默失效由此可观测。
      */
-    private fun receiveHostRuntimeProbeReply(intent: Intent) {
+    private fun receiveHostRuntimeProbeReply(context: Context, intent: Intent) {
         if (AndroidVersion.isAtLeast(AndroidVersion.U) &&
             sentFromPackage != HookEntry.TARGET_PACKAGE
         ) {
@@ -266,6 +266,7 @@ class RoamingOpenReceiver : BroadcastReceiver() {
             false
         )
         if (HostRuntimeProbeClient.onHostReply(nonce = nonce, hooksInstalled = hooksInstalled)) {
+            if (hooksInstalled) NoRootSupportStore.recordRuntimeReply(context)
             Log.i("BilibiliInnocentLab", "[BIL] 存活回执已接受(hooksInstalled=$hooksInstalled)")
         }
     }

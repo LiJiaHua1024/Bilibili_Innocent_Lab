@@ -893,8 +893,8 @@ class MainActivity : SkinnedActivity() {
     }
 
     /** “未确认”卡片要把最近一次宿主回执的时间说清楚，否则用户无从判断该不该验证。 */
-    private fun lastHeartbeatLabel(): CharSequence = DateUtils.getRelativeTimeSpanString(
-        NoRootSupportStore.readStatus(applicationContext).heartbeatReceivedAt,
+    private fun lastReceiptLabel(): CharSequence = DateUtils.getRelativeTimeSpanString(
+        NoRootSupportStore.lastReceiptReceivedAt(applicationContext),
         System.currentTimeMillis(),
         DateUtils.MINUTE_IN_MILLIS
     )
@@ -1136,7 +1136,7 @@ class MainActivity : SkinnedActivity() {
                 ActivationDisplayState.CONFIRMING ->
                     getString(R.string.module_activation_confirming)
                 ActivationDisplayState.UNCONFIRMED ->
-                    getString(R.string.module_activation_unconfirmed, lastHeartbeatLabel())
+                    getString(R.string.module_activation_unconfirmed, lastReceiptLabel())
                 ActivationDisplayState.NOT_RUNNING ->
                     getString(R.string.module_activation_not_running)
                 ActivationDisplayState.CHECKING ->
