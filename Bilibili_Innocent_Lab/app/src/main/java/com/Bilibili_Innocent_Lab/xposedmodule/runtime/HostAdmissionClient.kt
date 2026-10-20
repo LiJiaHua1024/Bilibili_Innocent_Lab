@@ -59,6 +59,14 @@ internal class AdmissionResponseCoordinator {
     fun completeSafely(action: String?, response: () -> Bundle?): Boolean =
         runCatching { complete(action, response()) }.getOrDefault(false)
 
+    /** 系统已完成有序投递且无人处理；只允许已有可校验 NPatch 文档的启动提前回退。 */
+    fun completeUnhandled(action: String, canFallback: Boolean): Boolean {
+        if (!canFallback) return false
+        val awaiter = active.get() ?: return false
+        if (awaiter.action != action) return false
+        return awaiter.response.complete(null)
+    }
+
     fun clear(awaiter: Awaiter) {
         active.compareAndSet(awaiter, null)
     }
@@ -267,7 +275,12 @@ internal object HostAdmissionClient {
         }
         if (SystemClock.elapsedRealtime() >= deadline) return Result(reason = "admission_timeout")
         return when {
-            broadcast -> broadcastExchange(context, deadline, ::exchangeUsing)
+            broadcast -> broadcastExchange(context, deadline,
+                canFinishUnhandled = normal != null && normal.noRootRevision > 0L &&
+                    HostAdmissionRouteClassifier.allowRemoteConfigFallback(
+                        false, normalFailure, normal.authorized,
+                        normal.moduleVersionCode == BuildConfig.VERSION_CODE.toLong(), normal.generation
+                    ), exchange = ::exchangeUsing)
             local -> localExchange(context, deadline, ::exchangeUsing)
             bound && Build.VERSION.SDK_INT >= 29 -> boundExchange(context, deadline, ::exchangeUsing)
             else -> context.contentResolver.acquireUnstableContentProviderClient(authority)?.use { client ->
@@ -371,6 +384,7 @@ internal object HostAdmissionClient {
     private fun broadcastExchange(
         context: Context,
         deadline: Long,
+        canFinishUnhandled: Boolean,
         exchange: ((String, Bundle) -> Bundle?) -> Result
     ): Result {
         val nonce = UUID.randomUUID().toString()
@@ -453,6 +467,8 @@ internal object HostAdmissionClient {
                                     responseCoordinator.completeSafely(responseAction) {
                                         result.getBundle(RoamingOpenReceiver.EXTRA_ADMISSION_RESPONSE)
                                     }
+                                } else if (responseCoordinator.completeUnhandled(responseAction, canFinishUnhandled)) {
+                                    Log.i(TAG, "[BIL] 启动授权广播不可达，结束本路等待(method=$method)")
                                 }
                             }.onFailure {
                                 Log.w(
