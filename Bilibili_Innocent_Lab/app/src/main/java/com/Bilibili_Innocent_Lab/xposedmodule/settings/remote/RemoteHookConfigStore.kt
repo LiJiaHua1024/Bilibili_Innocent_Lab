@@ -303,6 +303,9 @@ internal object RemoteHookConfigStore {
             values = values,
             nowEpochMs = System.currentTimeMillis(),
             force = force,
+            // B1：NPatch 通道下免 Root 开关是总开关。关闭后发布“不可授权”文档，既不给宿主
+            // 留下复活口子，也顺手清掉旧版本写下的可授权标准文档。
+            deliveryEnabled = !isNpatchConfigChannel(frameworkStatus),
             stillCurrent = { stillCurrent() && PublicationAuthorityStore.matches(appContext, publication) },
             backend = object : RemoteHookConfigBackend {
                 override fun readCached(): Map<String, *> = preferences.all

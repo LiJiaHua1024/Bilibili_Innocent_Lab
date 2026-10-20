@@ -62,10 +62,20 @@ internal object HostAdmissionEndpoint {
                         val deadline = minOf(extras.getLong("deadline"), now + HostAdmissionContract.CHALLENGE_TIMEOUT_MS)
                         if (deadline <= now) return@withAuthorityLock status("stale", nonce)
                         val noRootSelected = com.Bilibili_Innocent_Lab.xposedmodule.runtime.noroot.NoRootSupportStore.isDesiredEnabled(context)
-                        val source = HostAdmissionSourcePolicy.select(noRootSelected, extras.getLong("normalNoRootRevision"),
-                            current.identity.fingerprint, extras.getString("normalFingerprint"),
-                            extras.getBoolean("allowDirect", false), current.directAllowed)
-                            ?: return@withAuthorityLock status("manager_sync_required", nonce)
+                        // B1：免 Root 开关是 NPatch 通道的总开关，关闭后不发放任何来源。
+                        val source = HostAdmissionSourcePolicy.select(
+                            noRootSelected = noRootSelected,
+                            normalNoRootRevision = extras.getLong("normalNoRootRevision"),
+                            expectedFingerprint = current.identity.fingerprint,
+                            normalFingerprint = extras.getString("normalFingerprint"),
+                            allowDirect = extras.getBoolean("allowDirect", false),
+                            directEnabled = current.directAllowed,
+                            nPatchChannel = com.Bilibili_Innocent_Lab.xposedmodule.settings.remote
+                                .isNpatchConfigChannel(
+                                    com.Bilibili_Innocent_Lab.xposedmodule.settings.remote
+                                        .RemoteHookConfigStore.status()
+                                )
+                        ) ?: return@withAuthorityLock status("manager_sync_required", nonce)
                         val document = if (source == HostAdmissionContract.DIRECT) HostAdmissionContract.encode(current.document()) else null
                         val challenge = UUID.randomUUID().toString()
                         val lease = AdmissionLeaseBook.Lease(uid, pid, nonce, challenge, source, current.identity,

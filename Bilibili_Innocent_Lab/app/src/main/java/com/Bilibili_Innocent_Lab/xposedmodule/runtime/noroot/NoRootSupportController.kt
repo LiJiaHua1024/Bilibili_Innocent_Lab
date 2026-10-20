@@ -2,6 +2,7 @@ package com.Bilibili_Innocent_Lab.xposedmodule.runtime.noroot
 
 import android.content.Context
 import android.content.SharedPreferences
+import android.util.Log
 import com.Bilibili_Innocent_Lab.xposedmodule.settings.terms.UserTermsAuthorizationCoordinator
 import com.Bilibili_Innocent_Lab.xposedmodule.settings.terms.UserTermsConsentStore
 import com.Bilibili_Innocent_Lab.xposedmodule.settings.terms.UserTermsDecision
@@ -140,7 +141,16 @@ internal object NoRootSupportController {
                             snapshot = tombstone,
                             generation = intentGeneration,
                             decision = requestedTermsDecision(appContext),
-                            resultHandler = {},
+                            // B1：tombstone 写不进去不能再当没发生过。授权端点的总开关门禁
+                            // 与不可授权文档已经挡住宿主，这里至少把失败记进日志，便于排查。
+                            resultHandler = { result ->
+                                if (result !is NPatchRemoteGateway.SyncResult.Success) {
+                                    Log.w(
+                                        "BilibiliInnocentLab",
+                                        "[BIL] 免 Root 关闭后 tombstone 同步未确认: $result"
+                                    )
+                                }
+                            },
                             listener = null
                         )
                     }

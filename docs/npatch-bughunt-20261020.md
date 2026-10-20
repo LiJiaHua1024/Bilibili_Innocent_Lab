@@ -9,8 +9,8 @@
 - 最严重：**B12**（Manager 进程被回收后模块静默完全失效且无任何提示）；其次 **B1**（关闭免 Root 后仍照装 Hook）。
 - 已量化影响：B11 使每次冷启动多等约 2 秒、首帧多约 3 秒。
 - **修复决策已完成**，见下方「修复决策记录」。
-- **实施进度（2026-10-20）**：B10 的作用域探测与 B12 的存活探测/状态降级均已实现并在测试机
-  `13a7a291` 验证（见各节末「状态」）；B1、B11、B3、B4、B6、B2、B9 尚未改动。
+- **实施进度（2026-10-20）**：B10 的作用域探测、B12 的存活探测/状态降级、B1 的“关闭即全停用”
+  均已实现并在测试机 `13a7a291` 验证（见各节末「状态」）；B11、B3、B4、B6、B2、B9 尚未改动。
 
 ---
 
@@ -67,6 +67,35 @@ prefs: desired_enabled=false, sync_state=DISABLE_RESTART_REQUIRED, disable_was_a
 
 ### 建议
 关闭时要么（a）把 tombstone 写入 Remote Store 并**校验**结果，失败必须显式报错而不是静默；要么（b）在 `HostAdmissionEndpoint` 侧对 `deliveryEnabled=false` 的文档直接 `denied`，不允许 NORMAL 路径回退重新授权。
+
+### 状态（2026-10-20）：已实现
+
+按「关闭 = 真的全停用」落地三层：
+
+1. **授权门禁**（`HostAdmissionSourcePolicy`）：`!noRootSelected && (nPatchChannel || normalNoRootRevision > 0)`
+   直接拒绝，NORMAL 与 DIRECT 都不发。`nPatchChannel` 由 `isNpatchConfigChannel(框架状态)` 判定
+   （名字 + `PROP_CAP_SYSTEM` 能力位 + 排除 LSPatch），元数据未就绪时退回文档判据，保证 LSPosed 不受影响。
+2. **文档卫生**（`RemoteHookConfigCommitter`）：NPatch 通道下、开关关闭时发布 `deliveryEnabled=false`
+   的不可授权文档——既不给宿主留复活口子，也清掉旧版本写下的可授权标准文档。
+3. **可观测性**（`NoRootSupportController`）：禁用路径的 tombstone 同步不再静默，失败记 `Log.w`。
+
+实机验证（`captures/npatch-b12-design/`）：
+
+| 场景 | 结果 |
+|---|---|
+| 关闭免 Root 后冷启动宿主 | `启动授权广播已处理(status=manager_sync_required)`，`Hook 安装链完成` **0 次**（修复前同场景为 `source=manager` + 93 个 Hook 点） |
+| 重新开启后冷启动 | `source=manager` + Hook 安装链 + 心跳正常，反向无回归 |
+
+日志证据：`captures/npatch-b12-design/b1-disabled-host.log`。
+
+**与原建议的差异**：原回归用例写的是「关闭态 + NORMAL 文档 `noRootRevision=0` 不得返回 `NORMAL`」，
+但那会误伤 LSPosed——它的正常路径正是「关闭态 + `noRootRevision=0`」（现有测试
+`modeOffRejectsDirectButKeepsCurrentNormalDocument` 也钉着这条）。改为按通道判定：只有 NPatch
+通道（或文档确实来自免 Root 通道）才被总开关门禁拦住，标准通道语义不变。
+
+**已知边界**：模块 App 进程完全不可达（B11 场景）且 Remote Store 里还留着旧版本写入的可授权标准
+文档时，宿主的 `remote_config_transport_fallback` 仍可能为那一次启动装上 Hook；层 2 的清理会在
+模块 App 下次运行时修正。完整兜底要宿主侧接入 `NoRootRuntimeDetector`（运行模式探测），留作后续。
 
 ---
 
@@ -691,8 +720,8 @@ B10 让状态停留在 ACTIVE；B12 让模块真的没跑。两者组合后：
 仅列 9 条 NPatch 专项；B5、B7、B8 已移出。
 
 1. **B12 + B10**（模块静默失效 + 状态永不过期）——**已实施**，见 B10/B12 节末「状态」。
-2. **B1**（关闭免 Root 未真正停用）——决策为「关闭 = 真的全停用」，依据是引入时的 README 原文。**下一步**。
-3. **B11**（授权通道依赖模块应用进程，每次冷启动白等 2 秒 / 首帧多 3 秒）——已量化，改动局部，收益立竿见影。
+2. **B1**（关闭免 Root 未真正停用）——决策为「关闭 = 真的全停用」，依据是引入时的 README 原文。**已实施**。
+3. **B11**（授权通道依赖模块应用进程，每次冷启动白等 2 秒 / 首帧多 3 秒）——已量化，改动局部，收益立竿见影。**下一步**。
 4. **B3**（状态永不清除）+ **B4**（误判 MODULE_NOT_REGISTERED）——直接误导用户去修不存在的问题。
 5. **B2**（徽章误报）+ **B9**（日志噪声）——同一根因，改动集中。
 6. **B6**（回执被丢弃）——影响诊断可信度。
