@@ -703,9 +703,22 @@ B10 让状态停留在 ACTIVE；B12 让模块真的没跑。两者组合后：
 3. 激活卡操作行（验证 / 打开 Manager）+ 验证流程 + 实机验证。
 4. 文档与 B12 复测记录。
 
-### 状态（2026-10-20）：已实现
+### 状态（2026-10-20）：检测引导已实现，833 loader 根因现已修复
 
-实际落成三个提交（探测通道 / B12 状态与界面 / 文档），要点与设计一致，另有几处实现细节：
+补充了 `scripts/npatch/FixLoader833.java` 与可复现说明：833 发布包服务只实现 `IFrameworkService`，
+Manager 不可达时 `asBinder()` 返回 null，Vector 因此丢弃本地缓存服务。现在单独替换此方法为返回本地 Binder 存活令牌，
+保留原本地服务、模块列表、作用域与重连逻辑。输入 JAR/DEX 固定哈希、唯一方法定位、恢复原方法后 DEX 规范化字节比较，
+以及 JAR 其余文件逐项校验均通过。未知输入与已有输出均拒绝。
+
+新旧宿主签名证书一致，已 `install -r` 保留数据覆盖安装。Manager `stopped=true` 时旧包模块零入口，
+修复包出现 Modern 入口并完成 Hook（2557/2083ms）；Manager 重启后 2181ms，宿主运行中停止 Manager 后仍有有效回执。
+关闭免 Root、设置进程可达时授权拒绝且无功能 Hook。工具、安装与日志详见 `scripts/npatch/README.md`、`captures/npatch-closure/b12-*`。
+旧 patched APK 需要重新修补，单独升级模块不能修改旧 loader；首次必须已有有效作用域缓存。
+
+极端回归另发现 **B1 仍有旧正 revision 缓存问题**：Manager 不可达时关闭开关，再停止设置进程，旧缓存仍可回退授权。
+此问题需要继续收紧 B1，不能因为 B12 已修复便删除清单。证据 `captures/npatch-closure/b1-disabled-all-unreachable.log`。
+
+早期检测引导实际落成三个提交（探测通道 / B12 状态与界面 / 文档），要点与设计一致，另有几处实现细节：
 
 - **通道**：请求由 signature 权限 `PROBE_HOST_RUNTIME` 把关，回执用宿主自建 PendingIntent +
   `sentFromPackage` 证明身份；`nonce` 单窗口关联，窗口内每 1 秒重发一次以覆盖宿主冷启动。
