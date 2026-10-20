@@ -10,7 +10,7 @@
 - 已量化影响：B11 使每次冷启动多等约 2 秒、首帧多约 3 秒。
 - **修复决策已完成**，见下方「修复决策记录」。
 - **实施进度（2026-10-20）**：B10 的作用域探测、B12 的存活探测/状态降级、B1 的“关闭即全停用”
-  均已实现并在测试机 `13a7a291` 验证（见各节末「状态」）；B11、B3、B4、B2、B9 已完成；B6 待继续。
+  均已实现并在测试机 `13a7a291` 验证（见各节末「状态」）；本轮按顺序完成 B11、B3、B4、B2、B9、B6。9 项 NPatch 专项均已按决策实施；B5/B7 保持原分类与范围，B8 仅需文档勘误。
 
 ---
 
@@ -280,6 +280,16 @@ W/BilibiliInnocentLab: receipt stage=push reason=SESSION_MISMATCH
 ### 建议
 在每条 `return false` 前分别赋具体 `ReceiptQueryFailure`（`SOURCE_MISMATCH`/`SURFACE_MISMATCH`/`STORE_FAILED` 等），
 并复核 `ReceiptSessionGate.accept` 的 `started == latestStart && current != Session(...)` 分支是否在正常重启下被误判。
+
+### 状态（2026-10-20）：已实现
+
+会话校验与序号处理分开：`SESSION_MISMATCH` 仅表示旧进程或同启动时刻的不同会话；端点死亡用 `ENDPOINT_DEAD`，非正序号用 `INVALID_SEQUENCE`，载荷、来源、存储失败保留各自原因。
+
+Provider 与备用 Binder 会产生重复/乱序副本。同一已验证会话、同一通道已有成功保存的较新序号时，确认副本 `accepted=true`，不覆盖新快照；记录每分钟至多一条的调试信息 `receipt stage=push result=superseded`。存储失败仍不推进序号，后续重试可再次落盘。会话门禁的旧进程拒绝、死亡会话不复活、重复注册幂等约束保持不变。
+
+复核说明：正常副本是旧 `SESSION_MISMATCH` 的一条触发路径，不能把该日志的每次出现都解释成真实会话冲突或最新数据丢失。
+
+实机 `13a7a291` 两次冷启动均完成安装链，分别出现限流后的 `result=superseded`，采集窗口内 push 警告为 0；诊断总评正常，宿主诊断含 72 项功能，三类组件快照（首页组件 3、底栏 5、首页标签 6 项）均存在。证据 `captures/npatch-remaining/b6-after.log`、`b6-history.xml`、`b6-scans.xml`、`b6-diagnostics.png`。Debug 构建、JVM 回归（3646 项，0 失败、1 跳过）及快速 Lint 通过。
 
 ---
 
@@ -763,14 +773,17 @@ B10 让状态停留在 ACTIVE；B12 让模块真的没跑。两者组合后：
 3. **B11**（授权通道依赖模块应用进程，每次冷启动白等 2 秒 / 首帧多 3 秒）——**已实施并实机验证**，授权 2007ms → 69ms。
 4. **B3**（状态永不清除）+ **B4**（误判 MODULE_NOT_REGISTERED）——**均已实施并实机验证**。
 5. **B2**（徽章误报）+ **B9**（日志噪声）——**均已实施并实机验证**。
-6. **B6**（回执被丢弃）——影响诊断可信度。
+6. **B6**（回执被丢弃）——**已实施并实机验证**，重复副本成功确认，真实失败按原因区分。
 
-## 建议补充的自动化回归
+## 已覆盖的回归
 
-- JVM：`HostAdmissionSourcePolicy` 在“关闭态 + NORMAL 文档 `noRootRevision=0`”下不得返回 `NORMAL`。
+- JVM：`HostAdmissionSourcePolicy` 在 NPatch 通道关闭态不发放许可；标准 LSPosed 的关闭态 + NORMAL 文档仍可正常授权。
 - JVM：`ActivationCardVisualSpec.diagnosticsSummaryState(publishFailed=true, standardPublisherBypassed=true)` → `READY`。
 - JVM：`ReceiptSessionGate` 在“同一进程重复注册”与“进程重启”两种场景下的预期结果。
-- 契约：`NPatchRemoteGateway` 在 binder 不可达时应产出 `ManagerMissing` 而非 `ModuleNotRegistered`。
+- JVM：重复/乱序回执不覆盖较新快照，非正序号拒绝；旧进程不得覆盖新会话。
+- JVM：`NPatchRemoteGateway` 连接不可达重试一次，显式拒绝不重试，用户意图变化后取消；实机确认 binder 不可达为 `ManagerMissing`。
+- JVM：关闭文档保留 tombstone revision，停用回执拒绝旧 revision、版本不符和启用快照。
+- JVM：有有效 NPatch 回退文档时，无处理者的有序广播可以提前结束；其他场景保持等待。
 - JVM：免 Root 关闭态下，NPatch 环境不得产出可授权文档（B1 的回归防线）。
 
 ## 原始证据索引
