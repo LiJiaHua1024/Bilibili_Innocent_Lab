@@ -3,6 +3,14 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class HostAdmissionRouteClassifierTest {
+    @Test fun disabledRevisionRequiresABoundExplicitCloseResponse() {
+        assertEquals(42L, HostAdmissionRouteClassifier.disabledRevision("manager_sync_required", true, 42L))
+        assertEquals(0L, HostAdmissionRouteClassifier.disabledRevision("manager_sync_required", false, 42L))
+        assertEquals(0L, HostAdmissionRouteClassifier.disabledRevision("denied", true, 42L))
+        assertEquals(0L, HostAdmissionRouteClassifier.disabledRevision("stale", true, 42L))
+        assertEquals(0L, HostAdmissionRouteClassifier.disabledRevision("granted", true, 42L))
+        assertEquals(0L, HostAdmissionRouteClassifier.disabledRevision("manager_sync_required", true, -1L))
+    }
     @Test fun npatchRequiresFreshAdmissionWhileStandardFrameworkKeepsValidatedFallback() {
         fun allowed(npatch: Boolean) = HostAdmissionRouteClassifier.allowRemoteConfigFallback(
             false, null, true, true, 1L, nPatchRuntime = npatch)

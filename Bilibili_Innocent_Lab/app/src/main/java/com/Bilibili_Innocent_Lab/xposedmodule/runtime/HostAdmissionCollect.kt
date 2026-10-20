@@ -17,7 +17,7 @@ internal data class HostAdmissionCollect(
     fun accept(response: HostAdmissionClient.Result, acceptGrant: Boolean): HostAdmissionCollect {
         if (sawDenied) {
             return if (HostAdmissionRouteClassifier.latchesDenial(response.reason)) {
-                copy(failure = response)
+                copy(failure = if (response.disabledRevision > failure.disabledRevision) response else failure)
             } else {
                 this
             }

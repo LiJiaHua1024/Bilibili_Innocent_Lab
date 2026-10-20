@@ -5033,6 +5033,15 @@ class HookEntry : XposedModule() {
                 }
                 val grant = admission.grant
                 if (grant == null) {
+                    // 标准框架的配置拒绝不能被免 Root 的关闭记录变成安装终态。
+                    if (runtimeMode == com.Bilibili_Innocent_Lab.xposedmodule.runtime.noroot.HookRuntimeMode.NPATCH_LEGACY &&
+                        admission.disabledRevision > 0L && !authorizedHooksInstalled.get()) {
+                        authorizedInstallerRef.set(null)
+                        authorizationRetryPending.set(false)
+                        HostRuntimeProbeResponder.disabledRevision = admission.disabledRevision
+                        frameworkLog("[BIL] 当前关闭许可已确认，本进程不安装 Hook")
+                        return
+                    }
                     if (processName == TARGET_PACKAGE) HostRuntimeDiagnosticsBridge.recordConfigRejected(admission.reason)
                     if (processName == TARGET_PACKAGE) {
                         // attach 阶段可能仍处在后台启动窗口，MIUI 会暂时丢弃发往模块 App 的

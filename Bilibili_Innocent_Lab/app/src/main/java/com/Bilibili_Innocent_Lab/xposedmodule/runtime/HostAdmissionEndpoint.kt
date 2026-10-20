@@ -62,6 +62,8 @@ internal object HostAdmissionEndpoint {
                         val deadline = minOf(extras.getLong("deadline"), now + HostAdmissionContract.CHALLENGE_TIMEOUT_MS)
                         if (deadline <= now) return@withAuthorityLock status("stale", nonce)
                         val noRootSelected = com.Bilibili_Innocent_Lab.xposedmodule.runtime.noroot.NoRootSupportStore.isDesiredEnabled(context)
+                        val nPatchChannel = com.Bilibili_Innocent_Lab.xposedmodule.settings.remote
+                            .isNpatchConfigChannel(com.Bilibili_Innocent_Lab.xposedmodule.settings.remote.RemoteHookConfigStore.status())
                         // B1：免 Root 开关是 NPatch 通道的总开关，关闭后不发放任何来源。
                         val source = HostAdmissionSourcePolicy.select(
                             noRootSelected = noRootSelected,
@@ -70,12 +72,17 @@ internal object HostAdmissionEndpoint {
                             normalFingerprint = extras.getString("normalFingerprint"),
                             allowDirect = extras.getBoolean("allowDirect", false),
                             directEnabled = current.directAllowed,
-                            nPatchChannel = com.Bilibili_Innocent_Lab.xposedmodule.settings.remote
-                                .isNpatchConfigChannel(
-                                    com.Bilibili_Innocent_Lab.xposedmodule.settings.remote
-                                        .RemoteHookConfigStore.status()
-                                )
-                        ) ?: return@withAuthorityLock status("manager_sync_required", nonce)
+                            nPatchChannel = nPatchChannel
+                        ) ?: return@withAuthorityLock status("manager_sync_required", nonce).apply {
+                            // Manager 离线时宿主可能仍读到旧开启文档；携带当前关闭 revision，
+                            // 让宿主在放弃安装闭包后通过已有身份/nonce 探测回执确认停用；标准通道不附带此信息。
+                            if (!noRootSelected && (nPatchChannel || extras.getLong("normalNoRootRevision") > 0L)) {
+                                com.Bilibili_Innocent_Lab.xposedmodule.runtime.noroot.NoRootSupportStore
+                                    .readSnapshot(context)?.takeIf {
+                                        !it.enabled && it.moduleVersionCode == BuildConfig.VERSION_CODE.toLong()
+                                    }?.let { putLong(HostAdmissionContract.DISABLED_REVISION, it.revision) }
+                            }
+                        }
                         val document = if (source == HostAdmissionContract.DIRECT) HostAdmissionContract.encode(current.document()) else null
                         val challenge = UUID.randomUUID().toString()
                         val lease = AdmissionLeaseBook.Lease(uid, pid, nonce, challenge, source, current.identity,

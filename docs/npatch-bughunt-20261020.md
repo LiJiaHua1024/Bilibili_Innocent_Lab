@@ -9,8 +9,7 @@
 - 最严重：**B12**（Manager 进程被回收后模块静默完全失效且无任何提示）；其次 **B1**（关闭免 Root 后仍照装 Hook）。
 - 已量化影响：B11 使每次冷启动多等约 2 秒、首帧多约 3 秒。
 - **修复决策已完成**，见下方「修复决策记录」。
-- **实施进度（2026-10-20）**：B10 的作用域探测、B12 的存活探测/状态降级、B1 的“关闭即全停用”
-  均已实现并在测试机 `13a7a291` 验证（见各节末「状态」）；本轮按顺序完成 B11、B3、B4、B2、B9、B6。9 项 NPatch 专项均已按决策实施，B8 文档勘误亦已完成；B5/B7 保持原分类与范围。
+- **实施进度（2026-10-20）**：B1–B12 均已按各自范围闭环。B1 另堵住旧标准及旧正 revision 缓存，B3 补齐 Manager 离线关闭确认，B12 交付 833 loader 修补；B5 完成同机对照归因，B7 修复活动标题角标，B8 完成注入行为勘误。细节与边界见各节状态。
 
 ---
 
@@ -101,7 +100,7 @@ prefs: desired_enabled=false, sync_state=DISABLE_RESTART_REQUIRED, disable_was_a
 
 最终实测：上述关闭态复现由 `granted + Hook 2238ms` 变为 `admission_unavailable`，授权 77ms，无功能 Hook；同步当前开启配置后，Manager 停止时仍可取得新鲜授权（28ms）并完成 Hook（2039ms）。三个真实 IPC 用例均通过：NPatch 旧标准文档拒绝、旧正 revision 文档拒绝、标准框架回退允许。Debug 与测试 APK、3649 项 JVM 回归（0 失败、1 跳过）、快速 Lint 通过；证据 `captures/npatch-closure/b1-final-*`。
 
-另发现 B3 在 Manager 离线、缓存仍是旧开启文档时缺少本次关闭 revision 的确认，仍需单独补齐；不将“没有安装 Hook”直接视为完整停用回执。
+B3 在 Manager 离线、缓存仍是旧开启文档时缺少本次关闭 revision 的确认，现已单独补齐；不将“没有安装 Hook”直接视为完整停用回执。
 
 ---
 
@@ -188,6 +187,12 @@ prefs: desired_enabled=false, sync_state=DISABLE_RESTART_REQUIRED, disable_was_a
 
 实机 `13a7a291` 验证：关闭后冷启动，`DISABLE_RESTART_REQUIRED → DISABLED`，文案变为「已关闭，不会连接 NPatch」；设置进程被停止时保持待确认，重新打开设置后也能清除；重新开启后 Hook 安装链与心跳正常。证据在 `captures/npatch-remaining/b3-*`（含修复前后 prefs、截图、停用/启用及探测日志）。Debug 构建、3639 个 JVM 测试及快速 Lint 通过。
 
+**Manager 离线边界也已闭环**：Manager 无法写入关闭文档时，宿主缓存可能仍是旧开启文档。当前授权端点现只在明确的 NPatch 关闭拒绝中附带当前 `disabledRevision`；客户端校验 nonce、协议和模块版本，合并拒绝回复时保留已验证的关闭信息。宿主仅在确认实际 NPatch 运行模式且未安装功能 Hook 时放弃安装闭包，并通过原探测回执确认当前关闭 revision，普通超时或“安装尚未完成”不能清除提示。
+
+实机保持 Manager 停止，关闭后冷启动，日志「当前关闭许可已确认，本进程不安装 Hook」，返回设置页即显示「已关闭，不会连接 NPatch」。证据 `captures/npatch-closure/b3-close-confirmed.*`。新增回复绑定和重复拒绝回归；3651 个 JVM 测试（0 失败、1 跳过）、Debug 构建及快速 Lint 通过。
+
+最终 Debug / 测试 APK 已覆盖安装，三项实机 IPC 回归通过，字节码确认 NPatch 模式保护存在。恢复开启、宿主在线读取当前配置后，再停止 Manager 冷启动：授权 39ms、Hook 链 1898ms，设置页回执有效。证据 `captures/npatch-closure/final-offline-enabled.log`、`final-active.png`。修改配置后尚未读取新文档的旧缓存会被拒绝，这是当前授权校验，不冒称离线推送新配置已实现。
+
 ---
 
 ## B4. 打开免 Root 时偶发误判为 `MODULE_NOT_REGISTERED`，文案误导为用户配置问题（已复现，间歇）
@@ -235,7 +240,7 @@ prefs: desired_enabled=false, sync_state=DISABLE_RESTART_REQUIRED, disable_was_a
 
 ---
 
-## B5. 冷启动长期 `am start -W` 超时（10s+），首帧约 14s（性能观察，**主因不在模块**，待对照）
+## B5. 冷启动长期 `am start -W` 超时（10s+），首帧约 14s（性能观察，已完成对照归因）
 
 ### 现象
 连续 6 次冷启动全部 `Status: timeout`，`WaitTime` 稳定在 10.1–10.3 秒；`ActivityTaskManager` 记录首帧 14–15 秒。
@@ -449,7 +454,7 @@ Debug 构建及快速 Lint 通过；日志级别修改复用 B2 已通过的旁�
 - 至少在文案上区分“最近一次已验证”与“当前正在生效”，不要用现在时断言；
 - 作用域被移除时应能探测到（`NPatchRemoteGateway` 的 Provider 查询返回 `No result found` 是现成信号）。
 
-### 状态（2026-10-20）：部分完成
+### 状态（2026-10-20）：已完成
 
 - **已完成（建议第 3 条）**：作用域探测 + 状态降级。新增 `runtime/noroot/NPatchScopeProbe.kt`
   只读查询 Manager 的 `top.nkbe.npatch.manager.provider.config`，作用域移除后进入新的
@@ -721,8 +726,8 @@ Manager 不可达时 `asBinder()` 返回 null，Vector 因此丢弃本地缓存�
 关闭免 Root、设置进程可达时授权拒绝且无功能 Hook。工具、安装与日志详见 `scripts/npatch/README.md`、`captures/npatch-closure/b12-*`。
 旧 patched APK 需要重新修补，单独升级模块不能修改旧 loader；首次必须已有有效作用域缓存。
 
-极端回归另发现 **B1 仍有旧正 revision 缓存问题**：Manager 不可达时关闭开关，再停止设置进程，旧缓存仍可回退授权。
-此问题需要继续收紧 B1，不能因为 B12 已修复便删除清单。证据 `captures/npatch-closure/b1-disabled-all-unreachable.log`。
+极端回归另发现 B1 旧正 revision 缓存问题，现已收紧为 NPatch 必须取得当前授权端点许可，全部端点不可达时拒绝安装。
+修复前证据 `captures/npatch-closure/b1-disabled-all-unreachable.log`，修复后 `b1-final-disabled-unreachable.log`。
 
 早期检测引导实际落成三个提交（探测通道 / B12 状态与界面 / 文档），要点与设计一致，另有几处实现细节：
 
@@ -787,10 +792,10 @@ Manager 不可达时 `asBinder()` 返回 null，Vector 因此丢弃本地缓存�
 | **B4** | 区分「Manager 未运行/连接超时」与「模块未注册」，并自动重试一次 | 不再把用户引去检查其实完全正常的 Manager 作用域配置 |
 | **B6** | 回执不再被丢弃，失败原因可区分 | 诊断页数据变准；日志能看出具体失败原因，不再全压成 `SESSION_MISMATCH` |
 | **B9** | 「NPatch selected」降为调试信息 | 设置变更不再刷警告日志，真实错误不再被淹没 |
-| **B10 + B12** | **采用 A：主动检测 + 一键修复引导** | 模块实际未运行时，设置页显示「模块未生效」并提供打开 NPatch Manager 的按钮；彻底消除“界面说已激活、实际零 Hook” |
+| **B10 + B12** | **检测引导 + 833 loader 单点修补** | 保留存活与作用域检测；重修补宿主后，Manager 不可达时本地缓存服务仍能加载模块。工具与边界见 `scripts/npatch/README.md` |
 | **B11** | 探测通道不可达即跳过 | 冷启动少等约 2 秒，首帧约快 3 秒 |
-| **B5** | 暂不做对照包测量（已重新分类为环境行为） | 先修 B11 观察实际效果，仍不够再回头深挖 |
-| **B7** | **移出 NPatch 清单** | 已查清为模块对当前 B站 版本的适配覆盖问题，与框架无关，单独跟踪 |
+| **B5** | 已补齐三组各三轮对照 | 环境基础耗时约 11 秒仍存在，授权空等已消除，未把整体启动性能冒称修复 |
+| **B7** | 模块适配缺口已修复 | 原有角标开关覆盖搜索和已核实的活动页路由，实测开关正反路径通过 |
 | **B8** | 保持现状（已重新分类） | 属于 NPatch 注入行为，非模块缺陷；仅更正 `docs/npatch-compatibility-plan.md` 中关于 `--injectdex` 的表述 |
 
 分类修正后，**真正的 NPatch 专项为 B1、B2、B3、B4、B6、B9、B10、B11、B12 共 9 条**。

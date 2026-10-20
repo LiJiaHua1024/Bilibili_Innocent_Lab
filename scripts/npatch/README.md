@@ -15,7 +15,7 @@ loader:  29325bd4715bf62dcfdfeb7d1acdaa58d9bcf0040a4fa22756d615542736ea8b
 
 工具检查输入 JAR/DEX 哈希与唯一方法签名，重写后重新解析 DEX，再用原方法恢复序列化，要求与原 DEX 的规范化输出逐字节一致；此外逐项校验 JAR 其它文件内容。已有输出和未知输入均拒绝，不覆盖原文件。
 
-修复需要**重新修补并覆盖安装宿主 APK**，单独更新模块 APK 不会修改旧宿主里的 loader。作用域必须已正常配置并至少成功连接过一次 Manager；没有初始缓存时仍需打开 Manager。它不绕过模块授权、免 Root 开关或作用域配置，也不修复宿主本身的基础启动开销。
+修复需要**重新修补并覆盖安装宿主 APK**，单独更新模块 APK 不会修改旧宿主里的 loader。作用域必须已正常配置，宿主也必须在 Manager 在线时成功读取过当前配置；没有初始缓存，或改配置后宿主尚未读取新文档时，仍需打开 Manager 再冷启动宿主。设置页“已同步”表示写入 Manager，并不表示旧宿主缓存已更新。它不绕过模块授权、免 Root 开关或作用域配置，也不修复宿主本身的基础启动开销。
 
 ## 复现命令（PowerShell）
 
@@ -53,5 +53,7 @@ if ($LASTEXITCODE -ne 0) { throw 'APK patch failed' }
 - 工具：相同输入重复生成哈希一致；未知输入和已有输出均拒绝，DEX 单方法及 JAR 其它文件内容校验通过。
 
 最初复测使用等级 1；最终宿主已按原配置恢复等级 2 并同签名覆盖安装。最终模块同步后、Manager 停止时授权 28ms、Hook 链 2039ms；旧缓存且授权端点全部不可达时明确拒绝，没有功能 Hook。
+
+最终 B3 修复包复测：Manager 停止时明确关闭许可可使设置页归位为“已关闭，不会连接 NPatch”；重新开启、在线读取当前配置后，再停止 Manager，授权 39ms、Hook 链 1898ms，设置页显示已激活且回执有效。证据 `b3-close-confirmed.*`、`final-online-enabled.log`、`final-offline-enabled.log`、`final-active.png`。
 
 原始证据在已忽略的 `captures/npatch-closure/b12-*`、`b1-final-*`；最终生成宿主位于 `captures/npatch-closure/b12-final/`。

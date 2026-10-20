@@ -75,7 +75,7 @@ internal class AdmissionResponseCoordinator {
 /** 启动窗口内完成新鲜许可；工作线程只读取，不在迟到回调中安装 Hook。 */
 internal object HostAdmissionClient {
     data class Grant(val snapshot: RemoteHookConfigSnapshot, val source: String, val identity: PublicationIdentity? = null)
-    data class Result(val grant: Grant? = null, val reason: String = "admission_unavailable")
+    data class Result(val grant: Grant? = null, val reason: String = "admission_unavailable", val disabledRevision: Long = 0L)
     private data class Routed(val route: String, val result: Result)
     private val boundWorker = HostReceiptWire.executor("bil-bound-admission")
     private val worker = HostReceiptWire.executor("bil-host-admission")
@@ -238,7 +238,14 @@ internal object HostAdmissionClient {
                 prepared.getString("status"),
                 valid(prepared, nonce)
             )
-            if (prepareOutcome != HostAdmissionRouteClassifier.Outcome.CONTINUE) return outcomeResult(prepareOutcome)
+            if (prepareOutcome != HostAdmissionRouteClassifier.Outcome.CONTINUE) {
+                return outcomeResult(prepareOutcome).copy(
+                    disabledRevision = HostAdmissionRouteClassifier.disabledRevision(
+                        prepared.getString("status"), valid(prepared, nonce),
+                        prepared.getLong(HostAdmissionContract.DISABLED_REVISION)
+                    )
+                )
+            }
             val identity = HostAdmissionContract.identity(prepared) ?: return Result(reason = HostAdmissionRouteClassifier.REASON_DENIED)
             val source = prepared.getString("source")
             val snapshot = when (source) {
@@ -325,6 +332,7 @@ internal object HostAdmissionClient {
         failure: Result,
         nPatchRuntime: Boolean
     ): Result {
+        if (sawDenied) return failure
         val snapshot = normal ?: return failure
         if (HostAdmissionRouteClassifier.allowRemoteConfigFallback(
                 sawDenied,

@@ -52,6 +52,9 @@ internal object HostAdmissionRouteClassifier {
 
     fun latchesDenial(reason: String): Boolean = reason == REASON_DENIED
 
+    fun disabledRevision(status: String?, envelopeValid: Boolean, revision: Long): Long =
+        if (status == "manager_sync_required" && envelopeValid && revision > 0L) revision else 0L
+
     fun allowRemoteConfigFallback(
         sawDenied: Boolean,
         normalFailure: String?,
