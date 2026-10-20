@@ -58,7 +58,8 @@ class NoRootSupportStateTest {
                 matching,
                 snapshot,
                 TARGET_VERSION,
-                TARGET_UPDATE_TIME
+                TARGET_UPDATE_TIME,
+                probe = HostRuntimeProbeStatus.CONFIRMED
             )
         )
         assertEquals(
@@ -68,7 +69,8 @@ class NoRootSupportStateTest {
                 matching.copy(heartbeatRevision = snapshot.revision - 1L),
                 snapshot,
                 TARGET_VERSION,
-                TARGET_UPDATE_TIME
+                TARGET_UPDATE_TIME,
+                probe = HostRuntimeProbeStatus.CONFIRMED
             )
         )
         assertEquals(
@@ -78,7 +80,8 @@ class NoRootSupportStateTest {
                 matching,
                 currentSnapshot = null,
                 currentTargetVersionCode = TARGET_VERSION,
-                currentTargetUpdateTime = TARGET_UPDATE_TIME
+                currentTargetUpdateTime = TARGET_UPDATE_TIME,
+                probe = HostRuntimeProbeStatus.CONFIRMED
             )
         )
         assertEquals(
@@ -88,7 +91,8 @@ class NoRootSupportStateTest {
                 matching,
                 snapshot,
                 currentTargetVersionCode = TARGET_VERSION + 1L,
-                currentTargetUpdateTime = TARGET_UPDATE_TIME
+                currentTargetUpdateTime = TARGET_UPDATE_TIME,
+                probe = HostRuntimeProbeStatus.CONFIRMED
             )
         )
         assertEquals(
@@ -98,7 +102,8 @@ class NoRootSupportStateTest {
                 matching,
                 snapshot,
                 currentTargetVersionCode = TARGET_VERSION,
-                currentTargetUpdateTime = TARGET_UPDATE_TIME + 1L
+                currentTargetUpdateTime = TARGET_UPDATE_TIME + 1L,
+                probe = HostRuntimeProbeStatus.CONFIRMED
             )
         )
     }
@@ -137,7 +142,8 @@ class NoRootSupportStateTest {
                 snapshot,
                 TARGET_VERSION,
                 TARGET_UPDATE_TIME,
-                scope = NPatchScopeProbe.ScopeState.UNKNOWN
+                scope = NPatchScopeProbe.ScopeState.UNKNOWN,
+                probe = HostRuntimeProbeStatus.CONFIRMED
             )
         )
         assertEquals(
@@ -148,7 +154,8 @@ class NoRootSupportStateTest {
                 snapshot,
                 TARGET_VERSION,
                 TARGET_UPDATE_TIME,
-                scope = NPatchScopeProbe.ScopeState.IN_SCOPE
+                scope = NPatchScopeProbe.ScopeState.IN_SCOPE,
+                probe = HostRuntimeProbeStatus.CONFIRMED
             )
         )
         // 开关已关闭时作用域不再影响状态文案。
@@ -163,6 +170,157 @@ class NoRootSupportStateTest {
                 scope = NPatchScopeProbe.ScopeState.OUT_OF_SCOPE
             )
         )
+    }
+
+    @Test
+    fun `a live probe is required before claiming activation`() {
+        val snapshot = snapshot()
+        val matching = status(
+            desired = true,
+            state = NoRootSupportStore.SyncState.ACTIVE,
+            heartbeatRevision = snapshot.revision,
+            heartbeatModuleVersion = snapshot.moduleVersionCode,
+            heartbeatTargetVersion = TARGET_VERSION,
+            heartbeatTargetUpdateTime = TARGET_UPDATE_TIME,
+            heartbeatTargetPackage = NoRootSupportState.TARGET_PACKAGE,
+            heartbeatReceivedAt = 1_700_000_000_000L
+        )
+
+        assertEquals(
+            NoRootDisplayState.ACTIVE,
+            NoRootSupportState.displayState(
+                28,
+                matching,
+                snapshot,
+                TARGET_VERSION,
+                TARGET_UPDATE_TIME,
+                probe = HostRuntimeProbeStatus.CONFIRMED
+            )
+        )
+        assertEquals(
+            NoRootDisplayState.CONFIRMING,
+            NoRootSupportState.displayState(
+                28,
+                matching,
+                snapshot,
+                TARGET_VERSION,
+                TARGET_UPDATE_TIME,
+                probe = HostRuntimeProbeStatus.PROBING
+            )
+        )
+        assertEquals(
+            NoRootDisplayState.UNCONFIRMED,
+            NoRootSupportState.displayState(
+                28,
+                matching,
+                snapshot,
+                TARGET_VERSION,
+                TARGET_UPDATE_TIME,
+                probe = HostRuntimeProbeStatus.IDLE
+            )
+        )
+        assertEquals(
+            NoRootDisplayState.UNCONFIRMED,
+            NoRootSupportState.displayState(
+                28,
+                matching,
+                snapshot,
+                TARGET_VERSION,
+                TARGET_UPDATE_TIME,
+                probe = HostRuntimeProbeStatus.UNCONFIRMED
+            )
+        )
+        assertEquals(
+            NoRootDisplayState.NOT_RUNNING,
+            NoRootSupportState.displayState(
+                28,
+                matching,
+                snapshot,
+                TARGET_VERSION,
+                TARGET_UPDATE_TIME,
+                probe = HostRuntimeProbeStatus.NOT_RUNNING
+            )
+        )
+    }
+
+    @Test
+    fun `a live probe never overrides a stale config heartbeat`() {
+        val snapshot = snapshot()
+        val matching = status(
+            desired = true,
+            state = NoRootSupportStore.SyncState.ACTIVE,
+            heartbeatRevision = snapshot.revision - 1L,
+            heartbeatModuleVersion = snapshot.moduleVersionCode,
+            heartbeatTargetVersion = TARGET_VERSION,
+            heartbeatTargetUpdateTime = TARGET_UPDATE_TIME,
+            heartbeatTargetPackage = NoRootSupportState.TARGET_PACKAGE,
+            heartbeatReceivedAt = 1_700_000_000_000L
+        )
+
+        assertEquals(
+            NoRootDisplayState.RESTART_REQUIRED,
+            NoRootSupportState.displayState(
+                28,
+                matching,
+                snapshot,
+                TARGET_VERSION,
+                TARGET_UPDATE_TIME,
+                probe = HostRuntimeProbeStatus.CONFIRMED
+            )
+        )
+    }
+
+    @Test
+    fun `scope removal wins over a live probe`() {
+        val snapshot = snapshot()
+        val matching = status(
+            desired = true,
+            state = NoRootSupportStore.SyncState.ACTIVE,
+            heartbeatRevision = snapshot.revision,
+            heartbeatModuleVersion = snapshot.moduleVersionCode,
+            heartbeatTargetVersion = TARGET_VERSION,
+            heartbeatTargetUpdateTime = TARGET_UPDATE_TIME,
+            heartbeatTargetPackage = NoRootSupportState.TARGET_PACKAGE,
+            heartbeatReceivedAt = 1_700_000_000_000L
+        )
+
+        assertEquals(
+            NoRootDisplayState.SCOPE_MISSING,
+            NoRootSupportState.displayState(
+                28,
+                matching,
+                snapshot,
+                TARGET_VERSION,
+                TARGET_UPDATE_TIME,
+                scope = NPatchScopeProbe.ScopeState.OUT_OF_SCOPE,
+                probe = HostRuntimeProbeStatus.CONFIRMED
+            )
+        )
+    }
+
+    @Test
+    fun `runtime states win over a modern framework activation claim`() {
+        for (display in listOf(
+            NoRootDisplayState.NOT_RUNNING,
+            NoRootDisplayState.UNCONFIRMED,
+            NoRootDisplayState.CONFIRMING
+        )) {
+            val expected = when (display) {
+                NoRootDisplayState.NOT_RUNNING -> ActivationDisplayState.NOT_RUNNING
+                NoRootDisplayState.UNCONFIRMED -> ActivationDisplayState.UNCONFIRMED
+                else -> ActivationDisplayState.CONFIRMING
+            }
+            assertEquals(
+                expected,
+                NoRootSupportState.activationDisplayState(
+                    rootActive = true,
+                    frameworkCheckPending = false,
+                    displayState = display,
+                    lspatchFramework = true,
+                    lspatchHostState = LspatchHostReceiptState.CONFIRMED
+                )
+            )
+        }
     }
 
     @Test

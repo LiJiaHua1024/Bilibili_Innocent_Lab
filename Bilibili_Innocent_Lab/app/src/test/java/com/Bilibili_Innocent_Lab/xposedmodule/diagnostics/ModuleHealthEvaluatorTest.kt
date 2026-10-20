@@ -65,6 +65,44 @@ class ModuleHealthEvaluatorTest {
     }
 
     @Test
+    fun `a silently unloaded module escalates to action required`() {
+        val snapshot = ModuleHealthEvaluator.evaluate(
+            inputs(
+                activationState = DiagnosticActivationState.UNAVAILABLE,
+                frameworkConnected = true,
+                frameworkCapable = true,
+                noRootDesiredEnabled = true,
+                noRootState = DiagnosticNoRootState.NOT_RUNNING
+            )
+        )
+
+        assertEquals(DiagnosticSeverity.ACTION_REQUIRED, snapshot.overallSeverity)
+        assertEquals(
+            DiagnosticSeverity.ACTION_REQUIRED,
+            snapshot.item(DiagnosticItemId.NO_ROOT).severity
+        )
+    }
+
+    @Test
+    fun `an unconfirmed no-root run asks for verification instead of claiming health`() {
+        val snapshot = ModuleHealthEvaluator.evaluate(
+            inputs(
+                activationState = DiagnosticActivationState.CHECKING,
+                frameworkConnected = true,
+                frameworkCapable = true,
+                noRootDesiredEnabled = true,
+                noRootState = DiagnosticNoRootState.UNCONFIRMED
+            )
+        )
+
+        assertEquals(DiagnosticSeverity.ATTENTION, snapshot.overallSeverity)
+        assertEquals(
+            DiagnosticSeverity.ATTENTION,
+            snapshot.item(DiagnosticItemId.NO_ROOT).severity
+        )
+    }
+
+    @Test
     fun `remote read-back failure remains visible even while activated`() {
         val snapshot = ModuleHealthEvaluator.evaluate(
             inputs(

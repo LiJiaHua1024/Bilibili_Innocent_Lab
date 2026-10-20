@@ -11,6 +11,9 @@ internal enum class NoRootDisplayState {
     MANAGER_MISSING,
     MODULE_NOT_REGISTERED,
     SCOPE_MISSING,
+    CONFIRMING,
+    UNCONFIRMED,
+    NOT_RUNNING,
     SYNCING,
     RESTART_REQUIRED,
     DISABLE_RESTART_REQUIRED,
@@ -33,6 +36,9 @@ internal enum class ActivationDisplayState {
     LSPATCH_WAITING_FOR_HOST,
     LSPATCH_HOST_FAILED,
     SCOPE_MISSING,
+    CONFIRMING,
+    UNCONFIRMED,
+    NOT_RUNNING,
     UNAVAILABLE
 }
 
@@ -53,7 +59,8 @@ internal object NoRootSupportState {
         currentSnapshot: NoRootConfigSnapshot?,
         currentTargetVersionCode: Long,
         currentTargetUpdateTime: Long,
-        scope: NPatchScopeProbe.ScopeState = NPatchScopeProbe.ScopeState.UNKNOWN
+        scope: NPatchScopeProbe.ScopeState = NPatchScopeProbe.ScopeState.UNKNOWN,
+        probe: HostRuntimeProbeStatus = HostRuntimeProbeStatus.IDLE
     ): NoRootDisplayState {
         if (sdkInt < MIN_SUPPORTED_SDK) return NoRootDisplayState.UNSUPPORTED_OS
         if (!status.desiredEnabled) {
@@ -83,7 +90,16 @@ internal object NoRootSupportState {
                 status.heartbeatTargetUpdateTime == currentTargetUpdateTime &&
                 status.heartbeatReceivedAt > 0L
         } == true
-        if (heartbeatMatches) return NoRootDisplayState.ACTIVE
+        // 心跳只证明“某个时刻装过 Hook”；B12 之后还要求存活探测的实时证据才叫已激活。
+        if (heartbeatMatches) {
+            return when (probe) {
+                HostRuntimeProbeStatus.CONFIRMED -> NoRootDisplayState.ACTIVE
+                HostRuntimeProbeStatus.PROBING -> NoRootDisplayState.CONFIRMING
+                HostRuntimeProbeStatus.NOT_RUNNING -> NoRootDisplayState.NOT_RUNNING
+                HostRuntimeProbeStatus.UNCONFIRMED,
+                HostRuntimeProbeStatus.IDLE -> NoRootDisplayState.UNCONFIRMED
+            }
+        }
         return when (status.syncState) {
             NoRootSupportStore.SyncState.DISABLED -> NoRootDisplayState.CHECKING
             NoRootSupportStore.SyncState.CHECKING -> NoRootDisplayState.CHECKING
@@ -158,6 +174,13 @@ internal object NoRootSupportState {
         // 断言都更像当前事实，必须最先判定。
         displayState == NoRootDisplayState.SCOPE_MISSING ->
             ActivationDisplayState.SCOPE_MISSING
+        // B12：宿主没有给出存活证据时，不能让 Modern 服务/LSPatch 回执把界面抬回“已激活”。
+        displayState == NoRootDisplayState.NOT_RUNNING ->
+            ActivationDisplayState.NOT_RUNNING
+        displayState == NoRootDisplayState.UNCONFIRMED ->
+            ActivationDisplayState.UNCONFIRMED
+        displayState == NoRootDisplayState.CONFIRMING ->
+            ActivationDisplayState.CONFIRMING
         rootActive && lspatchFramework &&
             lspatchHostState == LspatchHostReceiptState.CONFIRMED ->
             ActivationDisplayState.ACTIVE_LSPATCH

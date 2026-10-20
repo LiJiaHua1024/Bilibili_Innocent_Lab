@@ -243,22 +243,31 @@ class RoamingOpenReceiver : BroadcastReceiver() {
     private fun receiveHostRuntimeProbeReply(intent: Intent) {
         if (AndroidVersion.isAtLeast(AndroidVersion.U) &&
             sentFromPackage != HookEntry.TARGET_PACKAGE
-        ) return
+        ) {
+            Log.w("BilibiliInnocentLab", "[BIL] 存活回执被拒：发送者是 ${sentFromPackage ?: "null"}")
+            return
+        }
         val hostProof = IntentCompat.getParcelableExtra(
             intent,
             HostRuntimeProbeContract.EXTRA_HOST_PROOF,
             classOf<PendingIntent>()
-        ) ?: return
-        if (!HostRuntimeProbeContract.isHostProof(hostProof.creatorPackage)) return
+        ) ?: run {
+            Log.w("BilibiliInnocentLab", "[BIL] 存活回执被拒：缺少身份证明")
+            return
+        }
+        if (!HostRuntimeProbeContract.isHostProof(hostProof.creatorPackage)) {
+            Log.w("BilibiliInnocentLab", "[BIL] 存活回执被拒：创建者是 ${hostProof.creatorPackage}")
+            return
+        }
         val nonce = intent.getStringExtra(HostRuntimeProbeContract.EXTRA_NONCE).orEmpty()
         if (!HostRuntimeProbeContract.isValidNonce(nonce)) return
-        HostRuntimeProbeClient.onHostReply(
-            nonce = nonce,
-            hooksInstalled = intent.getBooleanExtra(
-                HostRuntimeProbeContract.EXTRA_HOOKS_INSTALLED,
-                false
-            )
+        val hooksInstalled = intent.getBooleanExtra(
+            HostRuntimeProbeContract.EXTRA_HOOKS_INSTALLED,
+            false
         )
+        if (HostRuntimeProbeClient.onHostReply(nonce = nonce, hooksInstalled = hooksInstalled)) {
+            Log.i("BilibiliInnocentLab", "[BIL] 存活回执已接受(hooksInstalled=$hooksInstalled)")
+        }
     }
 
 }

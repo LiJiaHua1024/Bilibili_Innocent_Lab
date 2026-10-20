@@ -7,6 +7,7 @@ import com.Bilibili_Innocent_Lab.xposedmodule.hook.HookEntry
 import com.Bilibili_Innocent_Lab.xposedmodule.runtime.AndroidUserSpace
 import com.Bilibili_Innocent_Lab.xposedmodule.runtime.HostRuntimeDiagnosticsSnapshot
 import com.Bilibili_Innocent_Lab.xposedmodule.runtime.noroot.ActivationDisplayState
+import com.Bilibili_Innocent_Lab.xposedmodule.runtime.noroot.HostRuntimeProbeClient
 import com.Bilibili_Innocent_Lab.xposedmodule.runtime.noroot.NoRootDisplayState
 import com.Bilibili_Innocent_Lab.xposedmodule.runtime.noroot.NoRootSupportState
 import com.Bilibili_Innocent_Lab.xposedmodule.runtime.noroot.NoRootSupportStore
@@ -51,7 +52,8 @@ internal object ModuleDiagnosticsCollector {
                 NPatchScopeProbe.cached()
             } else {
                 NPatchScopeProbe.ScopeState.UNKNOWN
-            }
+            },
+            probe = HostRuntimeProbeClient.status()
         )
         val framework = RemoteHookConfigStore.status()
         val lspatchHostState = NoRootSupportState.lspatchHostReceiptState(
@@ -194,5 +196,8 @@ internal fun ActivationDisplayState.toDiagnosticActivationState() = when (this) 
     ActivationDisplayState.LSPATCH_WAITING_FOR_HOST -> DiagnosticActivationState.CHECKING
     ActivationDisplayState.LSPATCH_HOST_FAILED -> DiagnosticActivationState.UNAVAILABLE
     ActivationDisplayState.SCOPE_MISSING -> DiagnosticActivationState.UNAVAILABLE
+    ActivationDisplayState.CONFIRMING -> DiagnosticActivationState.CHECKING
+    ActivationDisplayState.UNCONFIRMED -> DiagnosticActivationState.CHECKING
+    ActivationDisplayState.NOT_RUNNING -> DiagnosticActivationState.UNAVAILABLE
     else -> DiagnosticActivationState.valueOf(name)
 }

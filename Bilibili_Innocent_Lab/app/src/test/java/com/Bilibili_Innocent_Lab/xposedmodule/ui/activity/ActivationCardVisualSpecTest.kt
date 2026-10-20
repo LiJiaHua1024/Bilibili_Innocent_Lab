@@ -41,6 +41,18 @@ class ActivationCardVisualSpecTest {
             DiagnosticStatusTone.ACTION_REQUIRED,
             ActivationCardVisualSpec.tone(ActivationDisplayState.SCOPE_MISSING)
         )
+        assertEquals(
+            DiagnosticStatusTone.INFO,
+            ActivationCardVisualSpec.tone(ActivationDisplayState.CONFIRMING)
+        )
+        assertEquals(
+            DiagnosticStatusTone.ATTENTION,
+            ActivationCardVisualSpec.tone(ActivationDisplayState.UNCONFIRMED)
+        )
+        assertEquals(
+            DiagnosticStatusTone.ACTION_REQUIRED,
+            ActivationCardVisualSpec.tone(ActivationDisplayState.NOT_RUNNING)
+        )
     }
 
     @Test
@@ -90,6 +102,33 @@ class ActivationCardVisualSpecTest {
                 publishFailed = false,
                 skinFallback = false,
                 noRootNeedsAttention = true
+            )
+        )
+        assertEquals(
+            ActivationSummaryState.ACTION_REQUIRED,
+            ActivationCardVisualSpec.diagnosticsSummaryState(
+                displayState = ActivationDisplayState.NOT_RUNNING,
+                publishFailed = true,
+                skinFallback = false,
+                noRootNeedsAttention = false
+            )
+        )
+        assertEquals(
+            ActivationSummaryState.ATTENTION,
+            ActivationCardVisualSpec.diagnosticsSummaryState(
+                displayState = ActivationDisplayState.UNCONFIRMED,
+                publishFailed = false,
+                skinFallback = false,
+                noRootNeedsAttention = false
+            )
+        )
+        assertEquals(
+            ActivationSummaryState.INFO,
+            ActivationCardVisualSpec.diagnosticsSummaryState(
+                displayState = ActivationDisplayState.CONFIRMING,
+                publishFailed = false,
+                skinFallback = false,
+                noRootNeedsAttention = false
             )
         )
     }

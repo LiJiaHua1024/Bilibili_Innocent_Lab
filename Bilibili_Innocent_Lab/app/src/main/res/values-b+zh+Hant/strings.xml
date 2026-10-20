@@ -39,6 +39,12 @@
     <string name="module_activation_lspatch_host_failed">已修補的嗶哩嗶哩拒絕了設定，或未完成 Hook 安裝。請先在診斷中心查看有界原因，再決定是否重試。</string>
     <string name="module_activation_scope_missing_title">模組不在作用域</string>
     <string name="module_activation_scope_missing">NPatch Manager 已不再把本模組列入嗶哩嗶哩的作用域。請在管理器中重新啟用，然後重新啟動嗶哩嗶哩。</string>
+    <string name="module_activation_confirming_title">正在確認模組執行狀態</string>
+    <string name="module_activation_confirming">正在詢問嗶哩嗶哩是否正在執行模組…</string>
+    <string name="module_activation_unconfirmed_title">未確認模組正在執行</string>
+    <string name="module_activation_unconfirmed">最近一次回執：%1$s。開啟嗶哩嗶哩後會自動確認，或點擊下方「驗證」。</string>
+    <string name="module_activation_not_running_title">模組未生效</string>
+    <string name="module_activation_not_running">已啟動嗶哩嗶哩，但模組沒有回應。請開啟 NPatch Manager 確認模組已啟用且嗶哩嗶哩在作用域內，然後強制停止並重新開啟嗶哩嗶哩。</string>
     <string name="module_activation_service_unavailable">尚未連接相容的 Xposed 框架服務</string>
     <string name="module_activation_framework_unsupported">目前框架不支援所需的 Modern API 101+ 服務</string>
     <string name="module_activation_service_unavailable_secondary_user">目前 Android 使用者 %1$d 下沒有框架服務；請在框架管理器中為該使用者啟用本模組。</string>
@@ -726,6 +732,12 @@
     <string name="no_root_status_manager_missing">狀態：找不到 NPatch Manager，或 Remote API 無法使用。整合模式修補的設定存放在被修補應用內部，無法在此同步，請改用管理器模式重新修補。</string>
     <string name="no_root_status_module_not_registered">狀態：NPatch Manager 未接受目前模組。請在管理器中加入並啟用模組、確認嗶哩嗶哩在其作用域內，並將 NPatch 升級至 1.0.7 或更新版本。</string>
     <string name="no_root_status_scope_missing">狀態：本模組已不在嗶哩嗶哩的 NPatch 作用域內。請在 NPatch Manager 中重新啟用，然後重新啟動嗶哩嗶哩。</string>
+    <string name="no_root_status_confirming">狀態：正在確認模組是否正在嗶哩嗶哩中執行…</string>
+    <string name="no_root_status_unconfirmed">狀態：此前已驗證，但未確認目前執行狀態；點擊「驗證」檢查。</string>
+    <string name="no_root_status_not_running">狀態：模組未生效；已啟動嗶哩嗶哩但模組沒有回應。請開啟 NPatch Manager 確認模組與作用域，然後強制停止並重新開啟嗶哩嗶哩。</string>
+    <string name="no_root_action_verify">驗證</string>
+    <string name="no_root_action_open_manager">開啟 NPatch Manager</string>
+    <string name="no_root_action_manager_unavailable">無法開啟 NPatch Manager，請先安裝或更新它。</string>
     <string name="no_root_status_syncing">狀態：正在向 NPatch 同步設定…</string>
     <string name="no_root_status_restart_required">狀態：設定已同步，請重新啟動已修補的嗶哩嗶哩以完成啟用。</string>
     <string name="no_root_status_disable_restart_required">狀態：免 Root 支援已關閉，但目前嗶哩嗶哩程序中的 Hook 可能仍在執行；請強制停止並重新開啟以完成關閉。</string>

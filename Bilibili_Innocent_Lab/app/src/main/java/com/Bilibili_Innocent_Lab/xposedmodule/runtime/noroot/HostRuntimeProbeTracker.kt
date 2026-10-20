@@ -45,7 +45,12 @@ internal class HostRuntimeProbeTracker(private val now: () -> Long) {
             aliveWithoutHooks = false
         }
         if (verify) pendingVerify = true
-        if (status != HostRuntimeProbeStatus.CONFIRMED) status = HostRuntimeProbeStatus.PROBING
+        // 已确认/已判定未生效都不在新一轮探测里闪回“确认中”，只有新证据才能改写结论。
+        if (status != HostRuntimeProbeStatus.CONFIRMED &&
+            status != HostRuntimeProbeStatus.NOT_RUNNING
+        ) {
+            status = HostRuntimeProbeStatus.PROBING
+        }
         return true
     }
 
@@ -73,9 +78,12 @@ internal class HostRuntimeProbeTracker(private val now: () -> Long) {
 
     fun onTimeout(): HostRuntimeProbeStatus {
         if (pendingNonce == null) return status
-        val notRunning = aliveWithoutHooks || pendingVerify
+        // “未生效”是用户验证失败的结论，只有下一次确认（回执/心跳）才能推翻；
+        // 回到设置页的顺手探测超时不能把它降级成“未确认”。
+        val verifiedFailure = aliveWithoutHooks || pendingVerify ||
+            status == HostRuntimeProbeStatus.NOT_RUNNING
         clearPending()
-        status = if (notRunning) {
+        status = if (verifiedFailure) {
             HostRuntimeProbeStatus.NOT_RUNNING
         } else {
             HostRuntimeProbeStatus.UNCONFIRMED

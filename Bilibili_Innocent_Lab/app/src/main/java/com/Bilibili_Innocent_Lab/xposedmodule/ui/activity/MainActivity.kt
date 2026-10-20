@@ -25,6 +25,7 @@ import android.os.Handler
 import android.os.Looper
 import android.provider.Settings
 import android.text.Editable
+import android.text.format.DateUtils
 import android.text.InputFilter
 import android.text.InputType
 import android.text.SpannableString
@@ -125,6 +126,7 @@ import com.Bilibili_Innocent_Lab.xposedmodule.runtime.UpdateCheckCoordinator
 import com.Bilibili_Innocent_Lab.xposedmodule.runtime.ColdStartUpdateSession
 import com.Bilibili_Innocent_Lab.xposedmodule.runtime.UpdateChannelStore
 import com.Bilibili_Innocent_Lab.xposedmodule.runtime.noroot.ActivationDisplayState
+import com.Bilibili_Innocent_Lab.xposedmodule.runtime.noroot.HostRuntimeProbeClient
 import com.Bilibili_Innocent_Lab.xposedmodule.runtime.noroot.NoRootDisplayState
 import com.Bilibili_Innocent_Lab.xposedmodule.runtime.noroot.NoRootSupportController
 import com.Bilibili_Innocent_Lab.xposedmodule.runtime.noroot.NoRootSupportState
@@ -201,6 +203,8 @@ class MainActivity : SkinnedActivity() {
         const val MINE_COMPONENT_SNAPSHOT_STALE_MS = 7L * 24L * 60L * 60L * 1_000L
         const val SETTINGS_SEARCH_HIGHLIGHT_DELAY_MS = 240L
         const val SETTINGS_SEARCH_HIGHLIGHT_DURATION_MS = 560L
+        /** B12 修复引导的固定目标；框架名不可用时也要能打开 Manager。 */
+        const val NPATCH_MANAGER_PACKAGE = "top.nkbe.npatch"
 
         /** 赞助页；与仓库地址一样经 [openExternalUrl] 的 https 白名单跳转。 */
         const val SPONSOR_URL = "https://ifdian.net/a/jichuo1"
@@ -595,6 +599,8 @@ class MainActivity : SkinnedActivity() {
     internal var noRootPrefsBridge: SharedPreferences? = null
     internal var noRootSwitch: com.Bilibili_Innocent_Lab.xposedmodule.ui.view.MaterialSwitch? = null
     internal var noRootStatusView: NativeTextView? = null
+    /** B12：状态未确认/未生效时的唯一操作入口（验证或打开 NPatch Manager）。 */
+    internal var noRootActionView: NativeTextView? = null
     internal var noRootProgrammaticSwitch = false
 
     /** 激活卡片需要同时聚合 LSPosed 状态与经过版本校验的免 Root heartbeat。 */
@@ -881,9 +887,17 @@ class MainActivity : SkinnedActivity() {
                 NPatchScopeProbe.cached()
             } else {
                 NPatchScopeProbe.ScopeState.UNKNOWN
-            }
+            },
+            probe = HostRuntimeProbeClient.status()
         )
     }
+
+    /** “未确认”卡片要把最近一次宿主回执的时间说清楚，否则用户无从判断该不该验证。 */
+    private fun lastHeartbeatLabel(): CharSequence = DateUtils.getRelativeTimeSpanString(
+        NoRootSupportStore.readStatus(applicationContext).heartbeatReceivedAt,
+        System.currentTimeMillis(),
+        DateUtils.MINUTE_IN_MILLIS
+    )
 
     /** 查询失败时返回 0；状态归并据此拒绝把旧宿主 heartbeat 视为当前激活。 */
     private fun installedBilibiliVersionCode(): Long = runCatching {
@@ -903,6 +917,9 @@ class MainActivity : SkinnedActivity() {
         NoRootDisplayState.MANAGER_MISSING -> R.string.no_root_status_manager_missing
         NoRootDisplayState.MODULE_NOT_REGISTERED -> R.string.no_root_status_module_not_registered
         NoRootDisplayState.SCOPE_MISSING -> R.string.no_root_status_scope_missing
+        NoRootDisplayState.CONFIRMING -> R.string.no_root_status_confirming
+        NoRootDisplayState.UNCONFIRMED -> R.string.no_root_status_unconfirmed
+        NoRootDisplayState.NOT_RUNNING -> R.string.no_root_status_not_running
         NoRootDisplayState.SYNCING -> R.string.no_root_status_syncing
         NoRootDisplayState.RESTART_REQUIRED -> R.string.no_root_status_restart_required
         NoRootDisplayState.DISABLE_RESTART_REQUIRED ->
@@ -929,9 +946,67 @@ class MainActivity : SkinnedActivity() {
         }
         noRootProgrammaticSwitch = false
         noRootStatusView?.setText(noRootStatusText(state))
+        renderNoRootAction(state)
 
         renderActivationUi(noRootState = state)
         refreshNoRootScope()
+    }
+
+    /** B12：只在需要用户出手时给一个入口，其余状态收起避免噪声。 */
+    private fun renderNoRootAction(state: NoRootDisplayState) {
+        val actionView = noRootActionView ?: return
+        val label: Int
+        val click: () -> Unit
+        when (state) {
+            NoRootDisplayState.UNCONFIRMED -> {
+                label = R.string.no_root_action_verify
+                click = ::verifyNoRootHostRuntime
+            }
+            NoRootDisplayState.NOT_RUNNING,
+            NoRootDisplayState.SCOPE_MISSING -> {
+                label = R.string.no_root_action_open_manager
+                click = ::openNpatchManager
+            }
+            else -> {
+                actionView.isVisible = false
+                actionView.setOnClickListener(null)
+                return
+            }
+        }
+        actionView.setText(label)
+        actionView.setOnClickListener { click() }
+        actionView.isVisible = true
+    }
+
+    /**
+     * 验证流程：先把哔哩哔哩拉起来，再走完整探测窗口。宿主已在运行时回执立刻到，
+     * 冷启动时靠窗口内重发与新心跳确认；仍无回执才判定“模块未生效”。
+     */
+    private fun verifyNoRootHostRuntime() {
+        val appContext = applicationContext
+        runCatching {
+            packageManager
+                .getLaunchIntentForPackage(NoRootSupportState.TARGET_PACKAGE)
+                ?.let { startActivity(it.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
+        }
+        HostRuntimeProbeClient.probeAsync(appContext, verify = true) {
+            runOnUiThread {
+                if (!isFinishing && !isDestroyed) renderNoRootUi()
+            }
+        }
+        renderNoRootUi()
+    }
+
+    private fun openNpatchManager() {
+        val intent = FrameworkManagerLauncher.resolvePackage(applicationContext, NPATCH_MANAGER_PACKAGE)
+        if (intent == null) {
+            runCatching { toast(getString(R.string.no_root_action_manager_unavailable)) }
+            return
+        }
+        runCatching { startActivity(intent) }
+            .onFailure {
+                runCatching { toast(getString(R.string.no_root_action_manager_unavailable)) }
+            }
     }
 
     /**
@@ -942,6 +1017,20 @@ class MainActivity : SkinnedActivity() {
         val appContext = applicationContext
         if (!NoRootSupportStore.isDesiredEnabled(appContext)) return
         NPatchScopeProbe.refreshAsync(appContext) {
+            runOnUiThread {
+                if (!isFinishing && !isDestroyed) renderNoRootUi()
+            }
+        }
+    }
+
+    /**
+     * B12：回到设置页时问一次“模块现在还在跑吗”。这里不放在 renderNoRootUi 里，
+     * 否则结算回调会把渲染再触发一次，形成每 1.5 秒一轮的自激。
+     */
+    private fun refreshNoRootProbe() {
+        val appContext = applicationContext
+        if (!NoRootSupportStore.isDesiredEnabled(appContext)) return
+        HostRuntimeProbeClient.probeAsync(appContext, verify = false) {
             runOnUiThread {
                 if (!isFinishing && !isDestroyed) renderNoRootUi()
             }
@@ -1010,6 +1099,12 @@ class MainActivity : SkinnedActivity() {
                     R.string.module_activation_lspatch_host_failed_title
                 ActivationDisplayState.SCOPE_MISSING ->
                     R.string.module_activation_scope_missing_title
+                ActivationDisplayState.CONFIRMING ->
+                    R.string.module_activation_confirming_title
+                ActivationDisplayState.UNCONFIRMED ->
+                    R.string.module_activation_unconfirmed_title
+                ActivationDisplayState.NOT_RUNNING ->
+                    R.string.module_activation_not_running_title
                 ActivationDisplayState.UNAVAILABLE -> R.string.module_activation_not_detected
             }
         )
@@ -1038,6 +1133,12 @@ class MainActivity : SkinnedActivity() {
                     getString(R.string.module_activation_lspatch_host_failed)
                 ActivationDisplayState.SCOPE_MISSING ->
                     getString(R.string.module_activation_scope_missing)
+                ActivationDisplayState.CONFIRMING ->
+                    getString(R.string.module_activation_confirming)
+                ActivationDisplayState.UNCONFIRMED ->
+                    getString(R.string.module_activation_unconfirmed, lastHeartbeatLabel())
+                ActivationDisplayState.NOT_RUNNING ->
+                    getString(R.string.module_activation_not_running)
                 ActivationDisplayState.CHECKING ->
                     getString(R.string.module_activation_waiting_framework)
                 ActivationDisplayState.UNAVAILABLE -> when {
@@ -1065,8 +1166,11 @@ class MainActivity : SkinnedActivity() {
             val showsLspatchAction = displayState == ActivationDisplayState.LSPATCH_WAITING_FOR_HOST ||
                 displayState == ActivationDisplayState.LSPATCH_HOST_FAILED
             val showsScopeAction = displayState == ActivationDisplayState.SCOPE_MISSING
-            // 多用户和 LSPatch/作用域操作提示都必须完整可见；正常状态仍保持单行省略。
-            if (showsUserSpaceHint || showsLspatchAction || showsScopeAction) {
+            val showsRuntimeAction = displayState == ActivationDisplayState.CONFIRMING ||
+                displayState == ActivationDisplayState.UNCONFIRMED ||
+                displayState == ActivationDisplayState.NOT_RUNNING
+            // 多用户和 LSPatch/作用域/存活验证的操作提示都必须完整可见；正常状态仍保持单行省略。
+            if (showsUserSpaceHint || showsLspatchAction || showsScopeAction || showsRuntimeAction) {
                 isSingleLine = false
                 maxLines = Int.MAX_VALUE
             } else {
@@ -3764,6 +3868,8 @@ class MainActivity : SkinnedActivity() {
         val framework = RemoteHookConfigStore.status()
         lspatchActivationReceiptTracker.startSession()
         requestLspatchHostReceipt(framework)
+        // 先启动存活探测再渲染，让界面从“确认中”开始，而不是先闪一下“未确认”。
+        refreshNoRootProbe()
         renderNoRootUi()
         synchronizeNoRootSupportIfEnabled()
         scheduleReleaseHighlights()
@@ -4229,6 +4335,7 @@ class MainActivity : SkinnedActivity() {
         enhancementAdvancedChevron = null
         noRootSwitch = null
         noRootStatusView = null
+        noRootActionView = null
         noRootPrefsBridge = null
         termsDialogHintView = null
         termsManagerLauncher = null
@@ -4806,6 +4913,26 @@ class MainActivity : SkinnedActivity() {
                                 textSize = 13f
                                 isVisible = false
                             }
+                            // B12：验证/打开管理器入口。放在卡片内部，随卡片一起被 presenter
+                            // 归位；放进页面根布局会被留在悬浮层之外，用户根本看不到。
+                            TextView(
+                                lparams = LayoutParams(widthMatchParent = true) {
+                                    topMargin = 6.dp
+                                },
+                                init = {
+                                    text = stringResource(R.string.no_root_action_verify)
+                                    textColor = colorResource(R.color.white)
+                                    textSize = 13f
+                                    typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+                                    gravity = Gravity.CENTER
+                                    updatePadding(vertical = 8.dp)
+                                    background = roundedColor(monetColors.tertiary)
+                                    isClickable = true
+                                    isFocusable = true
+                                    isVisible = false
+                                    noRootActionView = this
+                                }
+                            )
                         }
                         LinearLayout(
                             lparams = LayoutParams(96.dp, 72.dp) {

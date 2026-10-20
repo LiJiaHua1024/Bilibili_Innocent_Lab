@@ -5,6 +5,7 @@ import android.content.Intent
 import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
+import com.Bilibili_Innocent_Lab.xposedmodule.runtime.CrossAppBroadcastCompat
 import java.util.UUID
 import java.util.concurrent.Executors
 import java.util.concurrent.ScheduledExecutorService
@@ -59,13 +60,14 @@ internal object HostRuntimeProbeClient {
         scheduler.schedule({ settleTimeout() }, timeoutMs, TimeUnit.MILLISECONDS)
     }
 
-    /** 宿主回执入口；nonce 不属于当前窗口时直接丢弃。 */
-    fun onHostReply(nonce: String, hooksInstalled: Boolean) {
+    /** 宿主回执入口；nonce 不属于当前窗口时直接丢弃，返回 false 供调用方决定是否记日志。 */
+    fun onHostReply(nonce: String, hooksInstalled: Boolean): Boolean {
         val confirmed = synchronized(lock) {
-            if (!tracker.onReply(nonce, hooksInstalled)) return
+            if (!tracker.onReply(nonce, hooksInstalled)) return false
             tracker.status == HostRuntimeProbeStatus.CONFIRMED
         }
         if (confirmed) settle(HostRuntimeProbeStatus.CONFIRMED)
+        return true
     }
 
     /** 心跳（宿主装完 Hook 后上报）是更强的证据，随时可以确认并结束窗口。 */
@@ -96,6 +98,7 @@ internal object HostRuntimeProbeClient {
         val intent = Intent(HostRuntimeProbeContract.ACTION_PROBE)
             .setPackage(HostRuntimeProbeContract.TARGET_PACKAGE)
             .putExtra(HostRuntimeProbeContract.EXTRA_NONCE, nonce)
-        runCatching { context.sendBroadcast(intent) }
+        // 必须走 CrossAppBroadcastCompat：API 34+ 的 sentFromPackage 要求发送方显式共享身份。
+        runCatching { CrossAppBroadcastCompat.sendBroadcast(context, intent) }
     }
 }

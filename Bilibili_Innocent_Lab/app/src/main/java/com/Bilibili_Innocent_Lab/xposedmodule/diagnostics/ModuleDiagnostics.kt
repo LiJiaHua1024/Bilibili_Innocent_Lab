@@ -46,6 +46,9 @@ internal enum class DiagnosticNoRootState {
     MANAGER_MISSING,
     MODULE_NOT_REGISTERED,
     SCOPE_MISSING,
+    CONFIRMING,
+    UNCONFIRMED,
+    NOT_RUNNING,
     SYNCING,
     RESTART_REQUIRED,
     DISABLE_RESTART_REQUIRED,
@@ -377,6 +380,8 @@ internal object ModuleHealthEvaluator {
         ) return DiagnosticSeverity.INFO
         return when (inputs.noRootState) {
             DiagnosticNoRootState.ACTIVE -> DiagnosticSeverity.OK
+            DiagnosticNoRootState.NOT_RUNNING -> DiagnosticSeverity.ACTION_REQUIRED
+            DiagnosticNoRootState.UNCONFIRMED,
             DiagnosticNoRootState.DISABLE_RESTART_REQUIRED_ACTIVE,
             DiagnosticNoRootState.DISABLE_RESTART_REQUIRED,
             DiagnosticNoRootState.RESTART_REQUIRED,

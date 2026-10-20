@@ -15,6 +15,12 @@
     <string name="module_activation_lspatch_host_failed">The patched Bilibili app rejected configuration or did not finish installing hooks. Open Diagnostics for the bounded reason before retrying.</string>
     <string name="module_activation_scope_missing_title">Module out of scope</string>
     <string name="module_activation_scope_missing">NPatch Manager no longer lists this module for Bilibili. Re-enable it in Manager, then restart Bilibili.</string>
+    <string name="module_activation_confirming_title">Confirming module runtime</string>
+    <string name="module_activation_confirming">Asking Bilibili whether the module is running…</string>
+    <string name="module_activation_unconfirmed_title">Module runtime unconfirmed</string>
+    <string name="module_activation_unconfirmed">Last verified: %1$s. Open Bilibili to confirm automatically, or tap Verify below.</string>
+    <string name="module_activation_not_running_title">Module not in effect</string>
+    <string name="module_activation_not_running">Bilibili was started but the module did not respond. Open NPatch Manager to confirm the module is enabled and Bilibili is in scope, then force stop and reopen Bilibili.</string>
     <string name="module_activation_service_unavailable">No compatible Xposed framework service is connected</string>
     <string name="module_activation_framework_unsupported">The connected framework does not support the required Modern API 101+ service</string>
     <!-- Multi-user hints: the framework pushes the libxposed service per Android user, so a cloned-app or work profile needs the module enabled for that user too. -->
@@ -726,6 +732,12 @@
     <string name="no_root_status_manager_missing">Status: NPatch Manager or its Remote API is unavailable. Integration-mode patches keep their store inside the patched app and cannot be configured from here; re-patch in Manager mode.</string>
     <string name="no_root_status_module_not_registered">Status: NPatch Manager did not accept this module. Add and enable it in Manager, keep Bilibili inside its scope, and update NPatch to 1.0.7 or newer.</string>
     <string name="no_root_status_scope_missing">Status: this module is no longer in Bilibili\'s NPatch scope. Re-enable it in NPatch Manager, then restart Bilibili.</string>
+    <string name="no_root_status_confirming">Status: confirming whether the module is running in Bilibili…</string>
+    <string name="no_root_status_unconfirmed">Status: verified before, but the current run state is unconfirmed. Tap Verify to check.</string>
+    <string name="no_root_status_not_running">Status: the module is not in effect. Bilibili was started but the module did not respond. Open NPatch Manager to confirm the module and scope, then force stop and reopen Bilibili.</string>
+    <string name="no_root_action_verify">Verify</string>
+    <string name="no_root_action_open_manager">Open NPatch Manager</string>
+    <string name="no_root_action_manager_unavailable">Cannot open NPatch Manager. Install or update it first.</string>
     <string name="no_root_status_syncing">Status: synchronizing settings with NPatch…</string>
     <string name="no_root_status_restart_required">Status: settings synchronized. Restart the patched Bilibili app to activate them.</string>
     <string name="no_root_status_disable_restart_required">Status: no-root support is off, but hooks may remain in the running Bilibili process. Force stop and reopen it to finish disabling.</string>

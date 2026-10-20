@@ -2,11 +2,14 @@ package com.Bilibili_Innocent_Lab.xposedmodule.runtime.noroot
 
 import android.app.PendingIntent
 import android.content.BroadcastReceiver
+import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
+import android.util.Log
 import androidx.core.content.ContextCompat
 import androidx.core.content.IntentCompat
+import com.Bilibili_Innocent_Lab.xposedmodule.runtime.CrossAppBroadcastCompat
 import com.highcapable.betterandroid.system.extension.utils.AndroidVersion
 
 /**
@@ -53,21 +56,43 @@ internal object HostRuntimeProbeResponder {
     private fun probeReceiver() = object : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) {
             if (intent.action != HostRuntimeProbeContract.ACTION_PROBE) return
+            val appContext = context.applicationContext ?: context
             if (AndroidVersion.isAtLeast(AndroidVersion.U) &&
                 sentFromPackage != HostRuntimeProbeContract.MODULE_PACKAGE
-            ) return
+            ) {
+                log("[BIL] 模块存活探测请求被拒：发送者是 ${sentFromPackage ?: "null"}")
+                return
+            }
             val nonce = intent.getStringExtra(HostRuntimeProbeContract.EXTRA_NONCE).orEmpty()
-            if (!HostRuntimeProbeContract.isValidNonce(nonce)) return
-            val appContext = context.applicationContext ?: context
-            val hostProof = hostProof(appContext) ?: return
+            if (!HostRuntimeProbeContract.isValidNonce(nonce)) {
+                log("[BIL] 模块存活探测请求被拒：nonce 非法")
+                return
+            }
+            val hostProof = hostProof(appContext)
+            if (hostProof == null) {
+                log("[BIL] 模块存活探测请求被拒：身份证明创建失败")
+                return
+            }
+            // 必须用显式组件：RoamingOpenReceiver 的 manifest 过滤器只声明了授权查询 action，
+            // 隐式广播（仅 setPackage）不会被投递。与宿主心跳同一条通道。
             val reply = Intent(HostRuntimeProbeContract.ACTION_REPLY).apply {
-                setPackage(HostRuntimeProbeContract.MODULE_PACKAGE)
+                component = ComponentName(
+                    HostRuntimeProbeContract.MODULE_PACKAGE,
+                    "${HostRuntimeProbeContract.MODULE_PACKAGE}.receiver.RoamingOpenReceiver"
+                )
                 putExtra(HostRuntimeProbeContract.EXTRA_NONCE, nonce)
                 putExtra(HostRuntimeProbeContract.EXTRA_HOOKS_INSTALLED, hooksInstalled)
                 putExtra(HostRuntimeProbeContract.EXTRA_HOST_PROOF, hostProof)
             }
-            runCatching { appContext.sendBroadcast(reply) }
+            // 必须走 CrossAppBroadcastCompat：API 34+ 的 sentFromPackage 要求发送方显式共享身份。
+            runCatching { CrossAppBroadcastCompat.sendBroadcast(appContext, reply) }
+                .onSuccess { log("[BIL] 模块存活探测已回复(hooksInstalled=$hooksInstalled)") }
+                .onFailure { log("[BIL] 模块存活探测回执发送失败: $it") }
         }
+    }
+
+    private fun log(message: String) {
+        runCatching { Log.i("BilibiliInnocentLab", message) }
     }
 
     /** 身份证明只要求 `creatorPackage`，宿主无法被要求可见模块包；创建者 UID 由系统写入。 */

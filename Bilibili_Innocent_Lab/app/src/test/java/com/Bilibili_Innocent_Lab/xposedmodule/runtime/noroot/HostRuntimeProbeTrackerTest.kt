@@ -70,6 +70,30 @@ class HostRuntimeProbeTrackerTest {
     }
 
     @Test
+    fun `a verified failure survives later non-verify probes`() {
+        tracker.begin("nonce-1", verify = true, timeoutMs = 15_000L)
+        now = 15_000L
+        assertEquals(HostRuntimeProbeStatus.NOT_RUNNING, tracker.onTimeout())
+
+        // 回到设置页的顺手探测既不闪回“确认中”，也不能把“未生效”降级成“未确认”。
+        tracker.begin("nonce-2", verify = false, timeoutMs = 1_500L)
+        assertEquals(HostRuntimeProbeStatus.NOT_RUNNING, tracker.status)
+        now = 16_500L
+        assertEquals(HostRuntimeProbeStatus.NOT_RUNNING, tracker.onTimeout())
+    }
+
+    @Test
+    fun `a later confirmation clears the verified failure`() {
+        tracker.begin("nonce-1", verify = true, timeoutMs = 15_000L)
+        now = 15_000L
+        tracker.onTimeout()
+
+        tracker.begin("nonce-2", verify = false, timeoutMs = 1_500L)
+        assertTrue(tracker.onReply("nonce-2", hooksInstalled = true))
+        assertEquals(HostRuntimeProbeStatus.CONFIRMED, tracker.status)
+    }
+
+    @Test
     fun `a new probe keeps the previous confirmation until it settles`() {
         tracker.begin("nonce-1", verify = true, timeoutMs = 15_000L)
         tracker.onReply("nonce-1", hooksInstalled = true)

@@ -23,9 +23,12 @@ internal object ActivationCardVisualSpec {
         ActivationDisplayState.ACTIVE_LSPATCH,
         ActivationDisplayState.ACTIVE_NPATCH -> DiagnosticStatusTone.OK
         ActivationDisplayState.CHECKING,
+        ActivationDisplayState.CONFIRMING,
         ActivationDisplayState.LSPATCH_WAITING_FOR_HOST -> DiagnosticStatusTone.INFO
+        ActivationDisplayState.UNCONFIRMED -> DiagnosticStatusTone.ATTENTION
         ActivationDisplayState.LSPATCH_HOST_FAILED,
         ActivationDisplayState.SCOPE_MISSING,
+        ActivationDisplayState.NOT_RUNNING,
         ActivationDisplayState.UNAVAILABLE -> DiagnosticStatusTone.ACTION_REQUIRED
     }
 
@@ -38,10 +41,14 @@ internal object ActivationCardVisualSpec {
     ): ActivationSummaryState = when {
         displayState == ActivationDisplayState.UNAVAILABLE ||
             displayState == ActivationDisplayState.LSPATCH_HOST_FAILED ||
-            displayState == ActivationDisplayState.SCOPE_MISSING ->
+            displayState == ActivationDisplayState.SCOPE_MISSING ||
+            displayState == ActivationDisplayState.NOT_RUNNING ->
             ActivationSummaryState.ACTION_REQUIRED
         publishFailed -> ActivationSummaryState.ATTENTION
+        displayState == ActivationDisplayState.UNCONFIRMED ->
+            ActivationSummaryState.ATTENTION
         displayState == ActivationDisplayState.CHECKING ||
+            displayState == ActivationDisplayState.CONFIRMING ||
             displayState == ActivationDisplayState.LSPATCH_WAITING_FOR_HOST ->
             ActivationSummaryState.INFO
         skinFallback || noRootNeedsAttention -> ActivationSummaryState.ATTENTION
