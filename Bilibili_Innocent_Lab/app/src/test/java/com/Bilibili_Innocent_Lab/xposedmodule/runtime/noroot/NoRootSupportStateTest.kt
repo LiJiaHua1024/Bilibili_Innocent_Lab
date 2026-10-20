@@ -3,7 +3,9 @@ package com.Bilibili_Innocent_Lab.xposedmodule.runtime.noroot
 import com.Bilibili_Innocent_Lab.xposedmodule.runtime.HostConfigState
 import com.Bilibili_Innocent_Lab.xposedmodule.runtime.HostInstallChainState
 import com.Bilibili_Innocent_Lab.xposedmodule.settings.remote.frameworkHasSystemCapability
+import com.Bilibili_Innocent_Lab.xposedmodule.settings.remote.isNpatchConfigChannel
 import com.Bilibili_Innocent_Lab.xposedmodule.settings.remote.isRootFramework
+import com.Bilibili_Innocent_Lab.xposedmodule.settings.remote.ModernFrameworkStatus
 import io.github.libxposed.service.XposedService
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -335,6 +337,64 @@ class NoRootSupportStateTest {
                 lspatchHostState = LspatchHostReceiptState.CONFIRMED
             )
         )
+    }
+
+    @Test
+    fun `root activation ignores stale NPatch scope and runtime states`() {
+        val rootFlags = XposedService.PROP_CAP_REMOTE or XposedService.PROP_CAP_SYSTEM
+        for (name in listOf("LSPosed", "Vector", "Irena")) {
+            for (properties in listOf(rootFlags, null)) {
+                val framework = ModernFrameworkStatus(
+                    connected = true, capable = true, name = name,
+                    apiVersion = 102, properties = properties
+                )
+                for (state in listOf(
+                    NoRootDisplayState.SCOPE_MISSING,
+                    NoRootDisplayState.CONFIRMING,
+                    NoRootDisplayState.UNCONFIRMED,
+                    NoRootDisplayState.NOT_RUNNING
+                )) {
+                    assertEquals(
+                        "$name properties=$properties state=$state",
+                        ActivationDisplayState.ACTIVE_LSPOSED,
+                        NoRootSupportState.activationDisplayState(
+                            rootActive = framework.capable,
+                            frameworkCheckPending = false,
+                            displayState = state,
+                            nPatchFramework = isNpatchConfigChannel(framework)
+                        )
+                    )
+                }
+            }
+        }
+    }
+
+    @Test
+    fun `NPatch modern services cannot override scope and runtime failures`() {
+        val expectedStates = mapOf(
+            NoRootDisplayState.SCOPE_MISSING to ActivationDisplayState.SCOPE_MISSING,
+            NoRootDisplayState.CONFIRMING to ActivationDisplayState.CONFIRMING,
+            NoRootDisplayState.UNCONFIRMED to ActivationDisplayState.UNCONFIRMED,
+            NoRootDisplayState.NOT_RUNNING to ActivationDisplayState.NOT_RUNNING
+        )
+        for (name in listOf("NPatch", "RenamedPatch")) {
+            val framework = ModernFrameworkStatus(
+                connected = true, capable = true, name = name,
+                apiVersion = 102, properties = XposedService.PROP_CAP_REMOTE
+            )
+            for ((state, expected) in expectedStates) {
+                assertEquals(
+                    "$name state=$state",
+                    expected,
+                    NoRootSupportState.activationDisplayState(
+                        rootActive = framework.capable,
+                        frameworkCheckPending = false,
+                        displayState = state,
+                        nPatchFramework = isNpatchConfigChannel(framework)
+                    )
+                )
+            }
+        }
     }
 
     @Test

@@ -18,6 +18,7 @@ import com.Bilibili_Innocent_Lab.xposedmodule.settings.modulePreferences
 import com.Bilibili_Innocent_Lab.xposedmodule.settings.remote.RemoteHookConfigPublishState
 import com.Bilibili_Innocent_Lab.xposedmodule.settings.remote.RemoteHookConfigStore
 import com.Bilibili_Innocent_Lab.xposedmodule.settings.remote.isLspatch
+import com.Bilibili_Innocent_Lab.xposedmodule.settings.remote.isNpatchConfigChannel
 import com.Bilibili_Innocent_Lab.xposedmodule.ui.skin.runtime.SkinSessionDiagnostics
 import com.highcapable.betterandroid.system.extension.component.versionCodeCompat
 import com.highcapable.betterandroid.system.extension.utils.AndroidVersion
@@ -65,7 +66,8 @@ internal object ModuleDiagnosticsCollector {
             frameworkCheckPending = frameworkCheckPending && !framework.connected,
             displayState = noRootState,
             lspatchFramework = framework.isLspatch,
-            lspatchHostState = lspatchHostState
+            lspatchHostState = lspatchHostState,
+            nPatchFramework = isNpatchConfigChannel(framework)
         )
         val remote = RemoteHookConfigStore.diagnostics()
         val preferences = appContext.modulePreferences()

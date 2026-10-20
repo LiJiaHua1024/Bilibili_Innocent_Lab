@@ -140,6 +140,7 @@ import com.Bilibili_Innocent_Lab.xposedmodule.settings.remote.ModernFrameworkSta
 import com.Bilibili_Innocent_Lab.xposedmodule.settings.remote.RemoteHookConfigPublishState
 import com.Bilibili_Innocent_Lab.xposedmodule.settings.remote.RemoteHookConfigStore
 import com.Bilibili_Innocent_Lab.xposedmodule.settings.remote.isLspatch
+import com.Bilibili_Innocent_Lab.xposedmodule.settings.remote.isNpatchConfigChannel
 import com.Bilibili_Innocent_Lab.xposedmodule.settings.terms.UserTermsAuthorizationCoordinator
 import com.Bilibili_Innocent_Lab.xposedmodule.settings.terms.UserTermsAuthorizationListener
 import com.Bilibili_Innocent_Lab.xposedmodule.settings.terms.UserTermsAuthorizationSnapshot
@@ -1056,7 +1057,8 @@ class MainActivity : SkinnedActivity() {
             frameworkCheckPending = frameworkStatusCheckPending && !framework.connected,
             displayState = noRootState,
             lspatchFramework = framework.isLspatch,
-            lspatchHostState = lspatchHostState
+            lspatchHostState = lspatchHostState,
+            nPatchFramework = isNpatchConfigChannel(framework)
         )
         val activated = displayState == ActivationDisplayState.ACTIVE_LSPOSED ||
             displayState == ActivationDisplayState.ACTIVE_LSPATCH ||

@@ -168,10 +168,14 @@ internal object NoRootSupportState {
         frameworkCheckPending: Boolean,
         displayState: NoRootDisplayState,
         lspatchFramework: Boolean = false,
-        lspatchHostState: LspatchHostReceiptState = LspatchHostReceiptState.WAITING
+        lspatchHostState: LspatchHostReceiptState = LspatchHostReceiptState.WAITING,
+        nPatchFramework: Boolean = false
     ): ActivationDisplayState = when {
+        // Root 框架的服务证据独立于历史免 Root 设置；NPatch 的作用域和探测结果不能否决它。
+        rootActive && !lspatchFramework && !nPatchFramework ->
+            ActivationDisplayState.ACTIVE_LSPOSED
         // 作用域缺失时 Manager 仍可能提供 Modern 服务并留下旧回执；它比任何“已激活”
-        // 断言都更像当前事实，必须最先判定。
+        // 补丁框架断言都更像当前事实，优先于补丁框架的激活结果。
         displayState == NoRootDisplayState.SCOPE_MISSING ->
             ActivationDisplayState.SCOPE_MISSING
         // B12：宿主没有给出存活证据时，不能让 Modern 服务/LSPatch 回执把界面抬回“已激活”。
