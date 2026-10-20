@@ -67,9 +67,11 @@ internal object HostRuntimeProbeClient {
     /** 宿主回执入口；nonce 不属于当前窗口时直接丢弃，返回 false 供调用方决定是否记日志。 */
     fun onHostReply(nonce: String, hooksInstalled: Boolean): Boolean {
         synchronized(lock) {
-            if (!tracker.onReply(nonce, hooksInstalled)) return false
-            if (tracker.status == HostRuntimeProbeStatus.CONFIRMED) {
-                settleLocked(HostRuntimeProbeStatus.CONFIRMED)
+            when (tracker.onReply(nonce, hooksInstalled)) {
+                HostRuntimeProbeTracker.ReplyResult.REJECTED -> return false
+                HostRuntimeProbeTracker.ReplyResult.PENDING -> Unit
+                HostRuntimeProbeTracker.ReplyResult.CONFIRMED ->
+                    settleLocked(HostRuntimeProbeStatus.CONFIRMED)
             }
         }
         return true

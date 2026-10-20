@@ -1,5 +1,6 @@
 package com.Bilibili_Innocent_Lab.xposedmodule.runtime.noroot
 
+import com.Bilibili_Innocent_Lab.xposedmodule.runtime.noroot.HostRuntimeProbeTracker.ReplyResult
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -32,7 +33,7 @@ class HostRuntimeProbeTrackerTest {
     fun `a reply carrying hooks installed confirms the module is live`() {
         tracker.begin("nonce-1", verify = true, timeoutMs = 15_000L)
 
-        assertTrue(tracker.onReply("nonce-1", hooksInstalled = true))
+        assertEquals(ReplyResult.CONFIRMED, tracker.onReply("nonce-1", hooksInstalled = true))
         assertEquals(HostRuntimeProbeStatus.CONFIRMED, tracker.status)
     }
 
@@ -40,7 +41,7 @@ class HostRuntimeProbeTrackerTest {
     fun `a reply without hooks is kept pending and times out as not running`() {
         tracker.begin("nonce-1", verify = false, timeoutMs = 1_500L)
 
-        assertTrue(tracker.onReply("nonce-1", hooksInstalled = false))
+        assertEquals(ReplyResult.PENDING, tracker.onReply("nonce-1", hooksInstalled = false))
         assertEquals(HostRuntimeProbeStatus.PROBING, tracker.status)
 
         now = 1_500L
@@ -60,7 +61,7 @@ class HostRuntimeProbeTrackerTest {
     fun `a reply for another window is ignored`() {
         tracker.begin("nonce-1", verify = true, timeoutMs = 15_000L)
 
-        assertFalse(tracker.onReply("stale-nonce", hooksInstalled = true))
+        assertEquals(ReplyResult.REJECTED, tracker.onReply("stale-nonce", hooksInstalled = true))
         assertEquals(HostRuntimeProbeStatus.PROBING, tracker.status)
     }
 
@@ -90,7 +91,7 @@ class HostRuntimeProbeTrackerTest {
         tracker.onTimeout("nonce-1")
 
         tracker.begin("nonce-2", verify = false, timeoutMs = 1_500L)
-        assertTrue(tracker.onReply("nonce-2", hooksInstalled = true))
+        assertEquals(ReplyResult.CONFIRMED, tracker.onReply("nonce-2", hooksInstalled = true))
         assertEquals(HostRuntimeProbeStatus.CONFIRMED, tracker.status)
     }
 
@@ -117,7 +118,7 @@ class HostRuntimeProbeTrackerTest {
         now = 15_000L
         assertNull(tracker.onTimeout("nonce-1"))
         assertTrue(tracker.isPending("nonce-2"))
-        assertTrue(tracker.onReply("nonce-2", hooksInstalled = true))
+        assertEquals(ReplyResult.CONFIRMED, tracker.onReply("nonce-2", hooksInstalled = true))
     }
 
     @Test
@@ -142,5 +143,31 @@ class HostRuntimeProbeTrackerTest {
         assertTrue(tracker.isPending("nonce-1"))
         now = 15_000L
         assertEquals(HostRuntimeProbeStatus.NOT_RUNNING, tracker.onTimeout("nonce-1"))
+    }
+
+    @Test
+    fun `a reply without hooks after a prior confirmation waits for timeout`() {
+        tracker.onHeartbeat()
+        tracker.begin("nonce-1", verify = false, timeoutMs = 1_500L)
+
+        assertEquals(ReplyResult.PENDING, tracker.onReply("nonce-1", hooksInstalled = false))
+        assertEquals(HostRuntimeProbeStatus.CONFIRMED, tracker.status)
+        assertTrue(tracker.isPending("nonce-1"))
+        now = 1_500L
+        assertEquals(HostRuntimeProbeStatus.NOT_RUNNING, tracker.onTimeout("nonce-1"))
+    }
+
+    @Test
+    fun `a pending reply after prior confirmation can still confirm hook installation`() {
+        tracker.onHeartbeat()
+        tracker.begin("nonce-1", verify = true, timeoutMs = 15_000L)
+
+        assertEquals(ReplyResult.PENDING, tracker.onReply("nonce-1", hooksInstalled = false))
+        now = 2_000L
+        assertEquals(ReplyResult.CONFIRMED, tracker.onReply("nonce-1", hooksInstalled = true))
+        assertFalse(tracker.isPending("nonce-1"))
+        now = 15_000L
+        assertNull(tracker.onTimeout("nonce-1"))
+        assertEquals(HostRuntimeProbeStatus.CONFIRMED, tracker.status)
     }
 }

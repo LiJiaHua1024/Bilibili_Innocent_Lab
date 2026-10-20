@@ -20,6 +20,8 @@ internal enum class HostRuntimeProbeStatus {
  */
 internal class HostRuntimeProbeTracker(private val now: () -> Long) {
 
+    enum class ReplyResult { REJECTED, PENDING, CONFIRMED }
+
     var status: HostRuntimeProbeStatus = HostRuntimeProbeStatus.IDLE
         private set
 
@@ -55,19 +57,19 @@ internal class HostRuntimeProbeTracker(private val now: () -> Long) {
     }
 
     /**
-     * 宿主回执到达。返回 true 表示这条回执属于当前窗口（无论是否足以确认）。
+     * 宿主回执到达。返回本次回执的结论，不能把上轮保留的 status 当作本次确认。
      * `hooksInstalled=false` 说明模块入口在跑但 Hook 没装上：不确认、不清窗口，等后续
      * 回执/心跳或超时结算，避免宿主启动途中的瞬时回执被误判为“未生效”。
      */
-    fun onReply(nonce: String, hooksInstalled: Boolean): Boolean {
-        if (nonce != pendingNonce) return false
+    fun onReply(nonce: String, hooksInstalled: Boolean): ReplyResult {
+        if (nonce != pendingNonce) return ReplyResult.REJECTED
         if (!hooksInstalled) {
             aliveWithoutHooks = true
-            return true
+            return ReplyResult.PENDING
         }
         clearPending()
         status = HostRuntimeProbeStatus.CONFIRMED
-        return true
+        return ReplyResult.CONFIRMED
     }
 
     /** 心跳是宿主装完 Hook 的直接证据，随时可以确认并结束窗口。 */
