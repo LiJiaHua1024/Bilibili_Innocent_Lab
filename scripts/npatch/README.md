@@ -33,11 +33,11 @@ $apkOutput = '<输出目录>'
 
 & $java17 -cp $jadx scripts/npatch/FixLoader833.java $originalPatcher $fixedPatcher
 if ($LASTEXITCODE -ne 0) { throw 'Loader patch failed' }
-& $java21 -cp "$bcprov;$fixedPatcher" scripts/npatch/RunPatcher.java --manager -o $apkOutput $originalApk
+& $java21 -cp "$bcprov;$fixedPatcher" scripts/npatch/RunPatcher.java --manager --sigbypasslv 2 -o $apkOutput $originalApk
 if ($LASTEXITCODE -ne 0) { throw 'APK patch failed' }
 ```
 
-保留原修补参数和签名密钥；上例是测试机的 Manager 模式与默认签名方案。安装前分别使用 SDK `apksigner verify --print-certs` 核对旧、新 APK 的签名证书一致，再 `adb -s <设备> install -r <新 APK>`。签名不一致时停止，不通过卸载规避。
+保留原修补参数和签名密钥；上例是测试机的 Manager 模式、签名绕过等级 2 与默认签名方案。安装前分别使用 SDK `apksigner verify --print-certs` 核对旧、新 APK 的签名证书一致，再 `adb -s <设备> install -r <新 APK>`。签名不一致时停止，不通过卸载规避。
 
 本次固定 loader 的 SHA-256 为 `7eb53e46e4d7fb31c4a7441a9478bb26f73563496547ebe82e66a39301d4efaf`。原参数生成的 patcher SHA-256 为 `fd6257b562af7f2c55776131f97ef72e7e7c772f5b2c0396c69ae1517f7e1e78`。
 
@@ -47,9 +47,11 @@ if ($LASTEXITCODE -ne 0) { throw 'APK patch failed' }
 
 - 原包：Manager `stopped=true` 时，出现 `Loaded cached module`，没有模块 Modern 入口和功能 Hook。
 - 修复包：相同停止状态出现 Modern 入口、授权 `granted`，Hook 链完成 2557ms；恢复开关后再次冷启动 2083ms。
-- Manager 与设置进程均停止：有效 NPatch 文档回退成功，授权 64ms、Hook 链 2034ms。
+- 早期模块在 Manager 与设置进程均停止时可用缓存授权；最终 B1 回归发现这会复活旧关闭态，现已禁止 NPatch 只凭缓存授权，全部端点不可达时不安装功能 Hook。
 - Manager 重启后：授权 40ms、Hook 链 2181ms；运行中再次停止 Manager，设置页仍显示“由 NPatch 激活（回执已验证）”。
 - Manager 停止、免 Root 关闭：授权明确拒绝，没有功能 Hook 安装链；测试后恢复开启。
 - 工具：相同输入重复生成哈希一致；未知输入和已有输出均拒绝，DEX 单方法及 JAR 其它文件内容校验通过。
 
-原始证据在已忽略的 `captures/npatch-closure/b12-*`；生成的宿主位于 `captures/npatch-closure/b12-liveness/`。
+最初复测使用等级 1；最终宿主已按原配置恢复等级 2 并同签名覆盖安装。最终模块同步后、Manager 停止时授权 28ms、Hook 链 2039ms；旧缓存且授权端点全部不可达时明确拒绝，没有功能 Hook。
+
+原始证据在已忽略的 `captures/npatch-closure/b12-*`、`b1-final-*`；最终生成宿主位于 `captures/npatch-closure/b12-final/`。

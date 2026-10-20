@@ -29,8 +29,9 @@ class HostAdmissionFallbackInstrumentedTest {
         assertEquals("remote_config_transport_fallback", result.grant?.source)
     }
 
-    @Test fun npatchKeepsAnEnabledNoRootDocumentFallback() {
+    @Test fun npatchCannotUseAnOldPositiveRevisionAfterUserDisablesWhileManagerIsUnavailable() {
         val result = HostAdmissionClient.admit(context, standard.copy(noRootRevision = 42L), null, nPatchRuntime = true)
-        assertEquals("remote_config_transport_fallback", result.grant?.source)
+        assertNull(result.grant)
+        assertEquals("admission_unavailable", result.reason)
     }
 }

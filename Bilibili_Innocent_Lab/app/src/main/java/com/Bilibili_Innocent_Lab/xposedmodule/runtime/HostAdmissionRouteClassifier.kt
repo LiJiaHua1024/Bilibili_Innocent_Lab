@@ -59,11 +59,12 @@ internal object HostAdmissionRouteClassifier {
         moduleVersionMatches: Boolean,
         generation: Long,
         nPatchRuntime: Boolean = false,
-        noRootRevision: Long = 0L,
     ): Boolean = !sawDenied &&
         normalFailure == null &&
         authorized &&
         moduleVersionMatches &&
         generation > 0L &&
-        (!nPatchRuntime || noRootRevision > 0L)
+        // NPatch 的正 revision 也可能是 Manager 失联前的旧缓存：无法证明用户之后没有关闭。
+        // 必须通过已有授权端点取得当前许可，不能只凭缓存文档恢复功能 Hook。
+        !nPatchRuntime
 }

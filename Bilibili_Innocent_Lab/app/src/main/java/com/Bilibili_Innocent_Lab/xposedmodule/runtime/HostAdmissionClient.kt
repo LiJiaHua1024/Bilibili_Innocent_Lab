@@ -315,7 +315,8 @@ internal object HostAdmissionClient {
     /**
      * 所有跨进程传输均被系统丢弃时的最后保底。Remote Preferences 已由
      * RemoteHookConfigContract 完整校验，且只在没有收到任何明确拒绝时采用；
-     * 这不是新的授权来源，也不会覆盖 Provider/Binder/广播的结果。
+     * 仅用于标准框架；NPatch 文档即使 revision 为正也可能在 Manager 失联后过期，
+     * 必须由已有授权端点确认当前开关，不能据此恢复功能 Hook。
      */
     private fun remoteConfigFallback(
         normal: RemoteHookConfigSnapshot?,
@@ -331,8 +332,7 @@ internal object HostAdmissionClient {
                 snapshot.authorized,
                 snapshot.moduleVersionCode == BuildConfig.VERSION_CODE.toLong(),
                 snapshot.generation,
-                nPatchRuntime = nPatchRuntime,
-                noRootRevision = snapshot.noRootRevision
+                nPatchRuntime = nPatchRuntime
             )
         ) {
             Log.w(TAG, "[BIL] 启动授权传输不可达，采用已校验 Remote Preferences 回退")
@@ -344,6 +344,10 @@ internal object HostAdmissionClient {
         if (nPatchRuntime && snapshot.authorized && snapshot.noRootRevision <= 0L) {
             Log.w(TAG, "[BIL] NPatch 拒绝旧标准文档回退，需重新同步免 Root 配置")
             return Result(reason = "manager_sync_required")
+        }
+        if (nPatchRuntime && snapshot.authorized && !sawDenied) {
+            Log.w(TAG, "[BIL] NPatch 授权端点不可达，拒绝采用可能过期的免 Root 文档")
+            return Result(reason = HostAdmissionRouteClassifier.REASON_UNAVAILABLE)
         }
         return failure
     }

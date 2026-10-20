@@ -95,7 +95,13 @@ prefs: desired_enabled=false, sync_state=DISABLE_RESTART_REQUIRED, disable_was_a
 
 **旧标准文档回退边界已闭环（2026-10-20）**：宿主授权入口现已接入 `NoRootRuntimeDetector`，最终回退额外检查实际运行模式；NPatch 不接受 `noRootRevision <= 0` 的历史标准文档作为回退许可。模块进程不可达时同样成立，无需等待设置 App 下次运行清理旧数据。标准 LSPosed 的正常文档不受此条件影响。
 
-验证：新增 JVM 模式/文档矩阵；测试机 `13a7a291` 上新增 3 项真实 IPC 回归，用模块 UID 无法获得宿主许可的通道验证最终回退，分别确认「NPatch + 旧标准文档拒绝」「标准框架 + 标准文档允许」「NPatch + 有效免 Root 文档允许」，均通过。测试文档仅在内存构造，不改写用户配置。真实宿主开/关冷启动路径也已复测。Debug 与测试 APK、3647 项 JVM 回归（0 失败、1 跳过）、快速 Lint 通过；实机日志在 `captures/npatch-closure/b1-*.log`。
+初次验证：新增 JVM 模式/文档矩阵和 3 项真实 IPC 回归。初版仍允许正 revision 的 NPatch 文档回退，后续极端回归证明这个条件不充分，现已收紧如下。
+
+**正 revision 旧缓存也已闭环**：Manager 不可达时关闭开关，再停止设置进程，旧正 revision 文档同样无法证明当前用户意图。因此 NPatch 必须从现有授权端点取得当前许可，不能单凭任何 Remote Preferences 缓存恢复 Hook；标准 LSPosed 回退保持原样。
+
+最终实测：上述关闭态复现由 `granted + Hook 2238ms` 变为 `admission_unavailable`，授权 77ms，无功能 Hook；同步当前开启配置后，Manager 停止时仍可取得新鲜授权（28ms）并完成 Hook（2039ms）。三个真实 IPC 用例均通过：NPatch 旧标准文档拒绝、旧正 revision 文档拒绝、标准框架回退允许。Debug 与测试 APK、3649 项 JVM 回归（0 失败、1 跳过）、快速 Lint 通过；证据 `captures/npatch-closure/b1-final-*`。
+
+另发现 B3 在 Manager 离线、缓存仍是旧开启文档时缺少本次关闭 revision 的确认，仍需单独补齐；不将“没有安装 Hook”直接视为完整停用回执。
 
 ---
 
