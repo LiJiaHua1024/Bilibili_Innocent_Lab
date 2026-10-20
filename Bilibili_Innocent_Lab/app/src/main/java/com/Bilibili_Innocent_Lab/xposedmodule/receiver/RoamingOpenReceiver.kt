@@ -1,5 +1,7 @@
 package com.Bilibili_Innocent_Lab.xposedmodule.receiver
 
+import com.highcapable.betterandroid.system.extension.component.versionCodeCompat
+
 import android.app.PendingIntent
 import android.content.BroadcastReceiver
 import android.content.Context
@@ -225,6 +227,7 @@ class RoamingOpenReceiver : BroadcastReceiver() {
                 HostRuntimeProbeClient.markHostAlive()
             }
         } else {
+            if (processName != targetPackage) return
             NoRootSupportStore.recordDisabledAck(
                 context = context,
                 revision = revision,
@@ -267,6 +270,15 @@ class RoamingOpenReceiver : BroadcastReceiver() {
         )
         if (HostRuntimeProbeClient.onHostReply(nonce = nonce, hooksInstalled = hooksInstalled)) {
             if (hooksInstalled) NoRootSupportStore.recordRuntimeReply(context)
+            else {
+                val revision = intent.getLongExtra(HostRuntimeProbeContract.EXTRA_DISABLED_REVISION, 0L)
+                val targetInfo = runCatching { context.packageManager.getPackageInfo(HookEntry.TARGET_PACKAGE, 0) }.getOrNull()
+                if (revision > 0L && targetInfo != null) {
+                    NoRootSupportStore.recordDisabledAck(context, revision,
+                        com.Bilibili_Innocent_Lab.xposedmodule.BuildConfig.VERSION_CODE.toLong(),
+                        targetInfo.versionCodeCompat, targetInfo.lastUpdateTime, HookEntry.TARGET_PACKAGE)
+                }
+            }
             Log.i("BilibiliInnocentLab", "[BIL] 存活回执已接受(hooksInstalled=$hooksInstalled)")
         }
     }

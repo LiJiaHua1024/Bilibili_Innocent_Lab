@@ -306,6 +306,10 @@ internal object RemoteHookConfigStore {
             // B1：NPatch 通道下免 Root 开关是总开关。关闭后发布“不可授权”文档，既不给宿主
             // 留下复活口子，也顺手清掉旧版本写下的可授权标准文档。
             deliveryEnabled = !isNpatchConfigChannel(frameworkStatus),
+            // B3：标准发布器清理 NPatch 文档时也保留关闭代次，宿主才能回执这一次停用。
+            noRootRevision = if (isNpatchConfigChannel(frameworkStatus))
+                com.Bilibili_Innocent_Lab.xposedmodule.runtime.noroot.NoRootSupportStore
+                    .readSnapshot(appContext)?.takeUnless { it.enabled }?.revision ?: 0L else 0L,
             stillCurrent = { stillCurrent() && PublicationAuthorityStore.matches(appContext, publication) },
             backend = object : RemoteHookConfigBackend {
                 override fun readCached(): Map<String, *> = preferences.all

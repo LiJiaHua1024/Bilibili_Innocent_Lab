@@ -1030,7 +1030,8 @@ class MainActivity : SkinnedActivity() {
      */
     private fun refreshNoRootProbe() {
         val appContext = applicationContext
-        if (!NoRootSupportStore.isDesiredEnabled(appContext)) return
+        val status = NoRootSupportStore.readStatus(appContext)
+        if (!status.desiredEnabled && status.syncState != NoRootSupportStore.SyncState.DISABLE_RESTART_REQUIRED) return
         HostRuntimeProbeClient.probeAsync(appContext, verify = false) {
             runOnUiThread {
                 if (!isFinishing && !isDestroyed) renderNoRootUi()

@@ -29,6 +29,7 @@ internal object HostRuntimeProbeContract {
     const val EXTRA_NONCE = "host_runtime_probe_nonce"
     const val EXTRA_HOST_PROOF = "host_runtime_probe_host_proof"
     const val EXTRA_HOOKS_INSTALLED = "host_runtime_probe_hooks_installed"
+    const val EXTRA_DISABLED_REVISION = "host_runtime_probe_disabled_revision"
 
     fun isValidNonce(value: String): Boolean =
         value.length in 16..128 && value.all { it.isLetterOrDigit() || it == '-' || it == '_' }

@@ -1,5 +1,7 @@
 package com.Bilibili_Innocent_Lab.xposedmodule.hook
 
+import com.Bilibili_Innocent_Lab.xposedmodule.BuildConfig
+
 import android.content.Context
 import android.graphics.Color
 import android.graphics.drawable.ColorDrawable
@@ -4878,7 +4880,7 @@ class HookEntry : XposedModule() {
             // 在授权安装链成功后恢复回执；noRootRevision 只在 NPatch 网关交付时
             // 非零（LSPosed 提交路径恒为 0），模块侧 recordHeartbeat 还会按快照
             // revision/版本逐项校验，非免 Root 交付与失配回执都会被拒收。
-            fun reportNoRootHeartbeatIfSynced(appContext: Context, config: RemoteHookConfigSnapshot) {
+            fun reportNoRootHeartbeatIfSynced(appContext: Context, config: RemoteHookConfigSnapshot, active: Boolean = true) {
                 if (config.noRootRevision <= 0L) return
                 if (!TargetProcess.isMainProcess(appContext, TARGET_PACKAGE)) return
                 Thread({
@@ -4900,7 +4902,7 @@ class HookEntry : XposedModule() {
                         targetVersionCode = targetVersionCode,
                         targetUpdateTime = targetInfo?.lastUpdateTime ?: 0L,
                         processName = processName,
-                        active = true
+                        active = active
                     )
                     frameworkLog(
                         "[BIL] NPatch 免 Root 宿主回执" +
@@ -5001,6 +5003,15 @@ class HookEntry : XposedModule() {
                     android.os.SystemClock.elapsedRealtime() - remoteConfigStartedAtMs
                 val normal = (outcome as? RemoteHookConfigQueryOutcome.Ready)?.snapshot
                 val reason = (outcome as? RemoteHookConfigQueryOutcome.Rejected)?.reasonCode
+                // B3：关闭文档是本进程的安装终态，不排队重试后才能报告“旧 Hook 已退出”。
+                if (normal != null && !normal.deliveryEnabled && normal.noRootRevision > 0L &&
+                    normal.moduleVersionCode == BuildConfig.VERSION_CODE.toLong()) {
+                    authorizedInstallerRef.set(null)
+                    HostRuntimeProbeResponder.disabledRevision = normal.noRootRevision
+                    reportNoRootHeartbeatIfSynced(appContext, normal, active = false)
+                    frameworkLog("[BIL] 免 Root 关闭文档已确认，本进程不安装 Hook")
+                    return
+                }
                 if (processName == TARGET_PACKAGE) {
                     frameworkLog("[BIL] 启动授权尝试(process=$processName)")
                 }

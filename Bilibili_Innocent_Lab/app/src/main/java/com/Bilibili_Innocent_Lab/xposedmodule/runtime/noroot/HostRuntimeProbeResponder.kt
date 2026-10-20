@@ -29,6 +29,10 @@ internal object HostRuntimeProbeResponder {
     @Volatile
     var hooksInstalled = false
 
+    /** 仅在当前进程已放弃安装闭包后写入；false 本身不能证明已停用。 */
+    @Volatile
+    var disabledRevision = 0L
+
     fun ensureRegistered(
         context: Context,
         logError: (String) -> Unit = {}
@@ -82,6 +86,7 @@ internal object HostRuntimeProbeResponder {
                 )
                 putExtra(HostRuntimeProbeContract.EXTRA_NONCE, nonce)
                 putExtra(HostRuntimeProbeContract.EXTRA_HOOKS_INSTALLED, hooksInstalled)
+                putExtra(HostRuntimeProbeContract.EXTRA_DISABLED_REVISION, disabledRevision)
                 putExtra(HostRuntimeProbeContract.EXTRA_HOST_PROOF, hostProof)
             }
             // 必须走 CrossAppBroadcastCompat：API 34+ 的 sentFromPackage 要求发送方显式共享身份。

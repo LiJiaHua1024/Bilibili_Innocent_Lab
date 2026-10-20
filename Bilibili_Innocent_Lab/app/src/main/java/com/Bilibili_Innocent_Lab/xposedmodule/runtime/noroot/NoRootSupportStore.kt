@@ -319,12 +319,14 @@ internal object NoRootSupportStore {
         if (isDesiredEnabled(context) || revision <= 0L ||
             moduleVersionCode != BuildConfig.VERSION_CODE.toLong() ||
             targetVersionCode <= 0L || targetUpdateTime <= 0L ||
-            targetPackage.isBlank()
+            targetPackage != NoRootSupportState.TARGET_PACKAGE
         ) return@synchronized false
         val snapshot = readSnapshotLocked(context) ?: return@synchronized false
-        if (snapshot.enabled || snapshot.revision != revision ||
-            snapshot.moduleVersionCode != moduleVersionCode
-        ) return@synchronized false
+        if (!acceptsDisabledAck(snapshot, revision, moduleVersionCode)) return@synchronized false
+        val target = runCatching { context.packageManager.getPackageInfo(targetPackage, 0) }.getOrNull()
+            ?: return@synchronized false
+        if (target.versionCodeCompat != targetVersionCode || target.lastUpdateTime != targetUpdateTime)
+            return@synchronized false
         val committed = prefs(context).edit()
             .putString(KEY_SYNC_STATE, SyncState.DISABLED.name)
             .putLong(KEY_SYNC_REVISION, revision)
@@ -333,6 +335,10 @@ internal object NoRootSupportStore {
             .commit()
         committed
     }
+
+    internal fun acceptsDisabledAck(snapshot: NoRootConfigSnapshot, revision: Long, moduleVersion: Long): Boolean =
+        !snapshot.enabled && revision > 0L && snapshot.revision == revision &&
+            snapshot.moduleVersionCode == moduleVersion
 
     /** 从当前 70 项白名单构造完整快照；内容未变化时保留 revision。 */
     fun upsertEnabledSnapshot(
