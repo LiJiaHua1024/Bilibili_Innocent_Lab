@@ -46,10 +46,16 @@
         android:name="${applicationId}.permission.QUERY_HOST_RUNTIME_DIAGNOSTICS"
         android:protectionLevel="signature" />
 
+    <!-- 仅模块 App 可以向 B 站主进程询问“模块是否正在运行”（B12 存活探测）。 -->
+    <permission
+        android:name="${applicationId}.permission.PROBE_HOST_RUNTIME"
+        android:protectionLevel="signature" />
+
     <uses-permission android:name="${applicationId}.permission.SET_ROAMING_COMPAT" />
     <uses-permission android:name="${applicationId}.permission.SET_UI_LOCALE" />
     <uses-permission android:name="${applicationId}.permission.QUERY_MINE_COMPONENT_SNAPSHOT" />
     <uses-permission android:name="${applicationId}.permission.QUERY_HOST_RUNTIME_DIAGNOSTICS" />
+    <uses-permission android:name="${applicationId}.permission.PROBE_HOST_RUNTIME" />
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />

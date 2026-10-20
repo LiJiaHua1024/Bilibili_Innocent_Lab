@@ -26,6 +26,7 @@ import com.Bilibili_Innocent_Lab.xposedmodule.runtime.InjectedUiLocale
 import com.Bilibili_Innocent_Lab.xposedmodule.runtime.HostRuntimeDiagnosticsBridge
 import com.Bilibili_Innocent_Lab.xposedmodule.runtime.HostThreadGuard
 import com.Bilibili_Innocent_Lab.xposedmodule.runtime.MineComponentSnapshotHostBridge
+import com.Bilibili_Innocent_Lab.xposedmodule.runtime.noroot.HostRuntimeProbeResponder
 import com.Bilibili_Innocent_Lab.xposedmodule.runtime.noroot.NoRootTargetConfigBridge
 import com.Bilibili_Innocent_Lab.xposedmodule.runtime.TargetProcess
 import com.Bilibili_Innocent_Lab.xposedmodule.hook.config.HookConfigSource
@@ -4934,6 +4935,8 @@ class HookEntry : XposedModule() {
                     installer(appContext)
                 }.onSuccess {
                     authorizedHooksInstalled.set(true)
+                    // B12：存活探测据此回答“活着且已装 Hook”，避免只回“入口在跑”。
+                    HostRuntimeProbeResponder.hooksInstalled = true
                     if (processName == TARGET_PACKAGE && config.values[com.Bilibili_Innocent_Lab.xposedmodule.agent.AgentPreferences.ENABLED] == true) {
                         runCatching {
                             com.Bilibili_Innocent_Lab.xposedmodule.agent.host.HostAgentRuntime.initialize(appContext, biliClassLoader,
@@ -4979,6 +4982,15 @@ class HookEntry : XposedModule() {
                         logError(
                             "host_runtime_diagnostics_initialize",
                             "[BIL] 宿主诊断桥初始化失败，继续校验 Hook 配置: $throwable"
+                        )
+                    }
+                    // B12：模块入口一跑起来就要能回答存活探测，哪怕后续授权/安装链还没完成。
+                    runCatching {
+                        HostRuntimeProbeResponder.ensureRegistered(
+                            context = appContext,
+                            logError = { message ->
+                                logError("host_runtime_probe_receiver", "[BIL] $message")
+                            }
                         )
                     }
                 }

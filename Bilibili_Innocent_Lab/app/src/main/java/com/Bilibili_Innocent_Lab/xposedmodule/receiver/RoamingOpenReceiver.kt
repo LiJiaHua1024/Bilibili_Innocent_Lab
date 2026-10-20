@@ -12,6 +12,8 @@ import com.Bilibili_Innocent_Lab.xposedmodule.provider.RoamingCompatProvider
 import com.Bilibili_Innocent_Lab.xposedmodule.runtime.AdmissionReplayBook
 import com.Bilibili_Innocent_Lab.xposedmodule.runtime.HostAdmissionEndpoint
 import com.Bilibili_Innocent_Lab.xposedmodule.runtime.RoamingSettingsLauncher
+import com.Bilibili_Innocent_Lab.xposedmodule.runtime.noroot.HostRuntimeProbeClient
+import com.Bilibili_Innocent_Lab.xposedmodule.runtime.noroot.HostRuntimeProbeContract
 import com.Bilibili_Innocent_Lab.xposedmodule.runtime.noroot.NoRootSupportStore
 import com.Bilibili_Innocent_Lab.xposedmodule.runtime.noroot.NoRootUpgradeRecoveryCoordinator
 import com.Bilibili_Innocent_Lab.xposedmodule.settings.terms.UserTermsConsentStore
@@ -88,6 +90,10 @@ class RoamingOpenReceiver : BroadcastReceiver() {
         }
         if (intent.action == ACTION_REPORT_NO_ROOT_HEARTBEAT) {
             receiveNoRootHeartbeat(context, intent)
+            return
+        }
+        if (intent.action == HostRuntimeProbeContract.ACTION_REPLY) {
+            receiveHostRuntimeProbeReply(intent)
             return
         }
         if (intent.action != ACTION_OPEN_ROAMING_SETTINGS) return
@@ -207,14 +213,17 @@ class RoamingOpenReceiver : BroadcastReceiver() {
                 UserTermsConsentStore.readOrInitialize(context).isAuthorized
             }.getOrDefault(false)
             if (!authorized) return
-            NoRootSupportStore.recordHeartbeat(
-                context = context,
-                revision = revision,
-                moduleVersionCode = moduleVersion,
-                targetVersionCode = targetVersion,
-                targetUpdateTime = targetUpdateTime,
-                targetPackage = targetPackage
-            )
+            if (NoRootSupportStore.recordHeartbeat(
+                    context = context,
+                    revision = revision,
+                    moduleVersionCode = moduleVersion,
+                    targetVersionCode = targetVersion,
+                    targetUpdateTime = targetUpdateTime,
+                    targetPackage = targetPackage
+                )
+            ) {
+                HostRuntimeProbeClient.markHostAlive()
+            }
         } else {
             NoRootSupportStore.recordDisabledAck(
                 context = context,
@@ -225,6 +234,31 @@ class RoamingOpenReceiver : BroadcastReceiver() {
                 targetPackage = targetPackage
             )
         }
+    }
+
+    /**
+     * 存活探测回执：宿主自建 PendingIntent 证明身份，nonce 只属于本次探测窗口。
+     * 回执本身即“模块代码此刻在宿主主进程运行”的证据，B12 的静默失效由此可观测。
+     */
+    private fun receiveHostRuntimeProbeReply(intent: Intent) {
+        if (AndroidVersion.isAtLeast(AndroidVersion.U) &&
+            sentFromPackage != HookEntry.TARGET_PACKAGE
+        ) return
+        val hostProof = IntentCompat.getParcelableExtra(
+            intent,
+            HostRuntimeProbeContract.EXTRA_HOST_PROOF,
+            classOf<PendingIntent>()
+        ) ?: return
+        if (!HostRuntimeProbeContract.isHostProof(hostProof.creatorPackage)) return
+        val nonce = intent.getStringExtra(HostRuntimeProbeContract.EXTRA_NONCE).orEmpty()
+        if (!HostRuntimeProbeContract.isValidNonce(nonce)) return
+        HostRuntimeProbeClient.onHostReply(
+            nonce = nonce,
+            hooksInstalled = intent.getBooleanExtra(
+                HostRuntimeProbeContract.EXTRA_HOOKS_INSTALLED,
+                false
+            )
+        )
     }
 
 }
