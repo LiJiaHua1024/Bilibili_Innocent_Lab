@@ -9,11 +9,13 @@
 
 本文是这次 NPatch 兼容性工作的持久化上下文。会话中断、rate limit 或换会话后，先读本文，再决定下一步；不要把本文当成最终实现说明。
 
+> 2026-10-20 子进程勘误：Manager 模式、不启用 `--injectdex` 时，已实测 `:download` / `:ijkservice` 加载模块并执行授权与 Hook。`--injectdex` 不是普通子进程注入的统一前置条件；其他进程及 isolated 进程仍需分别验证。证据及本轮修复状态见[专项清单](npatch-bughunt-20261020.md) B8。
+
 ---
 
 ## 0. TL;DR
 
-- 现有 NPatch 支持不是“兼容性已经很好”，而是 **Manager 模式 happy path 做得比较细**：只支持 --manager，配置依赖 NPatch Remote Store，嵌入模式未闭环，子进程/签名等级/ABI 未覆盖。
+- 现有 NPatch 支持不是“兼容性已经很好”，而是 **Manager 模式 happy path 做得比较细**：只支持 --manager，配置依赖 NPatch Remote Store，嵌入模式未闭环，子进程覆盖范围及签名等级/ABI 矩阵尚未完整验证。
 - 代码里已经存在“模块自己的直达配置通道”，但默认关闭，且直达文档把 noRootRevision 固定为 0，导致 NPatch 下心跳永远不发、设置页无法确认激活。这是明确的代码缺口，不是文档问题。
 - 目标：把 NPatch 当“注入器”，不要把它当“配置基础设施”。核心是 **配置通道自主化**，其次是 **嵌入模式**、**多进程**、**补丁自省/签名矩阵**、**ABI/native gating**。
 - 用户已明确：A/B/C/D 都要做；提供 ADB 手机 + root，授权 AI 自行创建副用户/分身并完成所有操作，用户不想手动操作。
@@ -29,7 +31,7 @@
 
 1. **Manager 模式稳定性**：NPatch Manager/Remote Store 不可用、被关闭、升级或行为变化时，模块仍能通过自己的鉴权通道交付配置并确认激活。
 2. **嵌入模式可用性**：在 NPatch --embed 下，不依赖 Manager 常驻；由模块设置 App 通过自己的 Provider 提供配置。先验证可行性，再决定产品化程度。
-3. **多进程覆盖**：覆盖 B 站 :web、:download、:pushservice 等子进程，明确哪些功能需要 --injectdex。
+3. **多进程覆盖**：覆盖 B 站 :web、:download、:pushservice 等子进程，核对默认注入覆盖及 --injectdex 的实际差异。
 4. **可诊断**：诊断页/日志能说明当前 NPatch 模式、版本、签名绕过等级、进程、ABI、配置来源、Hook 安装结果。
 5. **可回归**：不破坏现有 LSPosed/标准 Xposed 行为；所有改动有 JVM 测试或明确的实机验收步骤。
 6. **可复现**：补丁、安装、Manager DB 预置、日志采集都有脚本/命令记录，下一次不需要重新摸索。
@@ -81,7 +83,7 @@
 | 4 | **直达文档 noRootRevision=0** | PublicationAuthorityStore.kt:26-28 | 即使直达配置装上 Hook，HookEntry.kt:4881 也因 revision<=0 不发心跳，设置页无法确认激活 |
 | 5 | **直达授权没有按 NPatch 模式/免 Root 开关做门控** | HostAdmissionSourcePolicy + PublicationAuthorityStore.directAllowed | 需要明确：NPatch 下只有免 Root 已开启才能发直达文档；关闭后新进程不能继续拿配置 |
 | 6 | **嵌入模式没有配置通道** | NPatch 1.0.9 有 EmbeddedXposedService，但模块设置 App 无法写宿主私有 Remote Store | --embed 下无法从设置页下发配置；当前 UI 只能提示 Manager 缺失 |
-| 7 | **子进程未覆盖** | README/脚本没有 --injectdex；B 站有大量 :web/:download/:pushservice | 主进程 Hook 生效，WebView/下载等子进程功能缺失 |
+| 7 | **子进程覆盖未完整验证** | 默认 Manager 模式已观察 :download/:ijkservice 注入；其他进程及 isolated 进程尚待验证 | 不能由是否使用 --injectdex 推断全部子进程功能的覆盖情况 |
 | 8 | **没有签名等级/反篡改矩阵** | 现有代码不读 assets/npatch/config.json，不展示 sigBypassLevel | 登录/播放/WebView 异常时无法判断是否该提高签名绕过等级 |
 | 9 | **没有 ABI/native gating** | 模块 native 只有 arm64/armeabi；NPatch core 有 arm64/x86_64 | x86_64 模拟器/32 位设备上插帧、DexKit 等可能直接失败 |
 | 10 | **部分检测/桥接代码未接生产** | NoRootRuntimeDetector 只被测试引用；NoRootTargetConfigBridge.resolve 只被测试引用 | 说明支持是分阶段落地，运行模式判定没有进入诊断/决策 |
@@ -145,7 +147,7 @@
 ### 3.4 NPatch 其他事实
 
 - ConfigProvider：top.nkbe.npatch.manager.provider.config，按 target package 返回已启用模块列表；用于 Manager 关闭时刷新 scope。
-- --injectdex：把 loader dex 注入主 dex 序列，支持子进程/isolated 进程；默认关闭。B 站有大量子进程，若模块要在子进程生效需要评估。
+- --injectdex：把 loader dex 注入主 dex 序列，默认关闭。未开启时 Manager 模式也已实测 :download/:ijkservice 注入；其他子进程及 isolated 进程的差异需实测，不能把该参数视为子进程注入开关。
 - 签名绕过等级：
   - 0 None / 1 Basic / 2 High / 3 Extreme / 4 Seccomp / 5 Stealth；
   - 3/4/5 仅 --manager 可用；--embed 最高 2。
@@ -241,12 +243,12 @@
 - [ ] 评估 --injectdex：分别产出“默认”和“--injectdex”两个 patched APK；对比启动时间、崩溃、Hook 安装数；确认 B 站 TribeAppComponentFactory/multidex 是否受影响。
 - [ ] 验证子进程：:web（WebView/广告/分享）、:download（下载相关）、:pushservice（推送，通常不需要 Hook）；记录每个进程是否加载模块、是否拿到直达配置、Hook 安装结果。
 - [ ] 诊断：每个进程上报 processName、配置来源、Hook 安装数/失败点；主进程心跳保持；子进程只上报状态，不抢心跳。
-- [ ] Feature gating：只在主进程有意义的功能，在子进程跳过；需要子进程的功能，明确要求 --injectdex；README/设置页提示。
+- [ ] Feature gating：只在主进程有意义的功能，在子进程跳过；按实际进程验证默认/--injectdex 覆盖，仅对证实依赖该参数的场景说明要求，不将其作为普通子进程的统一前置条件。
 - [ ] 兼容性：若 --injectdex 导致 B 站启动/签名/加固异常，回退默认并记录；不把“必须 injectdex”写死，给用户/场景选择。
 
 **验收**：
 
-- 至少一个子进程功能在 --injectdex 下验证通过，或明确文档说明为什么不做。
+- 至少一个子进程功能在默认补丁下验证通过；对 --injectdex 声称的额外覆盖单独验证，或明确说明未验证范围。
 - 默认补丁与 injectdex 补丁的差异、风险、推荐场景写清楚。
 
 **工作量**：M。风险：中；取决于 B 站加固/多 dex 行为。
@@ -563,7 +565,7 @@
 1. NPatch 下直达配置默认开启，还是首次启用时弹一次明确的“允许宿主直接读取完整配置”确认？建议后者：不要求用户去开旧的“通信兼容模式”，但保留知情同意。
 2. 标准 LSPosed 下 direct 文档的 noRootRevision 必须保持 0；只有 NPatch + 免 Root 开启才注入 revision。
 3. embed 模式首版是否要求安装模块设置 App？建议首版要求；一 APK 模式作为后续。
-4. 若 --injectdex 导致 B 站启动异常，默认补丁保持不开；在设置页/文档中给出“需要子进程时再开”的说明。
+4. 若 --injectdex 导致 B 站启动异常，默认补丁保持不开；只在具体进程实测默认注入不足、且该参数确能改善时给出使用说明，不提示“需要子进程就必须开启”。
 
 ---
 
