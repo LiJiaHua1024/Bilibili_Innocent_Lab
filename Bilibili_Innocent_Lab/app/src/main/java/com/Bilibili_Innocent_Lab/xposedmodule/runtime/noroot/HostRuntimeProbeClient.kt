@@ -9,6 +9,7 @@ import com.Bilibili_Innocent_Lab.xposedmodule.runtime.CrossAppBroadcastCompat
 import java.util.UUID
 import java.util.concurrent.Executors
 import java.util.concurrent.ScheduledExecutorService
+import java.util.concurrent.ScheduledFuture
 import java.util.concurrent.TimeUnit
 
 /**
@@ -31,11 +32,10 @@ internal object HostRuntimeProbeClient {
             Thread(runnable, "BIL-HostRuntimeProbe").apply { isDaemon = true }
         }
 
-    @Volatile
     private var pendingNonce: String? = null
 
-    @Volatile
     private var onSettled: ((HostRuntimeProbeStatus) -> Unit)? = null
+    private var timeoutTask: ScheduledFuture<*>? = null
 
     fun status(): HostRuntimeProbeStatus = synchronized(lock) { tracker.status }
 
@@ -50,30 +50,37 @@ internal object HostRuntimeProbeClient {
     ) {
         val appContext = context.applicationContext ?: context
         val timeoutMs = if (verify) VERIFY_TIMEOUT_MS else RESUME_TIMEOUT_MS
-        this.onSettled = onSettled
         val nonce = UUID.randomUUID().toString()
-        val started = synchronized(lock) { tracker.begin(nonce, verify, timeoutMs) }
-        if (!started) return
-        pendingNonce = nonce
+        synchronized(lock) {
+            this.onSettled = onSettled
+            if (!tracker.begin(nonce, verify, timeoutMs)) return
+            pendingNonce = nonce
+            timeoutTask?.cancel(false)
+            timeoutTask = scheduler.schedule(
+                { settleTimeout(nonce) }, timeoutMs, TimeUnit.MILLISECONDS
+            )
+        }
         dispatch(appContext, nonce)
         scheduler.schedule({ resend(appContext, nonce) }, RESEND_MS, TimeUnit.MILLISECONDS)
-        scheduler.schedule({ settleTimeout() }, timeoutMs, TimeUnit.MILLISECONDS)
     }
 
     /** 宿主回执入口；nonce 不属于当前窗口时直接丢弃，返回 false 供调用方决定是否记日志。 */
     fun onHostReply(nonce: String, hooksInstalled: Boolean): Boolean {
-        val confirmed = synchronized(lock) {
+        synchronized(lock) {
             if (!tracker.onReply(nonce, hooksInstalled)) return false
-            tracker.status == HostRuntimeProbeStatus.CONFIRMED
+            if (tracker.status == HostRuntimeProbeStatus.CONFIRMED) {
+                settleLocked(HostRuntimeProbeStatus.CONFIRMED)
+            }
         }
-        if (confirmed) settle(HostRuntimeProbeStatus.CONFIRMED)
         return true
     }
 
     /** 心跳（宿主装完 Hook 后上报）是更强的证据，随时可以确认并结束窗口。 */
     fun markHostAlive() {
-        synchronized(lock) { tracker.onHeartbeat() }
-        if (pendingNonce != null) settle(HostRuntimeProbeStatus.CONFIRMED)
+        synchronized(lock) {
+            tracker.onHeartbeat()
+            if (pendingNonce != null) settleLocked(HostRuntimeProbeStatus.CONFIRMED)
+        }
     }
 
     private fun resend(context: Context, nonce: String) {
@@ -82,12 +89,17 @@ internal object HostRuntimeProbeClient {
         scheduler.schedule({ resend(context, nonce) }, RESEND_MS, TimeUnit.MILLISECONDS)
     }
 
-    private fun settleTimeout() {
-        val status = synchronized(lock) { tracker.onTimeout() }
-        settle(status)
+    private fun settleTimeout(nonce: String) {
+        synchronized(lock) {
+            val status = tracker.onTimeout(nonce) ?: return
+            settleLocked(status)
+        }
     }
 
-    private fun settle(status: HostRuntimeProbeStatus) {
+    /** 与窗口状态共用一把锁，避免旧结算清掉新窗口的任务或回调。 */
+    private fun settleLocked(status: HostRuntimeProbeStatus) {
+        timeoutTask?.cancel(false)
+        timeoutTask = null
         pendingNonce = null
         val callback = onSettled
         onSettled = null

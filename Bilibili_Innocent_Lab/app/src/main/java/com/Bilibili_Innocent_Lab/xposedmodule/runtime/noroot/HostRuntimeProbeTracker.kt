@@ -76,8 +76,9 @@ internal class HostRuntimeProbeTracker(private val now: () -> Long) {
         status = HostRuntimeProbeStatus.CONFIRMED
     }
 
-    fun onTimeout(): HostRuntimeProbeStatus {
-        if (pendingNonce == null) return status
+    /** 旧窗口或尚未到期的任务不能结算当前窗口。 */
+    fun onTimeout(nonce: String): HostRuntimeProbeStatus? {
+        if (pendingNonce != nonce || now() < pendingDeadline) return null
         // “未生效”是用户验证失败的结论，只有下一次确认（回执/心跳）才能推翻；
         // 回到设置页的顺手探测超时不能把它降级成“未确认”。
         val verifiedFailure = aliveWithoutHooks || pendingVerify ||

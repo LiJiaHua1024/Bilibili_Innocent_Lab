@@ -2,6 +2,7 @@ package com.Bilibili_Innocent_Lab.xposedmodule.runtime.noroot
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -16,7 +17,7 @@ class HostRuntimeProbeTrackerTest {
         assertEquals(HostRuntimeProbeStatus.PROBING, tracker.status)
 
         now = 1_500L
-        assertEquals(HostRuntimeProbeStatus.UNCONFIRMED, tracker.onTimeout())
+        assertEquals(HostRuntimeProbeStatus.UNCONFIRMED, tracker.onTimeout("nonce-1"))
     }
 
     @Test
@@ -24,7 +25,7 @@ class HostRuntimeProbeTrackerTest {
         assertTrue(tracker.begin("nonce-1", verify = true, timeoutMs = 15_000L))
 
         now = 15_000L
-        assertEquals(HostRuntimeProbeStatus.NOT_RUNNING, tracker.onTimeout())
+        assertEquals(HostRuntimeProbeStatus.NOT_RUNNING, tracker.onTimeout("nonce-1"))
     }
 
     @Test
@@ -43,7 +44,7 @@ class HostRuntimeProbeTrackerTest {
         assertEquals(HostRuntimeProbeStatus.PROBING, tracker.status)
 
         now = 1_500L
-        assertEquals(HostRuntimeProbeStatus.NOT_RUNNING, tracker.onTimeout())
+        assertEquals(HostRuntimeProbeStatus.NOT_RUNNING, tracker.onTimeout("nonce-1"))
     }
 
     @Test
@@ -73,20 +74,20 @@ class HostRuntimeProbeTrackerTest {
     fun `a verified failure survives later non-verify probes`() {
         tracker.begin("nonce-1", verify = true, timeoutMs = 15_000L)
         now = 15_000L
-        assertEquals(HostRuntimeProbeStatus.NOT_RUNNING, tracker.onTimeout())
+        assertEquals(HostRuntimeProbeStatus.NOT_RUNNING, tracker.onTimeout("nonce-1"))
 
         // 回到设置页的顺手探测既不闪回“确认中”，也不能把“未生效”降级成“未确认”。
         tracker.begin("nonce-2", verify = false, timeoutMs = 1_500L)
         assertEquals(HostRuntimeProbeStatus.NOT_RUNNING, tracker.status)
         now = 16_500L
-        assertEquals(HostRuntimeProbeStatus.NOT_RUNNING, tracker.onTimeout())
+        assertEquals(HostRuntimeProbeStatus.NOT_RUNNING, tracker.onTimeout("nonce-2"))
     }
 
     @Test
     fun `a later confirmation clears the verified failure`() {
         tracker.begin("nonce-1", verify = true, timeoutMs = 15_000L)
         now = 15_000L
-        tracker.onTimeout()
+        tracker.onTimeout("nonce-1")
 
         tracker.begin("nonce-2", verify = false, timeoutMs = 1_500L)
         assertTrue(tracker.onReply("nonce-2", hooksInstalled = true))
@@ -103,6 +104,43 @@ class HostRuntimeProbeTrackerTest {
         assertEquals(HostRuntimeProbeStatus.CONFIRMED, tracker.status)
 
         now = 15_000L
-        assertEquals(HostRuntimeProbeStatus.UNCONFIRMED, tracker.onTimeout())
+        assertEquals(HostRuntimeProbeStatus.UNCONFIRMED, tracker.onTimeout("nonce-2"))
+    }
+
+    @Test
+    fun `a completed verify timer cannot end a later verify window`() {
+        tracker.begin("nonce-1", verify = true, timeoutMs = 15_000L)
+        tracker.onReply("nonce-1", hooksInstalled = true)
+        now = 14_000L
+        tracker.begin("nonce-2", verify = true, timeoutMs = 15_000L)
+
+        now = 15_000L
+        assertNull(tracker.onTimeout("nonce-1"))
+        assertTrue(tracker.isPending("nonce-2"))
+        assertTrue(tracker.onReply("nonce-2", hooksInstalled = true))
+    }
+
+    @Test
+    fun `a delayed timer cannot settle a replacement window even after its deadline`() {
+        tracker.begin("nonce-1", verify = false, timeoutMs = 1_500L)
+        now = 2_000L
+        tracker.begin("nonce-2", verify = true, timeoutMs = 15_000L)
+
+        now = 17_000L
+        assertNull(tracker.onTimeout("nonce-1"))
+        assertTrue(tracker.isPending("nonce-2"))
+        assertEquals(HostRuntimeProbeStatus.NOT_RUNNING, tracker.onTimeout("nonce-2"))
+        assertNull(tracker.onTimeout("nonce-2"))
+    }
+
+    @Test
+    fun `the current timer cannot settle before its deadline`() {
+        tracker.begin("nonce-1", verify = true, timeoutMs = 15_000L)
+
+        now = 14_999L
+        assertNull(tracker.onTimeout("nonce-1"))
+        assertTrue(tracker.isPending("nonce-1"))
+        now = 15_000L
+        assertEquals(HostRuntimeProbeStatus.NOT_RUNNING, tracker.onTimeout("nonce-1"))
     }
 }
