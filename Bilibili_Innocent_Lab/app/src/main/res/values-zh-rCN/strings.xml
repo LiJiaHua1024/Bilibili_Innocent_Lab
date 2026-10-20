@@ -729,7 +729,7 @@
     <string name="no_root_status_unsupported_os">状态：不可用，需要 Android 9 或更高版本。</string>
     <string name="no_root_status_disabled">状态：已关闭，不会连接 NPatch。</string>
     <string name="no_root_status_checking">状态：正在检查本地配置…</string>
-    <string name="no_root_status_manager_missing">状态：未找到 NPatch Manager，或 Remote API 不可用。集成模式修补的配置存放在被修补应用内部，无法在此同步，请改用管理器模式重新修补。</string>
+    <string name="no_root_status_manager_missing">状态：暂时无法连接 NPatch Manager 或其 Remote API。请先打开 Manager 后重试，并确认使用管理器模式；此处无法同步集成模式。</string>
     <string name="no_root_status_module_not_registered">状态：NPatch Manager 未接受当前模块。请在管理器中添加并启用模块、确认哔哩哔哩在其作用域内，并将 NPatch 升级到 1.0.7 或更新版本。</string>
     <string name="no_root_status_scope_missing">状态：本模块已不在哔哩哔哩的 NPatch 作用域内。请在 NPatch Manager 中重新启用，然后重新启动哔哩哔哩。</string>
     <string name="no_root_status_confirming">状态：正在确认模块是否正在哔哩哔哩中运行…</string>
