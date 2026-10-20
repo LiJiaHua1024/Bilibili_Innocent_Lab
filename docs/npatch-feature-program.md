@@ -1,10 +1,10 @@
 # NPatch 专项：Feature 拆解、可实施性与实施方案
 
-- 状态：调研完成，待排期实施
+- 状态：历史 Feature 调研；本轮 B1–B12 问题已闭环，扩展路线仍为提案
 - 日期：2026-10-20
-- 基线分支：`feat/npatch-compat`（HEAD `80a21910`；工作区另有未入库的 `docs/npatch-compatibility-plan.md`、`docs/npatch-bughunt-20261020.md`）
+- 调研基线：`feat/npatch-compat`，当时 HEAD `80a21910`；以下源码行号与性能数字均为当时观察
 - 调研方式：只读代码库 + 只读上游源码（`captures/npatch-src`、`captures/vector-src`、NPatch 1.0.9 build 833 产物字符串交叉验证），共 25 个并行只读调研代理；未修改任何业务代码、未构建、未连接 ADB
-- 关联文档：`docs/npatch-compatibility-plan.md`（背景与原始 A–F 计划）、`docs/npatch-bughunt-20261020.md`（实机缺陷 B1–B9）
+- 当前结果：[兼容性专项验收结论](npatch-compatibility-plan.md#2026-10-20-专项验收结论)；本文保留背景与扩展 Feature 提案，不作为未修复问题清单
 - 证据口径：本文所有结论都带 `file:line`；标注「间接证据」的条目只来自源码注释与产物字符串对比
 
 > 说明：本机 GitHub 域名解析到非公网 IP，`7723mod/NPatch` 的 issue #154/#156/#161 与 build 846 的在线状态**无法核实**，相关结论均为源码内证。
@@ -15,7 +15,7 @@
 
 - **真正属于 NPatch 的增量价值集中在 4 条主线**：①配置通道自主化（去 Manager 单点依赖 + 冷启动不阻塞）；②环境自省/体检；③日志与崩溃桥接；④免 Root 的“重启/更新”闭环。
 - **实测证据**：冷启动 `admission=2032ms`（吃满 2000ms 窗口）、`total=2153ms`，随后 `Hook 安装链完成耗时=2311ms`，全部发生在 `Application.attach` 主线程；118 条样本里 80 条 admission 打满窗口。这正是群里 `alex` 反馈的“没后台就不正常/闪退”。
-- **最该先修的不是新功能，而是 `docs/npatch-bughunt-20261020.md` 的 B1–B4**：关闭免 Root 后宿主仍装全部 Hook、状态卡死、Manager 不可达被误判、诊断徽章误报。它们成本低、影响面最大。
+- **历史优先项 B1–B4 已修复**：关闭门控、状态归位、Manager 不可达误判及诊断徽章已完成回归；后文 F1–F3 保留原调研推导，当前结果见专项验收结论。
 - **热重载不可用**：BIL 结构上满足 NPatch 热重载条件（单 Java 入口、无 `native_init.list`），但 hook 在 `onPackageReady` 安装、reload 只跑 `onHotReloaded`，且 `module.prop` 是 `autoHotReload=false`。不要用它做“改设置免重启”。
 - **`--injectdex` 不是子进程的必要条件**：默认修补下子进程照样加载模块，缺口在模块自己的 installer 门控。现有文档相关表述需要更正。
 - **如果只挑三件**：F1+F2（关不掉/状态卡死修干净）→ F6（拿掉 2s 主线程阻塞）→ F7+F8（让“为什么不行”可诊断）。
@@ -29,10 +29,10 @@
 | # | 讨论稿里的说法 | 核实结论 | 证据 |
 |---|---|---|---|
 | 1 | “NPatch 重签名导致模块 App 侧宿主签名校验误杀，需要 TOFU” | **不成立**。全仓没有任何证书/签名校验（`GET_SIGNING_CERTIFICATES` / `signingInfo` / `checkSignatures` / `android.content.pm.Signature` 零命中）；跨进程只校验 UID + 包名 + nonce + 条款 revision。重签名后包名不变、UID 由内核强制，天然一致 | `runtime/HostAdmissionEndpoint.kt:48-51`、`provider/RoamingCompatProvider.kt:254-264`、`runtime/HostReceiptHost.kt:40`、`runtime/HostAdmissionLocalIdentity.kt:20-32` |
-| 2 | “BIL/Manager 不在后台 → 授权校验失败或 IPC 超时” | **方向对，数字要对**。模块侧 `admission` 吃满 2000ms 窗口；NPatch 上游自己还有 800ms 绑定等待 + 2s Provider 查询；**每个子进程还会各走一遍** | `docs/npatch-bughunt-20261020.md:162-183`、`captures/npatch-bughunt-20261020/baseline-logcat.txt:1575,1960`、`runtime/HostAdmissionContract.kt:16`、`captures/npatch-src/patch-loader/src/main/java/top/nkbe/npatch/service/RemoteApplicationService.java:56-58,159-199,273-288` |
+| 2 | “BIL/Manager 不在后台 → 授权校验失败或 IPC 超时” | 历史测量中模块侧 `admission` 吃满 2000ms；B11 已消除确认无人处理后的空等。NPatch 自身绑定与 Provider 查询仍是另一层开销 | `captures/npatch-bughunt-20261020/baseline-logcat.txt:1575,1960`、`runtime/HostAdmissionContract.kt`、兼容性专项验收结论 B11/B12 |
 | 3 | “配置只以 Manager Remote Store 为唯一来源，断了就废” | **上游已有一层离线兜底**：`FallbackModuleServiceWrapper` 把 Manager 的 remote prefs 全量镜像进宿主本地 SQLite，Manager 死后宿主读本地快照 | `captures/npatch-src/patch-loader/src/main/java/top/nkbe/npatch/service/FallbackModuleServiceWrapper.java:89-131` |
 | 4 | “接 hotReload 实现免重启生效” | 结构上满足条件，但**语义不成立**：hook 在 `onPackageReady` 安装，reload 只跑 `onHotReloaded`；改了会“重载成功但功能全丢” | `captures/npatch-src/manager/src/main/java/top/nkbe/npatch/manager/HotReloadRegistry.kt:87-91`、`captures/vector-src/xposed/src/main/kotlin/org/matrix/vector/impl/core/VectorModuleManager.kt:285-337`、`hook/HookEntry.kt:2292`、`app/src/main/resources/META-INF/xposed/module.prop` |
-| 5 | “子进程不生效，需要 `--injectdex`” | **错**。默认修补下子进程照样加载模块（`appComponentFactory` shim 每进程实例化）；实测 `:download` / `:ijkservice` 都拿到许可并装了 35 个 Hook。缺口是模块自己的 59 个 installer 主动跳过非主进程 | `captures/npatch-src/patch/src/main/java/top/nkbe/patch/NPatch.java:286-290,508-532,556-561`、`docs/npatch-bughunt-20261020.md:237-254` |
+| 5 | “子进程不生效，需要 `--injectdex`” | **错**。默认修补下子进程照样加载模块（`appComponentFactory` shim 每进程实例化）；实测 `:download` / `:ijkservice` 都拿到许可并装了 35 个 Hook。缺口是模块自己的 59 个 installer 主动跳过非主进程 | `captures/npatch-src/patch/src/main/java/top/nkbe/patch/NPatch.java:286-290,508-532,556-561`、兼容性专项验收结论 B8 |
 | 6 | “适配缓存改个指纹就能跨重打包继承” | 指纹确实要改（`source.length` / `lastModified` 每次安装都变），但**默认修补把原 dex 移出外层 APK**，`DexSourceFingerprint` 与 `auditDexSourceAsync` 在 NPatch 下看到的是 loader dex，安全网永久失效 | `NPatch.java:508-532`、`hook/adapter/dex/DexSourceFingerprint.kt:41-84`、`hook/VersionAdapter.kt:2830-2846,3062-3097` |
 
 ---
@@ -317,5 +317,5 @@ Manager 可达性、四路通道命中率（provider/binder/local/broadcast）�
 - 上游源码副本：`captures/npatch-src/`（NPatch）、`captures/vector-src/`（Vector runtime）
 - 修补产物：`captures/npatch-out/host-current-833-npatched.apk`（含 `assets/npatch/config.json`、`assets/npatch/origin.apk`）
 - 实机日志与截图：`captures/npatch-bughunt-20261020/`
-- 实机缺陷清单：`docs/npatch-bughunt-20261020.md`（B1–B9）
+- 实机问题闭环记录：[兼容性专项验收结论](npatch-compatibility-plan.md#2026-10-20-专项验收结论)（B1–B12，临时清单已移除）
 - 原始计划：`docs/npatch-compatibility-plan.md`
