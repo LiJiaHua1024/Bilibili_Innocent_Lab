@@ -383,6 +383,11 @@ internal object NoRootSupportController {
         resultHandler: (NPatchRemoteGateway.SyncResult) -> Unit,
         listener: ((NPatchRemoteGateway.SyncResult?) -> Unit)?
     ) {
+        // embed 的 Remote Store 属于宿主 UID；独立设置 App 只发布自己的当前直达文档。
+        if (NPatchRuntimeProfiles.read(context).mode == NPatchMode.EMBEDDED) {
+            listener?.let { notifyListeners(listOf(it), result = null) }
+            return
+        }
         val key = NoRootSyncFlightRegistry.Key(
             intentGeneration = generation,
             snapshotRevision = snapshot.revision,

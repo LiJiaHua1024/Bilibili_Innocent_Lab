@@ -45,11 +45,16 @@ internal object NPatchScopeProbe {
     @Volatile
     private var lastProbeAtMs = 0L
 
-    fun cached(): ScopeState = cached
+    fun cached(context: Context): ScopeState = effectiveScope(NPatchRuntimeProfiles.read(context).mode, cached)
+
+    /** embed 的作用域固定在 APK 内，Manager 的空列表或旧查询结果不能否决它。 */
+    internal fun effectiveScope(mode: NPatchMode, managerScope: ScopeState): ScopeState =
+        if (mode == NPatchMode.EMBEDDED) ScopeState.UNKNOWN else managerScope
 
     /** 结果变化时才回调；调用方负责切回主线程。 */
     fun refreshAsync(context: Context, onChanged: (ScopeState) -> Unit = {}) {
         val appContext = context.applicationContext ?: context
+        if (NPatchRuntimeProfiles.read(appContext).mode == NPatchMode.EMBEDDED) return
         val now = android.os.SystemClock.elapsedRealtime()
         synchronized(this) {
             if (inFlight || (lastProbeAtMs > 0L && now - lastProbeAtMs < MIN_INTERVAL_MS)) return
@@ -57,7 +62,8 @@ internal object NPatchScopeProbe {
             lastProbeAtMs = now
         }
         coordinator.execute {
-            val result = probeWithTimeout(appContext)
+            val managerResult = probeWithTimeout(appContext)
+            val result = effectiveScope(NPatchRuntimeProfiles.read(appContext).mode, managerResult)
             val previous = cached
             cached = result
             synchronized(this) { inFlight = false }

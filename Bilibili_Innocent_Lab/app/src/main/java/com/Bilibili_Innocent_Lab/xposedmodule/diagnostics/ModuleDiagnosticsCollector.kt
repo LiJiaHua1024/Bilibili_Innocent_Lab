@@ -33,7 +33,8 @@ internal object ModuleDiagnosticsCollector {
         hostQueryState: DiagnosticHostQueryState = DiagnosticHostQueryState.TARGET_UNAVAILABLE,
         hostQueryFailure: com.Bilibili_Innocent_Lab.xposedmodule.runtime.ReceiptQueryFailure =
             com.Bilibili_Innocent_Lab.xposedmodule.runtime.ReceiptQueryFailure.NONE,
-        nowEpochMs: Long = System.currentTimeMillis()
+        nowEpochMs: Long = System.currentTimeMillis(),
+        nPatchProcesses: List<com.Bilibili_Innocent_Lab.xposedmodule.runtime.noroot.NPatchProcessSnapshot> = emptyList()
     ): ModuleDiagnosticSnapshot {
         val appContext = context.applicationContext ?: context
         @Suppress("DEPRECATION")
@@ -50,7 +51,7 @@ internal object ModuleDiagnosticsCollector {
             currentTargetVersionCode = targetVersionCode,
             currentTargetUpdateTime = targetUpdateTime,
             scope = if (noRootStatus.desiredEnabled) {
-                NPatchScopeProbe.cached()
+                NPatchScopeProbe.cached(appContext)
             } else {
                 NPatchScopeProbe.ScopeState.UNKNOWN
             },
@@ -180,7 +181,8 @@ internal object ModuleDiagnosticsCollector {
                 sameAndroidUser = userSpace.sameUser,
                 nPatchEnvironment = com.Bilibili_Innocent_Lab.xposedmodule.runtime.noroot.NPatchRuntimeProfiles
                     .environment(appContext),
-                noRootSyncDetail = noRootStatus.detail
+                noRootSyncDetail = noRootStatus.detail,
+                nPatchProcesses = nPatchProcesses
             )
         )
     }

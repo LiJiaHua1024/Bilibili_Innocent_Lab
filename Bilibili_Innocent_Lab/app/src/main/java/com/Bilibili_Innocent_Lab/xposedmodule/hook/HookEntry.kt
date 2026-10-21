@@ -29,6 +29,8 @@ import com.Bilibili_Innocent_Lab.xposedmodule.runtime.HostRuntimeDiagnosticsBrid
 import com.Bilibili_Innocent_Lab.xposedmodule.runtime.HostThreadGuard
 import com.Bilibili_Innocent_Lab.xposedmodule.runtime.MineComponentSnapshotHostBridge
 import com.Bilibili_Innocent_Lab.xposedmodule.runtime.noroot.HostRuntimeProbeResponder
+import com.Bilibili_Innocent_Lab.xposedmodule.runtime.noroot.NPatchProcessDiagnostics
+import com.Bilibili_Innocent_Lab.xposedmodule.runtime.noroot.NPatchProcessState
 import com.Bilibili_Innocent_Lab.xposedmodule.runtime.noroot.NoRootTargetConfigBridge
 import com.Bilibili_Innocent_Lab.xposedmodule.runtime.TargetProcess
 import com.Bilibili_Innocent_Lab.xposedmodule.hook.config.HookConfigSource
@@ -4916,11 +4918,19 @@ class HookEntry : XposedModule() {
 
             fun performAuthorizationAndInstall(
                 appContext: Context,
-                config: RemoteHookConfigSnapshot
+                config: RemoteHookConfigSnapshot,
+                featureHooksAllowed: Boolean
             ) {
                 if (!config.authorized) {
+                    NPatchProcessDiagnostics.record(NPatchProcessState.REJECTED)
                     authorizedInstallerRef.set(null)
                     frameworkLog("[BIL] Hook 授权未确认，当前宿主进程不安装任何功能")
+                    return
+                }
+                if (!featureHooksAllowed) {
+                    authorizedInstallerRef.set(null)
+                    NPatchProcessDiagnostics.record(NPatchProcessState.GATED)
+                    frameworkLog("[BIL] embed :web 功能 Hook 已隔离；保留当前授权和只读诊断")
                     return
                 }
                 activeHookConfig.set(SnapshotHookConfigSource(config.values))
@@ -4937,6 +4947,8 @@ class HookEntry : XposedModule() {
                     installer(appContext)
                 }.onSuccess {
                     authorizedHooksInstalled.set(true)
+                    NPatchProcessDiagnostics.record(NPatchProcessState.INSTALLED,
+                        installedHooks = hookPointRegistry.snapshot().count { it.state == HookPointRegistry.State.INSTALLED })
                     // B12：存活探测据此回答“活着且已装 Hook”，避免只回“入口在跑”。
                     HostRuntimeProbeResponder.hooksInstalled = true
                     if (processName == TARGET_PACKAGE && config.values[com.Bilibili_Innocent_Lab.xposedmodule.agent.AgentPreferences.ENABLED] == true) {
@@ -4957,6 +4969,7 @@ class HookEntry : XposedModule() {
                     reportScanResultIfReady(appContext)
                     reportNoRootHeartbeatIfSynced(appContext, config)
                 }.onFailure { throwable ->
+                    NPatchProcessDiagnostics.record(NPatchProcessState.FAILED)
                     if (processName == TARGET_PACKAGE) {
                         HostRuntimeDiagnosticsBridge.recordInstallChainFailed()
                     }
@@ -5000,8 +5013,12 @@ class HookEntry : XposedModule() {
                 val runtimeMode = com.Bilibili_Innocent_Lab.xposedmodule.runtime.noroot.NoRootRuntimeDetector.detect(
                     appContext, XposedModule::class.java.classLoader, HookEntry::class.java.classLoader)
                 val nPatchRuntime = runtimeMode == com.Bilibili_Innocent_Lab.xposedmodule.runtime.noroot.HookRuntimeMode.NPATCH_LEGACY
+                var patchMode = com.Bilibili_Innocent_Lab.xposedmodule.runtime.noroot.NPatchMode.UNKNOWN
                 if (nPatchRuntime) {
                     val profile = com.Bilibili_Innocent_Lab.xposedmodule.runtime.noroot.NPatchRuntimeProfiles.read(appContext, appContext.packageName)
+                    patchMode = profile.mode
+                    runCatching { NPatchProcessDiagnostics.initialize(appContext, processName, profile.mode) }
+                        .onFailure { frameworkLog("[BIL] NPatch 进程诊断不可用，授权流程继续") }
                     frameworkLog("[BIL] NPatch 运行档案(mode=${profile.mode}, sig=${profile.signatureLevel}, " +
                         "loader=${profile.loaderVersionCode}, api=${profile.loaderApi}, debuggable=${profile.debuggable}, " +
                         "process=$processName, is64Bit=${android.os.Process.is64Bit()}, injectdex=unknown)")
@@ -5042,6 +5059,8 @@ class HookEntry : XposedModule() {
                 }
                 val grant = admission.grant
                 if (grant == null) {
+                    NPatchProcessDiagnostics.record(if (admission.disabledRevision > 0L)
+                        NPatchProcessState.DISABLED else NPatchProcessState.REJECTED)
                     // 标准框架的配置拒绝不能被免 Root 的关闭记录变成安装终态。
                     if (runtimeMode == com.Bilibili_Innocent_Lab.xposedmodule.runtime.noroot.HookRuntimeMode.NPATCH_LEGACY &&
                         admission.disabledRevision > 0L && !authorizedHooksInstalled.get()) {
@@ -5066,6 +5085,7 @@ class HookEntry : XposedModule() {
                     return
                 }
                 val config = grant.snapshot
+                NPatchProcessDiagnostics.record(NPatchProcessState.LOADED, source = grant.source)
                 if (processName == TARGET_PACKAGE) {
                     val identity = grant.identity
                     HostRuntimeDiagnosticsBridge.recordConfigAccepted(config.generation, config.authorized,
@@ -5074,7 +5094,8 @@ class HookEntry : XposedModule() {
                         identity?.fingerprint ?: "")
                 }
                 frameworkLog("[BIL] 已获得新鲜启动许可(source=${grant.source}, generation=${config.generation})")
-                performAuthorizationAndInstall(appContext, config)
+                performAuthorizationAndInstall(appContext, config, featureHooksAllowed = !nPatchRuntime ||
+                    com.Bilibili_Innocent_Lab.xposedmodule.runtime.noroot.NPatchProcessFeaturePolicy.allowsFeatureHooks(patchMode, processName))
             }
 
             scheduleAuthorizationRetry = retry@{ context, applicationHint ->

@@ -57,3 +57,23 @@ if ($LASTEXITCODE -ne 0) { throw 'APK patch failed' }
 最终 B3 修复包复测：Manager 停止时明确关闭许可可使设置页归位为“已关闭，不会连接 NPatch”；重新开启、在线读取当前配置后，再停止 Manager，授权 39ms、Hook 链 1898ms，设置页显示已激活且回执有效。证据 `b3-close-confirmed.*`、`final-online-enabled.log`、`final-offline-enabled.log`、`final-active.png`。
 
 原始证据在已忽略的 `captures/npatch-closure/b12-*`、`b1-final-*`；最终生成宿主位于 `captures/npatch-closure/b12-final/`。
+
+## embed 同签名产物
+
+`NewEmbeddedApk.ps1` 固定上述修复后的 833 patcher、普通 entry-hook 和签名等级 2，不启用 `injectdex`。它拒绝已修补输入、已有输出目录及未知 patcher；完成后验证内嵌模块与原版宿主的 SHA-256，并要求输出证书与参考 patched APK 相同，保存 `verified.json`。仅支持 NPatch 默认测试签名；使用自有密钥的宿主不能用它覆盖，证书不一致会明确失败。脚本不安装 APK、不处理或输出私钥。
+
+```powershell
+$env:JAVA_HOME = 'C:/Program Files/Java/jdk-17' # apksigner 使用
+./scripts/npatch/NewEmbeddedApk.ps1 `
+    -OriginalApk '<未修补的宿主.apk>' `
+    -ModuleApk 'Bilibili_Innocent_Lab/app/build/outputs/apk/debug/app-debug.apk' `
+    -ReferencePatchedApk '<当前宿主同证书的 patched.apk>' `
+    -PatcherJar '<patcher-833-final.jar>' -BcprovJar '<bcprov-jdk18on-1.80.jar>' `
+    -Java21 'D:/graalvm-jdk-21.0.2+13.1/bin/java.exe' `
+    -ApkSigner 'G:/AndroidSdk/build-tools/37.0.0/apksigner.bat' `
+    -OutputDirectory '<不存在的输出目录>'
+```
+
+安装修补后的 B 站及同版本独立模块设置 App；后者提供当前许可与配置，必须保留。首次打开设置 App，接受条款并选择 NPatch 免 Root 通道，冷启动 B 站后验证回执。embed 无需安装 Manager，作用域固定在 APK 内；独立设置 App 不写宿主 UID 的 Remote Store，也不查询 Manager 作用域。更改普通设置后重启宿主；**更新模块代码时必须用最新模块 APK 重新修补宿主**，只更新设置 App 不会替换 APK 内模块。同版本码的开发包也必须核对 `verified.json` 中的模块哈希。
+
+诊断页只读查询当前响应的 NPatch 进程、许可/安装状态和 Hook 点数。没有响应不等于没有注入，零 Hook 也不等于功能故障；主进程专用功能继续在子进程跳过。查询最多 16 个进程、1.5 秒等待，使用各进程独立的只读回调线程，不依赖宿主主线程绘制，不唤醒未运行的进程，不抢主进程心跳。embed 的 `:web` 暂时隔离功能 Hook（`GATED`、0 Hook），仍取得当前许可并提供诊断；这是针对网页卡住的明确降级，不宣称已定位具体故障 Hook，也不影响其它进程或 Manager。登录、隔离进程和未测版本不在当前结果的承诺范围内。

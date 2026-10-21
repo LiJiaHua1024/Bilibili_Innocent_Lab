@@ -1495,8 +1495,19 @@
     <string name="npatch_profile_flags">debuggable：%1$s；injectdex：%2$s</string>
     <string name="npatch_profile_manager_version">已安装 Manager：%1$s（%2$s）</string>
     <string name="npatch_profile_version_mismatch">Loader 与 Manager 版本不同，请核对修补产物。</string>
-    <string name="npatch_profile_embed_experimental">嵌入模式尚未完成专项验收；更新模块需重新修补，签名绕过最高为 2。</string>
+    <string name="npatch_profile_embed_experimental">嵌入模式为实验性支持；更新模块需重新修补，作用域固定，签名绕过最高为 2。 Web 子进程的功能 Hook 暂时隔离，网页保持原生行为。</string>
     <string name="npatch_profile_source">宿主本次运行的配置来源：%1$s</string>
     <string name="npatch_profile_source_unknown">尚无本次配置获准的诊断回执，运行来源未知。</string>
     <string name="npatch_profile_cache_unavailable">Manager 镜像未更新；直达配置仍可用，激活状态以有效宿主回执为准。</string>
+    <string name="no_root_activated_by_npatch_embedded">由嵌入式 NPatch 激活（回执已验证）</string>
+    <string name="npatch_embed_usage">嵌入模式：需保留模块设置 App。作用域固定在修补后的 APK 内；更新模块后需重新修补并安装 B 站，不支持热重载。</string>
+    <string name="npatch_process_disabled">已确认当前关闭状态</string>
+    <string name="npatch_process_failed">安装链失败</string>
+    <string name="npatch_process_installed">安装链已完成</string>
+    <string name="npatch_process_loaded">已加载，安装尚未完成</string>
+    <string name="npatch_process_observation">本次查询响应的进程（已安装 Hook 不代表功能行为已验证）：</string>
+    <string name="npatch_process_rejected">尚未取得许可</string>
+    <string name="npatch_process_row">%1$s（PID %2$d）：%3$s；Hook 点 %4$d；来源 %5$s</string>
+    <string name="npatch_process_unknown">尚无本次进程响应；未响应的进程（包括隔离进程）保持未知。</string>
+    <string name="npatch_process_gated">已加载；embed :web 功能 Hook 已隔离</string>
 </resources>

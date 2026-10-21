@@ -35,5 +35,19 @@ internal fun nPatchDiagnosticsDetails(context: Context, input: ModuleDiagnosticI
         if (input.noRootSyncDetail?.startsWith("manager_cache_") == true) {
             add(context.getString(R.string.npatch_profile_cache_unavailable))
         }
+        add(context.getString(R.string.npatch_process_observation))
+        if (input.nPatchProcesses.isEmpty()) add(context.getString(R.string.npatch_process_unknown))
+        input.nPatchProcesses.forEach { row ->
+            val state = context.getString(when (row.state) {
+                com.Bilibili_Innocent_Lab.xposedmodule.runtime.noroot.NPatchProcessState.LOADED -> R.string.npatch_process_loaded
+                com.Bilibili_Innocent_Lab.xposedmodule.runtime.noroot.NPatchProcessState.REJECTED -> R.string.npatch_process_rejected
+                com.Bilibili_Innocent_Lab.xposedmodule.runtime.noroot.NPatchProcessState.DISABLED -> R.string.npatch_process_disabled
+                com.Bilibili_Innocent_Lab.xposedmodule.runtime.noroot.NPatchProcessState.GATED -> R.string.npatch_process_gated
+                com.Bilibili_Innocent_Lab.xposedmodule.runtime.noroot.NPatchProcessState.INSTALLED -> R.string.npatch_process_installed
+                com.Bilibili_Innocent_Lab.xposedmodule.runtime.noroot.NPatchProcessState.FAILED -> R.string.npatch_process_failed
+            })
+            add(context.getString(R.string.npatch_process_row, row.processName, row.pid,
+                state, row.installedHookCount, row.source))
+        }
     }.joinToString("\n")
 }

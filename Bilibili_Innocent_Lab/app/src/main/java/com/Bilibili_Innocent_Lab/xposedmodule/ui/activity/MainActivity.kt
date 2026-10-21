@@ -885,7 +885,7 @@ class MainActivity : SkinnedActivity() {
             currentTargetVersionCode = installedBilibiliVersionCode(),
             currentTargetUpdateTime = installedBilibiliLastUpdateTime(),
             scope = if (desired) {
-                NPatchScopeProbe.cached()
+                NPatchScopeProbe.cached(appContext)
             } else {
                 NPatchScopeProbe.ScopeState.UNKNOWN
             },
@@ -946,7 +946,10 @@ class MainActivity : SkinnedActivity() {
                     )
         }
         noRootProgrammaticSwitch = false
-        noRootStatusView?.setText(noRootStatusText(state))
+        val embedded = com.Bilibili_Innocent_Lab.xposedmodule.runtime.noroot.NPatchRuntimeProfiles
+            .read(applicationContext).mode == com.Bilibili_Innocent_Lab.xposedmodule.runtime.noroot.NPatchMode.EMBEDDED
+        noRootStatusView?.text = if (embedded) getString(noRootStatusText(state)) + "\n" +
+            getString(R.string.npatch_embed_usage) else getString(noRootStatusText(state))
         renderNoRootAction(state)
 
         renderActivationUi(noRootState = state)
@@ -965,8 +968,14 @@ class MainActivity : SkinnedActivity() {
             }
             NoRootDisplayState.NOT_RUNNING,
             NoRootDisplayState.SCOPE_MISSING -> {
-                label = R.string.no_root_action_open_manager
-                click = ::openNpatchManager
+                if (com.Bilibili_Innocent_Lab.xposedmodule.runtime.noroot.NPatchRuntimeProfiles
+                        .read(applicationContext).mode == com.Bilibili_Innocent_Lab.xposedmodule.runtime.noroot.NPatchMode.EMBEDDED) {
+                    label = R.string.no_root_action_verify
+                    click = ::verifyNoRootHostRuntime
+                } else {
+                    label = R.string.no_root_action_open_manager
+                    click = ::openNpatchManager
+                }
             }
             else -> {
                 actionView.isVisible = false
@@ -1129,7 +1138,9 @@ class MainActivity : SkinnedActivity() {
                     framework.name
                 )
                 ActivationDisplayState.ACTIVE_NPATCH ->
-                    getString(R.string.no_root_activated_by_npatch)
+                    getString(if (com.Bilibili_Innocent_Lab.xposedmodule.runtime.noroot.NPatchRuntimeProfiles
+                            .read(applicationContext).mode == com.Bilibili_Innocent_Lab.xposedmodule.runtime.noroot.NPatchMode.EMBEDDED)
+                        R.string.no_root_activated_by_npatch_embedded else R.string.no_root_activated_by_npatch)
                 ActivationDisplayState.LSPATCH_WAITING_FOR_HOST ->
                     getString(R.string.module_activation_lspatch_waiting_host)
                 ActivationDisplayState.LSPATCH_HOST_FAILED ->

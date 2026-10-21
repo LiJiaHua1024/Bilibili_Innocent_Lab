@@ -107,6 +107,7 @@ internal class DiagnosticsViewModel : ViewModel() {
         hostQueryFailure: com.Bilibili_Innocent_Lab.xposedmodule.runtime.ReceiptQueryFailure
     ) {
         worker.submit {
+            if (worker.isShutdown || generation.get() != request) return@submit
             runCatching {
                 ModuleDiagnosticsCollector.collect(
                     context = context,
@@ -114,7 +115,8 @@ internal class DiagnosticsViewModel : ViewModel() {
                     frameworkCheckPending = frameworkCheckPending,
                     hostRuntime = hostRuntime,
                     hostQueryState = hostQueryState,
-                    hostQueryFailure = hostQueryFailure
+                    hostQueryFailure = hostQueryFailure,
+                    nPatchProcesses = com.Bilibili_Innocent_Lab.xposedmodule.runtime.noroot.NPatchProcessDiagnostics.query(context)
                 )
             }.onSuccess { snapshot ->
                 if (generation.get() == request) {

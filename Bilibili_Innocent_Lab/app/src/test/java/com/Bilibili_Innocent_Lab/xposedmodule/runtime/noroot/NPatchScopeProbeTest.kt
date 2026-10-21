@@ -4,6 +4,14 @@ import org.junit.Assert.assertEquals
 import org.junit.Test
 
 class NPatchScopeProbeTest {
+    @Test
+    fun `embedded scope ignores a stale manager denial without claiming activation`() {
+        for (scope in NPatchScopeProbe.ScopeState.entries) {
+            assertEquals(NPatchScopeProbe.ScopeState.UNKNOWN, NPatchScopeProbe.effectiveScope(NPatchMode.EMBEDDED, scope))
+            assertEquals(scope, NPatchScopeProbe.effectiveScope(NPatchMode.MANAGER, scope))
+            assertEquals(scope, NPatchScopeProbe.effectiveScope(NPatchMode.UNKNOWN, scope))
+        }
+    }
 
     @Test
     fun `scope classification only trusts explicit module rows`() {
