@@ -1,5 +1,7 @@
 package com.Bilibili_Innocent_Lab.xposedmodule.runtime
 
+import android.accessibilityservice.AccessibilityServiceInfo
+import android.view.accessibility.AccessibilityNodeInfo
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import com.Bilibili_Innocent_Lab.xposedmodule.runtime.compat.CommunicationCompatibilityStore
@@ -9,6 +11,7 @@ import com.Bilibili_Innocent_Lab.xposedmodule.settings.remote.PublicationAuthori
 import com.Bilibili_Innocent_Lab.xposedmodule.settings.remote.RemoteHookConfigContract
 import com.Bilibili_Innocent_Lab.xposedmodule.settings.terms.UserTermsConsentStore
 import com.Bilibili_Innocent_Lab.xposedmodule.settings.terms.UserTermsDecision
+import com.Bilibili_Innocent_Lab.xposedmodule.hook.HookEntry
 import org.junit.Assert.*
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -30,6 +33,10 @@ class NPatchDirectHostInstrumentedTest {
     internal fun verifyCurrentDirectAuthority(mode: NPatchMode) {
         assertEquals(mode, NPatchRuntimeProfiles.read(context).mode)
         assertTrue(UserTermsConsentStore.writeDecision(context, UserTermsDecision.ACCEPTED))
+        // 明确覆盖曾触发 Web 阻塞的默认组合，不能沿用对照实验里关闭的复制开关。
+        assertTrue(context.modulePreferences().edit()
+            .putBoolean(HookEntry.PREF_FREE_COPY_ENABLED, true)
+            .putBoolean(HookEntry.PREF_FREE_COPY_DESC_ENABLED, true).commit())
         assertTrue(CommunicationCompatibilityStore.setEnabled(context, false))
         assertTrue(NoRootSupportStore.disable(context))
         assertTrue(NoRootSupportController.setDesiredEnabled(context, true))
@@ -58,11 +65,25 @@ class NPatchDirectHostInstrumentedTest {
         val disabled = awaitHost { it.bootstrap.configState == HostConfigState.REJECTED }
         assertEquals(HostInstallChainState.NOT_STARTED, disabled.bootstrap.installChainState)
         assertEquals(0, disabled.bootstrap.hookPointInstalledCount)
-        if (mode == NPatchMode.EMBEDDED) assertProcess(NPatchProcessState.DISABLED, mode)
+        if (mode == NPatchMode.EMBEDDED) {
+            assertProcess(NPatchProcessState.DISABLED, mode)
+            assertEmbeddedWebWithoutHooks(NPatchProcessState.DISABLED)
+        }
         val settled = CountDownLatch(1)
         HostRuntimeProbeClient.probeAsync(context, verify = true) { settled.countDown() }
         assertTrue(settled.await(18, TimeUnit.SECONDS))
         assertEquals(NoRootSupportStore.SyncState.DISABLED, NoRootSupportStore.readStatus(context).syncState)
+
+        if (mode == NPatchMode.EMBEDDED) {
+            assertTrue(NoRootSupportController.setDesiredEnabled(context, true))
+            assertTrue(UserTermsConsentStore.writeDecision(context, UserTermsDecision.DECLINED))
+            restartHost()
+            val rejected = awaitHost { it.bootstrap.configState == HostConfigState.REJECTED }
+            assertEquals(HostInstallChainState.NOT_STARTED, rejected.bootstrap.installChainState)
+            assertEquals(0, rejected.bootstrap.hookPointInstalledCount)
+            assertEmbeddedWebWithoutHooks(NPatchProcessState.REJECTED)
+            assertTrue(UserTermsConsentStore.writeDecision(context, UserTermsDecision.ACCEPTED))
+        }
 
         // 留在已启用的修复后宿主，便于人工查看；不触发 Manager 镜像同步。
         assertTrue(NoRootSupportController.setDesiredEnabled(context, true))
@@ -79,7 +100,7 @@ class NPatchDirectHostInstrumentedTest {
     }
 
     private fun assertEmbeddedProcessScopes() {
-        shell("am start -a android.intent.action.VIEW -d bilibili://browser?url=https%3A%2F%2Fwww.bilibili.com%2Fblackboard%2Fprivacy-h5.html -p tv.danmaku.bili")
+        openPrivacyPage()
         val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(45)
         var rows = emptyList<NPatchProcessSnapshot>()
         while (System.nanoTime() < deadline) {
@@ -87,16 +108,68 @@ class NPatchDirectHostInstrumentedTest {
             val web = rows.singleOrNull { it.processName == "tv.danmaku.bili:web" }
             val child = rows.firstOrNull { it.processName in setOf("tv.danmaku.bili:download", "tv.danmaku.bili:ijkservice") &&
                 it.state == NPatchProcessState.INSTALLED && it.installedHookCount > 0 }
-            if (web?.state == NPatchProcessState.GATED && child != null) {
-                assertEquals(0, web.installedHookCount)
+            if (web?.state == NPatchProcessState.INSTALLED && child != null) {
+                assertTrue(web.installedHookCount > 0)
                 assertEquals(HostAdmissionContract.DIRECT, web.source)
                 assertEquals(HostAdmissionContract.DIRECT, child.source)
                 android.util.Log.i("BilibiliInnocentLab", "NPatch process acceptance: ${NPatchProcessCodec.encode(rows)}")
+                assertWebActivityReady()
+                // 同一进程重复打开、返回及后台恢复；无需账号，不发送分享消息。
+                shell("input keyevent 3")
+                openPrivacyPage()
+                assertWebActivityReady()
+                shell("input keyevent 4")
+                openPrivacyPage()
+                assertWebActivityReady()
                 return
             }
             Thread.sleep(500)
         }
         fail("Embedded process scopes not observed: $rows")
+    }
+
+    private fun assertEmbeddedWebWithoutHooks(state: NPatchProcessState) {
+        openPrivacyPage()
+        val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(45)
+        while (System.nanoTime() < deadline) {
+            val web = NPatchProcessDiagnostics.query(context).singleOrNull {
+                it.processName == "tv.danmaku.bili:web" && it.state == state
+            }
+            if (web != null) {
+                assertEquals(0, web.installedHookCount)
+                assertWebActivityReady()
+                return
+            }
+            Thread.sleep(500)
+        }
+        fail("Embedded Web did not reach $state without feature hooks")
+    }
+
+    private fun openPrivacyPage() {
+        shell("am start -a android.intent.action.VIEW -d bilibili://browser?url=https%3A%2F%2Fwww.bilibili.com%2Fblackboard%2Fprivacy-h5.html -p tv.danmaku.bili")
+    }
+
+    private fun assertWebActivityReady() {
+        val automation = instrumentation.uiAutomation
+        automation.serviceInfo = automation.serviceInfo.apply {
+            flags = flags or AccessibilityServiceInfo.FLAG_REPORT_VIEW_IDS
+        }
+        fun hasWebView(node: AccessibilityNodeInfo, depth: Int = 0): Boolean {
+            if (depth > 12) return false
+            if (node.className == "android.webkit.WebView" && node.isVisibleToUser) return true
+            return (0 until node.childCount).any { index ->
+                node.getChild(index)?.let { hasWebView(it, depth + 1) } == true
+            }
+        }
+        val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(25)
+        while (System.nanoTime() < deadline) {
+            val root = automation.rootInActiveWindow
+            if (root?.packageName == "tv.danmaku.bili" && hasWebView(root) &&
+                root.findAccessibilityNodeInfosByViewId("tv.danmaku.bili:id/tv_toolbar_title")
+                    .any { !it.text.isNullOrBlank() }) return
+            Thread.sleep(300)
+        }
+        fail("Web Activity did not create a visible WebView and page title")
     }
 
     private fun assertProcess(state: NPatchProcessState, mode: NPatchMode) {

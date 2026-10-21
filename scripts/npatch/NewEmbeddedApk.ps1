@@ -11,13 +11,17 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
-$expectedPatcher = 'fd6257b562af7f2c55776131f97ef72e7e7c772f5b2c0396c69ae1517f7e1e78'
+$expectedPatcher = 'dfa41340b717ca4de5a0de8e283e60d21ec38ce4b42f3d67657e01efeeecaff6'
+$expectedLibraries = [ordered]@{
+    'arm64-v8a' = 'ceac8f206404b5b2267ca70b0d6eb5b0f3738bc11d60e61738ccaa6af4e05a0f'
+    'x86_64' = '7933cae217a3f0183d15fee01674d682d4d8eb6a6f227d208cf6bbbc356ca5d1'
+}
 $modulePackage = 'com.Bilibili_Innocent_Lab.xposedmodule'
 foreach ($name in 'OriginalApk','ModuleApk','ReferencePatchedApk','PatcherJar','BcprovJar','Java21','ApkSigner') {
     Set-Variable -Name $name -Value (Resolve-Path -LiteralPath (Get-Variable -Name $name -ValueOnly)).Path
 }
 if ((Get-FileHash -LiteralPath $PatcherJar -Algorithm SHA256).Hash.ToLowerInvariant() -ne $expectedPatcher) {
-    throw 'Unsupported patcher: use the verified fixed 833 JAR.'
+    throw 'Unsupported patcher: use the verified Java-and-native-fixed 833 JAR.'
 }
 if (Test-Path -LiteralPath $OutputDirectory) { throw 'Output directory already exists; choose a fresh directory.' }
 Add-Type -AssemblyName System.IO.Compression.FileSystem
@@ -79,11 +83,18 @@ try {
         (Get-EntryHash $embedded) -ne $moduleHash -or (Get-EntryHash $origin) -ne $originalHash) {
         throw 'Embedded module or original APK does not match the supplied bytes.'
     }
+    foreach ($abi in $expectedLibraries.Keys) {
+        $library = $archive.GetEntry("assets/npatch/so/$abi/libnpatch.so")
+        if ($null -eq $library -or (Get-EntryHash $library) -ne $expectedLibraries[$abi]) {
+            throw "Patched native loader does not match the fixed profile: $abi"
+        }
+    }
 } finally { $archive.Dispose() }
 $signer = Get-Signer $patched
 if ($signer -ne $referenceSigner) { throw 'Signing certificate mismatch; do not install this output APK.' }
 [ordered]@{
     mode = 'embedded'; signatureLevel = 2; injectdex = $false
+    loaderProfile = '833-manager-binder-and-trivial-tls-v1'; nativeLibraries = $expectedLibraries
     patcherSha256 = $expectedPatcher; originalSha256 = $originalHash; moduleSha256 = $moduleHash
     apkSha256 = (Get-FileHash -LiteralPath $patched -Algorithm SHA256).Hash.ToLowerInvariant()
     certificateSha256 = $signer

@@ -1495,7 +1495,7 @@
     <string name="npatch_profile_flags">debuggable：%1$s；injectdex：%2$s</string>
     <string name="npatch_profile_manager_version">已安裝 Manager：%1$s（%2$s）</string>
     <string name="npatch_profile_version_mismatch">Loader 與 Manager 版本不同，請核對修補產物。</string>
-    <string name="npatch_profile_embed_experimental">嵌入模式為實驗性支援；更新模組需重新修補，作用域固定，簽章繞過最高為 2。 Web 子進程的功能 Hook 暫時隔離，網頁維持原生行為。</string>
+    <string name="npatch_profile_embed_experimental">嵌入模式為實驗性支援；更新模組需重新修補，作用域固定，簽章繞過最高為 2。</string>
     <string name="npatch_profile_source">宿主本次執行的設定來源：%1$s</string>
     <string name="npatch_profile_source_unknown">尚無本次設定獲准的診斷回執，執行來源未知。</string>
     <string name="npatch_profile_cache_unavailable">Manager 鏡像未更新；直達設定仍可用，啟用狀態以有效宿主回執為準。</string>
@@ -1509,5 +1509,5 @@
     <string name="npatch_process_rejected">尚未取得許可</string>
     <string name="npatch_process_row">%1$s（PID %2$d）：%3$s；Hook 點 %4$d；來源 %5$s</string>
     <string name="npatch_process_unknown">尚無本次進程回應；未回應的進程（包括隔離進程）維持未知。</string>
-    <string name="npatch_process_gated">已載入；embed :web 功能 Hook 已隔離</string>
+    <string name="npatch_process_gated">已載入；功能 Hook 受執行策略限制</string>
 </resources>
