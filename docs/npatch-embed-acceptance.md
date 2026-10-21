@@ -103,6 +103,18 @@
 
 本轮仅新增实机检查测试和文档：AndroidTest APK 与快速 Lint 通过，250 Warning/1 Hint，主源码分析复用已通过缓存；日志 `evidence-test-final-build.log`。生产模块与宿主仍为 `FREE_COPY_REPLIES` 的相同字节，复用其 3676 项 JVM 与主 APK 门禁。Gradle/Kotlin 及本任务日志进程已停止。当前案例覆盖上述普通视频与组合，未覆盖全部倍率、PGC/Story/缓存播放器、prepared 动态发现路径和后台/拖动组合；三设置及三能力记录为 `observed`，不把安装期 `awaiting-prepared` 提示或局部证据提升为全场景支持。
 
+### COMMENT_SEARCH_LINKS
+
+在当前 8.90.2 原生评论列表，以 `BV1xx411c7mD` 中含 `bv` 搜索链接和三个自定义表情的公开评论完成“关→开→关”对照。关闭净化时，关键词为蓝色并带搜索图标，实际点击进入 `BiliMainSearchActivity`，查询栏显示 `bv`。
+
+通过模块 UI 开启“关闭评论关键词搜索链接”，冷启动取得新配置后，`bv` 变为普通文字，搜索图标消失，完整正文和三个表情保留。点击相同位置按普通评论行为打开回复详情，前台仍为 `UnitedBizDetailsActivity`。现有请求侧通道报告 `search_word_disabled=true`，当前身份查询确认 `comments_search_links_removed` 为 `INSTALLED / APPLIED`；不以该日志单独替代界面对照，也不把此案例当作三道防线分别故障注入后的验收。
+
+同一开启态继续长按，模块气泡完整保留 `bv` 和三个表情。气泡内使用真实触摸全选、复制，再仅粘贴到模块本地搜索，逐字等于原正文及三个 `[大哭]`，当前 `free_copy_comment_enabled` 也有 `APPLIED`。随后通过 UI 关闭净化并再次冷启动，蓝色关键词、搜索图标和实际 `bv` 搜索均恢复；当前净化注册组为 `DISABLED / 0 Hook`，对应能力无已报告回调。设置页在返回时可能重建折叠菜单，自动化重新核对实际控件后才修改开关；中间定位失败没有计入开启态证据。
+
+证据在 `captures/npatch-2b/comment-search-acceptance/`：`06-search-removal-off.png`、`08-baseline-comments.xml/.png`、`09-baseline-search-opened.xml/.png`、`baseline-search-activity.txt`、`17-search-removal-enabled.xml/.png`、`19-enabled-comments.xml/.png`、`20-enabled-word-tap.xml/.png`、`enabled-word-tap-activity.txt`、`22-enabled-copy-bubble.xml`、`23-enabled-copy-selection.png`、`24-enabled-copy-all.png`、`26-combined-copy-pasted.xml`、`31-removal-off-restored.xml/.png`、`33-restored-comments.xml/.png`、`34-restored-search.xml/.png`、`restored-search-activity.txt` 和 `search-copy-verification.log`。当前回调查询两次通过，见 `enabled-feature-evidence.log`（2.004 秒）、`restored-off-feature-evidence.log` 及 `runtime-feature-results.log`。
+
+本轮只更新验收文档与矩阵，生产/测试 APK 均沿用上一单元，复用已通过门禁，仅重新核对矩阵。未发评论、点赞、关注或外部消息，结束时本项恢复关闭。当前只覆盖上述原生列表、回复详情及自由复制组合；其它评论管线、表面和防线降级仍待验，两目录行记为 `observed`。
+
 ### EMBED_WEB
 
 2B.1 的原生 TLS 修复、恢复原有 Web Hook、关闭/条款拒绝/重新开启、重复打开/返回/后台恢复、正文滚动及复制链接均见路线图 2B.1 验收。当前模块的自由复制开关和安装诊断已有证据；评论/简介复制的具体业务仍需独立行为案例，不因 32 个公共 Hook 安装成功而全部标记通过。

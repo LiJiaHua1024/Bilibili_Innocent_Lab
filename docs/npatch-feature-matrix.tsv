@@ -23,7 +23,7 @@ setting	comments.qoe.removed	comment_purify	comments_qoe_removed	-	pending	pendi
 setting	comments.quick_reply.blocked	comment_purify	comments_quick_reply_blocked	-	pending	pending	-
 setting	comments.reply_button.removed	comment_reply_button	comments_reply_button_removed	-	pending	pending	-
 setting	comments.reply_topology.enabled	comment_topology	comment_topology	-	pending	pending	-
-setting	comments.search_links.removed	comment_purify	comments_search_links_removed	-	pending	pending	-
+setting	comments.search_links.removed	comment_purify	comments_search_links_removed	-	pending	observed	case:COMMENT_SEARCH_LINKS
 setting	comments.section.hidden	comment_section	comment_section	-	pending	pending	-
 setting	comments.semantic_filter.custom_rules	comment_filter	comments_semantic_filter_enabled	-	pending	pending	-
 setting	comments.semantic_filter.enabled	comment_filter	comments_semantic_filter_enabled	-	pending	pending	-
@@ -83,7 +83,7 @@ setting	dynamic.topic_list.hidden	dynamic_purify	dynamic_topic_list_hidden	-	pen
 setting	dynamic.up_list.live.removed	dynamic_purify	dynamic_up_list_live_removed	-	pending	pending	-
 setting	dynamic.video_tab.preferred	dynamic_tabs_purify	dynamic_video_tab_preferred	-	pending	pending	-
 setting	free_copy.auto_light.enabled	-	-	LOCAL_APPEARANCE	pending	pending	-
-setting	free_copy.comment.enabled	free_copy	free_copy_comment_enabled	-	pending	observed	case:FREE_COPY_COMMENT,case:FREE_COPY_REPLIES
+setting	free_copy.comment.enabled	free_copy	free_copy_comment_enabled	-	pending	observed	case:FREE_COPY_COMMENT,case:FREE_COPY_REPLIES,case:COMMENT_SEARCH_LINKS
 setting	free_copy.description.enabled	free_copy	free_copy_description_enabled	-	pending	observed	case:FREE_COPY_DESCRIPTION
 setting	free_copy.light_mode.enabled	-	-	LOCAL_APPEARANCE	pending	pending	-
 setting	home.components.hidden_rules	home_component_filter	home_component_filter	-	pending	pending	-
@@ -256,7 +256,7 @@ capability	comments_operations_removed	comment_purify	comments.operations.remove
 capability	comments_qoe_removed	comment_purify	comments.qoe.removed	-	pending	pending	-
 capability	comments_quick_reply_blocked	comment_purify	comments.quick_reply.blocked	-	pending	pending	-
 capability	comments_reply_button_removed	comment_reply_button	comments.reply_button.removed	-	pending	pending	-
-capability	comments_search_links_removed	comment_purify	comments.search_links.removed	-	pending	pending	-
+capability	comments_search_links_removed	comment_purify	comments.search_links.removed	-	pending	observed	case:COMMENT_SEARCH_LINKS
 capability	comments_semantic_filter_enabled	comment_filter	comments.semantic_filter.custom_rules,comments.semantic_filter.enabled,comments.semantic_filter.rules,comments.semantic_filter.source	-	pending	pending	-
 capability	comments_user_filter_enabled	comment_filter	comments.user_filter.enabled,comments.user_filter.rules	-	pending	pending	-
 capability	comments_vote_widgets_removed	comment_purify	comments.vote_widgets.removed	-	pending	pending	-
@@ -294,7 +294,7 @@ capability	dynamic_topic_list_hidden	dynamic_purify	dynamic.topic_list.hidden	-	
 capability	dynamic_up_list_live_removed	dynamic_purify	dynamic.up_list.live.removed	-	pending	pending	-
 capability	dynamic_video_tab_preferred	dynamic_tabs_purify	dynamic.video_tab.preferred	-	pending	pending	-
 capability	external_browser	external_browser	links.external_browser.enabled	-	pending	pending	-
-capability	free_copy_comment_enabled	free_copy	free_copy.comment.enabled	-	pending	observed	case:FREE_COPY_COMMENT,case:FREE_COPY_REPLIES
+capability	free_copy_comment_enabled	free_copy	free_copy.comment.enabled	-	pending	observed	case:FREE_COPY_COMMENT,case:FREE_COPY_REPLIES,case:COMMENT_SEARCH_LINKS
 capability	free_copy_description_enabled	free_copy	free_copy.description.enabled	-	pending	observed	case:FREE_COPY_DESCRIPTION
 capability	full_number_display	full_number_display	numbers.full.enabled	-	pending	pending	-
 capability	game_mentioned_promotion	game_mentioned_promotion	ads.game_card.hidden	-	pending	pending	-
