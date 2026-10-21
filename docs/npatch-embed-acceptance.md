@@ -115,6 +115,22 @@
 
 本轮只更新验收文档与矩阵，生产/测试 APK 均沿用上一单元，复用已通过门禁，仅重新核对矩阵。未发评论、点赞、关注或外部消息，结束时本项恢复关闭。当前只覆盖上述原生列表、回复详情及自由复制组合；其它评论管线、表面和防线降级仍待验，两目录行记为 `observed`。
 
+### RELATED_COMMERCIAL
+
+在 `BV1xx411c7mD` 详情页，关闭所有相关推荐类型及匹配增强时，截图捕获明确标为“广告·查看详情”的京东推广卡；普通《【全弹幕】av10388 武器A》作为保留对照。推广卡没有出现在默认 accessibility XML 中，因此不能用 XML 搜不到广告文案证明过滤成功。服务器下发的推荐会变化，“课堂”角标也不能单独当作商业推广证据。
+
+通过正常设置 UI 仅勾选“过滤商业推广”，其它四种类型、匹配增强及强力模式保持关闭。旧包虽报告移除条目，但同时出现“详情页推荐响应列表写回失败”，当前组的 `runtimeError` 检查失败，不计入通过。原版 8.90.2 DEX 证明 `ViewReply.relates_` 的声明类型为 `Internal$ProtobufList`；普通 Java List 无法赋给该字段。修复使用原列表契约生成独立、同类型的不可变副本，保持保留条目的身份，并清除当前宿主已验证的序列化长度与 hash 缓存；未知消息形状、别名副本和缓存重置失败均拒绝或回滚，不原地修改共享源列表。
+
+最终包正常前台恢复模块、冷启动宿主后，当前 `module_direct` 身份下 `video_relate_filter` 的真实 `APPLIED` 检查通过（0.319 秒），没有 runtime error；新的已加载截图显示普通对照条目保留且无京东推广卡。此前专项回归修改配置后的旧快照不匹配、未重新打开模块时的许可不可用均被检查器拒绝，没有放宽身份或许可边界、没有计入通过。随后通过 UI 取消唯一勾选并保存 0 项，再冷启动，当前组与商业推广叶项的 `quiet` 检查通过（0.390 秒）；该结果须与 UI 关闭状态配对，不能由叶项缺席推断设置关闭。
+
+证据在 `captures/npatch-2b/related-ad-acceptance/`：`08-related-second-baseline.png`、`11-cm-selected.png`、`cm-enabled-group-evidence.log`（修复前失败）、`view-reply-members.txt`、`protobuf-list-members.txt`、`GeneratedMessageLite.java`、`writeback-candidate-group-evidence.log`、`16-writeback-warm-1.png` / `-2.png`、`final-renewed-enabled-group-evidence.log`、`21-final-enabled-settled.xml/.png`、`23-final-cm-on-before-off.xml/.png`、`24-cm-off-selected.xml`、`25-cm-off-saved.xml/.png`、`final-off-group-evidence.log`、`26-cm-off-detail.png` 与 `related-ad-verification.log`。只有最终包证据用于最终验收，前期候选不能代替最终包。
+
+最终产物 `patched-writeback-final/verified.json`：模块 SHA-256 `7f0df1b8969c5ce4564489f2b5b893bcc5d1def458634cd5a7f85e5bb48ea896`，宿主 `ab0c1406c339f9c60619a4cb99ac4abd52b1b7a4bdfc4f66eaad27e8e5af08b3`，相同证书覆盖安装，固定双 ABI native loader 不变。`writeback-final-build.log` 中 Debug/AndroidTest APK、3680 项 JVM 测试（0 失败、1 跳过）及快速 Lint 通过，250 Warning/1 Hint、原 baseline 不变；`full-jvm-suites.json` 保留全量结果。最终宿主启停/条款/Web 与原生触摸复制回归共 2 项、137.274 秒通过，见 `final-host-regression.log`。
+
+最终覆盖安装及完整设备回归后，登录、5.0 MB 缓存和缓存入口实际播放均保留，见同目录 `retained-account-cache.log` 与 `upgrade-*.xml/.png`；相隔两秒的两帧显示实际解码画面，没有关闭网络。关闭态另做五次重新打开，普通推荐正常变化，但未再次下发同一张明确广告；`27-cm-off-warm-1..5.png` 不能冒充“同一广告关闭后恢复”的证据。
+
+本项仍记为 `observed`：关闭后的同类广告重现尚待稳定样本；当前安装器仅上报父组运行计数，商业推广叶项没有独立运行归因；真实 8.90.2 仍报告 `partial:missing-service-layer`，服务层缺口留待下一单元定位。其它类型、匹配增强、强力模式、其它进程和宿主版本未在本例验收，不能把本次响应写回修复扩展为全相关推荐通过。
+
 ### EMBED_WEB
 
 2B.1 的原生 TLS 修复、恢复原有 Web Hook、关闭/条款拒绝/重新开启、重复打开/返回/后台恢复、正文滚动及复制链接均见路线图 2B.1 验收。当前模块的自由复制开关和安装诊断已有证据；评论/简介复制的具体业务仍需独立行为案例，不因 32 个公共 Hook 安装成功而全部标记通过。

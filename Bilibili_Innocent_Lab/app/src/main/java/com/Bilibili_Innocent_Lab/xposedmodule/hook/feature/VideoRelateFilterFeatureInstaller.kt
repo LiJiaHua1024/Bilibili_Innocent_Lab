@@ -1064,12 +1064,7 @@ internal fun writeBackVideoRelateItems(
     field: Field,
     items: List<*>
 ): Boolean {
-    if (target == null || !field.declaringClass.isInstance(target)) return false
-    if (!(items.javaClass isSubclassOf field.type)) return false
-    return runCatching {
-        field.set(target, items)
-        true
-    }.getOrDefault(false)
+    return VideoRelateResponseWriteback.write(target, field, items)
 }
 
 internal data class VideoRelateTypeEvidence(

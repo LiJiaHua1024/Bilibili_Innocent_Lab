@@ -231,3 +231,12 @@ WebView 对照：`captures/npatch-stage2-web.png` 与 `npatch-stage2-web-activit
 - [x] 新增 `COMMENT_SEARCH_LINKS` 案例及两行 `observed` 证据，并补充自由复制的组合引用。本轮只改文档，复用此前生产/测试 APK 与适用门禁；重新检查矩阵。证据 `captures/npatch-2b/comment-search-acceptance/`，任务日志进程已停止。
 
 本项已恢复关闭，播放器仍跟随宿主；未发送外部消息或写入评论。其它评论管线、防线降级、净化功能及组合仍待验，继续按 2B.2 推进，不将局部案例升级为正式支持完成。完成并验证的独立单元继续原子化提交，不 push。
+
+### 2026-10-21 阶段 2B.2：相关推荐 protobuf 写回修复
+
+- [x] 明确广告截图与普通推荐对照，正常 UI 仅开启商业推广过滤，复现“已移除但写回失败”的真实运行错误。实际 DEX 证明宿主字段要求 `Internal$ProtobufList`，原普通 List 不可赋值；没有用 accessibility 树遗漏广告冒充过滤成功。
+- [x] 复用 KavaRef 公共定位边界，按宿主契约创建同类型不可变副本并清除消息缓存；原始共享列表不变，未知形状/别名副本拒绝、缓存失败回滚。四项新增 JVM 回归覆盖这些边界。
+- [x] 同证书修补并覆盖安装；最终包在当前身份下真实过滤组 `APPLIED`、无 runtime error，普通对照推荐保留。UI 关闭后冷启动，组与叶项无已报告回调；关闭后五次响应没有再次下发同一明确广告，该恢复场景仍待补，矩阵两行保留 `observed`。详见 `RELATED_COMMERCIAL`。
+- [x] Debug/AndroidTest APK、3680 项 JVM（0 失败、1 跳过）和快速 Lint 通过，250 Warning/1 Hint，baseline 不变；最终启停/条款/Web 与触摸复制共 2 项、137.274 秒通过。覆盖安装和冷启动后登录、5.0 MB 缓存及缓存实际播放保留。证据 `captures/npatch-2b/related-ad-acceptance/`。
+
+最终模块 SHA-256 `7f0df1b8969c5ce4564489f2b5b893bcc5d1def458634cd5a7f85e5bb48ea896`，宿主 `ab0c1406c339f9c60619a4cb99ac4abd52b1b7a4bdfc4f66eaad27e8e5af08b3`，固定 native 和相同证书不变。下一单元先定位当前 8.90.2 的 `partial:missing-service-layer`，并处理能力叶项实际运行归因，再扩展其它相关推荐条件；不抹掉安装缺口、不把组计数复制成所有叶项的业务成功。全量 2B.2 和 2B.3 仍待完成。
