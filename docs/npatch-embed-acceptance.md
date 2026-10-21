@@ -163,6 +163,24 @@
 
 通过正常 UI 取消两项并保存 0 项，冷启动后当前父组与两个叶项均无已报告回调，检查通过（0.410 秒），普通推荐保留；证据 `14-both-off-selected.png`、`15-both-off-saved.xml`、`16-final-off-detail.xml/.png` 与 `final-off-evidence.log`。最终更新后登录、5.0 MB 缓存和实际缓存播放保留，见 `retained-account-cache.log` 与两张不同画面的 `upgrade-cache-player-*.png`；没有修改网络或旋转设置。商业推广保留 `observed`，其它过滤条件保持逐项待验。
 
+### RELATED_DURATION
+
+同一普通视频详情页的推荐列表，基线同时显示 2:24（144 秒）和 0:50 两个稳定对照；其它相关推荐类型、匹配增强和播放量范围关闭。通过正常设置 UI，每次保存后冷启动，并配对当前 `module_direct` 身份及无运行错误检查：
+
+| 时长范围（秒） | 实际普通视频对照 | 当前进程检查 |
+|---|---|---|
+| 两端留空 | 144 秒、50 秒均出现 | 父组/时长无回调，0.525 秒通过 |
+| 最短 100，最长留空 | 144 秒保留，50 秒从原列表移除；后续可见 3:59、7:55、2:03 | 时长 `APPLIED`，0.484 秒通过 |
+| 最短留空，最长 100 | 50 秒和 1:30 保留，144 秒对照移除 | 时长 `APPLIED`，0.378 秒通过 |
+| 最短 144，最长 144 | 恰好 2:24 的对照仍保留，验证两端包含边界 | 时长 `APPLIED`，0.556 秒通过 |
+| 再次清空两端 | 144 秒、50 秒对照均恢复 | 父组/时长无回调，0.273 秒通过 |
+
+另将最短设为 144、最长保持 100，UI 明确提示“最长时长不能短于最短时长。”并保留输入弹窗；未保存草稿关闭后原最长 100 的摘要仍保留。随后重新输入有效相等区间完成验收。自动化只在输入法实际显示时发送返回键，最终相等区间以恢复后的 25/26 号证据为准。
+
+证据 `captures/npatch-2b/related-duration-acceptance/05-duration-baseline-dialog.xml/.png`、`07-duration-off-baseline.xml/.png`、`10-min-configured-values.xml/.png`、`11-min-only-detail.xml/.png`、`12-min-list-lower.xml/.png`、`16-max-configured-values.xml/.png`、`17-max-only-detail.xml/.png`、`20-invalid-range-rejected.xml/.png`、`25-equal-range-configured-values.xml/.png`、`26-equal-range-detail.xml/.png`、`30-duration-disabled-values.xml/.png`、`31-duration-restored-detail.xml/.png`、各阶段 `*-evidence.log` 和 `duration-verification.log`。当前回调汇总保存在 `final-feature-results.log`。
+
+本轮生产/测试 APK 与源码均沿用 `f45801bf` 对应的 `patched-runtime-final/`，引用见 `reused-production-build.json`；复用其 3690 项 JVM、快速 Lint、最终宿主/触摸复制 2 项回归和相同包哈希，仅重查更新后的矩阵。两项共享设置及详情页时长能力记为 `observed`；首页能力、课程/商品等其它表面、独立服务层路径和跨条件组合继续待验，不将共享设置的详情页结果外推到首页。结束时两端均留空。
+
 ### EMBED_WEB
 
 2B.1 的原生 TLS 修复、恢复原有 Web Hook、关闭/条款拒绝/重新开启、重复打开/返回/后台恢复、正文滚动及复制链接均见路线图 2B.1 验收。当前模块的自由复制开关和安装诊断已有证据；评论/简介复制的具体业务仍需独立行为案例，不因 32 个公共 Hook 安装成功而全部标记通过。
