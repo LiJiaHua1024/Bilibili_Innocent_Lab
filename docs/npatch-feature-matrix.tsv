@@ -83,7 +83,7 @@ setting	dynamic.topic_list.hidden	dynamic_purify	dynamic_topic_list_hidden	-	pen
 setting	dynamic.up_list.live.removed	dynamic_purify	dynamic_up_list_live_removed	-	pending	pending	-
 setting	dynamic.video_tab.preferred	dynamic_tabs_purify	dynamic_video_tab_preferred	-	pending	pending	-
 setting	free_copy.auto_light.enabled	-	-	LOCAL_APPEARANCE	pending	pending	-
-setting	free_copy.comment.enabled	free_copy	free_copy_comment_enabled	-	pending	installed	case:EMBED_WEB
+setting	free_copy.comment.enabled	free_copy	free_copy_comment_enabled	-	pending	observed	case:FREE_COPY_COMMENT
 setting	free_copy.description.enabled	free_copy	free_copy_description_enabled	-	pending	observed	case:FREE_COPY_DESCRIPTION
 setting	free_copy.light_mode.enabled	-	-	LOCAL_APPEARANCE	pending	pending	-
 setting	home.components.hidden_rules	home_component_filter	home_component_filter	-	pending	pending	-
@@ -294,7 +294,7 @@ capability	dynamic_topic_list_hidden	dynamic_purify	dynamic.topic_list.hidden	-	
 capability	dynamic_up_list_live_removed	dynamic_purify	dynamic.up_list.live.removed	-	pending	pending	-
 capability	dynamic_video_tab_preferred	dynamic_tabs_purify	dynamic.video_tab.preferred	-	pending	pending	-
 capability	external_browser	external_browser	links.external_browser.enabled	-	pending	pending	-
-capability	free_copy_comment_enabled	free_copy	free_copy.comment.enabled	-	pending	installed	case:EMBED_WEB
+capability	free_copy_comment_enabled	free_copy	free_copy.comment.enabled	-	pending	observed	case:FREE_COPY_COMMENT
 capability	free_copy_description_enabled	free_copy	free_copy.description.enabled	-	pending	observed	case:FREE_COPY_DESCRIPTION
 capability	full_number_display	full_number_display	numbers.full.enabled	-	pending	pending	-
 capability	game_mentioned_promotion	game_mentioned_promotion	ads.game_card.hidden	-	pending	pending	-

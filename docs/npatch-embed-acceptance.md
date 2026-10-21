@@ -42,13 +42,33 @@
 
 证据：同目录 `access-cancelled.xml`、`access-authorized.xml`、`precheck-enabled.xml`、`account-methods.txt`、`account-logcat.txt`。初次未观测到 ready 的失败不能计入通过结果。
 
-修复证据为 `account-fixed-logcat.txt`、`account-ready.log`、`access-revoked.xml`、`precheck-revoked-summary.xml`、`account-revoked-host.log`。当前打包证据在 `patched/verified.json`：模块 SHA-256 `6132395828fc66a10b3505e54c8d1ff66c293a6ded2a1e8d427e4f8b8a7cfde5`，宿主 `05379e63ae90d79575f8511db0637618ec7f018196ab5ad90598902bc8fd3539`，保留原有双 ABI native 修复与同证书。
+修复证据为 `account-fixed-logcat.txt`、`account-ready.log`、`access-revoked.xml`、`precheck-revoked-summary.xml`、`account-revoked-host.log`。账号修复当时的打包证据在 `patched/verified.json`：模块 SHA-256 `6132395828fc66a10b3505e54c8d1ff66c293a6ded2a1e8d427e4f8b8a7cfde5`，宿主 `05379e63ae90d79575f8511db0637618ec7f018196ab5ad90598902bc8fd3539`，保留原有双 ABI native 修复与同证书；后续复制修复包见下方案例。
 
 ### FREE_COPY_DESCRIPTION
 
-展开公开视频 `BV1xx411c7mD` 的简介，长按正文后出现模块自由复制气泡，换行已归一；气泡可选中 BV 号，执行系统复制键后在本地输入框粘贴，内容与选区一致。截图及视图树证明实际回调，记录为 `observed`，没有把键盘复制等同于所有触摸工具栏、拖选、多行与表情组合通过。本案例在账号修复重新修补前完成，自由复制实现本轮未再修改。
+展开公开视频 `BV1xx411c7mD` 的简介，长按正文后出现模块自由复制气泡，换行已归一。早期仅验证系统复制键，本轮补测真实触摸：新气泡内使用 `touchscreen` 首次长按，系统“复制/分享/全选”菜单及两个手柄正常出现；拖动手柄可改变选区，全选能覆盖两行，通过触摸菜单复制后在模块本地搜索框粘贴，两行内容完整。搜索框会把换行显示为空格，不能据此宣称原始换行字节已核对；跨行拖选、超长简介及外观组合仍待验，因此整项保留 `observed`。
 
-证据：同目录 `description-dialog.xml/.png`、`description-selection.png`、`description-pasted.xml`、`description-copy.log`。评论复制仍需单独案例。
+早期证据：`captures/npatch-2b/account-acceptance/description-dialog.xml/.png`、`description-selection.png`、`description-pasted.xml`、`description-copy.log`。触摸证据：`captures/npatch-2b/copy-acceptance/20-description-touch-selection.png`、`21-description-dragged.png`、`23-description-all-selected.png`、`26-description-pasted.xml`。
+
+### FREE_COPY_COMMENT
+
+同一视频中，普通公开评论长按触发模块气泡，气泡内触摸长按显示系统菜单及选区手柄；点击“复制”后在模块本地搜索框粘贴，文字一致。关闭评论和简介两个开关并冷启动后，简介不弹模块气泡，评论恢复宿主“回复/分享/复制”等官方菜单；随后通过 UI 重新开启。未点击发送、回复、点赞、关注或外部分享。
+
+含 `bv` 搜索链接及三个自定义表情的样本发现真实缺陷：气泡显示表情，但复制内容中只剩三个 U+200B。完整原文已捕获，失败发生在身份校验；宿主的文字搜索链接也使用 ReplacementSpan，旧逻辑将其底下的普通文字误当作 Emoji 槽位，导致可信原文被拒绝，退回可见占位符快照。
+
+修复按底层内容区分绘制单元：普通文字保留在身份键里，仅完整表情标记、Unicode 表情或 U+200B/U+FFFC 占位区间归为 Emoji。只把确认的 Emoji Span 交给模型对齐及剪贴板语义映射；保留当前绑定、代次及防串评论判据。修复包实测 `model=3 spans=3 url=3 structural=3 applied=3`；触摸全选、复制并本地粘贴后，完整正文及三个 `[大哭]` 精确一致。并补齐正文读取器按实际 Class 缓存的回归，避免混排数据同名 getter 污染后续模型；这项缓存防护不是本例身份拒绝的根因。
+
+最终设备回归和再次冷启动后，补测仅选中其中一个绘制表情，通过系统触摸菜单复制，本地粘贴精确为单个 `[大哭]`。证据 `85-single-emoji-selected.png`、`87-single-emoji-pasted.xml` 与 `emoji-copy-verification.log`；这验证选区语义转换，不把全文复制成功当作局部选择成功。
+
+证据均在 `captures/npatch-2b/copy-acceptance/`：`13-comment-fresh-touch.png`、`16-comment-pasted.xml`、`58-both-off.xml`、`61-off-description-longpress.xml/.png`、`63-off-comment-longpress.xml/.png`、`66-both-on.xml`、`44-emoji-pasted.xml`（修复前失败）、`fresh-copy-host.log`、`76-identity-bubble.xml/.png`、`78-fixed-emoji-all.png`、`80-fixed-emoji-pasted.xml`、`emoji-copy-verification.log`。
+
+`HostCopySelectionInstrumentedTest` 使用真实触摸长按、跨窗口查找系统菜单及坐标点击，再核对剪贴板选区；不以键盘快捷键替代菜单验证。无 Hook 的组件对照已通过，最终包另做宿主回归。输入源需分层：此 ROM 的宿主按钮优先 stylus，但新气泡内 stylus 长按只出现选区，touchscreen 可正常显示工具栏；不能把该输入源差异误报为产品缺陷。UI dump 默认只取活动窗口，系统浮动工具栏可能不在该树内，需结合截图或多窗口 UiAutomation。
+
+最终包的真实 embed 宿主回归与上述触摸菜单回归合计 2 项、134.045 秒通过，日志 `final-device-regression.log`。Debug/AndroidTest APK、3670 项 JVM 测试（0 失败、1 跳过）及快速 Lint 通过；仍为 250 Warning/1 Hint，原 baseline 不变。当前产物及固定 native loader 哈希在同目录 `patched-identity/verified.json`，不沿用修复前的 `patched-fix1/` 候选。
+
+覆盖安装及最终设备回归后再次冷启动，正式会员登录态、5.0 MB 缓存与缓存入口实际播放均保留，`upgrade-cache-player-1.png` / `-2.png` 为不同视频画面。证据同目录 `retained-account-cache.log` 与 `upgrade-*.xml/.png`；未清数据或切换全局网络状态。
+
+本例验证当前 8.90.2 的普通评论及上述链接/表情组合；纯表情、折叠长评、图片/回复/推送等表面、复用压力和其它宿主版本仍待独立验收，评论整项记录为 `observed`。
 
 ### EMBED_WEB
 

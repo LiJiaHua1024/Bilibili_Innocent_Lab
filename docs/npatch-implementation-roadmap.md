@@ -78,7 +78,7 @@ F21 仅保留只读展示/手动导出的候选，不做宿主偏好写回。F22
 - 当前阶段优先保留现有可复现环境，不为方便无故重装。截图、日志与测试产物放忽略目录 `captures/`。
 - 新鲜授权、UID/nonce/challenge/terms/fingerprint/lease 和单调 revision 边界不放宽。Root/LSPosed 语义单独回归。
 - 普通迭代使用 FastLint；只有本地 AGENTS.md 明确的触发条件才执行完整 Lint。构建使用现有 JDK 17、ASCII SDK 路径与项目缓存，结束后关闭并核对守护进程。
-- 不自动 commit、push 或修改 Git 历史；各动作仍需用户明确授权。
+- 用户已在 2026-10-21 持续授权按本路线图推进，并在每个独立工作单元完成、验证通过后原子化 commit；该授权不包含 push、amend、rebase、merge 或丢弃改动。
 
 ## 本轮验证记录
 
@@ -189,4 +189,17 @@ WebView 对照：`captures/npatch-stage2-web.png` 与 `npatch-stage2-web-activit
 
 最终包位于 `captures/npatch-2b/account-acceptance/patched/`：模块 SHA-256 `6132395828fc66a10b3505e54c8d1ff66c293a6ded2a1e8d427e4f8b8a7cfde5`，宿主 SHA-256 `05379e63ae90d79575f8511db0637618ec7f018196ab5ad90598902bc8fd3539`，证书保持 `08b00b38cd98762bf261952c2c1014c09208ac2c278fd3085421994a516c3e23`，双 ABI loader 仍为 2B.1 的组合修复。
 
-仍待做：矩阵其余条目的开/关、默认值、组合及适用进程行为；AI 声明过滤实际命中、长期账号风控和其它资源/下载恢复场景；2B.3 的构建身份一致性与完整升级恢复；Manager/标准框架及其它支持矩阵、正式发布门禁。账号 `ready` 和一次普通下载不等于这些范围已通过。当前改动尚未 commit/push。
+仍待做：矩阵其余条目的开/关、默认值、组合及适用进程行为；AI 声明过滤实际命中、长期账号风控和其它资源/下载恢复场景；2B.3 的构建身份一致性与完整升级恢复；Manager/标准框架及其它支持矩阵、正式发布门禁。账号 `ready` 和一次普通下载不等于这些范围已通过。本节及 2B.1 的改动已按用户授权提交为 `a0d4af38`，未 push；之后的改动见下节。
+
+### 2026-10-21 阶段 2B.2：触摸复制与表情语义修复
+
+- [x] 提交上一批 Web/native、账号修复及全量矩阵，继续本阶段行为验收；不跳过 2B.2 直接宣布正式支持完成。
+- [x] 简介和评论实际触摸菜单/手柄、普通评论复制、多行简介全选、本地粘贴及关闭态官方行为已有证据。stylus 与 touchscreen 在此 ROM 的文本选择行为不同，不能拿“只显示选区”直接判产品故障。
+- [x] 修复含文字搜索链接和表情的评论复制丢失语义：ReplacementSpan 不等同 Emoji；普通底层文字参与身份校验，确认的表情才进入模型和选区映射。同一公开样本全文复制精确保留三个 `[大哭]`，单表情局部选区复制也精确保留一个完整标记。
+- [x] 正文提取改为实际 Class 的稳定成员缓存，复用现有 KavaRef 和 CommentRichTextReader；混排同名 getter、新旧模型共存及旧链回退由新增回归覆盖。不把这项缓存防护冒充上述样本的根因。
+- [x] 同证书重新修补并覆盖安装模块、宿主及测试包；固定双 ABI native loader 不变。最终候选模块 SHA-256 为 `f14332432b6754192d4d1f12cfce1fd4ad19c09a90728b1986cbb5ea4a6e1cfd`，宿主为 `ea551b716fa5ce2142305e955381db8f0ef43341140af5b6baff19974a14c61e`；证书沿用前节。
+- [x] 最终源码 Debug/AndroidTest APK、3670 项 JVM 测试（0 失败、1 跳过）及快速 Lint 通过，仍为 250 Warning/1 Hint，baseline 未扩大。`copy-identity-build.log` 用时 5 分 20 秒，Gradle/Kotlin 守护进程已退出；`full-jvm-suites.json` 保存全量结果，文档更新后再单独核对矩阵。
+- [x] 最终包 `NPatchEmbeddedHostInstrumentedTest` 与 `HostCopySelectionInstrumentedTest` 合计 2 项、134.045 秒通过，覆盖启停/条款/Web 与真实触摸菜单选区复制；证据 `captures/npatch-2b/copy-acceptance/final-device-regression.log`。
+- [x] 最终包覆盖安装、完整设备回归及冷启动后，登录状态和已完成的 5.0 MB 缓存均保留，缓存入口仍可启动播放；证据同目录 `retained-account-cache.log`、`upgrade-my.xml`、`upgrade-cache.xml` 和 `upgrade-cache-player*.png`。没有清数据或关闭网络，不据此宣称断网验收。
+
+行为细节、修复前失败和当前边界见 `FREE_COPY_DESCRIPTION` / `FREE_COPY_COMMENT` 案例；两项在矩阵中保留 `observed`，没有把少量样本提升为全表面完成。后续仍须覆盖纯表情、折叠长评、回复/图片/推送、外观及适用进程组合，并继续播放器和净化验收。本工作单元在完成验证后按用户持续授权提交，不 push。

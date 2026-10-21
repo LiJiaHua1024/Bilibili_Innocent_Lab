@@ -60,7 +60,9 @@ internal object CommentTextIdentity {
         while (i < text.length) {
             while (rangeIndex < ranges.size && ranges[rangeIndex].last < i) rangeIndex++
             val spanRange = ranges.getOrNull(rangeIndex)
-            if (spanRange != null && i == spanRange.first) {
+            if (spanRange != null && i == spanRange.first &&
+                isEmojiReplacement(text, spanRange.first, spanRange.last + 1)
+            ) {
                 out.append(EMOJI_SLOT)
                 i = minOf(text.length, spanRange.last + 1)
                 rangeIndex++
@@ -88,6 +90,13 @@ internal object CommentTextIdentity {
             i++
         }
         return out.toString()
+    }
+
+    /** 搜索词/链接也可能使用 ReplacementSpan；其普通底层文字仍属于评论身份。 */
+    fun isEmojiReplacement(text: CharSequence, start: Int, end: Int): Boolean {
+        if (start < 0 || end <= start || end > text.length) return false
+        if ((start until end).all { text[it] == '\u200B' || text[it] == '\uFFFC' }) return true
+        return emojiTokenEnd(text, start) == end
     }
 
     /** 返回从 start 开始的 emoji/[自定义表情] token 的 exclusive end，非 token 返回 start。 */

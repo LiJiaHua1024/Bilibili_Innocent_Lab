@@ -48,6 +48,7 @@ import com.Bilibili_Innocent_Lab.xposedmodule.hook.feature.CommentFamilyCoverage
 import com.Bilibili_Innocent_Lab.xposedmodule.hook.feature.CommentComposeCopyBridge
 import com.Bilibili_Innocent_Lab.xposedmodule.hook.feature.CommentNativeSupplementBridge
 import com.Bilibili_Innocent_Lab.xposedmodule.hook.feature.CommentLegacyCopyBridge
+import com.Bilibili_Innocent_Lab.xposedmodule.hook.feature.CommentRawTextReader
 import com.Bilibili_Innocent_Lab.xposedmodule.runtime.replytopology.ReplyTopologyClipboardWrite
 import com.Bilibili_Innocent_Lab.xposedmodule.hook.feature.BlockComponentLibraryFeatureInstaller
 import com.Bilibili_Innocent_Lab.xposedmodule.hook.feature.ComponentLibraryPoolMatcher
@@ -965,7 +966,10 @@ class HookEntry : XposedModule() {
                 ?.takeIf(::isValidFreeCopyText)
             val raw = state?.rawText?.trim()?.takeIf { it.length in 1..3000 && it.isNotBlank() }
             if (visibleText == null) return raw?.let(::FreeCopyContent)
-            if (raw == null) return FreeCopyContent(visibleText)
+            if (raw == null) {
+                logInfo("free_copy_raw_missing", "[BIL] 自由复制原文缺失: bound=${state != null}")
+                return FreeCopyContent(visibleText)
+            }
             // 可展开评论在折叠态会把完整富文本截成前缀，再追加带独立点击/着色 Span 的
             // `... 展开` 控制尾部。该尾部不是评论正文，只参与宿主 UI；若拿它与 raw 做
             // 身份校验会误判为另一条评论，随后退回 U+200B 快照并令表情复制为空。
@@ -997,6 +1001,8 @@ class HookEntry : XposedModule() {
                     emojiResolution = emojiResolution
                 )
             } else {
+                logInfo("free_copy_identity_rejected", "[BIL] 自由复制原文身份未通过: " +
+                    "rawLength=${raw.length} visibleLength=${identityText.length} trusted=${state.rawTrusted}")
                 FreeCopyContent(visibleText)
             }
         }
@@ -1049,7 +1055,8 @@ class HookEntry : XposedModule() {
         private fun replacementSpans(text: CharSequence): List<android.text.style.ReplacementSpan> {
             val spanned = text as? android.text.Spanned ?: return emptyList()
             return spanned.getSpans(0, text.length, classOf<android.text.style.ReplacementSpan>())
-                .filter { spanned.getSpanStart(it) >= 0 && spanned.getSpanEnd(it) > spanned.getSpanStart(it) }
+                .filter { CommentTextIdentity.isEmojiReplacement(text,
+                    spanned.getSpanStart(it), spanned.getSpanEnd(it)) }
                 .sortedBy { spanned.getSpanStart(it) }
         }
 
@@ -1088,22 +1095,12 @@ class HookEntry : XposedModule() {
         }
 
         /**
-         * 将 raw 中的 [表情]、U+FFFC/Unicode emoji，以及可见 Spanned 中的 ReplacementSpan
-         * 统一为一个槽位；普通文字及 emoji 的数量/位置仍保留。相比直接删除 emoji，既能
+         * 将 raw 中的 [表情]、U+FFFC/Unicode emoji，以及可见 Spanned 中确认的 Emoji
+         * 绘制单元统一为槽位；文字链接的底层文字及 emoji 的数量/位置仍保留。相比直接删除 emoji，既能
          * 兼容宿主的多种富文本编码，也不会把“同文字但 emoji 数量不同”的评论误判为同条。
          */
         private fun renderedCommentMatchKey(text: CharSequence): String {
-            val spanned = text as? android.text.Spanned
-            val replacementRanges = spanned
-                ?.getSpans(0, text.length, classOf<android.text.style.ReplacementSpan>())
-                ?.mapNotNull { span ->
-                    val start = spanned.getSpanStart(span)
-                    val end = spanned.getSpanEnd(span)
-                    if (start >= 0 && end > start) start until end else null
-                }
-                ?.sortedBy { it.first }
-                .orEmpty()
-            return CommentTextIdentity.matchKey(text, replacementRanges)
+            return CommentTextIdentity.matchKey(text, visibleSpanRanges(text, replacementSpans(text)))
         }
 
         /**
@@ -1519,19 +1516,7 @@ class HookEntry : XposedModule() {
          * args[0] 不是 CommentItem，反射失败返回 null，交由调用方兜底。
          */
         private fun extractRawCommentText(commentItem: Any?): String? {
-            if (commentItem == null) return null
-            return runCatching {
-                val zMethod = cItemZMethod
-                    ?: KavaMemberLookup.inheritedMethodOrNull(commentItem.javaClass, "z")
-                        ?.also { cItemZMethod = it }
-                    ?: return@runCatching null
-                val zObj = zMethod.invoke(commentItem) ?: return@runCatching null
-                val eMethod = cRichTextEMethod
-                    ?: KavaMemberLookup.inheritedMethodOrNull(zObj.javaClass, "e")
-                        ?.also { cRichTextEMethod = it }
-                    ?: return@runCatching null
-                eMethod.invoke(zObj) as? String
-            }.getOrNull()
+            return commentRawTextReader.read(commentItem, modern = false)
         }
 
         /**
@@ -1540,31 +1525,11 @@ class HookEntry : XposedModule() {
          * 均为 jadx 反编译确认的真实方法/字段名（无 renamed from 注释）。
          */
         private fun extractRawCommentTextV2(commentItem: Any?): String? {
-            if (commentItem == null) return null
-            // 新版链路：CommentItem.f() -> RichText.a。不同 B 站版本并不同构：
-            // 8.90.2 的 CommentItem 顶层没有 f()，正文仍是 z().e()；旧实现只尝试
-            // f().a，令 high handler 的 rawText 恒为 null，评论必须等 IdleHandler
-            // 完整遍历后才获得身份，快速滚动后立即长按便概率落回官方面板。
-            val newChain = runCatching {
-                val fMethod = cItemFMethod
-                    ?: KavaMemberLookup.inheritedMethodOrNull(commentItem.javaClass, "f")
-                        ?.also { cItemFMethod = it }
-                    ?: return@runCatching null
-                val kObj = fMethod.invoke(commentItem) ?: return@runCatching null
-                val aField = cRichTextAField
-                    ?: KavaMemberLookup.fieldOrNull(kObj.javaClass, "a", includeSuperclasses = true)
-                        ?.also { cRichTextAField = it }
-                    ?: return@runCatching null
-                aField.get(kObj) as? String
-            }.getOrNull()
-            if (!newChain.isNullOrBlank()) return newChain
-            // 8.90.2/旧版链路：CommentItem.z() -> RichText.e()。
-            return extractRawCommentText(commentItem)
+            return commentRawTextReader.read(commentItem)
         }
 
         /** 反射缓存：进程内目标类不卸载，可安全缓存 Method/Field，避免评论滚动时重复反射查找 */
-        @Volatile private var cItemFMethod: java.lang.reflect.Method? = null        // CommentItem.f()（高版本取 raw）
-        @Volatile private var cRichTextAField: java.lang.reflect.Field? = null     // k.a（高版本 raw 字段）
+        private val commentRawTextReader = CommentRawTextReader()
         private val cHandlerViewFieldByClass =
             java.util.concurrent.ConcurrentHashMap<Class<*>, java.lang.reflect.Field>()
         @Volatile private var additionalNativeCopy: CommentNativeSupplementBridge? = null
@@ -1580,8 +1545,6 @@ class HookEntry : XposedModule() {
          * 严格限制，且只持有进程生命周期内本就常驻的 Method/Class。 */
         private val cViewBindingArgIndexByMethod =
             java.util.concurrent.ConcurrentHashMap<java.lang.reflect.Member, Int>()
-        @Volatile private var cItemZMethod: java.lang.reflect.Method? = null       // CommentItem.z()（低版本取 raw）
-        @Volatile private var cRichTextEMethod: java.lang.reflect.Method? = null   // n.e()（低版本 raw getter）
 
         /**
          * 判断目标类是否存在于指定 ClassLoader。

@@ -2,9 +2,36 @@ package com.Bilibili_Innocent_Lab.xposedmodule.hook
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class CommentTextIdentityTest {
+
+    @Test
+    fun literalSearchSpanAndThreeEmojiKeepTheSameCommentIdentity() {
+        val prefix = "人类最古のav号（挂了的不算）也变成bv了"
+        val raw = prefix + "[大哭][大哭][大哭]青春结束了"
+        val visible = prefix + "\u200B\u200B\u200B青春结束了"
+        val keyword = prefix.indexOf("bv")
+        val ranges = listOf(keyword until keyword + 2) + (0..2).map {
+            prefix.length + it..prefix.length + it
+        }
+        assertFalse(CommentTextIdentity.isEmojiReplacement(visible, keyword, keyword + 2))
+        assertEquals(CommentTextIdentity.matchKey(raw), CommentTextIdentity.matchKey(visible, ranges))
+        assertTrue(CommentTextIdentity.isEmojiReplacement(visible, prefix.length, prefix.length + 1))
+        assertFalse(CommentTextIdentity.matchKey(raw) == CommentTextIdentity.matchKey(
+            visible.replace("人类", "另一条"), ranges))
+    }
+
+    @Test
+    fun replacementClassificationRequiresOneWholeEmojiRepresentation() {
+        assertTrue(CommentTextIdentity.isEmojiReplacement("[大哭]", 0, 4))
+        assertTrue(CommentTextIdentity.isEmojiReplacement("😀", 0, 2))
+        assertFalse(CommentTextIdentity.isEmojiReplacement("文字😀", 0, 4))
+        assertFalse(CommentTextIdentity.isEmojiReplacement("bv", -1, 2))
+        assertFalse(CommentTextIdentity.isEmojiReplacement("bv", 1, 1))
+    }
 
     @Test
     fun customEmojiAndReplacementSpanProduceSameIdentity() {
