@@ -213,4 +213,13 @@ WebView 对照：`captures/npatch-stage2-web.png` 与 `npatch-stage2-web-activit
 - [x] 同证书重新修补并覆盖安装；模块 SHA-256 `1173634baeb13f6a324c7c4ceef0d8c9555d24e5a4d69a8d6f7182a8b43f7c8e`，宿主 `170637c0e84a933b5b77cfb99fac730b11e2d65a5b15ca625ea3c96ac2d532dc`。最终目录 `captures/npatch-2b/comment-surfaces/patched-preview-link/`，双 ABI native loader 不变。
 - [x] 最终包真实宿主启停/条款/Web 与原生触摸复制 2 项、136.768 秒通过；再次冷启动后登录、5.0 MB 缓存及缓存入口实际播放均保留。证据同目录 `final-device-regression.log`、`retained-account-cache.log` 和 `upgrade-*.xml/.png`。
 
-继续 2B.2 的剩余复制表面、播放器、净化和外观组合；全量矩阵未完成，embed 保持实验性。每个完成并验证的工作单元独立提交，不 push。
+该工作单元已按持续授权提交为 `05262b76`，未 push。继续 2B.2 的剩余复制表面、播放器、净化和外观组合；全量矩阵未完成，embed 保持实验性。
+
+### 2026-10-21 阶段 2B.2：播放器倍速组合与当前回调证据
+
+- [x] 通过正常 UI 记录基线，并验证默认 1.5× / 长按 3.5×、松手恢复、手动 2.0X、切换新视频恢复默认、禁用长按但保留默认值，以及关闭后的原生行为。具体画面、时长窗口与边界见 `PLAYER_SPEED`。
+- [x] 新增需显式参数启用的实机检查器，配对核对当前 embed / `module_direct` 身份、安装链、实际 `APPLIED` 与无回调状态；不改测试开关或协议，不以 Hook 数量代替业务。停用叶项可能省略，`quiet` 只表示无已报告回调；无参数跳过，停用项不能冒充已应用的负对照按预期拒绝。
+- [x] 默认/自定义组合、禁用组合、关闭态与真实原生长按后的查询通过；矩阵新增三项设置、三项能力的 `observed` 证据。普通视频之外及未覆盖的组合仍待验，不声明播放器全量完成。
+- [x] 仅修改测试与文档：AndroidTest APK、快速 Lint 通过，主源码检查复用缓存，仍为 250 Warning/1 Hint。生产模块 SHA-256 保持 `1173634baeb13f6a324c7c4ceef0d8c9555d24e5a4d69a8d6f7182a8b43f7c8e`，宿主及 native 字节不变，复用上一单元的 JVM/主 APK 门禁。证据 `captures/npatch-2b/player-acceptance/`；结束后关闭 Gradle/Kotlin 和本任务日志进程。
+
+播放器三项已恢复为两项跟随宿主、禁用长按关闭。下一工作单元继续净化的真实命中、开关对照与组合验证；复制剩余表面和播放器其它路径继续留在 2B.2 清单中。每个完成并验证的工作单元独立提交，不 push。

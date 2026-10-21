@@ -84,6 +84,25 @@
 
 最终包真实宿主启停/条款/Web 与原生触摸复制合计 2 项、136.768 秒通过，见 `final-device-regression.log`。之后再次冷启动，会员登录态、5.0 MB 已完成缓存和缓存入口实际视频画面均保留，见 `retained-account-cache.log`、`upgrade-my.xml`、`upgrade-cache.xml` 及 `upgrade-cache-player-*.png`。未清数据或修改网络/旋转设置。
 
+### PLAYER_SPEED
+
+在同一最终宿主包上，通过模块正常设置页依次验证以下组合。使用公开视频 `BV1xx411c7mD`，新视频切换样本为正常推荐入口中的《bilibili上市宣传视频》；没有改系统方向锁定或旋转设置，横竖屏均由播放器正常进出全屏触发。
+
+| 配置/操作 | 实际行为 |
+|---|---|
+| 两项跟随宿主、禁用长按关闭 | 原生长按出现“倍速播放中”；关闭态冷启动后倍速注册组为 `DISABLED`、0 Hook，真实长按后仍无模块倍速回调 |
+| 默认 1.5×、长按 3.5× | 全屏控制条显示 `1.5X`；长按出现加速提示，松手恢复 `1.5X`。8 秒手势的约 9.9 秒记录窗口内进度 07:31→07:58，包含识别及截图开销，不当作精确倍率测量 |
+| 播放中手动选 2.0X | 长按后恢复用户选择的 `2.0X`；切换另一公开视频后，新会话恢复默认 `1.5X` |
+| 禁用长按开启，保留默认 1.5× 和保存的 3.5× | 设置明确提示保存的自定义值暂不生效；长按期间无加速提示，基础标签仍为 `1.5X`。同样 8 秒手势的约 9.8 秒窗口内进度 23:32→23:47，与基础播放一致 |
+
+新增 `NPatchFeatureEvidenceInstrumentedTest` 配对核对当前进程的实际回调：必须显式传入公开能力 ID，校验 embed 模式、当前 `module_direct` 权威身份、已完成安装链及无运行错误。`applied` / `observed` 要求对应阶段真实出现；`quiet` 只核对无已报告回调，允许协议省略未启用叶项，不能单凭缺少记录判定开关关闭或业务成功。它不启动宿主、不操作界面或改变测试开关；身份通过既有权威记录 API 求值，协议及授权边界不变。
+
+默认倍速和自定义长按两项的 `APPLIED` 查询通过；现有自定义长按实现完成构造参数写入和字段值回读后才报告该阶段。禁用组合的默认倍速/禁用回调均为 `APPLIED`，自定义长按无已报告回调。全部恢复跟随宿主、禁用关闭后，原生长按恢复且注册组为 `DISABLED / 0 Hook`，三叶项无已报告回调。负对照故意要求已关闭能力为 `APPLIED`，检查器按预期拒绝；无参数运行以 assumption 跳过，避免普通测试运行把未安排业务场景当成通过。早期检查器要求停用叶项必须存在，遇到协议省略而失败，已修正为明确的 `quiet` 含义，不把该失败计入通过结果。
+
+证据在 `captures/npatch-2b/player-acceptance/`：`06-speed-baseline.xml`、`26-speed-configured.xml/.png`、`31-custom-full-controls.png`、`32-before-custom-hold.png`、`33-custom-hold-active.png`、`34-custom-hold-released.png`、`39-manual-base-restored.png`、`43-new-video-default.png`、`55-disable-saved.xml/.png`、`60-disabled-before-hold.png`、`61-disabled-hold-active.png`、`62-disabled-hold-released.png`、`71-speed-follow-host.xml/.png`、`74-follow-host-longpress.png`、`75-follow-host-release.png`、两份 `*-hold-timing.log` 及 `runtime-feature-results.log`。查询结果为 `default-and-hold-evidence.log`、`disabled-hold-final-evidence.log`、`follow-host-post-gesture.log`；负对照及无参数边界见 `negative-control-result.log`、`negative-control-evidence.log` 和 `no-arguments-guard.log`。
+
+本轮仅新增实机检查测试和文档：AndroidTest APK 与快速 Lint 通过，250 Warning/1 Hint，主源码分析复用已通过缓存；日志 `evidence-test-final-build.log`。生产模块与宿主仍为 `FREE_COPY_REPLIES` 的相同字节，复用其 3676 项 JVM 与主 APK 门禁。Gradle/Kotlin 及本任务日志进程已停止。当前案例覆盖上述普通视频与组合，未覆盖全部倍率、PGC/Story/缓存播放器、prepared 动态发现路径和后台/拖动组合；三设置及三能力记录为 `observed`，不把安装期 `awaiting-prepared` 提示或局部证据提升为全场景支持。
+
 ### EMBED_WEB
 
 2B.1 的原生 TLS 修复、恢复原有 Web Hook、关闭/条款拒绝/重新开启、重复打开/返回/后台恢复、正文滚动及复制链接均见路线图 2B.1 验收。当前模块的自由复制开关和安装诊断已有证据；评论/简介复制的具体业务仍需独立行为案例，不因 32 个公共 Hook 安装成功而全部标记通过。
