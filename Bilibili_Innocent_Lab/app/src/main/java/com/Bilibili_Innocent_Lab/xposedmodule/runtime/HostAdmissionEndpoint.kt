@@ -5,13 +5,14 @@ import android.os.Binder
 import android.os.Bundle
 import android.os.SystemClock
 import com.Bilibili_Innocent_Lab.xposedmodule.BuildConfig
+import com.Bilibili_Innocent_Lab.xposedmodule.runtime.noroot.NPatchRuntimeProfiles
 import com.Bilibili_Innocent_Lab.xposedmodule.settings.remote.PublicationAuthorityStore
 import com.Bilibili_Innocent_Lab.xposedmodule.settings.terms.UserTermsAuthorizationCoordinator
 import com.Bilibili_Innocent_Lab.xposedmodule.settings.terms.UserTermsConsentStore
 import com.Bilibili_Innocent_Lab.xposedmodule.settings.terms.UserTermsPendingCompletion
 import java.util.UUID
 
-/** 两种模式共享元数据与最终许可；只有额外的完整文档操作受兼容模式控制。 */
+/** 标准框架的完整文档受兼容模式控制；已开启的 NPatch 使用独立的当前直达文档。 */
 internal object HostAdmissionEndpoint {
     private val leases = AdmissionLeaseBook(SystemClock::elapsedRealtime)
 
@@ -56,14 +57,16 @@ internal object HostAdmissionEndpoint {
             UserTermsConsentStore.withAuthorityLock {
                 val current = PublicationAuthorityStore.current(context) ?: return@withAuthorityLock status("storage_failed", nonce)
                 if (!current.decision.isAuthorized) return@withAuthorityLock status("denied", nonce)
+                // 身份已在上方按内核 UID 验证；从模块侧读取已安装宿主补丁标记，不信任请求自报的模式。
+                val nPatchChannel = com.Bilibili_Innocent_Lab.xposedmodule.settings.remote.isNpatchAdmissionChannel(
+                    com.Bilibili_Innocent_Lab.xposedmodule.settings.remote.RemoteHookConfigStore.status(),
+                    NPatchRuntimeProfiles.read(context).markerPresent)
                 when (method) {
                     HostAdmissionContract.METHOD_PREPARE -> {
                         val now = SystemClock.elapsedRealtime()
                         val deadline = minOf(extras.getLong("deadline"), now + HostAdmissionContract.CHALLENGE_TIMEOUT_MS)
                         if (deadline <= now) return@withAuthorityLock status("stale", nonce)
                         val noRootSelected = com.Bilibili_Innocent_Lab.xposedmodule.runtime.noroot.NoRootSupportStore.isDesiredEnabled(context)
-                        val nPatchChannel = com.Bilibili_Innocent_Lab.xposedmodule.settings.remote
-                            .isNpatchConfigChannel(com.Bilibili_Innocent_Lab.xposedmodule.settings.remote.RemoteHookConfigStore.status())
                         // B1：免 Root 开关是 NPatch 通道的总开关，关闭后不发放任何来源。
                         val source = HostAdmissionSourcePolicy.select(
                             noRootSelected = noRootSelected,
@@ -83,7 +86,8 @@ internal object HostAdmissionEndpoint {
                                     }?.let { putLong(HostAdmissionContract.DISABLED_REVISION, it.revision) }
                             }
                         }
-                        val document = if (source == HostAdmissionContract.DIRECT) HostAdmissionContract.encode(current.document()) else null
+                        val document = if (source == HostAdmissionContract.DIRECT) HostAdmissionContract.encode(
+                            if (nPatchChannel) current.noRootDocument() else current.document()) else null
                         val challenge = UUID.randomUUID().toString()
                         val lease = AdmissionLeaseBook.Lease(uid, pid, nonce, challenge, source, current.identity,
                             deadline)
@@ -100,7 +104,8 @@ internal object HostAdmissionEndpoint {
                         val lease = leases.consume(uid, pid, nonce, extras.getString("challenge").orEmpty(), identity)
                             ?: return@withAuthorityLock status("stale", nonce)
                         if (lease.identity != current.identity ||
-                            lease.source == HostAdmissionContract.DIRECT && !current.directAllowed
+                            lease.source == HostAdmissionContract.DIRECT &&
+                                !(current.directAllowed || nPatchChannel && current.noRootRevision > 0L)
                         ) {
                             // 握手期间权威记录已换成另一份仍授权的文档，或关掉了直达来源。
                             // 条款拒绝走上面的 denied，不会落到这里。

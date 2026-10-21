@@ -4877,7 +4877,7 @@ class HookEntry : XposedModule() {
             // NPatch 免 Root 的"已激活"只认宿主进程回执：API102 重构删掉了旧的
             // NoRootTargetConfigBridge 调用点后心跳再没有人发，模块侧
             // heartbeatMatches 恒 false，SyncState.ACTIVE 永远降级成"需要重启"。
-            // 在授权安装链成功后恢复回执；noRootRevision 只在 NPatch 网关交付时
+            // 在授权安装链成功后恢复回执；noRootRevision 在 NPatch 当前直达/网关文档中
             // 非零（LSPosed 提交路径恒为 0），模块侧 recordHeartbeat 还会按快照
             // revision/版本逐项校验，非免 Root 交付与失配回执都会被拒收。
             fun reportNoRootHeartbeatIfSynced(appContext: Context, config: RemoteHookConfigSnapshot, active: Boolean = true) {
@@ -4997,8 +4997,19 @@ class HookEntry : XposedModule() {
                     }
                 }
                 val bootstrapStartedAtMs = android.os.SystemClock.elapsedRealtime()
+                val runtimeMode = com.Bilibili_Innocent_Lab.xposedmodule.runtime.noroot.NoRootRuntimeDetector.detect(
+                    appContext, XposedModule::class.java.classLoader, HookEntry::class.java.classLoader)
+                val nPatchRuntime = runtimeMode == com.Bilibili_Innocent_Lab.xposedmodule.runtime.noroot.HookRuntimeMode.NPATCH_LEGACY
+                if (nPatchRuntime) {
+                    val profile = com.Bilibili_Innocent_Lab.xposedmodule.runtime.noroot.NPatchRuntimeProfiles.read(appContext, appContext.packageName)
+                    frameworkLog("[BIL] NPatch 运行档案(mode=${profile.mode}, sig=${profile.signatureLevel}, " +
+                        "loader=${profile.loaderVersionCode}, api=${profile.loaderApi}, debuggable=${profile.debuggable}, " +
+                        "process=$processName, is64Bit=${android.os.Process.is64Bit()}, injectdex=unknown)")
+                }
                 val remoteConfigStartedAtMs = android.os.SystemClock.elapsedRealtime()
-                val outcome = queryRemoteHookConfig()
+                // NPatch 配置以当前直达端点为准，不先读可能挂起或已过时的 Manager 镜像。
+                val outcome = if (nPatchRuntime) RemoteHookConfigQueryOutcome.Rejected("remote_group_unavailable")
+                    else queryRemoteHookConfig()
                 val remoteConfigElapsedMs =
                     android.os.SystemClock.elapsedRealtime() - remoteConfigStartedAtMs
                 val normal = (outcome as? RemoteHookConfigQueryOutcome.Ready)?.snapshot
@@ -5016,11 +5027,9 @@ class HookEntry : XposedModule() {
                     frameworkLog("[BIL] 启动授权尝试(process=$processName)")
                 }
                 val admissionStartedAtMs = android.os.SystemClock.elapsedRealtime()
-                val runtimeMode = com.Bilibili_Innocent_Lab.xposedmodule.runtime.noroot.NoRootRuntimeDetector.detect(
-                    appContext, XposedModule::class.java.classLoader, HookEntry::class.java.classLoader)
                 val admission = com.Bilibili_Innocent_Lab.xposedmodule.runtime.HostAdmissionClient.admit(
                     appContext, normal, reason,
-                    nPatchRuntime = runtimeMode == com.Bilibili_Innocent_Lab.xposedmodule.runtime.noroot.HookRuntimeMode.NPATCH_LEGACY)
+                    nPatchRuntime = nPatchRuntime)
                 val admissionElapsedMs =
                     android.os.SystemClock.elapsedRealtime() - admissionStartedAtMs
                 if (processName == TARGET_PACKAGE) {
@@ -5039,6 +5048,7 @@ class HookEntry : XposedModule() {
                         authorizedInstallerRef.set(null)
                         authorizationRetryPending.set(false)
                         HostRuntimeProbeResponder.disabledRevision = admission.disabledRevision
+                        if (processName == TARGET_PACKAGE) HostRuntimeDiagnosticsBridge.recordConfigRejected(admission.reason)
                         frameworkLog("[BIL] 当前关闭许可已确认，本进程不安装 Hook")
                         return
                     }

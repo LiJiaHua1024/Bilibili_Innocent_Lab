@@ -725,11 +725,11 @@
     <string name="settings_backup_choose_again">重新选择文件</string>
     <string name="settings_backup_migration_warning">部分目录迁移步骤不可用；只会恢复仍能精确兼容的自描述设置，其余项目全部保持当前状态。</string>
     <string name="no_root_support_enable">免 Root 支持</string>
-    <string name="no_root_support_tip">此开关只控制本模块通过 NPatch 同步配置，不会关闭已修补应用的 NPatch 原生注入。部分 NPatch 1.0.7 构建存在上游启动崩溃问题，请仅使用已明确包含修复的构建。仅在此开关开启时连接 NPatch。</string>
+    <string name="no_root_support_tip">开启后由模块直达通道提供当前配置，NPatch Manager 同步仅作为可选镜像。关闭后新进程不安装模块功能，已有进程需强制停止再打开。本开关不会关闭 NPatch 原生注入。</string>
     <string name="no_root_status_unsupported_os">状态：不可用，需要 Android 9 或更高版本。</string>
     <string name="no_root_status_disabled">状态：已关闭，不会连接 NPatch。</string>
     <string name="no_root_status_checking">状态：正在检查本地配置…</string>
-    <string name="no_root_status_manager_missing">状态：暂时无法连接 NPatch Manager 或其 Remote API。请先打开 Manager 后重试，并确认使用管理器模式；此处无法同步集成模式。</string>
+    <string name="no_root_status_manager_missing">状态：Manager 镜像不可用。请在诊断中检查模块直达配置与宿主回执；宿主仍需已正确修补并加载模块。</string>
     <string name="no_root_status_module_not_registered">状态：NPatch Manager 未接受当前模块。请在管理器中添加并启用模块、确认哔哩哔哩在其作用域内，并将 NPatch 升级到 1.0.7 或更新版本。</string>
     <string name="no_root_status_scope_missing">状态：本模块已不在哔哩哔哩的 NPatch 作用域内。请在 NPatch Manager 中重新启用，然后重新启动哔哩哔哩。</string>
     <string name="no_root_status_confirming">状态：正在确认模块是否正在哔哩哔哩中运行…</string>
@@ -739,7 +739,7 @@
     <string name="no_root_action_open_manager">打开 NPatch Manager</string>
     <string name="no_root_action_manager_unavailable">无法打开 NPatch Manager，请先安装或更新它。</string>
     <string name="no_root_status_syncing">状态：正在向 NPatch 同步设置…</string>
-    <string name="no_root_status_restart_required">状态：设置已同步，请重新启动已修补的哔哩哔哩以完成激活。</string>
+    <string name="no_root_status_restart_required">状态：配置已就绪，请强制停止并重新打开已修补的哔哩哔哩以应用。</string>
     <string name="no_root_status_disable_restart_required">状态：免 Root 支持已关闭，但当前哔哩哔哩进程中的 Hook 可能仍在运行；请强制停止并重新打开以完成关闭。</string>
     <string name="no_root_status_active">状态：已激活，已收到已修补哔哩哔哩的有效回执。</string>
     <string name="no_root_status_connection_timeout">状态：连接 NPatch 超时，请检查 NPatch Manager 后重试。</string>
@@ -750,7 +750,7 @@
     <string name="no_root_restart_confirm_title">手动重新启动哔哩哔哩？</string>
     <string name="no_root_restart_confirm_message">免 Root 模式无法强制停止其他应用。请打开哔哩哔哩的应用详情，在系统界面强制停止后再重新打开。</string>
     <string name="no_root_restart_open_app_details">打开应用详情</string>
-    <string name="no_root_restart_sync_failed">未能确认 NPatch 同步；仍将打开应用详情，请先返回模块重试同步，再重新打开哔哩哔哩。</string>
+    <string name="no_root_restart_sync_failed">当前配置落盘失败，请检查诊断后重试。</string>
     <string name="no_root_restart_sync_timeout">NPatch 同步超时；仍将打开应用详情，请先返回模块重试同步，再重新打开哔哩哔哩。</string>
     <string name="no_root_restart_open_failed">无法打开哔哩哔哩应用详情</string>
     <string name="diagnostics_title">统一功能诊断</string>
@@ -1488,4 +1488,15 @@
     <string name="player_buffer_mode">缓冲模式</string>
     <string name="player_buffer_memory_tip">预读队列与播放消费队列各分一半预算。解码帧和其他原生内存另计，这不是宿主总内存占用上限。</string>
     <string name="player_buffer_wifi_tip">启动预取后的中途切网由宿主处理，此选项不会单独中止已有预取任务。</string>
+    <string name="npatch_profile_unknown">未知</string>
+    <string name="npatch_profile_manager">Manager 模式</string>
+    <string name="npatch_profile_embedded">嵌入模式（实验性）</string>
+    <string name="npatch_profile_installed">已安装补丁：%1$s\n签名绕过等级：%2$s；Loader：%3$s；API：%4$s</string>
+    <string name="npatch_profile_flags">debuggable：%1$s；injectdex：%2$s</string>
+    <string name="npatch_profile_manager_version">已安装 Manager：%1$s（%2$s）</string>
+    <string name="npatch_profile_version_mismatch">Loader 与 Manager 版本不同，请核对修补产物。</string>
+    <string name="npatch_profile_embed_experimental">嵌入模式尚未完成专项验收；更新模块需重新修补，签名绕过最高为 2。</string>
+    <string name="npatch_profile_source">宿主本次运行的配置来源：%1$s</string>
+    <string name="npatch_profile_source_unknown">尚无本次配置获准的诊断回执，运行来源未知。</string>
+    <string name="npatch_profile_cache_unavailable">Manager 镜像未更新；直达配置仍可用，激活状态以有效宿主回执为准。</string>
 </resources>

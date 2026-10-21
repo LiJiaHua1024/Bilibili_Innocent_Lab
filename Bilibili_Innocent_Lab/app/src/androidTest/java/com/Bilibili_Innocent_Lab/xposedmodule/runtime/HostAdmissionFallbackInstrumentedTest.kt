@@ -18,6 +18,12 @@ class HostAdmissionFallbackInstrumentedTest {
         true, 0L, UserTermsDecision.ACCEPTED,
         RemoteHookConfigContract.resolveSourceValues(emptyMap<String, Any>()))
 
+    @Test fun npatchWithoutAManagerDocumentStillNeedsACurrentGrant() {
+        val result = HostAdmissionClient.admit(context, null, "remote_group_unavailable", nPatchRuntime = true)
+        assertNull(result.grant)
+        assertEquals("admission_unavailable", result.reason)
+    }
+
     @Test fun npatchRejectsOldStandardDocumentWhenAllAuthorizingEndpointsAreUnavailable() {
         val result = HostAdmissionClient.admit(context, standard, null, nPatchRuntime = true)
         assertNull(result.grant)

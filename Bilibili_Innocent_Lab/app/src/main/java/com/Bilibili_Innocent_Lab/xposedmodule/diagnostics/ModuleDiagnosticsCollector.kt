@@ -177,7 +177,10 @@ internal object ModuleDiagnosticsCollector {
                 hostFailedFeatureCount = hostRuntime?.failedFeatureCount ?: 0,
                 moduleUserId = userSpace.moduleUserId,
                 targetUserId = userSpace.targetUserId,
-                sameAndroidUser = userSpace.sameUser
+                sameAndroidUser = userSpace.sameUser,
+                nPatchEnvironment = com.Bilibili_Innocent_Lab.xposedmodule.runtime.noroot.NPatchRuntimeProfiles
+                    .environment(appContext),
+                noRootSyncDetail = noRootStatus.detail
             )
         )
     }

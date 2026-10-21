@@ -4,6 +4,15 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class HostAdmissionSourcePolicyTest {
+    @Test fun npatchPrefersCurrentDirectDocumentWithoutCompatibilityModeOrRemoteMirror() {
+        for (revision in listOf(0L, 7L)) {
+            for (fingerprint in listOf(null, "old", "current")) {
+                assertEquals("module_direct", HostAdmissionSourcePolicy.select(
+                    true, revision, "current", fingerprint, true, false, nPatchChannel = true))
+            }
+        }
+    }
+
     @Test fun oldNPatchDocumentCannotBeUsedAfterTurningOffItsSelectedSource() {
         assertEquals("manager",HostAdmissionSourcePolicy.select(true,7,"x","x",false,false))
         assertNull(HostAdmissionSourcePolicy.select(false,7,"x","x",true,false))

@@ -725,11 +725,11 @@
     <string name="settings_backup_choose_again">Choose another file</string>
     <string name="settings_backup_migration_warning">Some catalog migration steps are unavailable. Only self-describing settings that are still exactly compatible will be restored; all other items remain unchanged.</string>
     <string name="no_root_support_enable">No-root support</string>
-    <string name="no_root_support_tip">This switch controls only this module\'s configuration delivery through NPatch; it cannot disable NPatch native injection in an already patched app. Some NPatch 1.0.7 builds have an upstream startup crash, so use only a build explicitly confirmed to contain that fix. NPatch is contacted only while this switch is on.</string>
+    <string name="no_root_support_tip">When enabled, the module delivers current settings directly; NPatch Manager sync is an optional mirror. After disabling, new processes skip module features; force-stop and reopen an existing host process. This switch does not disable NPatch injection.</string>
     <string name="no_root_status_unsupported_os">Status: unavailable; Android 9 or later is required.</string>
     <string name="no_root_status_disabled">Status: off. No NPatch connection will be made.</string>
     <string name="no_root_status_checking">Status: checking the local configuration…</string>
-    <string name="no_root_status_manager_missing">Status: Cannot connect to NPatch Manager or its Remote API right now. Open Manager and try again, and confirm Manager mode is in use; integration-mode patches cannot be synced here.</string>
+    <string name="no_root_status_manager_missing">Status: Manager mirror unavailable. Check direct settings delivery and host receipts in Diagnostics. The host must still be correctly patched and load the module.</string>
     <string name="no_root_status_module_not_registered">Status: NPatch Manager did not accept this module. Add and enable it in Manager, keep Bilibili inside its scope, and update NPatch to 1.0.7 or newer.</string>
     <string name="no_root_status_scope_missing">Status: this module is no longer in Bilibili\'s NPatch scope. Re-enable it in NPatch Manager, then restart Bilibili.</string>
     <string name="no_root_status_confirming">Status: confirming whether the module is running in Bilibili…</string>
@@ -739,7 +739,7 @@
     <string name="no_root_action_open_manager">Open NPatch Manager</string>
     <string name="no_root_action_manager_unavailable">Cannot open NPatch Manager. Install or update it first.</string>
     <string name="no_root_status_syncing">Status: synchronizing settings with NPatch…</string>
-    <string name="no_root_status_restart_required">Status: settings synchronized. Restart the patched Bilibili app to activate them.</string>
+    <string name="no_root_status_restart_required">Status: Settings ready. Force-stop and reopen the patched Bilibili app to apply them.</string>
     <string name="no_root_status_disable_restart_required">Status: no-root support is off, but hooks may remain in the running Bilibili process. Force stop and reopen it to finish disabling.</string>
     <string name="no_root_status_active">Status: active; a valid heartbeat was received from the patched Bilibili app.</string>
     <string name="no_root_status_connection_timeout">Status: NPatch connection timed out. Check NPatch Manager and try again.</string>
@@ -750,7 +750,7 @@
     <string name="no_root_restart_confirm_title">Restart Bilibili manually?</string>
     <string name="no_root_restart_confirm_message">No-root mode cannot force-stop another app. Open the Bilibili app details, force stop it there, then launch it again.</string>
     <string name="no_root_restart_open_app_details">Open app details</string>
-    <string name="no_root_restart_sync_failed">NPatch synchronization could not be confirmed. App details will still open; retry synchronization before relaunching Bilibili.</string>
+    <string name="no_root_restart_sync_failed">Could not persist the current settings. Check Diagnostics and retry.</string>
     <string name="no_root_restart_sync_timeout">NPatch synchronization timed out. App details will still open; retry synchronization before relaunching Bilibili.</string>
     <string name="no_root_restart_open_failed">Could not open the Bilibili app details</string>
     <string name="diagnostics_title">Diagnostics</string>
@@ -1488,4 +1488,15 @@
     <string name="player_buffer_mode">Buffer mode</string>
     <string name="player_buffer_memory_tip">The read-ahead item queue and playback consumer queue each receive half of this budget. Decoded frames and other native allocations are separate; this does not cap total process memory.</string>
     <string name="player_buffer_wifi_tip">A network change after prefetch starts is handled by the host. This option does not independently stop an existing prefetch task.</string>
+    <string name="npatch_profile_unknown">Unknown</string>
+    <string name="npatch_profile_manager">Manager mode</string>
+    <string name="npatch_profile_embedded">Embedded mode (experimental)</string>
+    <string name="npatch_profile_installed">Installed patch: %1$s\nSignature bypass level: %2$s; Loader: %3$s; API: %4$s</string>
+    <string name="npatch_profile_flags">debuggable: %1$s; injectdex: %2$s</string>
+    <string name="npatch_profile_manager_version">Installed Manager: %1$s (%2$s)</string>
+    <string name="npatch_profile_version_mismatch">Loader and Manager versions differ. Check the patched APK.</string>
+    <string name="npatch_profile_embed_experimental">Embedded mode has not completed device acceptance. Module updates require repatching; signature bypass is limited to level 2.</string>
+    <string name="npatch_profile_source">Configuration source for this host run: %1$s</string>
+    <string name="npatch_profile_source_unknown">No current accepted configuration receipt; runtime source is unknown.</string>
+    <string name="npatch_profile_cache_unavailable">Manager mirror not updated. Direct delivery remains available; activation requires a valid host receipt.</string>
 </resources>

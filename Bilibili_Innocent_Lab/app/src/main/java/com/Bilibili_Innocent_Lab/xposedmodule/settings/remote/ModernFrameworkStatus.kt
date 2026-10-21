@@ -72,6 +72,10 @@ internal fun isNpatchConfigChannel(status: ModernFrameworkStatus): Boolean {
             !isRootFramework(status.capable, status.name, status.properties))
 }
 
+/** 已确认的框架能力优先；只有服务尚未就绪时，才用安装档案识别 NPatch 直达启动。 */
+internal fun isNpatchAdmissionChannel(status: ModernFrameworkStatus, patchMarkerPresent: Boolean): Boolean =
+    if (status.capable) isNpatchConfigChannel(status) else patchMarkerPresent
+
 /** 可选版本信息读取失败不否决已确认的 API/Remote 能力；任何失败都不逸出服务回调。 */
 internal fun readModernFrameworkStatus(
     readApiVersion: () -> Int,

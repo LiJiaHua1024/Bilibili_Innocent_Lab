@@ -77,7 +77,9 @@ Bilibili Innocent Lab 是一个面向 Android 哔哩哔哩客户端的 Xposed/LS
 
 本模块现已提供实验性的 NPatch 免 Root 支持，可在不使用 Root/LSPosed 的设备环境中，通过 NPatch Manager 将模块加载到经本地修补的哔哩哔哩客户端；该能力是独立的可选兼容路径，不会改变原有 Root/LSPosed 的安装与使用方式。当前要求 Android 9 及以上、NPatch Manager 1.0.7 及以上，并使用本地/管理器模式；请先在 NPatch Manager 中添加并启用本模块，再在模块设置中开启“免 Root 支持（NPatch，实验性）”。
 
-启用后，模块会将当前支持的功能配置同步到 NPatch，并由已修补的哔哩哔哩进程加载对应 Hook。开启、关闭或修改相关设置后，需要手动强制停止并重新打开哔哩哔哩；只有在授权与完整配置校验通过后，目标进程才会安装模块功能，模块界面收到并验证宿主回执后才会显示为已激活。
+启用后，NPatch 宿主优先通过模块自己的鉴权通道读取当前完整配置，不再要求开启“通信兼容模式”；Manager Remote Store 同步作为可选镜像，其不可用不阻止直达配置就绪。开启、关闭或修改相关设置后，需要手动强制停止并重新打开哔哩哔哩；只有取得当前授权并通过完整配置校验后，目标进程才会安装模块功能，模块界面收到并验证宿主回执后才会显示为已激活。所有授权端点不可达时，不会仅凭旧缓存启用功能。
+
+诊断中心的“免 Root 支持”详情可查看已安装补丁的 Manager/embed 模式、签名绕过等级、Loader API/版本、Manager 版本，以及有运行回执时的实际配置来源；缺少权威信息时显示“未知”。当前仍以 Manager 模式为已验收主路径，embed 完整兼容性留待后续阶段。833 的 Manager 失联导致模块不加载问题需要[重新修补宿主 loader](scripts/npatch/README.md)，单独更新模块不能解决。实施进度见[当前路线图](docs/npatch-implementation-roadmap.md)。
 
 > NPatch 支持仍属于实验性能力，实际稳定性会受到 Android 版本、ROM、NPatch Manager 版本、哔哩哔哩版本及其他注入模块影响，不能视为对所有 Root/LSPosed 场景的完整替代。使用前请自行备份配置，并保留恢复原版应用的能力。
 

@@ -773,7 +773,8 @@ class DiagnosticsActivity : SkinnedActivity(),
                         R.string.diagnostics_activation_unavailable
                 }
             )
-            DiagnosticItemId.NO_ROOT -> getString(noRootText(input.noRootState))
+            DiagnosticItemId.NO_ROOT -> listOf(getString(noRootText(input.noRootState)),
+                nPatchDiagnosticsDetails(this, input)).filter { it.isNotBlank() }.joinToString("\n")
             DiagnosticItemId.HOST_BOOTSTRAP -> hostBootstrapDetail(snapshot)
             DiagnosticItemId.FEATURE_COVERAGE -> featureCoverageDetail(snapshot)
             DiagnosticItemId.HOST_ADAPTATION -> if (input.hostRuntimeReceiptAvailable) {

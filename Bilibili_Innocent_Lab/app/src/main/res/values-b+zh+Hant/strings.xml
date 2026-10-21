@@ -725,11 +725,11 @@
     <string name="settings_backup_choose_again">重新選擇檔案</string>
     <string name="settings_backup_migration_warning">部分目錄遷移步驟無法使用；只會還原仍能精確相容的自描述設定，其餘項目全部保留目前狀態。</string>
     <string name="no_root_support_enable">免 Root 支援</string>
-    <string name="no_root_support_tip">此開關只控制本模組透過 NPatch 同步設定，不會關閉已修補應用程式的 NPatch 原生注入。部分 NPatch 1.0.7 組建存在上游啟動崩潰問題，請只使用已明確包含修正的組建。僅在此開關開啟時連線 NPatch。</string>
+    <string name="no_root_support_tip">開啟後由模組直達通道提供目前設定，NPatch Manager 同步僅作為可選鏡像。關閉後新程序不安裝模組功能，既有程序需強制停止再開啟。本開關不會關閉 NPatch 原生注入。</string>
     <string name="no_root_status_unsupported_os">狀態：無法使用，需要 Android 9 或更新版本。</string>
     <string name="no_root_status_disabled">狀態：已關閉，不會連線 NPatch。</string>
     <string name="no_root_status_checking">狀態：正在檢查本機設定…</string>
-    <string name="no_root_status_manager_missing">狀態：暫時無法連線 NPatch Manager 或其 Remote API。請先開啟 Manager 後重試，並確認使用管理器模式；此處無法同步整合模式。</string>
+    <string name="no_root_status_manager_missing">狀態：Manager 鏡像無法使用。請在診斷中檢查模組直達設定與宿主回執；宿主仍需已正確修補並載入模組。</string>
     <string name="no_root_status_module_not_registered">狀態：NPatch Manager 未接受目前模組。請在管理器中加入並啟用模組、確認嗶哩嗶哩在其作用域內，並將 NPatch 升級至 1.0.7 或更新版本。</string>
     <string name="no_root_status_scope_missing">狀態：本模組已不在嗶哩嗶哩的 NPatch 作用域內。請在 NPatch Manager 中重新啟用，然後重新啟動嗶哩嗶哩。</string>
     <string name="no_root_status_confirming">狀態：正在確認模組是否正在嗶哩嗶哩中執行…</string>
@@ -739,7 +739,7 @@
     <string name="no_root_action_open_manager">開啟 NPatch Manager</string>
     <string name="no_root_action_manager_unavailable">無法開啟 NPatch Manager，請先安裝或更新它。</string>
     <string name="no_root_status_syncing">狀態：正在向 NPatch 同步設定…</string>
-    <string name="no_root_status_restart_required">狀態：設定已同步，請重新啟動已修補的嗶哩嗶哩以完成啟用。</string>
+    <string name="no_root_status_restart_required">狀態：設定已就緒，請強制停止並重新開啟已修補的嗶哩嗶哩以套用。</string>
     <string name="no_root_status_disable_restart_required">狀態：免 Root 支援已關閉，但目前嗶哩嗶哩程序中的 Hook 可能仍在執行；請強制停止並重新開啟以完成關閉。</string>
     <string name="no_root_status_active">狀態：已啟用，已收到已修補嗶哩嗶哩的有效回執。</string>
     <string name="no_root_status_connection_timeout">狀態：連線 NPatch 逾時，請檢查 NPatch Manager 後重試。</string>
@@ -750,7 +750,7 @@
     <string name="no_root_restart_confirm_title">手動重新啟動嗶哩嗶哩？</string>
     <string name="no_root_restart_confirm_message">免 Root 模式無法強制停止其他應用程式。請開啟嗶哩嗶哩的應用程式資訊，在系統介面強制停止後再重新開啟。</string>
     <string name="no_root_restart_open_app_details">開啟應用程式資訊</string>
-    <string name="no_root_restart_sync_failed">無法確認 NPatch 同步；仍會開啟應用程式資訊，請先返回模組重試同步，再重新開啟嗶哩嗶哩。</string>
+    <string name="no_root_restart_sync_failed">目前設定寫入失敗，請檢查診斷後重試。</string>
     <string name="no_root_restart_sync_timeout">NPatch 同步逾時；仍會開啟應用程式資訊，請先返回模組重試同步，再重新開啟嗶哩嗶哩。</string>
     <string name="no_root_restart_open_failed">無法開啟嗶哩嗶哩應用程式資訊</string>
     <string name="diagnostics_title">統一功能診斷</string>
@@ -1488,4 +1488,15 @@
     <string name="player_buffer_mode">緩衝模式</string>
     <string name="player_buffer_memory_tip">預讀佇列與播放消費佇列各分一半預算。解碼影格與其他原生記憶體另計，這不是宿主總記憶體占用上限。</string>
     <string name="player_buffer_wifi_tip">啟動預取後的中途切網由宿主處理，此選項不會單獨中止已有預取工作。</string>
+    <string name="npatch_profile_unknown">未知</string>
+    <string name="npatch_profile_manager">Manager 模式</string>
+    <string name="npatch_profile_embedded">嵌入模式（實驗性）</string>
+    <string name="npatch_profile_installed">已安裝補丁：%1$s\n簽章繞過等級：%2$s；Loader：%3$s；API：%4$s</string>
+    <string name="npatch_profile_flags">debuggable：%1$s；injectdex：%2$s</string>
+    <string name="npatch_profile_manager_version">已安裝 Manager：%1$s（%2$s）</string>
+    <string name="npatch_profile_version_mismatch">Loader 與 Manager 版本不同，請核對修補產物。</string>
+    <string name="npatch_profile_embed_experimental">嵌入模式尚未完成專項驗收；更新模組需重新修補，簽章繞過最高為 2。</string>
+    <string name="npatch_profile_source">宿主本次執行的設定來源：%1$s</string>
+    <string name="npatch_profile_source_unknown">尚無本次設定獲准的診斷回執，執行來源未知。</string>
+    <string name="npatch_profile_cache_unavailable">Manager 鏡像未更新；直達設定仍可用，啟用狀態以有效宿主回執為準。</string>
 </resources>

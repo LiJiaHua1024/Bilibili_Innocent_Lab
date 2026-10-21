@@ -23,6 +23,8 @@ internal object HostAdmissionSourcePolicy {
         nPatchChannel: Boolean = false
     ): String? = when {
         !noRootSelected && (nPatchChannel || normalNoRootRevision > 0L) -> null
+        // 已验证 NPatch 身份的启动优先取当前本地文档；不依赖旧兼容模式或 Manager 镜像。
+        nPatchChannel && noRootSelected && allowDirect -> HostAdmissionContract.DIRECT
         noRootSelected == (normalNoRootRevision > 0L) && expectedFingerprint == normalFingerprint ->
             HostAdmissionContract.NORMAL
         allowDirect && directEnabled -> HostAdmissionContract.DIRECT

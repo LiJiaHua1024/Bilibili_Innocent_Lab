@@ -180,7 +180,10 @@ internal data class ModuleDiagnosticInputs(
     val frameworkProperties: Long? = null,
     val frameworkConnectionId: Long = 0L,
     val frameworkFailureCode: String? = null,
-    val remoteConnectionId: Long = 0L
+    val remoteConnectionId: Long = 0L,
+    /** 已安装宿主的补丁档案，仅用于本地详情；不扩展当前导出报告白名单。 */
+    val nPatchEnvironment: com.Bilibili_Innocent_Lab.xposedmodule.runtime.noroot.NPatchEnvironment? = null,
+    val noRootSyncDetail: String? = null
 )
 
 /**

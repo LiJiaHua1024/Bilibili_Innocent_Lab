@@ -398,9 +398,8 @@ internal object NoRootSupportStore {
             )
         }
         val snapshot = readSnapshotLocked(context)
-        val remoteSynced = snapshot?.revision != null &&
-            prefs(context).getLong(KEY_REMOTE_SYNCED_REVISION, 0L) == snapshot.revision
-        val payload = if (snapshot?.enabled == true && remoteSynced) {
+        // 这是已验真的本地权威导出；Manager 镜像不再是可读取当前快照的前置条件。
+        val payload = if (snapshot?.enabled == true) {
             runCatching { NoRootConfigSnapshotCodec.encode(snapshot) }.getOrNull()
         } else {
             null

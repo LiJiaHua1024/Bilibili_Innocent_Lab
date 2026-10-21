@@ -59,7 +59,7 @@ internal class AdmissionResponseCoordinator {
     fun completeSafely(action: String?, response: () -> Bundle?): Boolean =
         runCatching { complete(action, response()) }.getOrDefault(false)
 
-    /** 系统已完成有序投递且无人处理；只允许已有可校验 NPatch 文档的启动提前回退。 */
+    /** 系统确认有序投递无人处理；结束本路等待，不产生许可或恢复缓存授权。 */
     fun completeUnhandled(action: String, canFallback: Boolean): Boolean {
         if (!canFallback) return false
         val awaiter = active.get() ?: return false
@@ -91,7 +91,7 @@ internal object HostAdmissionClient {
         fun launch(bound: Boolean) = runCatching {
             (if (bound) boundWorker else worker).submit {
                 val route = if (bound) HostAdmissionRoutePlan.BINDER else HostAdmissionRoutePlan.PROVIDER
-                val result = try { exchange(app, normal, normalFailure, deadline, bound = bound) }
+                val result = try { exchange(app, normal, normalFailure, deadline, bound = bound, nPatchRuntime = nPatchRuntime) }
                 catch (error: SecurityException) {
                     // 平台拒绝跨包绑定/查询，不是条款或来源上的权威拒绝。
                     Log.w(TAG, "[BIL] 启动授权通道异常(route=$route, type=security)")
@@ -111,7 +111,7 @@ internal object HostAdmissionClient {
         }.getOrNull()
         fun launchBroadcast() = runCatching {
             broadcastWorker.submit {
-                val result = try { exchange(app, normal, normalFailure, deadline, broadcast = true) }
+                val result = try { exchange(app, normal, normalFailure, deadline, broadcast = true, nPatchRuntime = nPatchRuntime) }
                 catch (error: SecurityException) {
                     Log.w(TAG, "[BIL] 启动授权通道异常(route=${HostAdmissionRoutePlan.BROADCAST}, type=security)")
                     Result()
@@ -130,7 +130,7 @@ internal object HostAdmissionClient {
         }.getOrNull()
         fun launchLocal() = runCatching {
             localWorker.submit {
-                val result = try { exchange(app, normal, normalFailure, deadline, local = true) }
+                val result = try { exchange(app, normal, normalFailure, deadline, local = true, nPatchRuntime = nPatchRuntime) }
                 catch (error: SecurityException) {
                     Log.w(TAG, "[BIL] 启动授权通道异常(route=${HostAdmissionRoutePlan.LOCAL}, type=security)")
                     Result()
@@ -206,7 +206,8 @@ internal object HostAdmissionClient {
         deadline: Long,
         bound: Boolean = false,
         broadcast: Boolean = false,
-        local: Boolean = false
+        local: Boolean = false,
+        nPatchRuntime: Boolean = false
     ): Result {
         val authority = "${BuildConfig.APPLICATION_ID}.admission"
         // 目标宿主可能因 Android 包可见性策略无法从自身 PackageManager 查询模块包。
@@ -214,7 +215,7 @@ internal object HostAdmissionClient {
         // 不能把 getApplicationInfo/resolveContentProvider 的可见性结果当作拒绝依据。
         // 只有端点明确的条款拒绝 / 来源必须同步才禁止更宽松回退；
         // 本路 identity_rejected、信封残缺、绑定对不上或平台 SecurityException 只表示通道不可用。
-        val directFallback = normalFailure == null || normalFailure in setOf(
+        val directFallback = nPatchRuntime || normalFailure == null || normalFailure in setOf(
             "remote_group_unavailable", "remote_read_exception", "remote_group_missing", "remote_stale_protocol")
         val nonce = UUID.randomUUID().toString()
         val request = Bundle().apply {
@@ -259,7 +260,8 @@ internal object HostAdmissionClient {
                 }
                 else -> return Result(reason = HostAdmissionRouteClassifier.REASON_DENIED)
             }
-            if (!snapshot.authorized || RemoteHookConfigContract.contentFingerprint(snapshot) != identity.fingerprint) {
+            if (!snapshot.authorized || nPatchRuntime && snapshot.noRootRevision <= 0L ||
+                RemoteHookConfigContract.contentFingerprint(snapshot) != identity.fingerprint) {
                 return Result(reason = HostAdmissionRouteClassifier.REASON_DENIED)
             }
             if (SystemClock.elapsedRealtime() >= deadline) return Result(reason = "admission_timeout")
@@ -283,7 +285,7 @@ internal object HostAdmissionClient {
         if (SystemClock.elapsedRealtime() >= deadline) return Result(reason = "admission_timeout")
         return when {
             broadcast -> broadcastExchange(context, deadline,
-                canFinishUnhandled = normal != null && normal.noRootRevision > 0L &&
+                canFinishUnhandled = nPatchRuntime || normal != null && normal.noRootRevision > 0L &&
                     HostAdmissionRouteClassifier.allowRemoteConfigFallback(
                         false, normalFailure, normal.authorized,
                         normal.moduleVersionCode == BuildConfig.VERSION_CODE.toLong(), normal.generation
