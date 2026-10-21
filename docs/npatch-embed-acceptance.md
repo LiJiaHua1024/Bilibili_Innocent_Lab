@@ -181,6 +181,25 @@
 
 本轮生产/测试 APK 与源码均沿用 `f45801bf` 对应的 `patched-runtime-final/`，引用见 `reused-production-build.json`；复用其 3690 项 JVM、快速 Lint、最终宿主/触摸复制 2 项回归和相同包哈希，仅重查更新后的矩阵。两项共享设置及详情页时长能力记为 `observed`；首页能力、课程/商品等其它表面、独立服务层路径和跨条件组合继续待验，不将共享设置的详情页结果外推到首页。结束时两端均留空。
 
+### RELATED_PLAY_COUNT
+
+沿用全部相关推荐类型关闭、时长两端留空的基线，正常设置 UI 输入播放次数整数。普通投稿对照分别显示 471.9 万和 256.5 万；每次保存后冷启动，并核对当前 `module_direct` 身份与无运行错误：
+
+| 播放量范围 | 普通投稿对照与当前检查 |
+|---|---|
+| 两端留空 | 两个对照均出现，父组/播放量无回调，0.349 秒通过 |
+| 最低 3,000,000 | 471.9 万对照保留，256.5 万对照移除；播放量 `APPLIED`，0.381 秒通过 |
+| 最高 3,000,000 | 256.5 万对照保留，471.9 万对照移除；播放量 `APPLIED`，0.430 秒通过 |
+| 3,000,000～5,000,000 | 区间内 471.9 万对照保留，原低于下限/高于上限的普通投稿移除；播放量 `APPLIED`，0.303 秒通过 |
+| 该播放量区间加最长 100 秒 | 时长、播放量两个叶项均 `APPLIED`，0.361 秒通过；0:12、311.6 万播放的交集对照保留，原两个对照不再出现 |
+| 再次清空两类范围 | 原两个对照恢复；父组及两个叶项无回调，0.462 秒通过 |
+
+UI 还拒绝最低 3,000,000、最高 1,000,000 的反向区间，明确显示“最高播放量不能低于最低播放量。”并保留输入弹窗。组合案例中，原 2:24 高播放量视频超出时长上限，原 0:50 视频低于播放量下限；保留的 0:12 / 311.6 万普通投稿同时满足两类条件。当前诊断只归因实际执行的首个过滤判据，不把两个开关同时开启当作两个能力都成功。
+
+证据 `captures/npatch-2b/related-play-count-acceptance/01-play-count-baseline-dialog.png`、`02-play-count-baseline-detail.xml/.png`、`05-min-configured-values.xml/.png`、`07-min-visible-controls.xml/.png`、`10-invalid-play-range.xml/.png`、`13-max-configured-values.xml/.png`、`14-max-only-detail.xml/.png`、`18-band-configured-values.xml/.png`、`20-band-visible-controls.xml/.png`、`23-combo-duration-configured-values.xml/.png`、`24-combined-ranges-evidence.log`、`25-combined-visible-controls.xml/.png`、`28-duration-off-values.xml/.png`、`32-play-count-off-values.xml/.png`、`33-both-ranges-restored-detail.xml/.png`、`34-restored-controls-*.xml/.png`、各阶段 `*-evidence.log`、`play-count-verification.log` 与 `final-feature-results.log`。
+
+本案例验证上述普通投稿的有效计数及范围交集；其它卡片表面的读取覆盖、首页、直播、未知计数和独立服务层路径仍需各自案例，不根据其它卡片的可见数量文案推断其内部类型或读取成功。两项共享设置与详情页播放量能力记为 `observed`，时长上限/能力补充本组合引用，首页能力继续待验。本轮复用相同 `f45801bf` 生产/测试 APK 和已通过的 3690 项 JVM、快速 Lint、140.606 秒最终包回归，只重查矩阵；包哈希引用 `reused-production-build.json`。结束时两类范围均留空。
+
 ### EMBED_WEB
 
 2B.1 的原生 TLS 修复、恢复原有 Web Hook、关闭/条款拒绝/重新开启、重复打开/返回/后台恢复、正文滚动及复制链接均见路线图 2B.1 验收。当前模块的自由复制开关和安装诊断已有证据；评论/简介复制的具体业务仍需独立行为案例，不因 32 个公共 Hook 安装成功而全部标记通过。
