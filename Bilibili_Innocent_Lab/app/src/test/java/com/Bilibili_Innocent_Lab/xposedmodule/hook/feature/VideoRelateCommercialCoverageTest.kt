@@ -43,10 +43,12 @@ class VideoRelateCommercialCoverageTest {
         enhancement: Boolean = false,
         strong: Boolean = false,
         typeReaders: Boolean = true,
-        missingStockReader: Boolean = false
+        missingStockReader: Boolean = false,
+        minDuration: Int = 0
     ) {
         val registrar = ContentFilterTestRegistrar(loader)
         val statuses = mutableListOf<String>()
+        val runtime = mutableListOf<Triple<String, FeatureRuntimeStage, Int>>()
         private val located = requireNotNull(VersionAdapter.locateVideoRelate(loader))
         private val points = located.copy(
             responseItemGetters = located.responseItemGetters.filter {
@@ -69,14 +71,17 @@ class VideoRelateCommercialCoverageTest {
             relateCardTypeValueGetters = if (typeReaders) located.relateCardTypeValueGetters else emptyList()
         )
         val result = VideoRelateFilterFeatureInstaller(
-            hiddenTypes = hidden, minDurationSeconds = 0, maxDurationSeconds = 0,
+            hiddenTypes = hidden, minDurationSeconds = minDuration, maxDurationSeconds = 0,
             matchingEnhancementEnabled = enhancement, strongModeEnabled = strong, points = points
         ).install(HookEnvironment(
             "tv.danmaku.bili", loader, HookPointRegistry(loader), registrar,
-            { _, _ -> }, { _, _ -> }, { _, status -> statuses += status }
+            { _, _ -> }, { _, _ -> }, { _, status -> statuses += status },
+            runtimeEvidence = { id, stage, count -> runtime += Triple(id, stage, count) }
         ))
 
-        fun filter(source: List<*>) = registrar.items("video.relate.response.0", Relates(), source)
+        fun filter(source: List<*>, receiver: Any = Relates()) = registrar.items("video.relate.response.0", receiver, source)
+        fun count(id: String, stage: FeatureRuntimeStage = FeatureRuntimeStage.APPLIED) =
+            runtime.filter { it.first == id && it.second == stage }.sumOf { it.third }
     }
 
     @Test fun explicitCommercialPayloadWorksWithoutEnhancementOrStrongMode() {
@@ -121,5 +126,61 @@ class VideoRelateCommercialCoverageTest {
         assertTrue(h.statuses.single().contains("missing-commercial-payload-accessor"))
         val normal = Card()
         assertEquals(listOf(normal), h.filter(listOf(Card(case = RelateCard.CardCase.CM), normal)))
+    }
+
+    @Test fun mixedTypedRemovalsReportOnlyTheirActualCauses() {
+        val h = Harness(linkedSetOf("CM", "GAME", "COURSE"))
+        val normal = Card()
+        assertEquals(listOf(normal), h.filter(listOf(Card(case = RelateCard.CardCase.CM),
+            Card(case = RelateCard.CardCase.GAME), normal)))
+        assertEquals(1, h.count("video_related_commercial_removed"))
+        assertEquals(1, h.count("video_related_game_removed"))
+        assertEquals(0, h.count("video_related_course_removed"))
+        assertEquals(1, h.count("video_related_commercial_removed", FeatureRuntimeStage.OBSERVED))
+    }
+
+    @Test fun unmatchedEnabledTypesRemainWithoutRuntimeEvidence() {
+        val h = Harness(setOf("CM", "GAME"))
+        val source = listOf(Card())
+        assertSame(source, h.filter(source))
+        assertFalse(h.runtime.any { it.first.startsWith("video_related_") })
+    }
+
+    @Test fun commercialPayloadUsesTheEnabledRemovalDimension() {
+        for ((type, capability) in listOf("CM" to "video_related_commercial_removed",
+            "SPECIAL" to "video_related_special_removed")) {
+            val h = Harness(setOf(type))
+            assertTrue(h.filter(listOf(Card(stock = true))).isEmpty())
+            assertEquals(1, h.count(capability))
+            assertEquals(1, h.runtime.filter { it.first.startsWith("video_related_") &&
+                it.second == FeatureRuntimeStage.APPLIED }.sumOf { it.third })
+        }
+    }
+
+    @Test fun strongOnlyPayloadDoesNotClaimCommercialOrMatchingHits() {
+        val h = Harness(emptySet(), enhancement = true, strong = true)
+        assertTrue(h.filter(listOf(Card(stock = true))).isEmpty())
+        assertEquals(1, h.count("video_related_strong_mode_enabled"))
+        assertEquals(0, h.count("video_related_commercial_removed"))
+        assertEquals(0, h.count("video_related_matching_enhancement_enabled"))
+    }
+
+    @Test fun numericRemovalDoesNotClaimAnEnabledType() {
+        val h = Harness(setOf("CM"), minDuration = 10_000)
+        assertTrue(h.filter(listOf(Card())).isEmpty())
+        assertEquals(1, h.count("video_related_duration_filter"))
+        assertEquals(0, h.count("video_related_commercial_removed"))
+    }
+
+    @Test fun failedWritebackMarksOnlyMatchedCausesAndPreservesGetterFiltering() {
+        val h = Harness(setOf("CM", "GAME"))
+        val normal = Card()
+        repeat(2) {
+            assertEquals(listOf(normal), h.filter(listOf(Card(case = RelateCard.CardCase.CM), normal), Any()))
+        }
+        assertEquals(2, h.count("video_related_commercial_removed", FeatureRuntimeStage.ERROR))
+        assertEquals(2, h.count("video_related_commercial_removed"))
+        assertEquals(0, h.count("video_related_game_removed", FeatureRuntimeStage.ERROR))
+        assertEquals(0, h.count("video_related_game_removed"))
     }
 }

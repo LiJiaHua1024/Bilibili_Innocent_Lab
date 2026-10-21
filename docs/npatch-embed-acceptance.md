@@ -137,11 +137,31 @@
 
 修复只在完整已核对契约成立时优先 `C0`：精确 DTO 类 `r2`、精确组件返回类型、实例字段 `a` 的枚举类型及必要常量、实例 getter `y()` 返回同一枚举。保留旧 `d` 入口和最高分并列拒绝；不随意挑选同签名专用构造器。规则代次从 72 提升到 73，使旧缺失缓存重新定位；JSON 形状和 schema 不变。三项新增 JVM 回归覆盖真实同签名干扰、未验证 DTO/并列拒绝及旧入口。
 
-最终包当前 `module_direct` 身份检查通过（0.348 秒）：父组由 `PARTIAL / 5 Hook` 变为 `INSTALLED / 6 Hook`，`observed=1 / applied=1`，没有 runtime error；商业推广叶项为 `INSTALLED / 6 Hook`、`observed=0 / applied=0`。正常 UI 仅商业推广开启，普通推荐对照保留；原服务层定位错误消失。证据 `06-cm-selected.xml/.png`、`08-final-enabled-detail.xml/.png`、`final-enabled-group-evidence.log`、`final-feature-results.log` 和 `service-host.log`。父组回调尚不能区分响应层与服务层，也不能替代叶项命中，本例只确认服务层定位及安装缺口修复，独立业务归因继续待做。
+最终包当前 `module_direct` 身份检查通过（0.348 秒）：父组由 `PARTIAL / 5 Hook` 变为 `INSTALLED / 6 Hook`，`observed=1 / applied=1`，没有 runtime error；该包商业推广叶项为 `INSTALLED / 6 Hook`、`observed=0 / applied=0`。正常 UI 仅商业推广开启，普通推荐对照保留；原服务层定位错误消失。证据 `06-cm-selected.xml/.png`、`08-final-enabled-detail.xml/.png`、`final-enabled-group-evidence.log`、`final-feature-results.log` 和 `service-host.log`。父组回调不能区分响应层与服务层，也不能替代叶项命中，本例只确认服务层定位及安装缺口修复；叶项归因后续见 `RELATED_RUNTIME`，服务层独立业务仍待验。
 
 最终目录 `patched-service-final/verified.json`：模块 SHA-256 `e80a8c17e394a7080a3ee33e1d1a85c9ef606e91cc75b1ba1ff732b3b1c9ddbe`，宿主 `b82e726559f337d6e30c12aa1b80e484f8bfe2ce8ebe96b943bb86ee8d4df269`；相同证书覆盖安装、双 ABI native loader 不变。`service-final-build.log` 中 Debug/AndroidTest APK、3683 项 JVM（0 失败、1 跳过）、快速 Lint 通过，250 Warning/1 Hint，baseline 未扩大。最终宿主启停/条款/Web 与原生触摸复制共 2 项、135.092 秒通过，见 `final-host-regression.log`。
 
 最终 UI 取消唯一商业推广勾选并保存 0 项，冷启动后当前组/叶项的无回调检查通过（0.275 秒），普通推荐保留；证据 `14-cm-off-selected.xml`、`15-cm-off-saved.xml/.png`、`16-final-off-detail.xml/.png` 及 `final-off-group-evidence.log`。升级后的登录、5.0 MB 缓存及实际缓存播放保留，见 `retained-account-cache.log` 和两张 `upgrade-cache-player-*.png`；未修改网络或旋转设置。商业推广矩阵仍为 `observed`，不因安装缺口修复升级为完整业务通过。
+
+### RELATED_RUNTIME
+
+此前服务层修复包的父组有实际应用，商业推广叶项却只有安装状态。此次让响应层和服务层返回实际移除原因，沿原过滤顺序，只将每张卡首个命中条件归给对应能力；未命中条件保持无叶项阶段。未知类型与选区标签暂保留父组证据。宿主桥继续保存当前进程的有界阶段证据，不能据此推算所有可能匹配条件或全程命中总量。内部列表写回失败时，实际受影响叶项同步报告 `ERROR`，getter 仍保留过滤返回值；诊断不会仅凭 `APPLIED` 将其认作无错误成功。
+
+七项新增 JVM 回归经真实 Modern 回调核对：混合卡片分别归因、已启用但未命中项不冒领、CM/SPECIAL 载体回退、强力模式自身归因、数值过滤不冒领类型、重复写回失败只标记受影响叶项，以及当前 `r2` 服务 DTO 被拦截后原构造方法不执行。保留既有过滤判据，公共布尔匹配和原因提取共用类型判断。
+
+最终有线机通过正常 UI 同时开启商业推广与游戏推荐，其它三类、匹配增强和强力模式关闭。冷启动后仍保留普通推荐对照，当前 `module_direct` 身份及无运行错误检查通过（0.516 秒）：
+
+| 当前项 | 安装 | OBSERVED | APPLIED |
+|---|---|---|---|
+| 父组 `video_relate_filter` | INSTALLED / 6 Hook | 1 | 1 |
+| 商业推广 `video_related_commercial_removed` | INSTALLED / 6 Hook | 1 | 1 |
+| 已开启的游戏项 `video_related_game_removed` | INSTALLED / 6 Hook | 0 | 0 |
+
+证据 `captures/npatch-2b/related-runtime-acceptance/06-selected-过滤游戏推荐.xml`、`06-cm-game-selected.png`、`07-cm-game-saved.xml`、`08-final-double-enabled-detail.xml/.png`、`final-double-enabled-evidence.log`、`final-double-enabled-results.log` 与 `runtime-verification.log`。游戏项只是此次未命中的负对照，未因此将游戏过滤矩阵提升为行为通过；服务层独立实际表面和其它过滤条件仍需各自案例。
+
+最终目录 `patched-runtime-final/verified.json`：模块 SHA-256 `465851eb985e3deb8dac8d470cd68dd78afeefbe71fd54ca308775548091a0d3`，宿主 `637b9261de1c384e86e32d9676b43657d3133a6eb9818b1c0178f60fb5c8b60b`，同证书覆盖安装，native 字节不变。`runtime-build.log` 中 Debug/AndroidTest APK、3690 项 JVM（0 失败、1 跳过）和快速 Lint 通过，250 Warning/1 Hint，原 baseline 不变；最终宿主启停/条款/Web 与触摸复制共 2 项、140.606 秒通过，见 `final-host-regression.log`。
+
+通过正常 UI 取消两项并保存 0 项，冷启动后当前父组与两个叶项均无已报告回调，检查通过（0.410 秒），普通推荐保留；证据 `14-both-off-selected.png`、`15-both-off-saved.xml`、`16-final-off-detail.xml/.png` 与 `final-off-evidence.log`。最终更新后登录、5.0 MB 缓存和实际缓存播放保留，见 `retained-account-cache.log` 与两张不同画面的 `upgrade-cache-player-*.png`；没有修改网络或旋转设置。商业推广保留 `observed`，其它过滤条件保持逐项待验。
 
 ### EMBED_WEB
 

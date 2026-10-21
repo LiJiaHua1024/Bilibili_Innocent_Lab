@@ -248,3 +248,12 @@ WebView 对照：`captures/npatch-stage2-web.png` 与 `npatch-stage2-web-activit
 - [x] Debug/AndroidTest APK、3683 项 JVM（0 失败、1 跳过）、快速 Lint 通过，250 Warning/1 Hint、baseline 不变；最终宿主启停/条款/Web 与触摸复制 2 项、135.092 秒通过。登录、5.0 MB 缓存及实际缓存播放保留，商业推广恢复关闭。证据 `captures/npatch-2b/related-service-acceptance/`。
 
 最终模块 SHA-256 `e80a8c17e394a7080a3ee33e1d1a85c9ef606e91cc75b1ba1ff732b3b1c9ddbe`，宿主 `b82e726559f337d6e30c12aa1b80e484f8bfe2ce8ebe96b943bb86ee8d4df269`，native/证书不变。下一单元补充真实过滤原因到能力叶项的运行归因，禁止向所有已启用叶项广播父组计数；服务层独立行为、其它相关推荐条件及其余 2B.2/2B.3 继续待验。
+
+### 2026-10-21 阶段 2B.2：相关推荐逐能力运行归因
+
+- [x] 服务层定位已提交为 `c553f744`。将响应层和服务层的首个实际移除原因映射到对应公开能力，保持原过滤顺序；未命中项无叶项阶段，内部写回失败同步标记实际受影响能力。阶段仍由现有有界诊断桥保存，不扩展账号/内容或授权通道。
+- [x] 七项新增 Modern 回调回归覆盖混合类型、未命中项、载体/强力回退、数值条件、重复写回失败和当前 `r2` 服务拦截。3690 项 JVM（0 失败、1 跳过）、Debug/AndroidTest APK、快速 Lint 通过，250 Warning/1 Hint、baseline 不变；Gradle/Kotlin 已停止。
+- [x] 最终包当前身份下，商业推广与游戏同时开启：父组和商业推广 `OBSERVED/APPLIED=1/1`，已启用但未命中的游戏项 `0/0`，均为 `INSTALLED / 6 Hook`，无运行错误，普通推荐保留。双项关闭冷启动后父组/叶项无回调。游戏只作负对照，不升级其待验状态。详见 `RELATED_RUNTIME`。
+- [x] 最终宿主启停/条款/Web 与触摸复制 2 项、140.606 秒通过；登录、5.0 MB 缓存和实际缓存播放保留。商业推广、游戏均恢复关闭，证据 `captures/npatch-2b/related-runtime-acceptance/`。
+
+最终模块 SHA-256 `465851eb985e3deb8dac8d470cd68dd78afeefbe71fd54ca308775548091a0d3`，宿主 `637b9261de1c384e86e32d9676b43657d3133a6eb9818b1c0178f60fb5c8b60b`，native/证书不变。接着验证相关推荐的时长、播放量等条件及开关组合；服务层独立实际表面、其余 2B.2、构建身份与升级恢复 2B.3 仍待完成，embed 继续实验性。
