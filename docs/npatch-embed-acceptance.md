@@ -129,7 +129,19 @@
 
 最终覆盖安装及完整设备回归后，登录、5.0 MB 缓存和缓存入口实际播放均保留，见同目录 `retained-account-cache.log` 与 `upgrade-*.xml/.png`；相隔两秒的两帧显示实际解码画面，没有关闭网络。关闭态另做五次重新打开，普通推荐正常变化，但未再次下发同一张明确广告；`27-cm-off-warm-1..5.png` 不能冒充“同一广告关闭后恢复”的证据。
 
-本项仍记为 `observed`：关闭后的同类广告重现尚待稳定样本；当前安装器仅上报父组运行计数，商业推广叶项没有独立运行归因；真实 8.90.2 仍报告 `partial:missing-service-layer`，服务层缺口留待下一单元定位。其它类型、匹配增强、强力模式、其它进程和宿主版本未在本例验收，不能把本次响应写回修复扩展为全相关推荐通过。
+本项仍记为 `observed`：关闭后的同类广告重现尚待稳定样本；该包仅上报父组运行计数，商业推广叶项没有独立运行归因；当时 8.90.2 报告 `partial:missing-service-layer`，后续定位修复见 `RELATED_SERVICE`。其它类型、匹配增强、强力模式、其它进程和宿主版本未在本例验收，不能把本次响应写回修复扩展为全相关推荐通过。
+
+### RELATED_SERVICE
+
+对照同一 8.90.2 原版 DEX，服务类包含多个 `(r2) -> RunningUIComponent` 方法。旧定位按参数包名和返回类型打分，多个专用组件构造器并列，因而拒绝定位。`C0` 的实际指令先调用 `r2.y()` 读取 `RelateCardType`，再按枚举分发；调用者包括正常列表构建 `D0(List)` / `X1(RelateTab,List)` 及撤销路径。证据 `captures/npatch-2b/related-service-acceptance/dispatcher-dex-proof.txt`、`dispatcher-callers.txt`；声明和反编译源码在上一案例的 `detail-relate-service-members.txt`、`detail-relate-item-members.txt`、`DetailRelateService.java`。
+
+修复只在完整已核对契约成立时优先 `C0`：精确 DTO 类 `r2`、精确组件返回类型、实例字段 `a` 的枚举类型及必要常量、实例 getter `y()` 返回同一枚举。保留旧 `d` 入口和最高分并列拒绝；不随意挑选同签名专用构造器。规则代次从 72 提升到 73，使旧缺失缓存重新定位；JSON 形状和 schema 不变。三项新增 JVM 回归覆盖真实同签名干扰、未验证 DTO/并列拒绝及旧入口。
+
+最终包当前 `module_direct` 身份检查通过（0.348 秒）：父组由 `PARTIAL / 5 Hook` 变为 `INSTALLED / 6 Hook`，`observed=1 / applied=1`，没有 runtime error；商业推广叶项为 `INSTALLED / 6 Hook`、`observed=0 / applied=0`。正常 UI 仅商业推广开启，普通推荐对照保留；原服务层定位错误消失。证据 `06-cm-selected.xml/.png`、`08-final-enabled-detail.xml/.png`、`final-enabled-group-evidence.log`、`final-feature-results.log` 和 `service-host.log`。父组回调尚不能区分响应层与服务层，也不能替代叶项命中，本例只确认服务层定位及安装缺口修复，独立业务归因继续待做。
+
+最终目录 `patched-service-final/verified.json`：模块 SHA-256 `e80a8c17e394a7080a3ee33e1d1a85c9ef606e91cc75b1ba1ff732b3b1c9ddbe`，宿主 `b82e726559f337d6e30c12aa1b80e484f8bfe2ce8ebe96b943bb86ee8d4df269`；相同证书覆盖安装、双 ABI native loader 不变。`service-final-build.log` 中 Debug/AndroidTest APK、3683 项 JVM（0 失败、1 跳过）、快速 Lint 通过，250 Warning/1 Hint，baseline 未扩大。最终宿主启停/条款/Web 与原生触摸复制共 2 项、135.092 秒通过，见 `final-host-regression.log`。
+
+最终 UI 取消唯一商业推广勾选并保存 0 项，冷启动后当前组/叶项的无回调检查通过（0.275 秒），普通推荐保留；证据 `14-cm-off-selected.xml`、`15-cm-off-saved.xml/.png`、`16-final-off-detail.xml/.png` 及 `final-off-group-evidence.log`。升级后的登录、5.0 MB 缓存及实际缓存播放保留，见 `retained-account-cache.log` 和两张 `upgrade-cache-player-*.png`；未修改网络或旋转设置。商业推广矩阵仍为 `observed`，不因安装缺口修复升级为完整业务通过。
 
 ### EMBED_WEB
 

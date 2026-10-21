@@ -54,7 +54,8 @@ internal object VersionAdapterContract {
      * `view.v1.Relate#getDesc`）。老缓存缺键降级成空表，只抬 rule、不抬 schema；
      * 必须抬，否则已缓存设备永远拿不到详情页发布时间文案链。
      */
-    const val RULE_VERSION = 72
+    /** 72 → 73（2026-10-21）：核对 8.90.2 相关推荐 C0/r2 分发契约，旧服务层缺失缓存需重定位；JSON 不变。 */
+    const val RULE_VERSION = 73
 
     /**
      * 51 → 52（2026-09-11，9.11.0(9110400) 适配）：

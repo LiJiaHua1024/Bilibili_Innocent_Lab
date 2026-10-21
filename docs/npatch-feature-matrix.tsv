@@ -223,7 +223,7 @@ setting	video.ai_declared.precheck	-	-	HOST_GATE	pending	passed	case:ACCOUNT_GAT
 setting	video.ai_declared.strong_mode	ai_declared_video_block	ai_declared_author_block	-	pending	pending	-
 setting	video.related.blocked_authors	video_relate_filter	video_related_author_block	-	pending	pending	-
 setting	video.related.blocked_tags	video_relate_filter	video_related_tag_block	-	pending	pending	-
-setting	video.related.commercial.removed	video_relate_filter	video_related_commercial_removed	-	pending	observed	case:RELATED_COMMERCIAL
+setting	video.related.commercial.removed	video_relate_filter	video_related_commercial_removed	-	pending	observed	case:RELATED_COMMERCIAL,case:RELATED_SERVICE
 setting	video.related.course.removed	video_relate_filter	video_related_course_removed	-	pending	pending	-
 setting	video.related.game.removed	video_relate_filter	video_related_game_removed	-	pending	pending	-
 setting	video.related.live.removed	video_relate_filter	video_related_live_removed	-	pending	pending	-
@@ -397,7 +397,7 @@ capability	story_variety_removed	story_purify	story.variety.removed	-	pending	pe
 capability	system_media_notification	system_media_notification	system.media_notification.enabled	-	pending	pending	-
 capability	teenagers_mode_prompt	teenagers_mode_prompt	prompt.teenagers_mode.blocked	-	pending	pending	-
 capability	video_related_author_block	video_relate_filter	video.related.blocked_authors	-	pending	pending	-
-capability	video_related_commercial_removed	video_relate_filter	video.related.commercial.removed	-	pending	observed	case:RELATED_COMMERCIAL
+capability	video_related_commercial_removed	video_relate_filter	video.related.commercial.removed	-	pending	observed	case:RELATED_COMMERCIAL,case:RELATED_SERVICE
 capability	video_related_course_removed	video_relate_filter	video.related.course.removed	-	pending	pending	-
 capability	video_related_duration_filter	video_relate_filter	recommend.video_duration.maximum_seconds,recommend.video_duration.minimum_seconds	-	pending	pending	-
 capability	video_related_game_removed	video_relate_filter	video.related.game.removed	-	pending	pending	-

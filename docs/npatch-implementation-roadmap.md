@@ -240,3 +240,11 @@ WebView 对照：`captures/npatch-stage2-web.png` 与 `npatch-stage2-web-activit
 - [x] Debug/AndroidTest APK、3680 项 JVM（0 失败、1 跳过）和快速 Lint 通过，250 Warning/1 Hint，baseline 不变；最终启停/条款/Web 与触摸复制共 2 项、137.274 秒通过。覆盖安装和冷启动后登录、5.0 MB 缓存及缓存实际播放保留。证据 `captures/npatch-2b/related-ad-acceptance/`。
 
 最终模块 SHA-256 `7f0df1b8969c5ce4564489f2b5b893bcc5d1def458634cd5a7f85e5bb48ea896`，宿主 `ab0c1406c339f9c60619a4cb99ac4abd52b1b7a4bdfc4f66eaad27e8e5af08b3`，固定 native 和相同证书不变。下一单元先定位当前 8.90.2 的 `partial:missing-service-layer`，并处理能力叶项实际运行归因，再扩展其它相关推荐条件；不抹掉安装缺口、不把组计数复制成所有叶项的业务成功。全量 2B.2 和 2B.3 仍待完成。
+
+### 2026-10-21 阶段 2B.2：相关推荐服务层定位
+
+- [x] 上一单元 protobuf 写回修复已提交为 `8a834ba8`。继续核对实际 DEX，确认多个同签名构造器导致并列，`C0(r2)` 才是类型分发入口；新增精确 DTO/返回类型/枚举字段与 getter 契约，保留旧入口和歧义拒绝。规则代次 72→73，旧缓存重新定位，JSON/schema 不变。
+- [x] 新包当前主进程由 `PARTIAL / 5 Hook` 变为 `INSTALLED / 6 Hook`，父组真实过滤检查通过、无运行错误，普通推荐保留；仅商业推广开启及关闭后的当前配置/无回调对照通过。详见 `RELATED_SERVICE`。叶项仍为安装完成、运行计数为零，尚无独立服务层命中证据，不能将父组效果冒充逐能力成功。
+- [x] Debug/AndroidTest APK、3683 项 JVM（0 失败、1 跳过）、快速 Lint 通过，250 Warning/1 Hint、baseline 不变；最终宿主启停/条款/Web 与触摸复制 2 项、135.092 秒通过。登录、5.0 MB 缓存及实际缓存播放保留，商业推广恢复关闭。证据 `captures/npatch-2b/related-service-acceptance/`。
+
+最终模块 SHA-256 `e80a8c17e394a7080a3ee33e1d1a85c9ef606e91cc75b1ba1ff732b3b1c9ddbe`，宿主 `b82e726559f337d6e30c12aa1b80e484f8bfe2ce8ebe96b943bb86ee8d4df269`，native/证书不变。下一单元补充真实过滤原因到能力叶项的运行归因，禁止向所有已启用叶项广播父组计数；服务层独立行为、其它相关推荐条件及其余 2B.2/2B.3 继续待验。

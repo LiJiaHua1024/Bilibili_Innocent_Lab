@@ -5240,6 +5240,39 @@ object VersionAdapter {
         )
     }.getOrNull()
 
+    internal fun selectDetailRelateComponentFactory(serviceClass: Class<*>): Method? {
+        fun verifiedCurrentDispatcher(method: Method): Boolean {
+            // 8.90.2 DEX：C0 按 r2.y() 分发；同签名的 J0/P0 等只构建单一类型。
+            if (method.name != "C0" || method.returnType.name !=
+                "com.bilibili.app.gemini.ui.RunningUIComponent") return false
+            val item = method.parameterTypes.single()
+            if (item.name != "$DETAIL_RELATE_SERVICE_PACKAGE.r2") return false
+            val type = KavaMemberLookup.fieldOrNull(item, "a")
+                ?.takeIf { !it.isStatic }?.type ?: return false
+            if (type.name != "$DETAIL_RELATE_SERVICE_PACKAGE.RelateCardType" || !type.isEnum) return false
+            val names = KavaMemberLookup.fields(type, includeSuperclasses = false) { it.isEnumConstant }
+                .map { it.name }.toSet()
+            if (!names.containsAll(setOf("AV", "CM", "GAME", "LIVE", "COURSE"))) return false
+            val getter = KavaMemberLookup.methodOrNull(item, "y") ?: return false
+            return !getter.isStatic && getter.returnType == type
+        }
+        val scored = KavaMemberLookup.methods(serviceClass,
+            includeSuperclasses = true, makeAccessible = true) { method ->
+            !method.isStatic && !method.isAbstract && method.parameterCount == 1 &&
+                method.returnType != Void.TYPE && !method.returnType.isPrimitive
+        }.distinctBy(Method::toGenericString).map { method ->
+            val parameterName = method.parameterTypes.single().name
+            val score = (if (parameterName.endsWith("D0") ||
+                parameterName.startsWith("$DETAIL_RELATE_SERVICE_PACKAGE.")) 4 else 0) +
+                (if (method.returnType.name.contains("RunningUIComponent")) 4 else 0) +
+                (if (method.name == "d") 1 else 0) +
+                (if (verifiedCurrentDispatcher(method)) 16 else 0)
+            method to score
+        }.filter { it.second > 0 }
+        val highest = scored.maxOfOrNull { it.second } ?: return null
+        return scored.filter { it.second == highest }.map { it.first }.singleOrNull()
+    }
+
     /** 精确定位相关推荐列表以及公开的直接/嵌套类型读取方法。 */
     fun locateVideoRelate(loader: ClassLoader): VideoRelatePoints? = runCatching {
         fun responseListField(getter: Method): Field? {
@@ -5336,22 +5369,7 @@ object VersionAdapter {
             loader,
             DETAIL_RELATE_SERVICE_CLASS
         )?.let { serviceClass ->
-            val factory = selectUniqueHighestScore(
-                KavaMemberLookup.methods(
-                    serviceClass,
-                    includeSuperclasses = true,
-                    makeAccessible = true
-                ) { method ->
-                    !method.isStatic && !method.isAbstract && method.parameterCount == 1 &&
-                        method.returnType != Void.TYPE && !method.returnType.isPrimitive
-                }.distinctBy(Method::toGenericString)
-            ) { method ->
-                val parameterName = method.parameterTypes.single().name
-                (if (parameterName.endsWith("D0") ||
-                    parameterName.startsWith("$DETAIL_RELATE_SERVICE_PACKAGE.")) 4 else 0) +
-                    (if (method.returnType.name.contains("RunningUIComponent")) 4 else 0) +
-                    (if (method.name == "d") 1 else 0)
-            } ?: return@let null
+            val factory = selectDetailRelateComponentFactory(serviceClass) ?: return@let null
             val itemClass = factory.parameterTypes.single()
             val itemFields = KavaMemberLookup.fields(
                 itemClass,
