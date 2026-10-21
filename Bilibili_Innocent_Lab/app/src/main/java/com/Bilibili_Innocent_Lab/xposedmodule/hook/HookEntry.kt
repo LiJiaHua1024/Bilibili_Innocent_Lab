@@ -49,6 +49,7 @@ import com.Bilibili_Innocent_Lab.xposedmodule.hook.feature.CommentComposeCopyBri
 import com.Bilibili_Innocent_Lab.xposedmodule.hook.feature.CommentNativeSupplementBridge
 import com.Bilibili_Innocent_Lab.xposedmodule.hook.feature.CommentLegacyCopyBridge
 import com.Bilibili_Innocent_Lab.xposedmodule.hook.feature.CommentRawTextReader
+import com.Bilibili_Innocent_Lab.xposedmodule.hook.feature.CommentFullTextReader
 import com.Bilibili_Innocent_Lab.xposedmodule.runtime.replytopology.ReplyTopologyClipboardWrite
 import com.Bilibili_Innocent_Lab.xposedmodule.hook.feature.BlockComponentLibraryFeatureInstaller
 import com.Bilibili_Innocent_Lab.xposedmodule.hook.feature.ComponentLibraryPoolMatcher
@@ -960,11 +961,25 @@ class HookEntry : XposedModule() {
             val image = additionalNativeCopy?.imageContent(v)
             val state = image?.let { CommentRootState(it.first, false, true, it.second, 0L) }
                 ?: semanticState ?: fallbackState
-            val renderedText = extractCommentText(registeredRoot ?: v)
+            val raw = state?.rawText?.trim()?.takeIf { it.length in 1..3000 && it.isNotBlank() }
+            val fullBody = if (raw != null && state.rawTrusted) {
+                commentFullTextReader.read(v)?.let { full ->
+                    val clickable = (full as? android.text.Spanned)?.let { text ->
+                        text.getSpans(0, text.length, classOf<Any>())
+                            .filter { it is android.text.style.ClickableSpan || commentFullTextReader.isNicknameSpan(it) }
+                            .map { text.getSpanStart(it) until text.getSpanEnd(it) }
+                    }.orEmpty()
+                    val start = CommentTextIdentity.replyBodyStart(raw, full,
+                        visibleSpanRanges(full, replacementSpans(full)), clickable)
+                    logInfo("free_copy_reply_projection", "[BIL] 自由复制回复投影: " +
+                        "full=${full.length} raw=${raw.length} clickable=${clickable.size} accepted=${start != null}")
+                    start?.let { full.subSequence(it, full.length) }
+                }
+            } else null
+            val renderedText = fullBody ?: extractCommentText(registeredRoot ?: v)
             val visibleText = renderedText
                 ?.let(::snapshotCommentText)
                 ?.takeIf(::isValidFreeCopyText)
-            val raw = state?.rawText?.trim()?.takeIf { it.length in 1..3000 && it.isNotBlank() }
             if (visibleText == null) return raw?.let(::FreeCopyContent)
             if (raw == null) {
                 logInfo("free_copy_raw_missing", "[BIL] 自由复制原文缺失: bound=${state != null}")
@@ -1530,6 +1545,7 @@ class HookEntry : XposedModule() {
 
         /** 反射缓存：进程内目标类不卸载，可安全缓存 Method/Field，避免评论滚动时重复反射查找 */
         private val commentRawTextReader = CommentRawTextReader()
+        private val commentFullTextReader = CommentFullTextReader()
         private val cHandlerViewFieldByClass =
             java.util.concurrent.ConcurrentHashMap<Class<*>, java.lang.reflect.Field>()
         @Volatile private var additionalNativeCopy: CommentNativeSupplementBridge? = null

@@ -8,6 +8,37 @@ import org.junit.Test
 
 class CommentTextIdentityTest {
 
+    @Test fun decoratedReplyNameIsRemovedOnlyFromVerifiedCompleteBody() {
+        val raw = "5000多楼6225评论(;¬_¬)手有点酸，如果不是特殊方法进来的话是更多完整正文[大哭]"
+        val prefix = "名字里:也有冒号: "
+        val rendered = prefix + raw.replace("[大哭]", "\u200B") + "\u200B"
+        val emoji = rendered.indexOf('\u200B')
+        val start = CommentTextIdentity.replyBodyStart(raw, rendered, listOf(emoji..emoji),
+            listOf(0 until prefix.length - 2))
+        assertEquals(prefix.length, start)
+        assertEquals(CommentTextIdentity.matchKey(raw), CommentTextIdentity.matchKey(
+            rendered.substring(start!!), listOf(emoji - start..emoji - start)))
+        assertNull(CommentTextIdentity.replyBodyStart(raw, rendered, listOf(emoji..emoji), emptyList()))
+        assertNull(CommentTextIdentity.replyBodyStart("另一条完整正文", rendered, listOf(emoji..emoji),
+            listOf(0 until prefix.length - 2)))
+    }
+
+    @Test fun previewProjectionRejectsTruncationAndUnmarkedBodyPrefixes() {
+        val raw = "不能截断的完整回复正文"
+        assertNull(CommentTextIdentity.replyBodyStart(raw, "昵称: 不能截断...", emptyList(), listOf(0..1)))
+        assertNull(CommentTextIdentity.replyBodyStart(raw, "额外正文" + raw, emptyList(), listOf(0..1)))
+        assertNull(CommentTextIdentity.replyBodyStart("哈哈", "昵称: 哈哈", emptyList(), listOf(0..1)))
+        assertEquals(0, CommentTextIdentity.replyBodyStart(raw, raw, emptyList(), emptyList()))
+    }
+
+    @Test fun pureEmojiReplyNeedsTheSameCountAndDecoratedNameBoundary() {
+        val rendered = "昵称: \u200B\u200B\u200B"
+        val ranges = listOf(4..4, 5..5, 6..6)
+        assertEquals(4, CommentTextIdentity.replyBodyStart("[大哭][大哭][大哭]", rendered, ranges, listOf(0..1)))
+        assertNull(CommentTextIdentity.replyBodyStart("[大哭][大哭][大哭][大哭]", rendered, ranges, listOf(0..1)))
+        assertNull(CommentTextIdentity.replyBodyStart("[大哭][大哭]", rendered, ranges, listOf(0..1)))
+    }
+
     @Test
     fun literalSearchSpanAndThreeEmojiKeepTheSameCommentIdentity() {
         val prefix = "人类最古のav号（挂了的不算）也变成bv了"

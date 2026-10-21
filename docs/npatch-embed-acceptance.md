@@ -68,7 +68,21 @@
 
 覆盖安装及最终设备回归后再次冷启动，正式会员登录态、5.0 MB 缓存与缓存入口实际播放均保留，`upgrade-cache-player-1.png` / `-2.png` 为不同视频画面。证据同目录 `retained-account-cache.log` 与 `upgrade-*.xml/.png`；未清数据或切换全局网络状态。
 
-本例验证当前 8.90.2 的普通评论及上述链接/表情组合；纯表情、折叠长评、图片/回复/推送等表面、复用压力和其它宿主版本仍待独立验收，评论整项记录为 `observed`。
+本例验证当前 8.90.2 的普通评论及上述链接/表情组合；折叠长评和两类回复表面的后续证据见 `FREE_COPY_REPLIES`。纯表情、图片/推送等表面、复用压力和其它宿主版本仍待独立验收，评论整项记录为 `observed`。
+
+### FREE_COPY_REPLIES
+
+同一公开样本的短回复预览与专用“评论详情”回复列表能读取当前回复正文，不混入昵称或父评论。第二条折叠预览暴露独立缺陷：气泡仅有 46 字符的“昵称: 截断正文...”，实际正文为 50 字符。`NextLikableTextView` 保留完整富文本输入，但原校验使用了带昵称的截断显示文本，因此回退到了可见快照。
+
+对照 8.90.2 的实际 DEX 和渲染源码：`C2` 的三个输入分别为完整文本、紧凑文本和点赞尾部；完整源保存在当前控件的 `d` 字段。前置昵称由 `Link.b` 生成 `f00.u` 自定义点击 Span，并非 Android `ClickableSpan`；冒号和空格由独立普通文本生成。修复仅对已核对的控件类和成员形状读取当前完整源，再以可信本次绑定正文、严格完整尾部匹配、前置点击区间及冒号空白间隔共同验证正文边界。未知形状、短公共片段、模型不匹配和表情数量不符继续回退；只缓存 Class/Member，不保留宿主实例，也不按昵称字符串或任意冒号猜测边界。
+
+最终包再次长按折叠预览，气泡显示完整 50 字符正文；触摸长按、全选、复制，再粘贴到模块本地设置搜索框，逐字一致，昵称和截断尾部均未混入。短回复预览仍为正确的 23 字符正文；回复详情中“拉了半天总算是见了底”匹配当前回复，不是父评论。主列表多行折叠评论也保留完整八首曲目和末尾说明，共 433 字符；链接加三个 `[大哭]` 的既有样本保持正确。本轮长评案例核对的是气泡全文，未以此代替跨行剪贴板字节检查。
+
+证据在 `captures/npatch-2b/comment-surfaces/`：`04-folded-preview-bubble.xml/.png`（修复前）、`21-final-folded-bubble.xml/.png`、`22-final-folded-selection.png`、`23-final-folded-all.png`、`25-folded-reply-pasted.xml`、`28-final-short-reply.xml/.png`、`30-final-emoji-bubble.xml/.png`、`33-final-reply-list-bubble.xml/.png`、`35-final-folded-main-bubble.xml/.png` 及 `reply-copy-verification.log`。中间候选的 Span 类型不符而保守拒绝，不计入通过结果；最终产物为 `patched-preview-link/verified.json`，仍使用固定双 ABI native 修复及相同证书覆盖安装。
+
+源码门禁 `full-preview-link-build.log`：Debug/AndroidTest APK、3676 项 JVM 测试（0 失败、1 跳过）、快速 Lint 通过，250 Warning/1 Hint，原 baseline 不变；Gradle/Kotlin 守护进程已退出。新增回归覆盖完整源随 View 重绑更新、未知/超限源拒绝、实际点击契约、带冒号昵称、截断/错误模型和纯表情数量不匹配。当前证据只覆盖上述 8.90.2 表面，评论整项仍为 `observed`。
+
+最终包真实宿主启停/条款/Web 与原生触摸复制合计 2 项、136.768 秒通过，见 `final-device-regression.log`。之后再次冷启动，会员登录态、5.0 MB 已完成缓存和缓存入口实际视频画面均保留，见 `retained-account-cache.log`、`upgrade-my.xml`、`upgrade-cache.xml` 及 `upgrade-cache-player-*.png`。未清数据或修改网络/旋转设置。
 
 ### EMBED_WEB
 

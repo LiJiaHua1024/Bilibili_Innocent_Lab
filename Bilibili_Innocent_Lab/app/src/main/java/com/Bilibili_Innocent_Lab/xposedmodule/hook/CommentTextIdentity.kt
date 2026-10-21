@@ -53,8 +53,37 @@ internal object CommentTextIdentity {
     }
 
     fun matchKey(text: CharSequence, replacementRanges: List<IntRange> = emptyList()): String {
+        return buildMatchKey(text, replacementRanges, null)
+    }
+
+    /** 仅供已核对的回复预览完整渲染源使用；昵称必须有独立点击 Span，正文严格匹配尾部。 */
+    fun replyBodyStart(raw: String, rendered: CharSequence, replacementRanges: List<IntRange>,
+        clickableRanges: List<IntRange>): Int? {
+        val rawKey = matchKey(raw)
+        if (rawKey.isEmpty()) return null
+        val ordinaryLength = rawKey.count { it != EMOJI_SLOT }
+        if (ordinaryLength in 1..3) return null
+        val offsets = IntArray(rendered.length)
+        var size = 0
+        val renderedKey = buildMatchKey(rendered, replacementRanges) { offsets[size++] = it }
+        if (!renderedKey.endsWith(rawKey)) return null
+        val start = offsets[renderedKey.length - rawKey.length]
+        if (start == 0) return 0
+        val prefix = clickableRanges.singleOrNull { range ->
+            range.first == 0 && range.last >= 0 && range.last + 1 < start &&
+                rendered.subSequence(range.last + 1, start).let { gap ->
+                    gap.any { it == ':' || it == '：' } &&
+                        gap.all { it.isWhitespace() || it == ':' || it == '：' }
+                }
+        } ?: return null
+        return start.takeIf { prefix.last < it }
+    }
+
+    private fun buildMatchKey(text: CharSequence, replacementRanges: List<IntRange>,
+        origin: ((Int) -> Unit)?): String {
         val ranges = replacementRanges.sortedBy { it.first }
         val out = StringBuilder(text.length)
+        fun append(value: Char, offset: Int) { out.append(value); origin?.invoke(offset) }
         var rangeIndex = 0
         var i = 0
         while (i < text.length) {
@@ -63,19 +92,19 @@ internal object CommentTextIdentity {
             if (spanRange != null && i == spanRange.first &&
                 isEmojiReplacement(text, spanRange.first, spanRange.last + 1)
             ) {
-                out.append(EMOJI_SLOT)
+                append(EMOJI_SLOT, i)
                 i = minOf(text.length, spanRange.last + 1)
                 rangeIndex++
                 continue
             }
             val emojiEnd = emojiTokenEnd(text, i)
             if (emojiEnd > i) {
-                out.append(EMOJI_SLOT)
+                append(EMOJI_SLOT, i)
                 i = emojiEnd
                 continue
             }
             when {
-                text[i] == '\uFFFC' -> out.append(EMOJI_SLOT)
+                text[i] == '\uFFFC' -> append(EMOJI_SLOT, i)
                 // B 站 9.8.0 富文本会在每段 ImageSpan 的 U+200B 之外，再在整段末尾
                 // 追加一个不带 Span 的 U+200B。前者已由 replacementRanges 转为槽位，
                 // 后者只是排版哨兵，不能参与评论身份或 Emoji 数量判断。
@@ -85,7 +114,7 @@ internal object CommentTextIdentity {
                     i += 3
                     continue
                 }
-                !text[i].isWhitespace() -> out.append(text[i])
+                !text[i].isWhitespace() -> append(text[i], i)
             }
             i++
         }

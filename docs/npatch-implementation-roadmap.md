@@ -202,4 +202,15 @@ WebView 对照：`captures/npatch-stage2-web.png` 与 `npatch-stage2-web-activit
 - [x] 最终包 `NPatchEmbeddedHostInstrumentedTest` 与 `HostCopySelectionInstrumentedTest` 合计 2 项、134.045 秒通过，覆盖启停/条款/Web 与真实触摸菜单选区复制；证据 `captures/npatch-2b/copy-acceptance/final-device-regression.log`。
 - [x] 最终包覆盖安装、完整设备回归及冷启动后，登录状态和已完成的 5.0 MB 缓存均保留，缓存入口仍可启动播放；证据同目录 `retained-account-cache.log`、`upgrade-my.xml`、`upgrade-cache.xml` 和 `upgrade-cache-player*.png`。没有清数据或关闭网络，不据此宣称断网验收。
 
-行为细节、修复前失败和当前边界见 `FREE_COPY_DESCRIPTION` / `FREE_COPY_COMMENT` 案例；两项在矩阵中保留 `observed`，没有把少量样本提升为全表面完成。后续仍须覆盖纯表情、折叠长评、回复/图片/推送、外观及适用进程组合，并继续播放器和净化验收。本工作单元在完成验证后按用户持续授权提交，不 push。
+行为细节、修复前失败和当前边界见 `FREE_COPY_DESCRIPTION` / `FREE_COPY_COMMENT` 案例；两项在矩阵中保留 `observed`，没有把少量样本提升为全表面完成。该工作单元已按用户持续授权提交为 `8a24d824`，未 push；折叠长评和回复表面的后续进展见下节。
+
+### 2026-10-21 阶段 2B.2：折叠回复完整正文
+
+- [x] 复现回复预览带昵称、只复制截断文本的问题；核对当前 8.90.2 的实际控件、完整/紧凑/点赞三组输入和昵称链接 Span 契约。
+- [x] 仅对已验证的控件形状读取当前完整富文本，严格核对可信正文尾部与昵称点击区间；未知控件、短公共片段、错误模型和表情数量不匹配保持保守回退，不扩大授权或防串评论边界。
+- [x] 最终包折叠回复的触摸全选、复制与模块本地粘贴精确一致，完整正文 50 字符且不带昵称；短回复预览、专用回复详情、433 字符多行折叠主评论及原有链接/表情气泡回归通过。行为证据见 `FREE_COPY_REPLIES`，整项仍记 `observed`。
+- [x] Debug/AndroidTest APK、3676 项 JVM（0 失败、1 跳过）与快速 Lint 通过，250 Warning/1 Hint，baseline 不变；Gradle/Kotlin 守护进程已退出。证据 `captures/npatch-2b/comment-surfaces/full-preview-link-build.log` 与 `full-jvm-suites.json`。
+- [x] 同证书重新修补并覆盖安装；模块 SHA-256 `1173634baeb13f6a324c7c4ceef0d8c9555d24e5a4d69a8d6f7182a8b43f7c8e`，宿主 `170637c0e84a933b5b77cfb99fac730b11e2d65a5b15ca625ea3c96ac2d532dc`。最终目录 `captures/npatch-2b/comment-surfaces/patched-preview-link/`，双 ABI native loader 不变。
+- [x] 最终包真实宿主启停/条款/Web 与原生触摸复制 2 项、136.768 秒通过；再次冷启动后登录、5.0 MB 缓存及缓存入口实际播放均保留。证据同目录 `final-device-regression.log`、`retained-account-cache.log` 和 `upgrade-*.xml/.png`。
+
+继续 2B.2 的剩余复制表面、播放器、净化和外观组合；全量矩阵未完成，embed 保持实验性。每个完成并验证的工作单元独立提交，不 push。
