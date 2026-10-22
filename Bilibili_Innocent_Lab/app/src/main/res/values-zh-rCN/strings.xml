@@ -1515,4 +1515,9 @@
     <string name="npatch_embed_build_missing">此嵌入宿主中没有本模块；请用当前模块 APK 重新修补。</string>
     <string name="npatch_embed_build_unknown">暂无法核对内嵌模块。请检查安装包后刷新；此状态不表示内容一致。</string>
     <string name="npatch_embed_recovery">设置 App 被强行停止后，请先打开它，再冷启动哔哩哔哩。重装设置 App 后需重新接受条款并开启免 Root；导入设置备份不会恢复条款同意或账号凭据。</string>
+    <string name="npatch_profile_host_environment">已安装宿主：%1$s（%2$s）；Android API %3$s；设备 ABI：%4$s</string>
+    <string name="npatch_compatibility_unknown">兼容参数不完整，当前组合未验证。</string>
+    <string name="npatch_compatibility_baseline">安装参数与实测基线一致；这不代表已核对修复版 Loader 内容或宿主进程 ABI，请结合产物记录与当前宿主诊断确认。</string>
+    <string name="npatch_compatibility_unverified">当前参数组合未验证，反馈问题时请保留修补产物记录。</string>
+    <string name="npatch_compatibility_embed_invalid">嵌入模式 Loader 833 的签名绕过等级超过 2，与固定 patcher 上限不符；请核对产物，按支持参数重新修补。</string>
 </resources>

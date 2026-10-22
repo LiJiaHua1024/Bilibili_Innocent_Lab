@@ -1515,4 +1515,9 @@
     <string name="npatch_embed_build_missing">This embedded host does not contain this module. Repatch with the installed module APK.</string>
     <string name="npatch_embed_build_unknown">Embedded module comparison is unavailable. Check the installed packages and refresh; this does not confirm a match.</string>
     <string name="npatch_embed_recovery">If the settings app was force-stopped, open it before restarting Bilibili. After reinstalling it, accept the terms and enable no-root support again. Importing a settings backup does not restore consent or account credentials.</string>
+    <string name="npatch_profile_host_environment">Installed host: %1$s (%2$s); Android API %3$s; device ABIs: %4$s</string>
+    <string name="npatch_compatibility_unknown">Compatibility parameters are incomplete; this combination is unverified.</string>
+    <string name="npatch_compatibility_baseline">Installed parameters match the tested baseline. This does not verify the fixed Loader bytes or the host process ABI; confirm the artifact record and current host diagnostics.</string>
+    <string name="npatch_compatibility_unverified">This parameter combination is unverified. Keep the current artifact record when reporting a problem.</string>
+    <string name="npatch_compatibility_embed_invalid">Embedded Loader 833 reports a signature bypass level above 2, outside the pinned patcher limit. Check the artifact and repatch with the supported parameters.</string>
 </resources>

@@ -6,6 +6,7 @@ import com.Bilibili_Innocent_Lab.xposedmodule.diagnostics.ModuleDiagnosticInputs
 import com.Bilibili_Innocent_Lab.xposedmodule.diagnostics.DiagnosticHostConfigState
 import com.Bilibili_Innocent_Lab.xposedmodule.runtime.noroot.NPatchMode
 import com.Bilibili_Innocent_Lab.xposedmodule.runtime.noroot.NPatchEmbeddedBuildState
+import com.Bilibili_Innocent_Lab.xposedmodule.runtime.noroot.NPatchCompatibility
 
 /** 安装参数与运行回执分别展示；没有回执时不把默认 source=manager 当成运行事实。 */
 internal fun nPatchDiagnosticsDetails(context: Context, input: ModuleDiagnosticInputs): String {
@@ -28,6 +29,16 @@ internal fun nPatchDiagnosticsDetails(context: Context, input: ModuleDiagnosticI
         add(context.getString(R.string.npatch_profile_manager_version,
             environment.managerVersionName ?: unknown,
             environment.managerVersionCode?.toString() ?: unknown))
+        add(context.getString(R.string.npatch_profile_host_environment,
+            environment.hostVersionName ?: unknown, environment.hostVersionCode?.toString() ?: unknown,
+            environment.androidSdk?.toString() ?: unknown,
+            environment.deviceAbis.joinToString(", ").ifEmpty { unknown }))
+        add(context.getString(when (NPatchCompatibility.assess(environment)) {
+            NPatchCompatibility.UNKNOWN -> R.string.npatch_compatibility_unknown
+            NPatchCompatibility.BASELINE_PARAMETERS -> R.string.npatch_compatibility_baseline
+            NPatchCompatibility.UNVERIFIED_PARAMETERS -> R.string.npatch_compatibility_unverified
+            NPatchCompatibility.EMBEDDED_LEVEL_INVALID -> R.string.npatch_compatibility_embed_invalid
+        }))
         if (environment.versionMismatch) add(context.getString(R.string.npatch_profile_version_mismatch))
         if (patch.mode == NPatchMode.EMBEDDED) {
             add(context.getString(R.string.npatch_profile_embed_experimental))

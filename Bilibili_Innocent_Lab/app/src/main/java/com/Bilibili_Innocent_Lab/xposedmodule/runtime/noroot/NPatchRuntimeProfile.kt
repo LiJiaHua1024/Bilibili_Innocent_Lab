@@ -1,6 +1,7 @@
 package com.Bilibili_Innocent_Lab.xposedmodule.runtime.noroot
 
 import android.content.Context
+import android.os.Build
 import android.util.Base64
 import com.highcapable.betterandroid.system.extension.component.versionCodeCompat
 import com.highcapable.betterandroid.system.extension.component.getPackageInfoOrNull
@@ -23,7 +24,11 @@ internal data class NPatchRuntimeProfile(
 internal data class NPatchEnvironment(
     val patch: NPatchRuntimeProfile,
     val managerVersionCode: Long?,
-    val managerVersionName: String?
+    val managerVersionName: String?,
+    val hostVersionCode: Long? = null,
+    val hostVersionName: String? = null,
+    val androidSdk: Int? = null,
+    val deviceAbis: List<String> = emptyList()
 ) {
     val versionMismatch: Boolean
         get() = patch.mode == NPatchMode.MANAGER && patch.loaderVersionCode != null &&
@@ -49,8 +54,10 @@ internal object NPatchRuntimeProfiles {
 
     fun environment(context: Context): NPatchEnvironment {
         val manager = context.packageManager.getPackageInfoOrNull(MANAGER_PACKAGE)
+        val host = context.packageManager.getPackageInfoOrNull(NoRootSupportState.TARGET_PACKAGE)
         return NPatchEnvironment(read(context), manager?.versionCodeCompat,
-            manager?.versionName?.take(64))
+            manager?.versionName?.take(64), host?.versionCodeCompat, host?.versionName?.take(64),
+            Build.VERSION.SDK_INT, Build.SUPPORTED_ABIS.toList())
     }
 
     /** 不让 JSON 的字符串/数字强制转换把损坏参数解释成真实能力。未知字段不参与决策。 */
