@@ -252,6 +252,27 @@ UI 还拒绝最低 3,000,000、最高 1,000,000 的反向区间，明确显示�
 
 本轮仅更新验收记录与矩阵，复用同一包的 3700 项 JVM、快速 Lint 和 141.779 秒最终包回归；包哈希见 `reused-production-build.json`。类型全部关闭，作者和标签名单仍为空。
 
+### RELATED_REASON
+
+2026-10-22 复用 `b2570cc3` 相同包，通过原生相关推荐面板验证自定义推荐理由。五类内容过滤、强力模式、时长/播放量、作者/标签均关闭；“过滤匹配增强”是理由设置的前置开关。公开视频 `BV1xx411c7mD` 的《bilibili上市宣传视频》卡显示“10万投币”，其它普通投稿显示“5万点赞”等不同理由，作为对照。
+
+| 设置 | 普通推荐行为及当前身份检查 |
+|---|---|
+| 仅匹配增强开启，理由/强力模式关闭、未选类型 | 推荐保留，父组 `DISABLED`、0 Hook，理由/匹配增强叶项无回调，0.605 秒通过 |
+| 匹配增强及自定义理由开启，关键词 `10` | “10万投币”目标卡移除，5 万点赞等其它普通推荐保留；父组及理由叶项 `APPLIED`，匹配增强叶项不误报，0.366 秒通过 |
+| 关键词改为 `1000000000` | 目标卡及可见理由恢复；父组已执行，理由/匹配增强叶项无命中，0.274 秒通过 |
+| 恢复关键词 `10`，保留理由开关但关闭匹配增强 | 目标卡保留，父组 `DISABLED`、0 Hook，两个叶项无回调，0.516 秒通过 |
+| 重新开启匹配增强，未重新输入理由或关键词 | 理由开关及 `10` 均保留，理由叶项再次 `APPLIED`、目标移除，0.342 秒通过 |
+| 清空关键词并关闭全部类型/匹配增强/强力/理由开关 | 目标卡及其“10万投币”理由恢复；父组 `DISABLED`、0 Hook，两个叶项无回调，0.406 秒通过 |
+
+原因归因仍按实际执行判据：自定义关键词的移除归入 `video_related_reason_filter_enabled`，不能因前置匹配增强已开启就给 `video_related_matching_enhancement_enabled` 复制 `APPLIED`。本案例仅验证相关推荐自定义理由及前置门控，匹配增强的推广判据、其它安装器和强力模式仍待独立业务案例。
+
+证据 `captures/npatch-2b/related-reason-acceptance/01-reason-baseline-dialog.xml`、`01-reason-baseline.png`、`02-enhancement-expanded.xml/.png`、`03-matching-only-selected.xml/.png`、`05-matching-only-detail.xml/.png`、`05-matching-only-evidence.log`、`10-reason-keyword-values.xml/.png`、`12-keyword-10-detail.xml/.png`、`12-keyword-10-evidence.log`、`13-reason-filtered-controls.xml/.png`、`15-unmatched-values.xml/.png`、`17-unmatched-keyword-detail.xml/.png`、`17-unmatched-keyword-evidence.log`、`19-restored-keyword-values.xml/.png`、`20-prerequisite-off-selected.xml/.png`、`21-prerequisite-off-evidence.log` 和 `reason-verification.log`。
+
+保留与最终恢复证据另见 `23-retained-reason-*.xml`、`24-prerequisite-on-selected.xml/.png`、`25-retained-rule-applied-evidence.log`、`27-keyword-cleared-values.xml/.png`、`30-all-switches-cleared-selected.xml/.png`、`31-final-reason-off-detail.xml/.png` 和 `31-final-reason-off-evidence.log`。最终关键词清空，相关开关均关闭，作者/标签名单和时长/播放量范围仍为空。
+
+本轮仅更新记录与矩阵，复用相同包的 3700 项 JVM、快速 Lint 与 141.779 秒最终包回归，包哈希见 `reused-production-build.json`。理由开关/关键词、理由能力及前置设置记为 `observed`；匹配增强能力只记 `installed`，其它安装器对应的推广能力继续待验。
+
 ### EMBED_WEB
 
 2B.1 的原生 TLS 修复、恢复原有 Web Hook、关闭/条款拒绝/重新开启、重复打开/返回/后台恢复、正文滚动及复制链接均见路线图 2B.1 验收。当前模块的自由复制开关和安装诊断已有证据；评论/简介复制的具体业务仍需独立行为案例，不因 32 个公共 Hook 安装成功而全部标记通过。
