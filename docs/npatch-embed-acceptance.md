@@ -435,6 +435,14 @@ UI 还拒绝最低 3,000,000、最高 1,000,000 的反向区间，明确显示�
 
 该检查证明产物和证书链，不证明任意自有证书下的登录/支付业务；运行支持矩阵仍按实测范围声明。正式 Release/R8 和模式往返在后续门禁单元记录，不以工具生成成功替代实机验收。安装前核对当前宿主证书，换证书不能通过卸载来伪装保留数据升级。
 
+### APPEARANCE_REPRESENTATIVE
+
+2026-10-22，在同一有线机及 8.90.2/833 embed/sig2/Android 16/arm64 范围补齐外观类别代表性兼容检查。证据 `captures/npatch-2b/representative-acceptance/`。使用正常模块 UI，将“宿主页面背景”从跟随哔哩哔哩切为海盐琉璃，保留默认模糊/饱和度/遮罩参数，未导入文件。冷启动后的首页卡片间隙、我的页内容区与返回首页均显示浅青色背景；原有宿主装扮的头像、顶栏和底栏装饰仍存在，列表和底栏可操作。见 `04-background-off-home`、`10-ocean-selected`、`11-ocean-saved`、`12-ocean-host-home`、`14-ocean-my`、`15-ocean-return` 的树/截图；不把推荐内容自然变化当作外观证据。
+
+最终模块/宿主为 `f68386…3d29` / `15fcb3…360e`，与 `EMBED_DEX_SOURCE` 最终包相同。严格当前身份检查为 `host_background / INSTALLED / applied=1 / hooks=14 / runtime_error=false`，与 native 原版查询共 2 项通过（16.714 秒），见 `dex-source-acceptance/complete-android-native-and-appearance.log`。安装数量不能代替上述画面对照；应用回调和当前身份与画面一起判定。
+
+通过同一 UI 恢复“跟随哔哩哔哩”并冷启动，页面恢复宿主背景，原有装扮保留；当前身份检查为 `DISABLED / observed=0 / applied=0 / hooks=0`，0.381 秒通过，见 `20-follow-saved`、`21-follow-restored-home` 与 `22-follow-restored-evidence.log`。本例没有调系统主题或旋转设置，不声明其它预设、自定义图片、性能、所有皮肤及 Manager 外观均已验收。仅将预设设置/背景能力两行记 `observed`；其余四个参数行及未测组合仍 pending。没有生产源码改动，复用相同 APK 的 3753 JVM、快速 Lint，另检查矩阵引用。
+
 ## 后续顺序
 
 按路线图 2026-10-22 的范围校正继续 2B.3：Manager/embed 模式切换、可维护的发布产物与用户签名/同证书升级流程；随后补齐尚缺的功能类别代表性兼容回归、原 DEX 来源与缓存失效、支持边界及正式发布门禁。设置 App 生命周期和当前协议的升级恢复复用上述证据，不将单个组合外推为任意跨版本兼容。通用业务缺陷单独记录，不再逐行自动修复；矩阵未测项仍保持待验。

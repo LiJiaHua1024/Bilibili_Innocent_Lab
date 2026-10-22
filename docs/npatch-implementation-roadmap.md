@@ -412,3 +412,11 @@ WebView 对照：`captures/npatch-stage2-web.png` 与 `npatch-stage2-web-activit
 - [x] 一次性密钥离线验收 11 项通过，覆盖同证书重建、Manager 档案和错误证书/口令/模块 ID/参数/输入拒绝，日志与记录无口令。证据 `captures/npatch-2b/signing-mode-acceptance/final-tool-tests/`；只改工具/文档，不重复 Android 构建或 Lint。
 
 案例 `PATCH_SIGNING_TOOL`。运行模式往返和正式 Release/R8 继续后续门禁，不以签名工具测试代替业务验收，未知证书下的账号风控仍不外推。
+
+### 2026-10-22 阶段 2B.2：外观类别代表性兼容回归
+
+- [x] 签名工具已提交为 `0e544744`。最终 DEX 来源包中，通过正常 UI 开启海盐背景，首页/我的/返回首页实际显示，宿主装扮及导航保留；当前完整身份检查确认背景已实际应用。
+- [x] UI 恢复跟随后冷启动，背景恢复，严格回执 `DISABLED / 0 Hook / 0 回调`（0.381 秒）。只提升预设/背景能力两行，矩阵现为 355 pending、46 observed、7 installed、2 passed；未测外观参数和组合不外推。
+- [x] 仅文档与矩阵变更，复用相同生产 APK 的 3753 JVM、快速 Lint 及当前 native/外观 2 项实机结果。证据 `captures/npatch-2b/representative-acceptance/`，结束时背景跟随宿主。
+
+案例 `APPEARANCE_REPRESENTATIVE`。继续 Manager/embed 往返及正式支持矩阵与完整门禁；不再沿通用外观缺陷清单扩大本分支。
