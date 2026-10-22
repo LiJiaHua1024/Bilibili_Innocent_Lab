@@ -1514,4 +1514,5 @@
     <string name="npatch_embed_build_different">The embedded module differs from the settings app, even if version numbers match. Repatch with the installed module APK, update the host using the same signing certificate, then restart it. Updating the settings app alone does not update embedded code.</string>
     <string name="npatch_embed_build_missing">This embedded host does not contain this module. Repatch with the installed module APK.</string>
     <string name="npatch_embed_build_unknown">Embedded module comparison is unavailable. Check the installed packages and refresh; this does not confirm a match.</string>
+    <string name="npatch_embed_recovery">If the settings app was force-stopped, open it before restarting Bilibili. After reinstalling it, accept the terms and enable no-root support again. Importing a settings backup does not restore consent or account credentials.</string>
 </resources>

@@ -1514,4 +1514,5 @@
     <string name="npatch_embed_build_different">內嵌模組與設定 App 內容不同，即使版本號相同也需要更新。請用目前模組 APK 重新修補宿主，以原憑證覆蓋安裝後冷啟動。只更新設定 App 不會更新內嵌程式碼。</string>
     <string name="npatch_embed_build_missing">此嵌入宿主中沒有本模組；請用目前模組 APK 重新修補。</string>
     <string name="npatch_embed_build_unknown">暫時無法核對內嵌模組。請檢查安裝包後重新整理；此狀態不表示內容一致。</string>
+    <string name="npatch_embed_recovery">設定 App 被強制停止後，請先開啟它，再冷啟動嗶哩嗶哩。重新安裝設定 App 後須重新接受條款並啟用免 Root；匯入設定備份不會恢復條款同意或帳號憑證。</string>
 </resources>

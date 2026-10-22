@@ -389,6 +389,32 @@ UI 还拒绝最低 3,000,000、最高 1,000,000 的反向区间，明确显示�
 
 最终专项包的 Debug/AndroidTest APK 与快速 Lint 通过（250 Warning，原 3 条错误基线不变），见 `scoped-final-gates.log`。配置变更、当前授权、免 Root 关闭/重开、条款拒绝及 Web 回归通过（129.889 秒），见 `scoped-embedded-regression.log`；前面的 131.892 秒结果仅保留为含暂停改动时的中间验证，不冒充最终专项产物。
 
+### EMBED_SETTINGS_LIFECYCLE
+
+2026-10-22，范围仍为有线 `13a7a291`、Android 16/arm64、8.90.2/833 embed/sig2，无 Manager。证据目录 `captures/npatch-2b/embedded-lifecycle-acceptance/`。本例只闭环设置 App 生命周期与当前协议的升级恢复，不代表 Manager/embed 切换或完整 2B 已完成。
+
+新增显式分阶段的 `NPatchEmbeddedLifecycleInstrumentedTest`，检查点和白名单设置备份保存在独立测试包私有目录。除 `restored` 外不启动或重启宿主；安装、强停和卸载由外部 ADB 执行，避免测试自身替代恢复动作。检查通过当前 nonce/来源校验的真实宿主诊断，精确比较 incarnation、consent/policy/snapshot revision、fingerprint 和 no-root revision，不用全局心跳或安装数量证明配置已恢复。
+
+| 安装/运行顺序 | 实际结果与证据 |
+|---|---|
+| 强停设置 App，冷启动宿主，设置端点不可达 | 当前 PID 日志记录 `admission_unavailable`；前台重试结束后，`unavailable` 阶段确认拒绝、安装链未开始、0 Hook、无 admission。原配置身份仍在。见 `15-settled-force-stopped-package.txt`、`16-settled-stopped-before-query.log`、`17-settled-stopped-rejected.log`（0.412 秒） |
+| 打开设置 App，再冷启动宿主 | `retained` 阶段精确匹配强停前身份和配置代次，直连授权与安装恢复；最终包结果见 `18-final-reopened-retained.log`（12.823 秒） |
+| 只覆盖更新设置 App，版本仍为 1.2.0（21），宿主内嵌代码保持旧包 | 当前协议下仍能取得当前配置且身份保持不变；APK 内容检查为 `DIFFERENT`。见 `07-module-only-update-retained.log`（4.906 秒）、`08-module-only-different.log`（0.676 秒）。内容不同不等于当前协议必然不兼容，也不等于宿主代码已经更新 |
+| 用新模块重新修补、同证书覆盖宿主并冷启动 | 配置身份保留，内容检查恢复 `MATCHED`。见 `10-repatched-retained.log`（12.424 秒）、`11-repatched-matched.log`（2.182 秒） |
+| 经用户明确批准只卸载设置 App，保留 B 站及数据 | 独立测试包仍在；宿主仍运行内嵌模块，但当前授权不可达，未安装功能。见 `19-settings-uninstalled.log`、`19-remaining-packages.txt`、`20-settings-absent-host.log` |
+| 全新重装设置 App，未接受条款、未开启免 Root，冷启动宿主 | `fresh` 阶段确认 `UNDECIDED`、未启用、incarnation 与卸载前不同、宿主拒绝且 0 Hook/无 admission。见 `22-fresh-settings-rejected.log`（11.988 秒）。实际首次界面仍显示用户条款，见 `23-fresh-settings.xml/.png` |
+| 使用正式导入器恢复备份，再显式重新接受条款和开启免 Root | 自动恢复白名单项逐项读回一致；导入前后仍未同意条款、未开启免 Root。随后重新接受/启用、冷启动，真实宿主精确匹配新身份，内容为 `MATCHED`，见 `24-restored-new-authority.log`（16.771 秒）。本阶段通过生产 Store/导入器执行，不冒充整套导入 UI 的触摸验收 |
+
+强停负对照曾过早启动 Instrumentation，唤醒了设置端点，尚未结束的宿主前台重试随后成功，导致预期拒绝的检查失败（`14-final-stopped-rejected.log`）。这不是“强停时可使用旧缓存”的证据。最终先在测试进程外等前台重试结束并保存当前 PID 拒绝日志，再启动只读检查；较短日志窗口不足以覆盖两次启动记录的尝试也保留，不拿不完整日志推断成功。
+
+未知授权协议版本 `-1/0/VERSION+1` 的 prepare 和 confirm 均拒绝、不发文档或 challenge；恢复现有版本后仍须重新准备/确认，租约仅可消耗一次。与旧正 revision 拒绝、关闭门控及标准框架文档回退共 11 项端点/策略实机测试通过（3.693 秒），见 `endpoint-protocol-fallback.log`。该测试入口显式提供调用 UID，不将其称为真实跨版本宿主 IPC；实际跨 APK 验证仅为上表相同版本码、当前协议的旧宿主/新设置 App 组合。不承诺任意历史或未来 schema 互通。
+
+诊断页新增中英繁三种恢复引导，明确强停后先打开设置 App、重装后重新接受条款/启用、业务备份不恢复条款同意或账号凭据。未修改授权协议、适配 schema/rule、依赖或诊断导出白名单。最终源码 3746 项 JVM（0 失败、1 跳过）、Debug/AndroidTest APK 和快速 Lint 通过，250 Warning、原 3 条错误基线不变；见 `complete-gates.log`、`full-jvm.json`，构建守护进程已退出。
+
+最终模块 SHA-256 `8de89a1135b9ec3be170af165b94c4d2b2f586fbcf768ee04209fe25fa737425`，宿主 `4ddab0d083f11c8274c3eaf2e8475e01dd30cbb05913a6c8cbeb7b1961a60482`；固定 patcher、双 ABI native loader 和证书不变，见 `patched-lifecycle-final/verified.json`。本例没有卸载 B 站、修改系统安全策略或操作无线机；首次重装时只处理了系统当次“继续安装”确认。
+
+最终包真实配置/启停/条款/Web 与原生触摸选区复制回归 2 项通过（143.607 秒），见 `final-embedded-regression.log`。B 站正式会员登录、既有 5.0 MB 缓存保留，缓存入口两帧画面实际推进，见 `retained-account-cache.log`、`upgrade-cache.xml/.png`、`upgrade-cache-player-1.png` / `-2.png`；未断网，不作为断网播放验收。已安装诊断页确认当前直连配置，恢复提示滚动到可见区域后检查，见 `32-final-diagnostics.xml/.png`、`33-final-recovery-visible.xml/.png`；本轮独立测试包的私有检查点随后删除，手机留在诊断页。仅复用已有正式首次引导证据，本例不宣称全新安装宿主或其它 Android/ABI 已验收。
+
 ## 后续顺序
 
-按路线图 2026-10-22 的范围校正继续 2B.3：设置 App 与内嵌模块升级、重装与恢复、协议兼容和模式切换；随后补齐功能类别代表性兼容回归、支持边界及发布门禁。通用业务缺陷单独记录，不再逐行自动修复；矩阵未测项仍保持待验。
+按路线图 2026-10-22 的范围校正继续 2B.3：Manager/embed 模式切换、可维护的发布产物与用户签名/同证书升级流程；随后补齐尚缺的功能类别代表性兼容回归、原 DEX 来源与缓存失效、支持边界及正式发布门禁。设置 App 生命周期和当前协议的升级恢复复用上述证据，不将单个组合外推为任意跨版本兼容。通用业务缺陷单独记录，不再逐行自动修复；矩阵未测项仍保持待验。

@@ -31,6 +31,7 @@ internal fun nPatchDiagnosticsDetails(context: Context, input: ModuleDiagnosticI
         if (environment.versionMismatch) add(context.getString(R.string.npatch_profile_version_mismatch))
         if (patch.mode == NPatchMode.EMBEDDED) {
             add(context.getString(R.string.npatch_profile_embed_experimental))
+            add(context.getString(R.string.npatch_embed_recovery))
             add(context.getString(when (input.nPatchEmbeddedBuild) {
                 NPatchEmbeddedBuildState.MATCHED -> R.string.npatch_embed_build_matched
                 NPatchEmbeddedBuildState.DIFFERENT -> R.string.npatch_embed_build_different

@@ -1514,4 +1514,5 @@
     <string name="npatch_embed_build_different">内嵌模块与设置 App 内容不同，即使版本号相同也需要更新。请用当前模块 APK 重新修补宿主，以原证书覆盖安装后冷启动。只更新设置 App 不会更新内嵌代码。</string>
     <string name="npatch_embed_build_missing">此嵌入宿主中没有本模块；请用当前模块 APK 重新修补。</string>
     <string name="npatch_embed_build_unknown">暂无法核对内嵌模块。请检查安装包后刷新；此状态不表示内容一致。</string>
+    <string name="npatch_embed_recovery">设置 App 被强行停止后，请先打开它，再冷启动哔哩哔哩。重装设置 App 后需重新接受条款并开启免 Root；导入设置备份不会恢复条款同意或账号凭据。</string>
 </resources>

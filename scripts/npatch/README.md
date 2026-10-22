@@ -109,4 +109,16 @@ $env:JAVA_HOME = 'C:/Program Files/Java/jdk-17' # apksigner 使用
 
 安装修补后的 B 站及同版本独立模块设置 App；后者提供当前许可与配置，必须保留。首次打开设置 App，接受条款并选择 NPatch 免 Root 通道，冷启动 B 站后验证回执。embed 无需安装 Manager，作用域固定在 APK 内；独立设置 App 不写宿主 UID 的 Remote Store，也不查询 Manager 作用域。更改普通设置后重启宿主；**更新模块代码时必须用最新模块 APK 重新修补宿主**，只更新设置 App 不会替换 APK 内模块。同版本码的开发包也必须核对 `verified.json` 中的模块哈希。
 
+设置 App 被强行停止时，当前授权端点可能不可达；此时宿主不采用旧授权缓存。先打开设置 App，再冷启动宿主。覆盖安装保留设置；卸载设置 App 会删除其配置、条款决定和账号授权，重新安装后需重新接受条款、开启免 Root，账号凭据需重新授权。设置备份只恢复白名单业务设置，不恢复条款、免 Root 启用意图、租约或运行回执。仅重装设置 App 不能更新宿主 APK 内的模块代码。
+
+专项备用机可显式运行 `NPatchEmbeddedLifecycleInstrumentedTest`：`lifecycle=checkpoint` 保存当前身份和白名单设置到**独立测试包的私有目录**；`retained` 核对覆盖安装或强停恢复后的完整当前身份；`unavailable` 检查端点不可达时的零功能安装；`fresh` 检查设置 App 重装后的未同意/未启用状态与新身份；`restored` 通过正式导入器恢复可自动恢复的设置，确认导入未授予许可，再显式接受条款、启用并冷启动真实宿主。测试不自行卸载或安装 APK。使用 `fresh/restored` 前须明确批准设置 App 数据删除，并保留独立测试包；卸载测试包会删除检查点。该专项测试要求 Android 12 以上，不改变产品最低版本要求。
+
+```powershell
+adb -s <设备序列号> shell am instrument -w -r -e lifecycle checkpoint `
+    -e class com.Bilibili_Innocent_Lab.xposedmodule.runtime.NPatchEmbeddedLifecycleInstrumentedTest `
+    com.Bilibili_Innocent_Lab.xposedmodule.test/androidx.test.runner.AndroidJUnitRunner
+```
+
+强停场景必须先在测试进程外冷启动宿主，等待其前台授权重试完成，按本次 PID 保存 `admission_unavailable` 和未安装的日志，再运行 `unavailable`。提前启动 Instrumentation 会唤醒设置端点，可能让仍未结束的前台重试成功，不能把这种测试干预写成“强停时仍取得许可”。`checkpoint/retained/unavailable/fresh` 均不启动或重启宿主，查询通过当前 nonce/来源校验；失败不能以历史心跳补成功。执行后删除独立测试包的 `files/npatch-embedded-lifecycle.json` 可清理检查点。
+
 诊断页只读查询当前响应的 NPatch 进程、许可/安装状态和 Hook 点数。没有响应不等于没有注入，零 Hook 也不等于功能故障；主进程专用功能继续在子进程跳过。查询最多 16 个进程、1.5 秒等待，使用各进程独立的只读回调线程，不依赖宿主主线程绘制，不唤醒未运行的进程，不抢主进程心跳。原生 loader 修复后，embed 的 `:web` 恢复原有功能安装及注册时序，不延迟自由复制 Hook。初始化未完成时显示 `LOADED`，完整注册后显示 `INSTALLED` 及实际 Hook 点数，失败显示 `FAILED`。旧内嵌模块的 `GATED` 状态仍可解析，当前模块不再主动整进程隔离。当前已验证登录态保留、普通视频缓存下载/播放及模块账号授权与撤销；逐项范围见[行为案例](../../docs/npatch-embed-acceptance.md)及[全量矩阵](../../docs/npatch-feature-matrix.tsv)。其它业务、隔离进程和未测版本保持未知，不把一次下载或账号 ready 当作全功能验收。

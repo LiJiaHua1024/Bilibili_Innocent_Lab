@@ -76,6 +76,23 @@ class NPatchDirectPublicationInstrumentedTest {
         assertNull(response.getString("document"))
     }
 
+    @Test fun incompatibleAdmissionVersionsNeverIssueDocumentsOrLeases() {
+        listOf(-1, 0, HostAdmissionContract.VERSION + 1).forEach { version ->
+            val request = request().apply { putInt("version", version) }
+            listOf(HostAdmissionContract.METHOD_PREPARE, HostAdmissionContract.METHOD_CONFIRM).forEach { method ->
+                val rejected = HostAdmissionEndpoint.handleBroadcast(context, method, request, targetUid)
+                assertEquals("protocol_rejected", rejected.getString("status"))
+                assertNull(rejected.getString("document"))
+                assertNull(rejected.getString("challenge"))
+            }
+        }
+        // 拒绝未知版本后，现有版本仍须重新完成准备、确认和单次租约消耗。
+        val prepared = prepare()
+        assertEquals("prepared", prepared.getString("status"))
+        assertEquals("granted", confirm(prepared).getString("status"))
+        assertEquals("stale", confirm(prepared).getString("status"))
+    }
+
     @Test fun restartFlushOnlyNeedsDurableCurrentDirectPublication() {
         val done = CountDownLatch(1)
         var result: NoRootSupportController.FlushResult? = null
