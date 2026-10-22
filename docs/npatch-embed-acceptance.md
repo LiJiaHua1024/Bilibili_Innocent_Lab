@@ -291,6 +291,30 @@ UI 还拒绝最低 3,000,000、最高 1,000,000 的反向区间，明确显示�
 
 最终包真实配置/启停/条款/Web 与原生触摸复制回归 2 项、138.468 秒通过，见 `final-host-regression.log`。之后正式会员登录与 5.0 MB 既有缓存保留，缓存入口两张截图为不同的实际视频帧，见 `retained-account-cache.log` 与 `upgrade-cache-player-1.png` / `-2.png`；未据此声明断网播放、其它版本或全量功能验收完成。
 
+### PLAYER_QUALITY
+
+2026-10-22 以有线备用机上的公开普通投稿验证默认画质。设置基线为“跟随哔哩哔哩”，当前身份检查确认画质注册组 `DISABLED`、0 Hook、无回调。早期短视频会从旧进度播放到结尾并自动连播，后续固定为详情页进入的 11:43 投稿《从 PCL 到 HMCL：我们的 Minecraft 自由社区正在失去什么？》（AID `117474687257555`）；全屏连播队列中的其它视频与未进入全屏的中间截图不充当画质结果。
+
+旧包设置 360P 后，严格检查虽有 `APPLIED`，固定样本的原生面板却选中“自动（1080P 高清）”，实际默认画质未生效。原版 APK 确认 `gh6.h.c()` 计算默认 QN，独立的 `h()` 读取自动偏好并保留青少年/课程限制；`PlayViewRepository.b(VideoVod$b)` 另外设置 QN 策略，而普通播放器偏好构造也独立读取自动策略。只覆盖默认 QN 不足以关闭这些默认构造阶段的自动分支。
+
+修复经统一 KavaMemberLookup 边界精确核对该版本的三个同步默认构造签名和设置伴生对象的 Boolean 读取器；仅在这些调用期间，把指定自动偏好的读取收敛为关闭。不写宿主偏好、不修改资源或付费权限、不在最终自动策略方法上强制返回；原有青少年/课程限制分支继续执行。作用域不跨协程、不持有宿主实例，原方法抛异常也退出；Story 当前准入不允许覆盖时不借用普通作用域。新角色在安装时定位，不写入持久适配缓存，原有缓存 schema/rule 不变；仅对已核对的 `gh6.h.c()` 档案启用，不外推未知版本。
+
+新增 8 项 JVM 回归，验证精确档案/缺失成员、三种同步边界、无关偏好、嵌套与跨线程隔离、原方法及偏好读取异常、当前目标撤回、部分安装停用与去重重试。安装覆盖增加普通默认策略家族，缺失 Story 的当前实机明确保留 `partial:2/3`、5 Hook，不把普通视频修复写成 Story 全覆盖；旧测试的覆盖分母随之更新，未削弱原有重试和去重断言。
+
+最终包冷启动固定样本后，原生画质面板中的“360P 流畅”实际为粉色选中项；同一视频再手动选“480P 标清”及“自动”，两次选中状态均正确，没有被默认值立即拉回。证据 `captures/npatch-2b/quality-acceptance/39-fixed-360-evidence.log`（0.529 秒）、`41-fixed-360-retry-menu.xml/.png`、`43-manual-480-menu.xml/.png`、`44-auto-option.xml/.png` 和 `46-manual-auto-menu.xml/.png`。首次全屏进入失败记录不算画质证据；等待控制栏稳定后补采，保留原严格身份断言。
+
+保留手动自动选择，再冷启动同一入口后，模块默认 360P 重新选中，0.395 秒当前身份检查通过，见 `48b-default-360-restored-menu.xml/.png` 与 `48b-default-360-restored-evidence.log`。通过正常设置将默认值改为 480P，设置摘要及冷启动后的原生面板均为 480P，0.321 秒检查通过，见 `49-default-480-saved.xml/.png`、`50-default-480-cold-detail.xml/.png`、`51-default-480-menu.xml/.png` 与 `51-default-480-evidence.log`。画质只按实际样本可用项验证，没有点击付费档位或试用。
+
+保持模块默认 480P 开启，最终包真实配置/启停/条款/Web 与原生触摸复制回归 2 项、134.392 秒通过，见 `final-host-regression.log`。
+
+回归后通过 UI 改为“跟随哔哩哔哩”，设置摘要恢复跟随；冷启动同一入口，原生面板实际选中“自动（1080P 高清）”，画质注册组 `DISABLED`、0 Hook、无回调，0.408 秒严格检查通过。见 `52-follow-restored-saved.xml/.png`、`53-follow-cold-detail.xml/.png`、`54-follow-restored-menu.xml/.png` 与 `54-follow-restored-evidence.log`。这验证关闭后的宿主原生选择恢复，默认值最终留在跟随状态；两行矩阵仅记 `observed`，Story 和其它业务继续待验。
+
+最终再次确认正式会员登录态和 5.0 MB 既有缓存保留；缓存入口两张截图为不同的实际视频帧，见 `retained-account-cache.log`、`upgrade-cache.xml/.png` 与 `upgrade-cache-player-1.png` / `-2.png`。未据此声明断网或其它清晰度缓存验收。
+
+最终 3716 项 JVM（0 失败、1 跳过）、Debug/AndroidTest APK 与快速 Lint 通过，250 Warning，原 baseline 不变。APK 构建见 `normal-policy-final-gates.log`，最终测试、快速 Lint 与矩阵检查见 `acceptance-final-gates.log` 和 `normal-policy-full-jvm-suites.json`；后续 JVM 负例、覆盖断言及文档调整不改变生产/测试 APK，生产字节已核对。模块 SHA-256 `e42ffa6f7acda2d4c77f36278f02866042aedc984ccaa76df220dd505b0edd16`，宿主 `4ed22485035b054d49b6ebe75f0b58ff296b03c9be5955515dab1955d0ac862a`，固定 patcher/native/证书不变，见 `patched-normal-policy/verified.json`。
+
+源证据同目录 `default-quality-owner.log`、`DefaultQuality-h.java`、`PlayerSettingHelper.java`、`PlayerSettingCompanion.java`、`PlayViewRepository.java`、`PlayParams-n.java`、`KeelParams-h.java`、`default-preference-callers.log`、`33-quality-available.xml/.png` 和 `38-long-cold-360-quality.xml/.png`。日志中仅取到显示尺寸的抓取不作为解码分辨率证明；本例按原生画质实际选中状态与播放画面验收，不宣称完成独立解码尺寸测量、Story、其它业务类型或其它版本验证。
+
 ### EMBED_WEB
 
 2B.1 的原生 TLS 修复、恢复原有 Web Hook、关闭/条款拒绝/重新开启、重复打开/返回/后台恢复、正文滚动及复制链接均见路线图 2B.1 验收。当前模块的自由复制开关和安装诊断已有证据；评论/简介复制的具体业务仍需独立行为案例，不因 32 个公共 Hook 安装成功而全部标记通过。

@@ -289,7 +289,7 @@ class StoryQualityHookIntegrationTest {
         val h = Harness("player.story.policy")
         val partial = h.install() as FeatureInstallResult.Installed
         assertFalse(partial.complete)
-        assertEquals("partial:1/2", h.statuses.last())
+        assertEquals("partial:2/3", h.statuses.last())
         h.port.failId = null
         assertTrue((h.install() as FeatureInstallResult.Installed).complete)
         val successful = h.port.registrationAttempts.groupingBy { it.first }.eachCount()
