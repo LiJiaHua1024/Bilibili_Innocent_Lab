@@ -1,6 +1,6 @@
 # NPatch 当前实施路线图
 
-更新时间：2026-10-21。实施分支：`feat/npatch-compat`；起点 `2ef9877f`。
+更新时间：2026-10-22。实施分支：`feat/npatch-compat`；起点 `2ef9877f`。
 
 本文是兼容性总览与 Feature Program 合并后的唯一当前排期入口。原文保留为[兼容性调研与验收档案](npatch-compatibility-plan.md)及[Feature 可行性研究](npatch-feature-program.md)，其中历史“现状”、勾选框、工期与阶段编号不再表示当前进度。这里的“待做”表示已纳入路线，“探索”表示尚未承诺实现。
 
@@ -273,3 +273,11 @@ WebView 对照：`captures/npatch-stage2-web.png` 与 `npatch-stage2-web-activit
 - [x] 仅更新文档/矩阵，复用相同源码的 3690 项 JVM、快速 Lint 和 140.606 秒最终包回归，另查矩阵；证据 `captures/npatch-2b/related-play-count-acceptance/`。两类范围均恢复留空，任务日志停止。
 
 继续相关推荐作者/标签、类型净化及其它适用组合；首页、其它卡片表面、服务层独立行为和其余 2B.2/2B.3 保持待验。当前包哈希仍为上一源码单元的 `465851…a0d3` / `637b92…b60b`，不能把局部详情页案例作为正式全量支持结论。
+
+### 2026-10-22 阶段 2B.2：新版相关推荐作者读取与行为验收
+
+- [x] 上一单元已提交为 `74427792`。恢复工作时有线机处于未锁屏状态，宿主仍为 8.90.2，工作区干净。作者完整 UID 实机失败，定位为仅适配旧直接 `getAuthor`、遗漏新版 `getBasicInfo → getAuthor → Owner`；补齐作者显示名 `getTitle` 与 `getMid`，保留旧链，规则版本 73→74 使旧缓存重新定位。
+- [x] 重新修补并同签名覆盖安装，验证完整 UID、名称单独过滤、两者前缀不命中、混合名单归一去重和清空恢复；实际作者叶项归因与 UI 对照一致。新增 `RELATED_AUTHOR`，作者设置/能力两行 `observed`；不向首页、其它版本、卡型或服务层独立行为外推。结束时作者名单清空。
+- [x] 新增 5 项 JVM 回归；最终 3695 项 JVM（0 失败、1 跳过）、Debug/AndroidTest APK、快速 Lint 通过（250 Warning / 1 Hint，baseline 不变）。最终包配置/启停/条款/Web/触屏复制真实回归 2 项、138.851 秒通过；登录态、5.0 MB 既有缓存及实际解码保留。证据 `captures/npatch-2b/related-author-acceptance/`；模块 `1d36c7…35d6`、宿主 `c3b6cd…556a`，固定 patcher/native/证书不变。
+
+继续核查相关推荐标签的新版字段与可见标签含义，再推进类型净化和其它适用组合。2B.2 全量、2B.3 构建身份/升级恢复及正式准入继续待做，embed 保持实验性。

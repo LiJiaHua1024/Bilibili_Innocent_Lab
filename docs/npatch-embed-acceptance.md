@@ -200,6 +200,30 @@ UI 还拒绝最低 3,000,000、最高 1,000,000 的反向区间，明确显示�
 
 本案例验证上述普通投稿的有效计数及范围交集；其它卡片表面的读取覆盖、首页、直播、未知计数和独立服务层路径仍需各自案例，不根据其它卡片的可见数量文案推断其内部类型或读取成功。两项共享设置与详情页播放量能力记为 `observed`，时长上限/能力补充本组合引用，首页能力继续待验。本轮复用相同 `f45801bf` 生产/测试 APK 和已通过的 3690 项 JVM、快速 Lint、140.606 秒最终包回归，只重查矩阵；包哈希引用 `reused-production-build.json`。结束时两类范围均留空。
 
+### RELATED_AUTHOR
+
+2026-10-22 使用相同有线环境和公开入口 `BV1xx411c7mD`，独立验证详情页相关推荐作者名单。作者 UID 来自普通投稿跳转后的公开空间 Intent，不读取当前登录账号资料。时长、播放量、发布时间和其它相关推荐过滤保持关闭。
+
+修复前，完整公开 UID `208259` 已保存，但《bilibili上市宣传视频》仍出现；严格当前身份检查报告 `No applied callback for video_relate_filter`。原适配只有旧 `view.v1.Relate#getAuthor → Author#getName/getMid`，新版 `RelateCard` 把作者放在 `getBasicInfo → CardBasicInfo#getAuthor → Owner`。已核对实际 APK 成员和宿主映射器 `j.t` / `AuthorRepository.b.c`：新版作者显示名使用 `Owner#getTitle`，mid 使用 `getMid`。修复补齐这两条完整成员链，保留旧链；`RULE_VERSION` 73→74 使旧定位缓存失效，JSON/schema 不变。只从作者对象读取显示名，不将投稿标题充当作者。
+
+| 修复后名单 | 普通推荐卡对照与当前身份检查 |
+|---|---|
+| 完整 UID `208259` | 对应投稿移除，武器 A 等其它普通推荐保留；父组及作者叶项 `APPLIED`，0.482 秒通过 |
+| 仅 UP 名 `McIDE` | 保存归一为 `mcide`，该公开 UP 的 0:17 失效投稿卡移除，UID 对照恢复；父组及作者叶项 `APPLIED`，0.412 秒通过 |
+| 前缀 `20825,Mci` | 保存归一为 `20825,mci`，上述两条卡片均出现；父组已执行、作者叶项无命中，0.446 秒通过 |
+| 混合 `208259,McIDE,208259` | 保存归一并去重为 `208259,mcide`，两条目标卡片移除，河蟹/三体等其它普通推荐保留；父组及作者叶项 `APPLIED`，0.506 秒通过 |
+| 再次清空名单 | 两条目标卡片均恢复；父组 `DISABLED`、0 Hook、无回调，作者叶项无回调，0.459 秒通过 |
+
+修复前的 `15-control-prefix-no-match-evidence.log` 只能作为旧包观测；最终精确匹配对照采用修复后的 `28-fixed-prefixes-no-match-evidence.log`，不能把“作者链根本不可读”当成前缀匹配正确。每次查询仍严格校验当前主进程、授权、安装完成、DIRECT 来源和完整配置身份，不因业务失败放松检查。诊断计数是有界阶段证据，不作为完整推荐命中统计。
+
+证据位于 `captures/npatch-2b/related-author-acceptance/`：`control-public-author-identity.log`、`card-basic-info-members.txt`、`owner-members.txt`、`RelateCardMapper-j.java`、`AuthorRepository-b.java`、`18-full-author-enabled-evidence.log`、`19-full-author-failure-current.xml/.png`、`20-fixed-full-author-*.log/.xml/.png`、`21-fixed-other-controls.xml/.png`、`23-name-saved.xml/.png`、`24-name-enabled-*.log/.xml/.png`、`25-name-visible-controls.xml/.png`、`28-fixed-prefixes-no-match-*.log/.xml/.png`、`29-prefix-controls.xml/.png` 和 `author-verification.log`。公开推荐会自然变化，因此同时要求实际叶项归因和界面对照，不用单张消失截图证明成功。
+
+混合与恢复证据另见 `31-mixed-saved.xml/.png`、`32-mixed-enabled-evidence.log`、`33-mixed-controls.xml/.png`、`35-cleared-values.xml/.png`、`36-authors-off-evidence.log`、`37-restored-controls.xml/.png`。名单最终留空。
+
+新增 5 项 JVM 回归覆盖新旧成员链序列化、精确 UID、作者显示名、缺失/异常/非正 mid 安全放行及旧直接作者路径；最终 3695 项 JVM（0 失败、1 跳过）、两个 Debug APK、快速 Lint 通过（250 Warning / 1 Hint，baseline 不变）。模块 SHA-256 `1d36c7554ea87b131f0b7c0a7f579e76ea8e65d5e15c4db6575869205b2035d6`，宿主 `c3b6cdb55fb5f1f2048ff7735ac48a5edb17272557c755e0cd6778358f43556a`；固定 patcher/native/证书复用上一单元，见 `patched-author-final/verified.json`。作者设置及详情页能力记为 `observed`，不外推首页、其它宿主版本、服务层独立路径或所有卡片类型。
+
+最终包再次通过真实 `NPatchEmbeddedHostInstrumentedTest` 与 `HostCopySelectionInstrumentedTest`，2 项、138.851 秒，见 `final-host-regression.log`；覆盖当前配置、启停、条款、Web 和原生触屏选取复制。同签名升级及回归后，正式会员登录态和 5.0 MB 既有缓存均保留；`retained-account-cache.log`、`upgrade-cache.xml/.png` 和已查看的 `upgrade-cache-player-1.png` / `-2.png` 证明缓存播放页继续解码。没有据此声明断网或其它资源恢复场景通过。
+
 ### EMBED_WEB
 
 2B.1 的原生 TLS 修复、恢复原有 Web Hook、关闭/条款拒绝/重新开启、重复打开/返回/后台恢复、正文滚动及复制链接均见路线图 2B.1 验收。当前模块的自由复制开关和安装诊断已有证据；评论/简介复制的具体业务仍需独立行为案例，不因 32 个公共 Hook 安装成功而全部标记通过。

@@ -5556,23 +5556,38 @@ object VersionAdapter {
         val reasonChains = (directReasonChains + nestedReasonChains).distinctBy { chain ->
             chain.steps.joinToString("->") { it.label() }
         }
-        // 作者与标签维度。`getTagName` 直接是 String，`getAuthor` 要再下一级。
-        // 数值 mid 不能走 reasonChain（它只认文本），所以单独建一条两级链。
+        // 作者与标签维度。新版作者位于 CardBasicInfo；旧版仍直接持有 Author。
+        // 数值 mid 不能走 reasonChain（它只认文本），因此保留完整的类型化成员链。
         val tagNameChains = itemMethods("getTagName")
             .mapNotNull { reasonChain(listOf(it)) }
             .distinctBy { chain -> chain.steps.joinToString("->") { it.label() } }
-        val authorGetters = itemMethods("getAuthor")
-        fun authorLeaf(name: String, accept: (Method) -> Boolean): List<ReasonMethodChain> =
-            authorGetters.mapNotNull { authorGetter ->
-                val leaf = KavaMemberLookup.methods(
-                    authorGetter.returnType,
+        val authorGetterPaths = itemMethods("getAuthor").map(::listOf) +
+            itemMethods("getBasicInfo").mapNotNull { basicGetter ->
+                KavaMemberLookup.methods(
+                    basicGetter.returnType,
                     includeSuperclasses = true,
                     makeAccessible = true
                 ) { method ->
-                    method.name == name && method.parameterCount == 0 &&
+                    method.name == "getAuthor" && method.parameterCount == 0 &&
+                        method.isPublic && !method.isStatic && !method.returnType.isPrimitive
+                }.distinctBy(Method::toGenericString).singleOrNull()
+                    ?.let { listOf(basicGetter, it) }
+            }
+        fun authorLeaf(name: String, accept: (Method) -> Boolean): List<ReasonMethodChain> =
+            authorGetterPaths.mapNotNull { authorPath ->
+                val authorClass = authorPath.last().returnType
+                // 8.90.2 Owner#getTitle 是作者显示名，不能将任意卡片标题当作者名。
+                val leafName = if (name == "getName" && authorClass.name ==
+                    "com.bapis.bilibili.app.viewunite.common.Owner") "getTitle" else name
+                val leaf = KavaMemberLookup.methods(
+                    authorClass,
+                    includeSuperclasses = true,
+                    makeAccessible = true
+                ) { method ->
+                    method.name == leafName && method.parameterCount == 0 &&
                         method.isPublic && !method.isStatic && accept(method)
                 }.distinctBy(Method::toGenericString).singleOrNull() ?: return@mapNotNull null
-                ReasonMethodChain(listOf(authorGetter.toHookPoint(), leaf.toHookPoint()))
+                ReasonMethodChain((authorPath + leaf).map { it.toHookPoint() })
             }.distinctBy { chain -> chain.steps.joinToString("->") { it.label() } }
         val authorNameChains = authorLeaf("getName") { it.returnType == classOf<String>() }
         val authorMidChains = authorLeaf("getMid") { method ->

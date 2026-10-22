@@ -55,7 +55,8 @@ internal object VersionAdapterContract {
      * 必须抬，否则已缓存设备永远拿不到详情页发布时间文案链。
      */
     /** 72 → 73（2026-10-21）：核对 8.90.2 相关推荐 C0/r2 分发契约，旧服务层缺失缓存需重定位；JSON 不变。 */
-    const val RULE_VERSION = 73
+    /** 73 → 74（2026-10-22）：补齐 CardBasicInfo/Owner 作者名及 mid 链，旧版仅直接作者链的缓存需重定位；JSON 不变。 */
+    const val RULE_VERSION = 74
 
     /**
      * 51 → 52（2026-09-11，9.11.0(9110400) 适配）：
