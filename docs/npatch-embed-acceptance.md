@@ -347,6 +347,18 @@ UI 还拒绝最低 3,000,000、最高 1,000,000 的反向区间，明确显示�
 
 生产模块 SHA-256 `933ab14b360040fd88549ccb488d23a8042f170529de73ce7d0a562d0be278c4`，嵌入宿主 `b17ce77fa72b0c744885f6599bb1fac0252221487511c6e340369676c640a651`，固定 patcher/native/证书不变，见 `patched-shared-final/verified.json`。其它版本、其它业务及完整预加载/会员/限制模式实机组合仍待验。两行画质矩阵保持 `observed`，追加案例引用，不把局部覆盖升级成全场景通过。
 
+### STORY_ACTION_ICONS
+
+2026-10-22，同一有线机、8.90.2/833 embed 范围，证据目录 `captures/npatch-2b/story-icons-acceptance/`。默认六项均未隐藏，六个实际控件可见。只开启“隐藏弹幕开关”后，旧包底部开关仍可见，叶能力却报告 `NOT_APPLICABLE`、0 回调，见 `01-current-baseline.xml/.png`、`02-icons-dialog-dialog.xml` / `02-icons-dialog.png`、`03-toggle-only-selected.png`、`04-toggle-only-old-entry-0.xml/.png` 与 `04-toggle-only-old-evidence.log`。若进入竖屏第一次未成功，按该目录实际成功的 `entry-1` 取证，不把仍在详情页的尝试写成验收结果。
+
+原实现只处理 9.4 起的新 widget；8.90.2 在 StoryAbsController 上直接持有底部 ImageView。新增 KavaMemberLookup 访问器契约：精确 getter/setter 类型、由播放器 getter 返回类型确定的唯一绑定签名，不按混淆生命周期字母猜测。setter 和绑定回调仅折叠目标开关，复用原有 GONE、0 宽高/边距、透明及不可点规则；初始化结束再核对一次，弱集合避免重复排队，不持有页面实例缓存。两处注册均成功后才启用；部分失败不执行，重试去重；延迟读取失败被收敛并报告。新版 widget 保留，旧访问器存在但失配时不能被新版成功掩盖为完整支持。
+
+新增六项 JVM 回归，共 3735 项（0 失败、1 跳过）、Debug/AndroidTest APK 与快速 Lint 通过，250 Warning，baseline 不变，见 `legacy-danmaku-final-gates.log` 与 `legacy-danmaku-full-jvm.json`。说明文案去掉仅“右侧”的范围描述，资源收尾通过 APK/快速 Lint；全部 19 个 dex 和清单与已通过测试的逻辑包字节相同，见 `copy-final-gates.log`、`module-code-identity.json`。未修改适配缓存结构/规则或依赖。
+
+旧底部弹幕开关单项已实际隐藏，另外五个图标保留，该叶从不适用变为 `INSTALLED / APPLIED`；见 `10-legacy-toggle-fixed-entry-1.xml/.png` 与 `10-legacy-toggle-fixed-evidence.log`。这是资源说明收尾前的同字节逻辑包；最终文案包上，点赞、评论的竖屏单项分别隐藏且其它五项保留，独立叶应用及其它叶无回调的严格检查通过。横屏控制栏也分别只隐藏所选图标，另一个保留，见 `12-landscape-controls-baseline.png`、`24-like-only-final-entry-0.xml/.png`、`25-like-only-final-landscape.png`、`31-comment-only-entry-0.xml/.png`、`32-comment-only-landscape.png` 及对应 evidence 日志。横屏控制栏不完整暴露在 accessibility 树，按控制栏实际显示的截图核对，不把隐藏控制栏时的空树作为图标消失证明。
+
+最终模块 SHA-256 `6eb13359c3f13c189635c53a8b030d93e576986c6d76a73671bb65962b9c3bea`，嵌入宿主 `c3907addd8202971ccce1f7a4f3a65f5283e44675918a866f9468ee53f078c0d`；固定 patcher/native/证书不变，见 `patched-icons-final/verified.json`。投币、收藏、分享的单项也分别隐藏目标并保留其它五项，严格叶证据通过，见 `40-coin-only`、`50-favorite-only`、`60-share-only` 系列及 `individual-results.log`。六项全选的共享首条和横屏对照已验证：目标图标均隐藏，输入栏、进度、播放、倍速和画质控件保留，六叶各自报告应用，见 `70-all`、`71-all-landscape`。横屏返回的一次 UI dump 因宿主未空闲失败，保留失败记录并单独重取，不当作功能结果。首次上滑仍是原视频，不计下一条成功；第二次上滑后标题变更，截图与树确认新条目中目标控件仍隐藏，见 `74-all-next-retry`。最终配置/启停/条款/Web 与原生触屏复制回归 2 项通过（138.155 秒），见 `final-embedded-regression.log`。正式会员状态和已有 5.0 MB 缓存保留，缓存入口的两帧显示实际解码推进，见 `retained-account-cache.log` 与 `upgrade-cache-player-1/2.png`；未关闭网络，不作为断网播放验收。最后在设置中清空六项并冷启动，首轮入口点击未进入 Story、第二轮成功；六个控件均恢复，父组 `DISABLED`、0 Hook/回调，六叶无回调，严格检查通过（0.357 秒），见 `80-clear-config`、`80-restored-entry-1.xml/.png` 与 `80-restored-evidence.log`。不外推为图文卡片、其它版本或 Manager 验收。
+
 ### EMBED_WEB
 
 2B.1 的原生 TLS 修复、恢复原有 Web Hook、关闭/条款拒绝/重新开启、重复打开/返回/后台恢复、正文滚动及复制链接均见路线图 2B.1 验收。当前模块的自由复制开关和安装诊断已有证据；评论/简介复制的具体业务仍需独立行为案例，不因 32 个公共 Hook 安装成功而全部标记通过。

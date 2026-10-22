@@ -1295,7 +1295,7 @@
     <string name="semantic_jev_timeout_invalid">Enter a number of seconds from 0.5 to 30, or leave it empty</string>
     <string name="semantic_jev_summary_timeout"> · wait %1$s s</string>
     <string name="story_action_icons_title">Portrait-feed action icons</string>
-    <string name="story_action_icons_description">Hide the like, comment, coin, favorite, share and danmaku toggle icons on the right of the portrait feed. Applies to both the video and image cards, and like/comment also in landscape mode.</string>
+    <string name="story_action_icons_description">Hide the like, comment, coin, favorite, share and danmaku toggle icons in the portrait feed. Applies to both the video and image cards, and like/comment also in landscape mode.</string>
     <string name="story_action_icons_summary_none">None hidden</string>
     <string name="story_action_icons_summary_selected">Hidden: %1$d / %2$d</string>
     <string name="story_action_icons_save">Hide %1$d</string>

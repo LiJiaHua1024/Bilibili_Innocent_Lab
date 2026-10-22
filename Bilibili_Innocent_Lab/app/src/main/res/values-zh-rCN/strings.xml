@@ -1295,7 +1295,7 @@
     <string name="semantic_jev_timeout_invalid">请输入 0.5～30 之间的秒数，或留空</string>
     <string name="semantic_jev_summary_timeout"> · 等待 %1$s 秒</string>
     <string name="story_action_icons_title">竖屏页互动图标</string>
-    <string name="story_action_icons_description">隐藏竖屏流右侧的点赞、评论、投币、收藏、分享与弹幕开关。视频与图文竖屏都生效，点赞与评论在横屏模式下也一并隐藏。</string>
+    <string name="story_action_icons_description">隐藏竖屏流的点赞、评论、投币、收藏、分享与弹幕开关。视频与图文竖屏都生效，点赞与评论在横屏模式下也一并隐藏。</string>
     <string name="story_action_icons_summary_none">未隐藏</string>
     <string name="story_action_icons_summary_selected">已隐藏 %1$d / %2$d 项</string>
     <string name="story_action_icons_save">隐藏 %1$d 项</string>
