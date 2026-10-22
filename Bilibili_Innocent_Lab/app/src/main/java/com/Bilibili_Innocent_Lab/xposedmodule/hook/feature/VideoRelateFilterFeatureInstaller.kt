@@ -233,8 +233,7 @@ internal class VideoRelateFilterFeatureInstaller(
         val commercialEvidencePaths = resolveCommercialEvidencePaths(
             environment,
             adapted,
-            commercialEvidenceActive,
-            includeFeedback = strongModeActive
+            commercialEvidenceActive
         )
         val partialReasons = mutableListOf<String>()
         val missingCommercialPayload = promotionTypeFilteringActive &&
@@ -341,6 +340,7 @@ internal class VideoRelateFilterFeatureInstaller(
                 "[BIL] 详情页推荐组件第二层未唯一定位，第一层过滤仍继续生效"
             )
         }
+
 
         val publishTimeActive = publishTimeRule.isEnabled && publishTextPaths.isNotEmpty()
         val publishTimeProbe = PublishTimeParseProbe()
@@ -858,20 +858,18 @@ internal class VideoRelateFilterFeatureInstaller(
     private fun resolveCommercialEvidencePaths(
         environment: HookEnvironment,
         points: VersionAdapter.VideoRelatePoints,
-        enabled: Boolean,
-        includeFeedback: Boolean
+        enabled: Boolean
     ): List<VideoRelateBooleanMethodPath> {
         if (!enabled) return emptyList()
-        // hasCm/hasCmStock 是明确广告载体；三点反馈只在用户显式选择强力模式时充当证据。
-        val chains = points.commercialEvidenceChains.filter { chain ->
-            includeFeedback || isCommercialPayloadChain(chain)
-        }.mapIndexedNotNull { chainIndex, chain ->
-            val methods = chain.steps.mapIndexed { stepIndex, point ->
-                resolve(environment, "commercial.$chainIndex.$stepIndex", point)
+        // 8.90.2 普通 AV 也带三点反馈菜单，存在反馈不等于商业推广，强力模式也不能据此删除。
+        val chains = points.commercialEvidenceChains.filter(::isCommercialPayloadChain)
+            .mapIndexedNotNull { chainIndex, chain ->
+                val methods = chain.steps.mapIndexed { stepIndex, point ->
+                    resolve(environment, "commercial.$chainIndex.$stepIndex", point)
+                }
+                if (methods.any { it == null }) return@mapIndexedNotNull null
+                methods.filterNotNull()
             }
-            if (methods.any { it == null }) return@mapIndexedNotNull null
-            methods.filterNotNull()
-        }
         return VideoRelateBooleanEvidenceReader.buildMethodPaths(chains)
     }
 

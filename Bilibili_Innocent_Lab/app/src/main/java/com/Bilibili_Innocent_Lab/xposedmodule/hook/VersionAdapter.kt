@@ -5273,6 +5273,20 @@ object VersionAdapter {
         return scored.filter { it.second == highest }.map { it.first }.singleOrNull()
     }
 
+    /** 8.90.2 C0/r2 DTO 的 H() 只返回对应卡型的推荐理由；不读取标题或 toString。 */
+    internal fun selectDetailRelateServiceReasonGetter(factory: Method): Method? {
+        if (factory.name != "C0" || factory.isStatic || factory.parameterCount != 1 ||
+            factory.returnType.name != "com.bilibili.app.gemini.ui.RunningUIComponent"
+        ) return null
+        val itemClass = factory.parameterTypes.single()
+        if (itemClass.name != "$DETAIL_RELATE_SERVICE_PACKAGE.r2") return null
+        return KavaMemberLookup.methods(itemClass,
+            includeSuperclasses = true, makeAccessible = true) { method ->
+            method.name == "H" && method.isPublic && !method.isStatic &&
+                method.parameterCount == 0 && method.returnType == classOf<String>()
+        }.distinctBy(Method::toGenericString).singleOrNull()
+    }
+
     /** 精确定位相关推荐列表以及公开的直接/嵌套类型读取方法。 */
     fun locateVideoRelate(loader: ClassLoader): VideoRelatePoints? = runCatching {
         fun responseListField(getter: Method): Field? {
@@ -5365,11 +5379,11 @@ object VersionAdapter {
             return scored.filter { it.second == highest }.map { it.first }.singleOrNull()
         }
 
-        val detailRelateService = KavaMemberLookup.classOrNull(
+        val detailRelateFactory = KavaMemberLookup.classOrNull(
             loader,
             DETAIL_RELATE_SERVICE_CLASS
-        )?.let { serviceClass ->
-            val factory = selectDetailRelateComponentFactory(serviceClass) ?: return@let null
+        )?.let(::selectDetailRelateComponentFactory)
+        val detailRelateService = detailRelateFactory?.let { factory ->
             val itemClass = factory.parameterTypes.single()
             val itemFields = KavaMemberLookup.fields(
                 itemClass,
@@ -5553,7 +5567,9 @@ object VersionAdapter {
                 reasonChain(listOf(itemGetter, reasonGetter))
             }
         }
-        val reasonChains = (directReasonChains + nestedReasonChains).distinctBy { chain ->
+        val serviceReasonChains = detailRelateFactory?.let(::selectDetailRelateServiceReasonGetter)
+            ?.let { listOf(ReasonMethodChain(listOf(it.toHookPoint()))) }.orEmpty()
+        val reasonChains = (directReasonChains + nestedReasonChains + serviceReasonChains).distinctBy { chain ->
             chain.steps.joinToString("->") { it.label() }
         }
         // 作者与标签维度。新版作者位于 CardBasicInfo；旧版仍直接持有 Author。

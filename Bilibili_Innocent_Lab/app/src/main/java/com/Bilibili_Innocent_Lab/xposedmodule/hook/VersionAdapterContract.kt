@@ -57,7 +57,8 @@ internal object VersionAdapterContract {
     /** 72 → 73（2026-10-21）：核对 8.90.2 相关推荐 C0/r2 分发契约，旧服务层缺失缓存需重定位；JSON 不变。 */
     /** 73 → 74（2026-10-22）：补齐 CardBasicInfo/Owner 作者名及 mid 链，旧版仅直接作者链的缓存需重定位；JSON 不变。 */
     /** 74 → 75（2026-10-22）：补齐新版 RelateCard#getGame → RelateGameCard#getTagName；JSON 不变。 */
-    const val RULE_VERSION = 75
+    /** 75 → 76（2026-10-22）：补齐 C0/r2 服务层结构化理由 H()，避免强力模式把可读卡片视作未知；JSON 不变。 */
+    const val RULE_VERSION = 76
 
     /**
      * 51 → 52（2026-09-11，9.11.0(9110400) 适配）：

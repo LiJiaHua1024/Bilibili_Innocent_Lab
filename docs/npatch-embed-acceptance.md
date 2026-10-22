@@ -273,6 +273,24 @@ UI 还拒绝最低 3,000,000、最高 1,000,000 的反向区间，明确显示�
 
 本轮仅更新记录与矩阵，复用相同包的 3700 项 JVM、快速 Lint 与 141.779 秒最终包回归，包哈希见 `reused-production-build.json`。理由开关/关键词、理由能力及前置设置记为 `observed`；匹配增强能力只记 `installed`，其它安装器对应的推广能力继续待验。
 
+### RELATED_STRONG
+
+2026-10-22 通过原生相关推荐面板仅开启匹配增强与强力模式，其余五类过滤、自定义理由、时长/播放量和作者/标签名单均关闭。旧包把整个推荐区清空，带“10万投币”的《bilibili上市宣传视频》也被误删。实际 APK 与有界布尔探针交叉确认：8.90.2 的普通 AV 同样带反馈菜单，不能把菜单存在视为商业载体；此外服务层 `C0(r2)` 的结构化推荐理由位于 `r2.H(): String`，旧链无法读取，导致该层把本应保留的投币卡当成未知理由。
+
+修复只用 `hasCm` / `hasCmStock` 作为商业载体证据，强力模式也不再将反馈菜单当作广告。通过现有 KavaMemberLookup 边界，在已核对的 C0/r2/RunningUIComponent 契约下精确定位公开非静态 H()，并加入现有可序列化理由链；不读取任意同名方法或 toString。规则版本 75→76 使旧定位缓存失效，JSON/schema 不变。新增服务层夹具验证可读投币理由放行、点赞/未知理由移除、自定义理由及推广匹配归因、读取异常边界和链序列化；这些单测不冒充服务层独立业务表面通过。
+
+修复反馈判据及服务层理由后，真实画面保留“10万投币”及另一张“1千投币”卡，原“5万点赞”对照被移除；又实际观察到完整徽标“百万点赞”。最终解析器补齐这个精确标签，拒绝“百万投币”“获得百万点赞”等相似文本；协议层与服务层都有对应回归。诊断探针只记录类型和布尔状态，最终源码与 APK 已移除探针。证据 `captures/npatch-2b/related-strong-acceptance/strong-probe-flags.log`、`RelateItem-r2.java`、`RelateAVItem-m2.java`、`17-million-before-scroll.xml` 和 `18-million-format-baseline.xml/.png`。
+
+最终包再次确认“10万投币”卡保留，强力叶项与父组 `APPLIED`，匹配增强叶项无命中，精确当前身份检查 0.444 秒通过，见 `19-complete-strong-detail.xml/.png`、`19-complete-strong-evidence.log` 和 `20-complete-controls.xml/.png`。“百万点赞”字样在旧解析器的真实卡上有观测，最终修复包含精确解析与两层回归；不单凭新一轮推荐里没有该卡宣称独立实机命中。
+
+关闭前置匹配增强但保留强力选项，父组 `DISABLED`、0 Hook、强力/匹配增强无回调，普通推荐保留，0.375 秒通过；重开前置选项后，强力勾选仍在、无需重设，父组与强力叶项再次 `APPLIED`，投币对照保留，0.438 秒通过。最终包再关闭强力模式，开启自定义理由 `10`，目标投币卡移除而“5万点赞”对照保留，父组及自定义理由叶项 `APPLIED`，匹配增强不误报，0.480 秒通过。证据 `22-prerequisite-off-selected.xml/.png`、`23-prerequisite-off-evidence.log`、`25-prerequisite-on-selected.xml/.png`、`26-retained-strong-detail.xml/.png`、`26-retained-strong-evidence.log`、`30-reason-on-selected.xml/.png` 和 `31-complete-custom-reason-detail.xml/.png` / `-evidence.log`。
+
+通过 UI 清空关键词与全部类型/增强/强力/理由选项后，“10万投币”与“5万点赞”卡都恢复，父组 `DISABLED`、0 Hook，理由与匹配增强叶项无回调，0.294 秒检查通过。见 `33-keyword-empty-values.xml/.png`、`35-all-off-selected.xml/.png`、`36-all-off-restored-detail.xml/.png` 和 `36-all-off-restored-evidence.log`。强力设置与能力只记 `observed`；共享设置关联的其它安装器保持原状态，不据此升级。
+
+最终 3708 项 JVM（0 失败、1 跳过）、Debug/AndroidTest APK 与快速 Lint 通过（250 Warning / 1 Hint，原 baseline 不变），见 `strong-complete-gates.log` 与 `complete-full-jvm-suites.json`。最终模块 SHA-256 `91a881d23eafcc2ae470e73ff15a9321bffdbd15552a9c2e09ee23c9212bda38`，宿主 `22cc9e33abe3d59d123ec92768280c4a6473c5c3776fe38d3ec99200f3506283`，固定 patcher/native/证书不变，见 `patched-strong-complete/verified.json`。早期 H() 单独修复候选和探针包均不作为最终产物。
+
+最终包真实配置/启停/条款/Web 与原生触摸复制回归 2 项、138.468 秒通过，见 `final-host-regression.log`。之后正式会员登录与 5.0 MB 既有缓存保留，缓存入口两张截图为不同的实际视频帧，见 `retained-account-cache.log` 与 `upgrade-cache-player-1.png` / `-2.png`；未据此声明断网播放、其它版本或全量功能验收完成。
+
 ### EMBED_WEB
 
 2B.1 的原生 TLS 修复、恢复原有 Web Hook、关闭/条款拒绝/重新开启、重复打开/返回/后台恢复、正文滚动及复制链接均见路线图 2B.1 验收。当前模块的自由复制开关和安装诊断已有证据；评论/简介复制的具体业务仍需独立行为案例，不因 32 个公共 Hook 安装成功而全部标记通过。

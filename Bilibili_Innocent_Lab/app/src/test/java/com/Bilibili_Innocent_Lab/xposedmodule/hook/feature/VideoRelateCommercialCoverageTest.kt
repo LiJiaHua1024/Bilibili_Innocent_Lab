@@ -18,12 +18,13 @@ class VideoRelateCommercialCoverageTest {
         private val stock: Boolean = false,
         private val feedback: Boolean = false,
         private val failStock: Boolean = false,
-        private val case: RelateCard.CardCase = RelateCard.CardCase.AV
+        private val case: RelateCard.CardCase = RelateCard.CardCase.AV,
+        private val reason: String = "3万点赞"
     ) : RelateCard() {
         override fun getCardCase() = case
         override fun getAv(): RelateAVCard = object : RelateAVCard() {
             override fun getRcmdReason(): BadgeInfo = object : BadgeInfo() {
-                override fun getText() = "3万点赞"
+                override fun getText() = reason
             }
         }
         override fun getBasicInfo(): CardBasicInfo = object : CardBasicInfo() {
@@ -100,6 +101,17 @@ class VideoRelateCommercialCoverageTest {
             val source = listOf(Card(feedback = true))
             assertSame(source, h.filter(source))
         }
+    }
+
+    @Test fun strongModeDoesNotTreatOrdinaryFeedbackMenusAsCommercialPayloads() {
+        val h = Harness(emptySet(), enhancement = true, strong = true)
+        val coinReason = Card(feedback = true, reason = "10万投币")
+        val likeReason = Card(feedback = true, reason = "5万点赞")
+        val unknownReason = Card(feedback = true, reason = "")
+        val namedLikeReason = Card(feedback = true, reason = "百万点赞")
+        assertEquals(listOf(coinReason), h.filter(listOf(coinReason, likeReason, unknownReason, namedLikeReason)))
+        assertEquals(3, h.count("video_related_strong_mode_enabled"))
+        assertEquals(0, h.count("video_related_commercial_removed"))
     }
 
     @Test fun gameOnlyDoesNotAcquireCommercialRemovalFromAnotherDimension() {
