@@ -325,11 +325,27 @@ UI 还拒绝最低 3,000,000、最高 1,000,000 的反向区间，明确显示�
 
 在最终候选包的新加载 Story 视频中，原生面板实际选中固定 360P；当前视频手动改为 480P，再改自动，均保留手动选择，下一条恢复固定 360P。模块默认改为 480P、冷启动并切换下一条后，面板实际选中固定 480P。三个当前授权/配置身份严格检查分别通过，见 `16-story-next-default-quality.xml/.png`、`17-story-manual-480-quality.xml/.png`、`18-story-manual-auto-quality.xml/.png`、`20-next-after-manual-default-quality.xml/.png`、`25-story480-next-quality.xml/.png` 及对应 `*-evidence.log`。运行记录 `runtime-live.log` 包含画质组 `INSTALLED`、20 Hook；安装/回调不作为共享首条行为通过证明。
 
-**仍待修复：详情页共享播放器接入的首条视频。** 首次 360P 测试显示“自动（360P）”，不能等同固定目标；把默认改成 480P 后，共享接入首条仍显示“自动（720P）”，见 `14-fixed-default-quality.xml/.png`、`23-cold480-carried-quality.xml/.png`。这条路径保留失败，不将 Story 整体标记通过；下一单元核对共享媒体的生命周期、当前条目与首次目标建立。两行矩阵仍为 `observed`，追加本案例引用，数量不变。其它版本、非普通 UGC、预加载提档、限制模式、会员画质和全部组合仍待验，embed 保持实验性。
+**本单元发现的共享首条缺口，已由后续 `PLAYER_STORY_SHARED_QUALITY` 修复。** 首次 360P 测试显示“自动（360P）”，不能等同固定目标；把默认改成 480P 后，共享接入首条仍显示“自动（720P）”，见 `14-fixed-default-quality.xml/.png`、`23-cold480-carried-quality.xml/.png`。这条旧包路径保留失败，不将本单元写成 Story 整体通过；后续单元另行核对共享媒体的生命周期、当前条目与首次目标建立。两行矩阵仍为 `observed`，追加本案例引用，数量不变。其它版本、非普通 UGC、预加载提档、限制模式、会员画质和全部组合仍待验，embed 保持实验性。
 
 同包两项无 Manager 启停/授权/复制实机回归通过（139.026 秒）。登录态、已完成的 5.0 MB 缓存及实际缓存解码画面保留，见 `final-embedded-regression.log`、`retained-account-cache.log`、`upgrade-cache-player-1.png` 与 `upgrade-cache-player-2.png`；未断网。随后通过 UI 恢复“跟随哔哩哔哩”，冷启动进入 Story，首条和下一条原生面板均选中“自动（720P）”，画质组 `DISABLED`、0 Hook、0 回调，0.335 秒严格检查通过，见 `30-follow-restored-saved.png`、`32-follow-carried-quality.xml/.png`、`34-follow-next-quality.xml/.png` 与 `34-follow-next-evidence.log`。本单元结束时默认值留在跟随状态。
 
 当前生产模块 SHA-256 `8c85e53e65b3764710d123f9b5b9229a9d0a18d404846bb579730659af49a9ee`，嵌入宿主 `a7ee6e87cfe1c47edf98e8eee47bac47621e148e179a979e7ef5603fa1af8827`；固定 patcher/native/证书不变，见 `patched-abstract-dispatch/verified.json`。完整 JVM 统计已保存为 `abstract-dispatch-full-jvm.json`；APK/快速检查见 `abstract-dispatch-gates.log`，后续仅测试输出修改的构建见 `bounded-evidence-output-gates.log`。日志进程与构建守护进程已停止。
+
+### PLAYER_STORY_SHARED_QUALITY
+
+2026-10-22，同一有线机和支持范围，证据目录 `captures/npatch-2b/story-shared-acceptance/`。本例继续上一单元记录的共享首条缺口。临时、有界且不输出视频/账号标识的探针确认：首条 `R(int)` 在 `onCreate` 返回前发生，旧版直到返回后才绑定 handler，因而漏记首次选择；随后首次匹配虽已绑定，但普通详情页带入的 `from` 实测为来源编号 `"6"`，UGC 类型、登录、青少年及课程限制均正常，旧 `from=="vupload"` 条件仍将其拒绝。日志 `distinct-lifecycle-live.log`、`admission-lifecycle-live.log` 保留顺序；探针已全部移除，第一轮相同日志键被统一去重的记录不用于推断回调缺失。
+
+修复通过 KavaMemberLookup 核对 Story owner 上唯一的 `(IPlayerContainer, PlayerSharingBundle) -> void` 接入回调，源码中的该角色负责 `playFromShared`；在成功的共享接入完成后，以当前指针、provider 条目和当前参数一致性建立首条代次。生命周期进入时即登记弱 owner 与所属线程，退出时补齐组件，不再清掉接入过程中已经建立的会话。共享来源仅在该接入得到确认后，才允许使用 UGC 类型及精确 Gemini 解析参数中相同的 aid/cid 作业务证据；无此证明的来源、明确的 live/music/bangumi/pugv、非 UGC、错条目/未知解析器仍拒绝，登录与限制条件继续实时核对。证明只持有当前参数的弱引用，不能跨实例沿用，新条目或释放会清掉证明；失败则撤销播放代次与目标，重复接入不重置手动意图或复活失败代次。
+
+规则版本 78、schema 62，新增角色仅在运行安装边界核对，不增加适配 JSON 字段。新增 9 项 JVM 回归覆盖创建过程中的共享接入、同 ID 换参数、两种手动选择、空/失败接入、失败后重复、跨线程/未知 owner、指针错位、解析 ID/类型不符、退出登录和限制/非 UGC 门控。共 3729 项 JVM（0 失败、1 跳过），Debug/AndroidTest APK 与快速 Lint 通过，250 Warning，baseline 不变；见 `shared-ready-final-gates.log` 与 `shared-ready-full-jvm.json`。最终真实 APK 契约再次通过（7.166 秒），见 `final-android-contracts.log/.json`。测试夹具复用已有 IPlayerContainer，未保留重复定义。
+
+最终 embed 包默认 480P，冷启动普通详情页并进入 Story，**共享首条原生画质面板实际选中固定 480P**；当前视频手动改为 360P、再改自动（当时 1080P），均保留选择；下一条重新实际选中默认 480P。两次当前配置/授权身份严格检查通过，画质组 `INSTALLED`、21 Hook、无运行错误，见 `41-final-shared480-quality.xml/.png`、`42-final-shared-manual360-quality.xml/.png`、`43-final-shared-manual-auto-quality.xml/.png`、`45-final-next480-quality.xml/.png` 及对应 `*-evidence.log`。不能用安装计数代替上述原生选择证据，也不宣称测得首帧解码尺寸或不存在初始切档延迟。
+
+返回普通详情页，原视频与原生画质面板均可正常打开，见 `46-return-to-normal.xml/.png`、`47-return-normal-quality-menu.xml/.png`。通过模块 UI 将默认值改成 360P 后再次冷启动、进入共享 Story 首条，面板实际选中固定 360P，当前身份严格检查通过（0.349 秒），见 `50-default360-saved.png`、`52-final-shared360-quality.xml/.png` 与 `52-final-shared360-evidence.log`。因此本例没有只核对安装期目标或固定单一 QN。
+
+同包两项无 Manager 配置启停/当前授权/复制实机回归通过（141.237 秒），登录态、已完成的 5.0 MB 缓存及两帧不同的实际缓存解码画面保留，见 `final-embedded-regression.log`、`retained-account-cache.log` 和 `upgrade-cache-player-1.png` / `upgrade-cache-player-2.png`；未断网。最后通过 UI 恢复跟随，冷启动后的共享首条与下一条均选中“自动（1080P）”，画质组 `DISABLED`、0 Hook/回调，0.381 秒严格检查通过，见 `60-follow-restored-saved.png`、`62-follow-first-quality.xml/.png`、`64-follow-next-quality.xml/.png` 与 `64-follow-next-evidence.log`。默认值留在跟随状态。
+
+生产模块 SHA-256 `933ab14b360040fd88549ccb488d23a8042f170529de73ce7d0a562d0be278c4`，嵌入宿主 `b17ce77fa72b0c744885f6599bb1fac0252221487511c6e340369676c640a651`，固定 patcher/native/证书不变，见 `patched-shared-final/verified.json`。其它版本、其它业务及完整预加载/会员/限制模式实机组合仍待验。两行画质矩阵保持 `observed`，追加案例引用，不把局部覆盖升级成全场景通过。
 
 ### EMBED_WEB
 

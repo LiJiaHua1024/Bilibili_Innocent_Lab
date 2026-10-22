@@ -59,7 +59,8 @@ internal object VersionAdapterContract {
     /** 74 → 75（2026-10-22）：补齐新版 RelateCard#getGame → RelateGameCard#getTagName；JSON 不变。 */
     /** 75 → 76（2026-10-22）：补齐 C0/r2 服务层结构化理由 H()，避免强力模式把可读卡片视作未知；JSON 不变。 */
     /** 76 → 77（2026-10-22）：Story 偏好直接接口实现及抽象参数 getter 兼容，旧缺失状态重新验证；JSON 不变。 */
-    const val RULE_VERSION = 77
+    /** 77 → 78（2026-10-22）：Story 增加共享接入及同条目解析参数契约，旧缓存重新验证；JSON 不变。 */
+    const val RULE_VERSION = 78
 
     /**
      * 51 → 52（2026-09-11，9.11.0(9110400) 适配）：

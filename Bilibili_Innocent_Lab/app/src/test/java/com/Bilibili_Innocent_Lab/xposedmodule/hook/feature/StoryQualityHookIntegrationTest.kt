@@ -101,6 +101,10 @@ class StoryQualityHookIntegrationTest {
             runtimeEvidence = { _, stage, _ -> stages += stage })
         fun install() = installer.install(environment)
         fun create() = port.invoke("player.story.create", owner, arrayOf(null)) { owner.onCreate(null); Unit }
+        fun ready(shared: tv.danmaku.biliplayerv2.PlayerSharingBundle? = tv.danmaku.biliplayerv2.PlayerSharingBundle(),
+                  original: (Array<Any?>) -> Any? = { Unit }) =
+            port.invoke("player.story.ready", owner, arrayOf(null, shared), original)
+        fun sharedCreate() = port.invoke("player.story.create", owner, arrayOf(null)) { ready(); Unit }
         fun select(index: Int = 0): Any? = port.invoke("player.story.select", owner.controller, arrayOf(index)) {
             owner.controller.select(it[0] as Int)
         }
@@ -196,6 +200,111 @@ class StoryQualityHookIntegrationTest {
             h.match()
             assertNotNull(wrapped)
         }
+    }
+
+    @Test fun `shared ready inside create establishes first item without a later cursor event`() {
+        val h = Harness()
+        h.owner.source.values[0] = parameters(from = "6")
+        assertTrue((h.install() as FeatureInstallResult.Installed).complete)
+        assertEquals(PlayerQualitySessions.Admission.DENY, h.access.admission(h.owner, h.owner.getCurrentPlayableParam()))
+        h.sharedCreate()
+        h.match { assertEquals(80, h.wifi()); assertEquals(80, h.global()); Unit }
+        assertTrue(FeatureRuntimeStage.ERROR !in h.stages)
+    }
+
+    @Test fun `shared provenance does not cross a different parameters instance with the same item`() {
+        val h = Harness()
+        h.owner.source.values[0] = parameters(from = "6")
+        h.install(); h.sharedCreate()
+        h.owner.source.values[0] = parameters(from = "6")
+        h.match { assertEquals(32, h.wifi()); Unit }
+    }
+
+    @Test fun `repeated shared ready cannot undo either manual choice`() {
+        for (choice in listOf(StoryPreferenceFixture.Auto, StoryPreferenceFixture.Fixed(64))) {
+            val h = Harness()
+            h.owner.source.values[0] = parameters(from = "6")
+            h.install(); h.sharedCreate(); h.manual(choice); h.ready()
+            h.match { assertEquals(32, h.wifi()); Unit }
+        }
+    }
+
+    @Test fun `null shared bundle and failed ready never establish a playback generation`() {
+        val h = Harness()
+        h.owner.source.values[0] = parameters(from = "6")
+        h.install(); h.create(); h.ready(null)
+        h.match { assertEquals(32, h.wifi()); Unit }
+        val failure = IllegalStateException("shared ready failed")
+        try { h.ready { throw failure }; fail() } catch (error: IllegalStateException) { assertSame(failure, error) }
+        h.match { assertEquals(32, h.wifi()); Unit }
+    }
+
+    @Test fun `failed ready invalidates an active shared generation and repeated ready cannot revive it`() {
+        val h = Harness()
+        h.owner.source.values[0] = parameters(from = "6")
+        h.install(); h.sharedCreate()
+        val failure = IllegalStateException("shared ready failed")
+        try { h.ready { throw failure }; fail() } catch (error: IllegalStateException) { assertSame(failure, error) }
+        h.ready()
+        h.match { assertEquals(32, h.wifi()); Unit }
+    }
+
+    @Test fun `shared ready rejects unknown owners other threads and mismatched pointer indices`() {
+        val h = Harness()
+        h.owner.source.values[0] = parameters(from = "6")
+        h.install(); h.ready()
+        h.match { assertEquals(32, h.wifi()); Unit }
+        h.create()
+        val foreign = Thread { h.ready() }
+        foreign.start(); foreign.join()
+        h.match { assertEquals(32, h.wifi()); Unit }
+        h.owner.controller.pointer?.index = 1
+        h.ready()
+        h.match { assertEquals(32, h.wifi()); Unit }
+    }
+
+    @Test fun `shared provenance cannot override an explicit non ugc source or an unknown resolver`() {
+        for (source in listOf("live", "music", "bangumi", "pugv")) {
+            val h = Harness()
+            h.owner.source.values[0] = parameters(from = source)
+            h.install(); h.sharedCreate()
+            h.match { assertEquals(32, h.wifi()); Unit }
+        }
+        val h = Harness()
+        h.owner.source.values[0] = object : Video.PlayableParams("6") {
+            override fun getDisplayParams() = Video.DisplayParams(123, 456)
+            override fun getResolveParams() = object : com.bilibili.lib.media.resolver2.IResolveParams {}
+        }
+        h.install(); h.sharedCreate()
+        h.match { assertEquals(32, h.wifi()); Unit }
+    }
+
+    @Test fun `shared resolver identifiers and current index must identify the same ordinary video`() {
+        val h = Harness()
+        h.owner.source.values[0] = object : Video.PlayableParams("6") {
+            override fun getDisplayParams() = Video.DisplayParams(123, 456)
+            override fun getResolveParams(): com.bilibili.lib.media.resolver2.IResolveParams =
+                com.bilibili.app.gemini.base.player.GeminiCommonResolverParams(123, 789)
+        }
+        h.install(); h.sharedCreate()
+        h.match { assertEquals(32, h.wifi()); Unit }
+    }
+
+    @Test fun `confirmed shared entry still rejects logged out restricted and non ugc playback`() {
+        val changes = listOf<() -> Unit>({ BiliAccounts.instance.loggedIn = false },
+            { TeenagersMode.getInstance().enabled = true }, { RestrictedMode.enabled = true })
+        for (change in changes) {
+            resetAdmission()
+            val h = Harness()
+            h.owner.source.values[0] = parameters(from = "6")
+            change(); h.install(); h.sharedCreate()
+            h.match { assertEquals(32, h.wifi()); Unit }
+        }
+        resetAdmission()
+        val h = Harness()
+        h.owner.source.values[0] = parameters(from = "6").also { it.kind = VideoBizType.PGC }
+        h.install(); h.sharedCreate()
+        h.match { assertEquals(32, h.wifi()); Unit }
     }
 
     @Test fun `actual host graph requires display bridge and resolves account and resource contracts`() {
