@@ -5558,8 +5558,12 @@ object VersionAdapter {
         }
         // 作者与标签维度。新版作者位于 CardBasicInfo；旧版仍直接持有 Author。
         // 数值 mid 不能走 reasonChain（它只认文本），因此保留完整的类型化成员链。
-        val tagNameChains = itemMethods("getTagName")
-            .mapNotNull { reasonChain(listOf(it)) }
+        // 8.90.2 新版游戏卡标签由宿主 j.y(RelateGameCard) 映射；缺少标签的普通卡不作推断。
+        val tagNameChains = (itemMethods("getTagName").map(::listOf) +
+            itemMethods("getGame").mapNotNull { gameGetter ->
+                uniquePublicGetter(gameGetter.returnType, "getTagName", ::isStringMethod)
+                    ?.let { listOf(gameGetter, it) }
+            }).mapNotNull(::reasonChain)
             .distinctBy { chain -> chain.steps.joinToString("->") { it.label() } }
         val authorGetterPaths = itemMethods("getAuthor").map(::listOf) +
             itemMethods("getBasicInfo").mapNotNull { basicGetter ->

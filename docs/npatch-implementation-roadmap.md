@@ -281,3 +281,12 @@ WebView 对照：`captures/npatch-stage2-web.png` 与 `npatch-stage2-web-activit
 - [x] 新增 5 项 JVM 回归；最终 3695 项 JVM（0 失败、1 跳过）、Debug/AndroidTest APK、快速 Lint 通过（250 Warning / 1 Hint，baseline 不变）。最终包配置/启停/条款/Web/触屏复制真实回归 2 项、138.851 秒通过；登录态、5.0 MB 既有缓存及实际解码保留。证据 `captures/npatch-2b/related-author-acceptance/`；模块 `1d36c7…35d6`、宿主 `c3b6cd…556a`，固定 patcher/native/证书不变。
 
 继续核查相关推荐标签的新版字段与可见标签含义，再推进类型净化和其它适用组合。2B.2 全量、2B.3 构建身份/升级恢复及正式准入继续待做，embed 保持实验性。
+
+### 2026-10-22 阶段 2B.2：新版游戏卡标签读取
+
+- [x] 作者修复已提交为 `e97f41fe`。实际 APK 的新版标签位于 `RelateCard#getGame → RelateGameCard#getTagName`，宿主 `j.y` 映射该字段；补齐原定位缺少的新版链，保留旧直接标签链，规则版本 74→75 使旧缓存失效。不以标题、作者或推荐理由冒充标签。
+- [x] 新增 5 项 JVM 回归；最终 3700 项 JVM（0 失败、1 跳过）、Debug/AndroidTest APK、快速 Lint 通过（250 Warning / 1 Hint，baseline 不变）。同签名重修补新包通过真实配置/启停/条款/Web/触屏复制回归 2 项、141.779 秒，登录态、5.0 MB 既有缓存和实际解码保留。
+- [x] 正常 UI 验证未匹配规则在公开游戏投稿及普通投稿中放行，父组已执行、标签叶项已安装且无命中/错误；清空后父组关闭、0 Hook、无回调。`RELATED_TAG` 及两行矩阵仅记 `installed`。证据 `captures/npatch-2b/related-tag-acceptance/`；模块 `6a2a79…a608`、宿主 `e02758…c5ab`，固定 patcher/native/证书不变。
+- [ ] 真实标签命中、命中后恢复及与作者/类型的组合仍待验。已检查公开游戏投稿前三段推荐，未得到带可核对标签的协议游戏卡；普通游戏题材投稿和 JVM 正例均不作为实机命中，不把样本未取得写成永久不支持。
+
+接着推进有可见对照的相关推荐类型及适用组合，继续保留标签真实命中待办。2B.2 全量与 2B.3 仍未完成。

@@ -224,6 +224,22 @@ UI 还拒绝最低 3,000,000、最高 1,000,000 的反向区间，明确显示�
 
 最终包再次通过真实 `NPatchEmbeddedHostInstrumentedTest` 与 `HostCopySelectionInstrumentedTest`，2 项、138.851 秒，见 `final-host-regression.log`；覆盖当前配置、启停、条款、Web 和原生触屏选取复制。同签名升级及回归后，正式会员登录态和 5.0 MB 既有缓存均保留；`retained-account-cache.log`、`upgrade-cache.xml/.png` 和已查看的 `upgrade-cache-player-1.png` / `-2.png` 证明缓存播放页继续解码。没有据此声明断网或其它资源恢复场景通过。
 
+### RELATED_TAG
+
+2026-10-22 核对实际 8.90.2 APK：旧 `view.v1.Relate#getTagName` 与新版 `RelateCard#getGame → RelateGameCard#getTagName` 是不同成员链；宿主 `j.y(RelateGameCard)` 将后者映射到游戏卡模型。原定位只包含旧直接链，本轮补齐新版两级链并保留旧链，规则版本 74→75 使旧缓存重新定位，JSON/schema 不变。不从投稿标题、作者或推荐理由推断标签；没有标签的卡片继续保留。
+
+新增 5 项 JVM 回归覆盖新旧标签链序列化、整串/大小写/中文标签匹配、混合规则、前缀不匹配、缺失/异常标签安全放行、推荐理由不作标签回退及旧直接路径。这些是协议夹具验证，不替代真实游戏卡业务命中。
+
+同签名新包已通过正常设置输入未匹配规则 `NPatchTagAcceptanceUnmatched`。公开游戏投稿《我的世界入侵B站》（AID `117426016487382`）的推荐保留，父组已执行、标签叶项 `INSTALLED` 且无命中/错误，严格当前身份检查 0.237 秒通过。检查了该投稿前三段推荐，未取得带可核对标签的游戏推广卡；普通游戏题材投稿不等于协议游戏卡，不能据此断言标签真实命中已通过。
+
+同一未匹配规则下，`BV1xx411c7mD` 的普通推荐对照也保留，父组已执行、标签叶项无命中/错误，0.304 秒通过。通过 UI 清空名单后，游戏投稿入口再次显示推荐；父组 `DISABLED`、0 Hook、无回调，标签叶项无回调，0.466 秒通过。名单最终留空，见 `12-unmatched-general-detail.xml/.png`、`12-unmatched-general-evidence.log`、`14-tag-cleared-values.xml/.png`、`15-tag-off-game-detail.xml/.png`、`15-tag-off-game-evidence.log` 与 `tag-verification.log`。
+
+证据 `captures/npatch-2b/related-tag-acceptance/relate-public-model-members.txt`、`RelateCardMapper-j.java`、`public-game-sample-route.log`、`05-game-video-detail.xml/.png`、`06-game-list-*.xml/.png`、`08-final-tag-baseline-dialog.xml`、`08-final-tag-baseline.png`、`09-unmatched-tag-saved.xml/.png`、`11-unmatched-game-detail.xml/.png`、`11-unmatched-game-evidence.log`。外部启动使用已解析的 `bilibili://video/<aid>`；内部 `united_video` Intent 不是 shell 可调用的已导出入口，早期失败记录不作为验收证据。
+
+最终 3700 项 JVM（0 失败、1 跳过）、Debug/AndroidTest APK 和快速 Lint 通过（250 Warning / 1 Hint，baseline 不变）。模块 SHA-256 `6a2a7971ede0255a6ef08db82ec7056c9ad4f4b142fccfd0ec09b1961000a608`，宿主 `e027584c5fd1ade3d54a171e03ea232a1b8e041ddfedc800d732610b897dc5ab`，固定 patcher/native/证书不变，见 `patched-tag-final/verified.json`。标签设置与详情页能力只记为 `installed`；实际标签命中、命中后恢复、作者/类型组合和服务层独立路径继续待验。
+
+最终包再次通过真实配置/启停/条款/Web/触屏复制回归，2 项、141.779 秒，见 `final-host-regression.log`。之后正式会员登录态及 5.0 MB 既有缓存保留，缓存播放页的两帧已查看并确认继续解码，见 `retained-account-cache.log`、`upgrade-cache.xml/.png` 和 `upgrade-cache-player-1.png` / `-2.png`；未据此扩大为断网或更多资源验收。
+
 ### EMBED_WEB
 
 2B.1 的原生 TLS 修复、恢复原有 Web Hook、关闭/条款拒绝/重新开启、重复打开/返回/后台恢复、正文滚动及复制链接均见路线图 2B.1 验收。当前模块的自由复制开关和安装诊断已有证据；评论/简介复制的具体业务仍需独立行为案例，不因 32 个公共 Hook 安装成功而全部标记通过。

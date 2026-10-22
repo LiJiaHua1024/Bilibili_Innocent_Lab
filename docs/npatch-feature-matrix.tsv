@@ -222,7 +222,7 @@ setting	video.ai_declared.blocked	ai_declared_video_block,home_recommend_purify	
 setting	video.ai_declared.precheck	-	-	HOST_GATE	pending	passed	case:ACCOUNT_GATE
 setting	video.ai_declared.strong_mode	ai_declared_video_block	ai_declared_author_block	-	pending	pending	-
 setting	video.related.blocked_authors	video_relate_filter	video_related_author_block	-	pending	observed	case:RELATED_AUTHOR
-setting	video.related.blocked_tags	video_relate_filter	video_related_tag_block	-	pending	pending	-
+setting	video.related.blocked_tags	video_relate_filter	video_related_tag_block	-	pending	installed	case:RELATED_TAG
 setting	video.related.commercial.removed	video_relate_filter	video_related_commercial_removed	-	pending	observed	case:RELATED_COMMERCIAL,case:RELATED_SERVICE,case:RELATED_RUNTIME
 setting	video.related.course.removed	video_relate_filter	video_related_course_removed	-	pending	pending	-
 setting	video.related.game.removed	video_relate_filter	video_related_game_removed	-	pending	pending	-
@@ -409,4 +409,4 @@ capability	video_related_reason_filter_enabled	video_relate_filter	video.related
 capability	video_related_semantic_filter_enabled	video_relate_filter	video.semantic_filter.custom_rules,video.semantic_filter.enabled,video.semantic_filter.rules,video.semantic_filter.source	-	pending	pending	-
 capability	video_related_special_removed	video_relate_filter	video.related.special.removed	-	pending	pending	-
 capability	video_related_strong_mode_enabled	video_relate_filter	video.related.strong_mode.enabled	-	pending	pending	-
-capability	video_related_tag_block	video_relate_filter	video.related.blocked_tags	-	pending	pending	-
+capability	video_related_tag_block	video_relate_filter	video.related.blocked_tags	-	pending	installed	case:RELATED_TAG
