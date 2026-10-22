@@ -415,6 +415,18 @@ UI 还拒绝最低 3,000,000、最高 1,000,000 的反向区间，明确显示�
 
 最终包真实配置/启停/条款/Web 与原生触摸选区复制回归 2 项通过（143.607 秒），见 `final-embedded-regression.log`。B 站正式会员登录、既有 5.0 MB 缓存保留，缓存入口两帧画面实际推进，见 `retained-account-cache.log`、`upgrade-cache.xml/.png`、`upgrade-cache-player-1.png` / `-2.png`；未断网，不作为断网播放验收。已安装诊断页确认当前直连配置，恢复提示滚动到可见区域后检查，见 `32-final-diagnostics.xml/.png`、`33-final-recovery-visible.xml/.png`；本轮独立测试包的私有检查点随后删除，手机留在诊断页。仅复用已有正式首次引导证据，本例不宣称全新安装宿主或其它 Android/ABI 已验收。
 
+### EMBED_DEX_SOURCE
+
+2026-10-22，同一有线机与 8.90.2/833/sig2/Android 16/arm64 范围，证据目录 `captures/npatch-2b/dex-source-acceptance/`。外层 APK 实际只有 2 个 loader DEX，原版含 38 个；833 原生代码对模块 native 调用方保留外层内容，对普通 Java I/O 重定向到原版。旧宿主日志中的 Java 指纹已是 `dex-v1:38:23e87bdd7be9c77b8480dcaeabe4cfe5c70b07cbeef6fb5023240299b174e093`，不能根据外层结构断言旧 Java 指纹始终错误。风险在于把同一外层路径继续交给 native DexKit，其读取分流可能与 Java 不同。归因材料为 `outer-original-counts.json`、上一单元的 `03-stopped-host-before-instrumentation.log`，以及固定上游 `bypass_sig.cpp` 的 `should_redirect_apk_contents` 和 `SigBypass.java` 的模块路径分流。
+
+指纹与 DexKit 统一使用后台准备的只读来源。可读视图含 `assets/npatch/origin.apk` 时有界提取并验证尺寸/CRC；Java 已看到原版时冻结该实际视图，核对 DEX 中央目录和实际 DEX CRC，避免再次把外层路径交给 native。单 APK 上限 512 MiB，原有归档/DEX 数上限保留；只原子发布完整文件，不原地写已返回来源。保留本次全部 base/split 以及一份历史来源；回收不会删掉本次尚未查询的 split。来源损坏/越界/不可读返回不可用，不能退回 loader 指纹冒充成功。现有缓存命中的维护仍在工作线程；读不到来源保留现有工作缓存，读到不同来源才失效。规则 78→79 作废旧定位代次，schema 62 不变，未改授权、依赖或导出协议。
+
+新增 7 项 JVM，覆盖原版来源、仅 loader 重打包的内容稳定性、原 DEX 改变、缺失/损坏/越界拒绝、同长度缓存损坏/丢失恢复、代码 split 与活跃文件回收。最终 3753 项 JVM（0 失败、1 跳过）、Debug/AndroidTest APK、快速 Lint 通过，250 Warning、原 3 条错误基线不变；见 `complete-source-gates.log`、`full-jvm.json`。完整 APK 路径的安装身份仍按原策略保守失效，内容指纹稳定不等同于承诺跨安装热复用所有适配结果。
+
+最终模块 SHA-256 `f68386364751e745bd7f0412ab69f8c6b3ab163bf3d72ee7f69d7b949de93d29`，宿主 `15fcb337fab2ee0903b5ed460dd5b8865588f4de5ec8d80ba4fa95cab111360e`；同证书覆盖安装、固定 patcher/native 不变，见 `patched-source-complete/verified.json`。真实 ART/DexKit 检查逐字节核对原版 SHA、38 DEX 指纹和默认画质 native 查询，连同外观当前身份检查共 2 项通过（16.714 秒），见 `complete-android-native-and-appearance.log`。最终宿主日志 `complete-host-source.log` 显示 `count=38, isolated=true` 及相同原版内容指纹。前一隔离候选的 Web/启停/复制 2 项回归通过（138.892 秒）仅作中间证据；最终正式验收继续统一回归，不冒充最终文件回收逻辑的完整发布门禁。
+
+本例验证 DexKit 这个 native 功能通道，不宣称插帧推理、其它 ABI 或其它版本均已实测通过。Manager 模式和正式支持边界继续在后续单元验证；矩阵没有因来源修复而批量提升业务状态。
+
 ## 后续顺序
 
 按路线图 2026-10-22 的范围校正继续 2B.3：Manager/embed 模式切换、可维护的发布产物与用户签名/同证书升级流程；随后补齐尚缺的功能类别代表性兼容回归、原 DEX 来源与缓存失效、支持边界及正式发布门禁。设置 App 生命周期和当前协议的升级恢复复用上述证据，不将单个组合外推为任意跨版本兼容。通用业务缺陷单独记录，不再逐行自动修复；矩阵未测项仍保持待验。

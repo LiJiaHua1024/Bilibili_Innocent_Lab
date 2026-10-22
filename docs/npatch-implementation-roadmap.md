@@ -396,3 +396,11 @@ WebView 对照：`captures/npatch-stage2-web.png` 与 `npatch-stage2-web-activit
 - [x] 最终配置/启停/条款/Web 与原生触摸复制回归 2 项通过（143.607 秒）；B 站会员登录、5.0 MB 缓存及实际播放画面保留，未断网。已安装诊断页核对恢复文案，随后清理测试私有检查点。未把重装设置 App 等同于全新安装宿主。
 
 案例 `EMBED_SETTINGS_LIFECYCLE`，证据 `captures/npatch-2b/embedded-lifecycle-acceptance/`；模块 `8de89a…7425`、宿主 `4ddab0…0482`，固定 patcher/native/证书不变。矩阵状态及计数不变。接着推进 Manager/embed 切换、用户签名与发布产物流程，再验证原 DEX 来源/缓存失效、尚缺的类别代表性回归及正式发布门禁；完整 2B 尚未完成，embed 保持实验性。
+
+### 2026-10-22 阶段 2B.4：Java/native 共用原版 DEX 来源
+
+- [x] 生命周期恢复已提交为 `b2a2a658`。核对外层 2 DEX、原版 38 DEX 与上游按调用方分流；旧 Java 指纹已有 38 DEX，不将外层结构误读为旧 Java 指纹必错。
+- [x] 后台统一提取内嵌原版或冻结 Java 已重定向视图，验证尺寸/CRC、只读原子发布；指纹和 DexKit 共用同一来源。限制单 APK/归档/DEX，保护本轮全部 split 并回收多余历史文件；不可用不伪装 loader 来源，审计不可读仍保留工作缓存。rule 79、schema 62，启动缓存快路径不增加磁盘工作。
+- [x] 新增 7 项 JVM；最终 3753 项 JVM（0 失败、1 跳过）、Debug/AndroidTest 与快速 Lint 通过，250 Warning、baseline 不变。最终真实 ART/native 查询和外观当前身份共 2 项通过（16.714 秒），宿主实际 `38 DEX / isolated=true`。
+
+案例 `EMBED_DEX_SOURCE`，证据 `captures/npatch-2b/dex-source-acceptance/`；模块 `f68386…3d29`、宿主 `15fcb3…360e`。普通安装身份仍保守触发重适配，不宣称全部跨安装缓存优化已完成。继续模式往返、用户签名/发布产物、外观代表性恢复及最终完整门禁；保留实验性标识到正式准入完成。

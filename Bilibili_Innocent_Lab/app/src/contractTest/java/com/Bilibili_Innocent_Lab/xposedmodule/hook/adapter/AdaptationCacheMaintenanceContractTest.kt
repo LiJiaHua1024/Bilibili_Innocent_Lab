@@ -12,7 +12,7 @@ class AdaptationCacheMaintenanceContractTest {
         val hit = source.after("internal fun ensureAdapted(").after("if (cached != null) {")
             .before("if (!adaptationRunning.compareAndSet(false, true))")
         assertTrue(hit.contains("auditDexSourceAsync(context, cached)"))
-        for (operation in listOf("cacheFile()", "writeCache(", "exists()", "DexSourceFingerprint::inspect"))
+        for (operation in listOf("cacheFile()", "writeCache(", "exists()", "inspectHostDexSource(", "codeCacheDir"))
             assertFalse(operation, hit.contains(operation))
         val worker = source.after("private fun auditDexSourceAsync(").before("fun ensureAdapted(")
         assertTrue(worker.contains("HostThreadGuard.run(\"adapter.dex_audit\")"))

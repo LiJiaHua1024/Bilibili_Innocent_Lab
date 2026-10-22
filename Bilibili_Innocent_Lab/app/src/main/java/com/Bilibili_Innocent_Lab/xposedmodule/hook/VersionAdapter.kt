@@ -3059,6 +3059,14 @@ object VersionAdapter {
      * APK 里（宿主指纹只取 `sourceDir`），以及 base APK 的 `lastModified` 因重装而变化但
      * 内容其实没变（内容指纹稳定，可避免无谓重适配）。
      */
+    @androidx.annotation.WorkerThread
+    private fun inspectHostDexSource(context: Context): DexSourceFingerprint.Result? = runCatching {
+        val info = context.packageManager.getPackageInfo("tv.danmaku.bili", 0).applicationInfo
+        val patched = com.Bilibili_Innocent_Lab.xposedmodule.runtime.noroot.NPatchRuntimeProfiles
+            .read(context, "tv.danmaku.bili").markerPresent
+        DexSourceFingerprint.inspect(info, File(context.codeCacheDir, "bil-host-dex"), materializeArchiveView = patched)
+    }.getOrNull()
+
     private fun auditDexSourceAsync(context: Context, cached: AdaptResult) {
         val expected = cached.dexSourceFingerprint
         if (!dexAuditRunning.compareAndSet(false, true)) return
@@ -3071,9 +3079,7 @@ object VersionAdapter {
                     runCatching { if (!cacheFile().exists()) writeCache(cached) }
                         .onFailure { ModernHookLog.error("[BIL] 后台适配缓存维护失败", it) }
                     if (expected == DEX_SOURCE_UNAVAILABLE) return@run
-                    val actual = runCatching {
-                        context.packageManager.getPackageInfo("tv.danmaku.bili", 0).applicationInfo
-                    }.getOrNull()?.let(DexSourceFingerprint::inspect)?.value
+                    val actual = inspectHostDexSource(context)?.value
                     when (actual) {
                         null -> ModernHookLog.info("[BIL] DEX 指纹不可读，保留现有适配缓存")
                         expected -> Unit
@@ -3392,7 +3398,7 @@ object VersionAdapter {
     }
 
     /** 智能定位核心：对内置候选类做存在性验证 + 方法签名特征匹配。
-     * 全部在内存中完成（KavaRef ClassLoader/成员解析），无任何反编译/文件解压开销。
+     * 成员定位在内存中完成；NPatch 的原版 APK 来源只在本工作线程准备只读快照。
      * 成功标准放宽：任一候选类存在即算成功——运行期注册有 classExists 双路径回退，
      * 适配结果主要用于快路径签名（定位不到签名不影响运行期内置候选注册），
      * 避免「功能可用但报适配失败」的误导（8.90.2 实测）。
@@ -3404,9 +3410,9 @@ object VersionAdapter {
                       followFeedStyleEnabled: Boolean, previousFollow: FollowFeedPoints?, previouslyMissingFollow: Boolean,
                       playerQualityEnabled: Boolean, previousStoryQuality: StoryQualityPoints?, previouslyMissingStoryQuality: Boolean): AdaptResult? {
         val vc = biliVersionCode(context)
-        val dexSource = runCatching {
-            context.packageManager.getPackageInfo("tv.danmaku.bili", 0).applicationInfo
-        }.getOrNull()?.let(DexSourceFingerprint::inspect)
+        val dexSource = inspectHostDexSource(context)
+        ModernHookLog.info("[BIL] DEX source count=${dexSource?.dexEntryCount ?: 0}, " +
+            "isolated=${dexSource?.codePaths?.all { File(it).parentFile?.name == "bil-host-dex" } == true}")
         val low = locateCommentLow(loader)
         val high = locateCommentHigh(loader)
         val mine = locateMineEntry(loader)
