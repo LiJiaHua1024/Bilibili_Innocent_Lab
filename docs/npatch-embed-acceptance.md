@@ -1,6 +1,6 @@
 # embed 逐功能验收
 
-本页随[当前路线图](npatch-implementation-roadmap.md)维护，当前范围为有线机 `13a7a291`、Android 16/arm64、B 站 8.90.2、833 embed/签名等级 2。当前没有 Manager，不把 embed 结果外推为 Manager 或标准框架结果。
+本页随[当前路线图](npatch-implementation-roadmap.md)维护，当前范围为有线机 `13a7a291`、Android 16/arm64、B 站 8.90.2、固定修复版 833/签名等级 2。各案例注明 Manager/embed、Manager 安装状态与产物；不把一种模式的业务结果外推为另一种模式或标准框架实机结果。
 
 ## 全量目录与状态
 
@@ -456,6 +456,18 @@ UI 还拒绝最低 3,000,000、最高 1,000,000 的反向区间，明确显示�
 `:app:minifyReleaseWithR8` 通过（4 分 20 秒）。本机未配置正式发布密钥，未修改工程签名门禁；通过既有签名配置入口，以原测试签名构建非 debuggable、开启 R8/资源压缩的本地 Release 验收包（1 分 12 秒），不作正式分发。模块 SHA-256 `93757b4d316a051ebc75d8e9cbff8f7c2dc581b11d250cbae85c06df20b8f86a`，embed 宿主 `b9bfc4eda1464e3dcc1dfa22e8f83cf030947e6358ca805322f67fcbd7c2952f`，设置 App 仍是原测试证书，宿主仍是原 NPatch 测试证书；未重建签名库或卸载应用。
 
 相同有线机覆盖安装后，实际宿主日志获得新鲜 `module_direct` 许可，主进程安装链完成、49 Hook，后台原版来源 38 DEX/isolated。设置 UI 明确为“发布 构建”；首次打开设置页后出现旧配置提示，按提示再冷启动及刷新，诊断为当前直连配置已确认、内嵌内容一致，主/Web/下载/播放服务分别为 49/32/32/32 Hook。隐私政策 Web 页面有实际内容。证据 `release-acceptance/01-r8-host.log`、`04-r8-module`、`05-r8-diagnostics`、`10-r8-diagnostic-refreshed`、`11-r8-web` 及 `patched-r8-entry/verified.json`。不以首次旧回执或 Hook 数量代替这些检查；之后同证书恢复 Debug 包继续模式测试。完整 Lint 与最终统一回归在正式准入单元记录。
+
+### MODE_ROUNDTRIP
+
+2026-10-22，相同模块 `f68386…3d29`、embed 宿主 `15fcb3…360e` 与 Manager 宿主 `77200a…8b89`，同原版/固定 833/native/sig2/宿主证书。新增显式阶段检查，检查点只存独立测试包私有目录中的身份与免 Root revision；不备份账号或业务配置，不改设置或重启宿主。运行档案必须来自真实已安装 metadata；embed 为内容 MATCHED/作用域 UNKNOWN，Manager 为内容 NOT_APPLICABLE，均要求当前 nonce 查询、DIRECT、ACCEPTED、完整当前身份、实际安装完成及当前进程模式。Manager 已安装时仍识别 embed；不从 Manager 的存在推断模式。
+
+首次引导在用户明确批准“永久授予”后，通过系统正常 UI 授予固定 Manager 1.0.9（833）所有文件访问，最终保留该权限；未启用可选 Shizuku、未读取个人文件。通过 Manager UI 为本模块选择 B 站作用域并点击“添加”，只读 Provider 返回本模块包名；见 `12-manager-access-granted`、`47-scope-saved` 和 `47-scope-provider.log`。
+
+Manager 当前状态检查通过（0.536 秒），真实配置变化、关闭零 Hook、停用回执、重新开启及 Manager 强停后直连回归通过（81.844 秒），原版 38 DEX 的真实 ART/DexKit 查询通过（12.335 秒）。以 Manager 当前稳定身份重新建立检查点（0.544 秒），Manager→embed（12.522 秒）、embed→Manager（10.608 秒）、最终 Manager 强停后再→embed（10.287 秒）均严格保留同一完整身份与免 Root revision，且实际模式和新鲜宿主结果匹配。证据 `signing-mode-acceptance/50-manager-current-checkpoint.log` 至 `56-final-embedded-manager-stopped.log`。
+
+共存专项复用既有完整真实宿主检查，Manager 保留安装并强停，embed 配置变更、关闭与条款拒绝零 Hook、恢复、Web 反复打开/返回/后台恢复及适用子进程通过；连同真实触摸复制共 2 项、135.726 秒通过，见 `57-embedded-coexistence-web-copy.log`。无 Manager 场景继续复用生命周期最终包证据；未为了复测而卸载 Manager 或宿主。测试最终实现复用已有环境封装，AndroidTest 构建与快速 Lint 通过，生产源码/模块 APK 未变，复用 3753 JVM 与生产源码门禁；最终正式准入再统一验证产物。
+
+保留两次测试准备失败：`39-manager-retained.log` 在勾选未点击“添加”时无模块作用域；`48-manager-retained-confirmed.log` 在检查点后额外打开设置首页，首页刷新自由复制运行 revision，导致合法的新内容指纹。前者补齐 UI 确认；后者从当前稳定配置重新建立检查点且不再打开首页。没有放宽完整身份断言、用新检查点掩盖实际数据删除或把失败记为通过。UI Automation 连接占用时的一次 dump 失败也不代表宿主故障。
 
 ## 后续顺序
 

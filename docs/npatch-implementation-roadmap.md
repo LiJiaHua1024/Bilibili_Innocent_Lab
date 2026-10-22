@@ -434,3 +434,12 @@ WebView 对照：`captures/npatch-stage2-web.png` 与 `npatch-stage2-web-activit
 - [x] Release R8 优化和本地测试签名 Release/资源压缩构建通过；真实入口 `ve0`，同证书覆盖安装保留数据，生产 UI 核对发布构建、当前直连配置、内嵌一致性及四进程安装，Web 有实际内容。未配置或使用正式发布密钥，不改变签名门禁。
 
 案例 `PATCH_R8_ENTRY`，证据 `captures/npatch-2b/release-acceptance/`。继续模式往返与最终完整门禁，尚不移除实验性标识。
+
+### 2026-10-22 阶段 2B.3：Manager/embed 同签名往返与共存
+
+- [x] R8 入口修复已提交为 `3139faff`。新增只读阶段检查与独立测试包私有身份检查点，严格核对实际模式、完整身份、免 Root revision、当前 DIRECT 许可/安装；不根据 Manager 是否安装猜模式。
+- [x] 用户明确批准永久授予固定 Manager 所有文件访问，按指示保留；未启用 Shizuku。UI 作用域通过“添加”持久化，并以 Provider 返回本模块确认。Manager 真实启停/配置/恢复通过（81.844 秒），原版 DEX native 查询通过（12.335 秒）。
+- [x] Manager→embed→Manager→embed 三次同证书覆盖保留完整当前身份，分别 12.522/10.608/10.287 秒通过。最终 Manager 强停仍为 embed MATCHED、作用域 UNKNOWN。共存的条款/关闭/恢复/Web/子进程及触摸复制共 2 项通过（135.726 秒）。
+- [x] 保留未确认作用域、额外打开设置首页导致运行 revision 更新的两次准备失败，不放宽断言。AndroidTest 与快速 Lint 通过；生产包不变，复用 JVM 门禁。完整 Lint 已在发布准备中通过（1109 Warning、1 Hint，原 3 项基线不变），最终资源收敛后统一验收。
+
+案例 `MODE_ROUNDTRIP`，证据 `captures/npatch-2b/signing-mode-acceptance/`。最后收敛支持文档、移除固定实测组合的实验性标识并完成最终门禁；通用业务矩阵状态不变。

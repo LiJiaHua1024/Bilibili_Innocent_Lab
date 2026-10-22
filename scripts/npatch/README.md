@@ -142,4 +142,8 @@ adb -s <设备序列号> shell am instrument -w -r -e lifecycle checkpoint `
 
 强停场景必须先在测试进程外冷启动宿主，等待其前台授权重试完成，按本次 PID 保存 `admission_unavailable` 和未安装的日志，再运行 `unavailable`。提前启动 Instrumentation 会唤醒设置端点，可能让仍未结束的前台重试成功，不能把这种测试干预写成“强停时仍取得许可”。`checkpoint/retained/unavailable/fresh` 均不启动或重启宿主，查询通过当前 nonce/来源校验；失败不能以历史心跳补成功。执行后删除独立测试包的 `files/npatch-embedded-lifecycle.json` 可清理检查点。
 
+模式往返使用 `NPatchModeSwitchInstrumentedTest`，显式传 `-e modePhase checkpoint|retained -e expectedMode EMBEDDED|MANAGER`。先对实际已就绪宿主建立独立测试包私有检查点，再从外部覆盖安装另一模式并冷启动，`retained` 严格核对完整当前身份、免 Root revision、实际模式及当前安装状态；不打开设置首页、不修改业务配置。首页本身会刷新自由复制运行修订号，在两个阶段之间额外打开首页应视为另一笔配置变化，不能把新指纹当作模式升级丢失配置，也不能放宽完整身份断言。完成后删除 `files/npatch-mode-switch.json`。Manager 作用域页勾选后还须点击“添加”，以只读 Provider 实际返回模块包名核对持久化结果。
+
+`NPatchEmbeddedCoexistenceInstrumentedTest` 以 `-e verifyEmbeddedCoexistence true` 显式运行，要求 Manager 保留安装；验证 Manager 强停后的 embed 当前许可、配置变化、停用、条款拒绝、恢复及 Web/子进程行为。它与既有“无 Manager”测试互补，不自行安装、卸载或授予权限。共享实机测试期间不要同时运行 `uiautomator dump`，两者会竞争 UI Automation 连接。
+
 诊断页只读查询当前响应的 NPatch 进程、许可/安装状态和 Hook 点数。没有响应不等于没有注入，零 Hook 也不等于功能故障；主进程专用功能继续在子进程跳过。查询最多 16 个进程、1.5 秒等待，使用各进程独立的只读回调线程，不依赖宿主主线程绘制，不唤醒未运行的进程，不抢主进程心跳。原生 loader 修复后，embed 的 `:web` 恢复原有功能安装及注册时序，不延迟自由复制 Hook。初始化未完成时显示 `LOADED`，完整注册后显示 `INSTALLED` 及实际 Hook 点数，失败显示 `FAILED`。旧内嵌模块的 `GATED` 状态仍可解析，当前模块不再主动整进程隔离。当前已验证登录态保留、普通视频缓存下载/播放及模块账号授权与撤销；逐项范围见[行为案例](../../docs/npatch-embed-acceptance.md)及[全量矩阵](../../docs/npatch-feature-matrix.tsv)。其它业务、隔离进程和未测版本保持未知，不把一次下载或账号 ready 当作全功能验收。
