@@ -427,3 +427,10 @@ WebView 对照：`captures/npatch-stage2-web.png` 与 `npatch-stage2-web-activit
 - [x] 未选择接收者或发送内容，不将本地分享入口等同于第三方 SDK 签名校验或外部投递通过；分享净化开关未开，矩阵不变。证据 `representative-acceptance/31-share-video` 至 `36-share-return`，仅文档变更，复用相同生产包门禁。
 
 案例 `SHARE_HANDOFF`。模式往返、Release/R8 与正式准入继续推进；未测第三方组合保留未知。
+
+### 2026-10-22 阶段 2B.3：真实 Release/R8 入口与安装
+
+- [x] 分享单元已提交为 `b2f3d7ae`。修复产物工具将 Debug 入口类名写死的问题，接受 R8 正常改写的单入口并继续检查 API 档案；13 项离线回归通过，包含多入口及未知 API 拒绝。
+- [x] Release R8 优化和本地测试签名 Release/资源压缩构建通过；真实入口 `ve0`，同证书覆盖安装保留数据，生产 UI 核对发布构建、当前直连配置、内嵌一致性及四进程安装，Web 有实际内容。未配置或使用正式发布密钥，不改变签名门禁。
+
+案例 `PATCH_R8_ENTRY`，证据 `captures/npatch-2b/release-acceptance/`。继续模式往返与最终完整门禁，尚不移除实验性标识。

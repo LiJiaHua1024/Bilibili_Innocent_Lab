@@ -88,8 +88,15 @@ $moduleVersion = $Matches[1]
 $moduleVersionName = $Matches[2]
 $moduleArchive = [IO.Compression.ZipFile]::OpenRead($ModuleApk)
 try {
-    if ((Read-ZipText $moduleArchive 'META-INF/xposed/java_init.list').Trim() -ne "$modulePackage.hook.HookEntry") {
+    $moduleEntry = (Read-ZipText $moduleArchive 'META-INF/xposed/java_init.list').Trim()
+    # R8 按项目既有规则改写入口内容；不能把 Debug 类名当作 Release 的固定契约。
+    if ($moduleEntry -notmatch '^[A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*)*$') {
         throw 'Module APK has an unexpected modern entry point.'
+    }
+    $moduleProperties = ConvertFrom-StringData (Read-ZipText $moduleArchive 'META-INF/xposed/module.prop')
+    if ($moduleProperties.minApiVersion -ne '101' -or $moduleProperties.targetApiVersion -ne '102' -or
+        $moduleProperties.staticScope -ne 'true' -or $moduleProperties.autoHotReload -ne 'false') {
+        throw 'Module APK has an unsupported modern API profile.'
     }
 } finally { $moduleArchive.Dispose() }
 $referenceSigner = Get-Signer $ReferencePatchedApk
@@ -153,6 +160,7 @@ if ($signer -ne $referenceSigner) { throw 'Signing certificate mismatch; do not 
     certificateSha256 = $signer
     moduleCertificateSha256 = $moduleSigner
     moduleVersionCode = $moduleVersion; moduleVersionName = $moduleVersionName
+    moduleEntry = $moduleEntry
     signing = if ($SigningKeyStore) { 'custom-keystore' } else { 'npatch-test-key' }
 } | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $output 'verified.json') -Encoding utf8
 Write-Output "Verified $Mode APK: $patched"

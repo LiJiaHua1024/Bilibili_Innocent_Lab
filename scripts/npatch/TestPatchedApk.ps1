@@ -82,6 +82,35 @@ try {
     Expect-Rejection 'already patched input' $bad
     $bad = $common.Clone(); $bad.ModuleApk = $ReferencePatchedApk; $bad.OutputDirectory = Join-Path $root 'wrong-module'
     Expect-Rejection 'wrong module application ID' $bad
+    # 保留真实签名校验，验证放宽 R8 入口名称不会同时接受多入口或未知 API 档案。
+    foreach ($case in @(
+        @{Name='multiple-entries'; Entry='META-INF/xposed/java_init.list'; Text="a.b.Entry`na.b.Other"},
+        @{Name='wrong-api'; Entry='META-INF/xposed/module.prop'; Text="minApiVersion=101`ntargetApiVersion=103`nstaticScope=true`nautoHotReload=false"}
+    )) {
+        $invalidModule = Join-Path $root ($case.Name + '.apk')
+        # 重新建 ZIP，避免 .NET Update 模式保留 APK 对齐字段后破坏未修改项的局部偏移。
+        $source = [IO.Compression.ZipFile]::OpenRead($ModuleApk)
+        $zip = [IO.Compression.ZipFile]::Open($invalidModule, [IO.Compression.ZipArchiveMode]::Create)
+        try {
+            foreach ($entry in $source.Entries) {
+                $target = $zip.CreateEntry($entry.FullName).Open()
+                try {
+                    if ($entry.FullName -eq $case.Entry) {
+                        $writer = [IO.StreamWriter]::new($target)
+                        try { $writer.Write($case.Text) } finally { $writer.Dispose() }
+                    } else {
+                        $inputStream = $entry.Open()
+                        try { $inputStream.CopyTo($target) } finally { $inputStream.Dispose() }
+                    }
+                } finally { $target.Dispose() }
+            }
+        } finally { $zip.Dispose(); $source.Dispose() }
+        & $ApkSigner sign --ks $key --ks-key-alias fixture --ks-pass "env:$variable" `
+            --key-pass "env:$variable" --v4-signing-enabled false $invalidModule *> (Join-Path $root ($case.Name + '-sign.log'))
+        if ($LASTEXITCODE -ne 0) { throw 'Invalid-profile fixture signing failed.' }
+        $bad = $common.Clone(); $bad.ModuleApk = $invalidModule; $bad.OutputDirectory = Join-Path $root $case.Name
+        Expect-Rejection $case.Name $bad
+    }
     [Environment]::SetEnvironmentVariable($wrongVariable, $wrongSecret, 'Process')
     $bad = $signed.Clone(); $bad.OutputDirectory = Join-Path $root 'wrong-password'
     $bad.SigningKeyPasswordEnvironment = $wrongVariable
