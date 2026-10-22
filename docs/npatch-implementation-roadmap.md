@@ -404,3 +404,11 @@ WebView 对照：`captures/npatch-stage2-web.png` 与 `npatch-stage2-web-activit
 - [x] 新增 7 项 JVM；最终 3753 项 JVM（0 失败、1 跳过）、Debug/AndroidTest 与快速 Lint 通过，250 Warning、baseline 不变。最终真实 ART/native 查询和外观当前身份共 2 项通过（16.714 秒），宿主实际 `38 DEX / isolated=true`。
 
 案例 `EMBED_DEX_SOURCE`，证据 `captures/npatch-2b/dex-source-acceptance/`；模块 `f68386…3d29`、宿主 `15fcb3…360e`。普通安装身份仍保守触发重适配，不宣称全部跨安装缓存优化已完成。继续模式往返、用户签名/发布产物、外观代表性恢复及最终完整门禁；保留实验性标识到正式准入完成。
+
+### 2026-10-22 阶段 2B.3：可维护产物与自有签名链
+
+- [x] DEX 来源单元已提交为 `dcb8cdfc`。共用 Manager/embed 构建与验证入口，embed 保留原参数兼容；接受已签名 Debug/Release 模块，核对包名/Modern 入口/版本/证书，固定 833/native/sig2 不变。
+- [x] 自有密钥仅经 SDK 签名工具读取；口令通过环境变量名称传递，不输出密钥或口令。必须与参照证书匹配，失败不生成通过记录、不自行安装/卸载；明确同证书升级、首次自有签名和独立设置 App 的密钥边界。
+- [x] 一次性密钥离线验收 11 项通过，覆盖同证书重建、Manager 档案和错误证书/口令/模块 ID/参数/输入拒绝，日志与记录无口令。证据 `captures/npatch-2b/signing-mode-acceptance/final-tool-tests/`；只改工具/文档，不重复 Android 构建或 Lint。
+
+案例 `PATCH_SIGNING_TOOL`。运行模式往返和正式 Release/R8 继续后续门禁，不以签名工具测试代替业务验收，未知证书下的账号风控仍不外推。

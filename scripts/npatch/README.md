@@ -93,7 +93,7 @@ x86_64:  7933cae217a3f0183d15fee01674d682d4d8eb6a6f227d208cf6bbbc356ca5d1
 
 ## embed 同签名产物
 
-`NewEmbeddedApk.ps1` 固定上述 **Java 与 native 均已修复**的 833 patcher、普通 entry-hook 和签名等级 2，不启用 `injectdex`。它拒绝已修补输入、已有输出目录及未知 patcher；完成后验证双 ABI loader、内嵌模块与原版宿主的 SHA-256，并要求输出证书与参考 patched APK 相同，保存 `verified.json`。仅支持 NPatch 默认测试签名；使用自有密钥的宿主不能用它覆盖，证书不一致会明确失败。脚本不安装 APK、不处理或输出私钥。
+`NewPatchedApk.ps1` 是 Manager/embed 共用的产物与签名入口；`NewEmbeddedApk.ps1` 保留原调用方式并固定选择 embed。两者固定上述 **Java 与 native 均已修复**的 833 patcher、普通 entry-hook 和签名等级 2，不启用 `injectdex`。拒绝已修补输入、已有输出目录和未知 patcher；验证原版宿主、双 ABI loader 与 embed 模块字节，Manager 产物必须不含内嵌模块。模块必须是已签名、应用 ID/Modern 入口正确的 APK，Debug 和已签名 Release 均可；版本与模块证书进入 `verified.json`。输出宿主证书必须与参照 APK 一致，任何失败均不生成通过记录。脚本不安装 APK、不导出私钥。
 
 ```powershell
 $env:JAVA_HOME = 'C:/Program Files/Java/jdk-17' # apksigner 使用
@@ -106,6 +106,25 @@ $env:JAVA_HOME = 'C:/Program Files/Java/jdk-17' # apksigner 使用
     -ApkSigner 'G:/AndroidSdk/build-tools/37.0.0/apksigner.bat' `
     -OutputDirectory '<不存在的输出目录>'
 ```
+
+发布模块先完成 Release/R8 构建并签名，再把该**同一份已签名模块 APK**用于修补和独立设置 App 安装。默认使用 NPatch 测试证书；已有自有证书的宿主必须显式提供匹配的 keystore，不能退回默认密钥。只接受环境变量**名称**，口令值由 `apksigner` 直接读取，不进入 patcher 参数、日志或产物记录。`Aapt2` 默认从所选 `ApkSigner` 的同目录查找，也可显式传入。
+
+```powershell
+# 当前进程中预先安全设置 BIL_HOST_STORE_PASSWORD / BIL_HOST_KEY_PASSWORD，不在脚本内写入口令值。
+./scripts/npatch/NewPatchedApk.ps1 -Mode embedded `
+    -OriginalApk '<未修补宿主.apk>' -ModuleApk '<已签名 Release 模块.apk>' `
+    -ReferencePatchedApk '<当前已安装宿主的 APK>' `
+    -PatcherJar '<固定修复版 833.jar>' -BcprovJar '<bcprov-1.80.jar>' `
+    -Java21 '<Java 21 可执行文件>' -ApkSigner '<SDK apksigner>' `
+    -SigningKeyStore '<自己的签名库.p12>' -SigningKeyAlias '<alias>' `
+    -SigningStorePasswordEnvironment BIL_HOST_STORE_PASSWORD `
+    -SigningKeyPasswordEnvironment BIL_HOST_KEY_PASSWORD `
+    -OutputDirectory '<不存在的输出目录>'
+```
+
+首次自有签名构建可用同证书的已签名 APK 作为证书参照；覆盖升级必须使用当前安装宿主的证书参照，并先核对新产物的 `verified.json`，再 `adb -s <serial> install -r <产物>`。不同证书无法保留原应用数据覆盖安装，工具会拒绝，不会自行卸载。宿主密钥与独立设置 App 的密钥分别保持各自升级链，不能混淆。模式切换用相同输入和宿主签名，将 `-Mode` 改为 `manager` 或 `embedded` 后覆盖安装、冷启动；Manager 另外安装并配置模块/宿主作用域，embed 固定内嵌作用域。仅更新设置 App 不等于更新 embed 代码。
+
+`TestPatchedApk.ps1` 在新的输出目录生成一次性测试密钥，离线检查自有签名/同证书重建、Manager 档案、错误证书/口令/应用 ID、缺失密钥、未知 patcher、已修补输入与已有输出拒绝，并检查日志/产物记录没有口令。它不连接手机，输入参数与产物脚本一致，另需 `KeyTool`。测试密钥仅用于夹具，口令在本次进程结束时清除，不应拿这些测试产物分发。
 
 安装修补后的 B 站及同版本独立模块设置 App；后者提供当前许可与配置，必须保留。首次打开设置 App，接受条款并选择 NPatch 免 Root 通道，冷启动 B 站后验证回执。embed 无需安装 Manager，作用域固定在 APK 内；独立设置 App 不写宿主 UID 的 Remote Store，也不查询 Manager 作用域。更改普通设置后重启宿主；**更新模块代码时必须用最新模块 APK 重新修补宿主**，只更新设置 App 不会替换 APK 内模块。同版本码的开发包也必须核对 `verified.json` 中的模块哈希。
 
