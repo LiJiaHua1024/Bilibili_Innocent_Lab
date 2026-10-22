@@ -69,6 +69,19 @@ internal fun nPatchDiagnosticsDetails(context: Context, input: ModuleDiagnosticI
             })
             add(context.getString(R.string.npatch_process_row, row.processName, row.pid,
                 state, row.installedHookCount, row.source))
+            val bitness = row.process64Bit?.let { if (it) "64" else "32" } ?: unknown
+            add(context.getString(R.string.npatch_process_native, bitness,
+                nativeStateText(context, row.dexKitState), nativeStateText(context, row.frameNativeState)))
         }
     }.joinToString("\n")
 }
+
+private fun nativeStateText(context: Context, state: String): String = context.getString(when (state) {
+    "NOT_TRIED", "NOT_PREPARED" -> R.string.npatch_native_not_checked
+    "AVAILABLE", "READY" -> R.string.npatch_native_loaded
+    "UNAVAILABLE", "FAILED" -> R.string.npatch_native_failed
+    "UNSUPPORTED_ABI" -> R.string.npatch_native_unsupported
+    "PREPARING", "BUSY" -> R.string.npatch_native_busy
+    "RESTART_REQUIRED" -> R.string.npatch_native_restart
+    else -> R.string.npatch_profile_unknown
+})

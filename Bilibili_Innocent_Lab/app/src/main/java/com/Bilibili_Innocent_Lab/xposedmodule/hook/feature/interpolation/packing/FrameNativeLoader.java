@@ -17,7 +17,7 @@ public final class FrameNativeLoader {
     private FrameNativeLoader() { }
 
     /** Cheap status only; safe on the presentation path. */
-    public static Status status() { return STATE.status(); }
+    public static Status status() { return runtimeAbi() == null ? Status.UNSUPPORTED_ABI : STATE.status(); }
 
     /**
      * Caller must pass API102 getModuleApplicationInfo().sourceDir and the actual host
@@ -59,8 +59,12 @@ public final class FrameNativeLoader {
     }
 
     private static String runtimeAbi() {
-        String expected = Process.is64Bit() ? "arm64-v8a" : "armeabi-v7a";
-        String[] supported = Process.is64Bit() ? Build.SUPPORTED_64_BIT_ABIS : Build.SUPPORTED_32_BIT_ABIS;
+        boolean is64Bit = Process.is64Bit();
+        return selectRuntimeAbi(is64Bit, is64Bit ? Build.SUPPORTED_64_BIT_ABIS : Build.SUPPORTED_32_BIT_ABIS);
+    }
+
+    static String selectRuntimeAbi(boolean is64Bit, String[] supported) {
+        String expected = is64Bit ? "arm64-v8a" : "armeabi-v7a";
         for (String candidate : supported) if (expected.equals(candidate)) return expected;
         return null;
     }

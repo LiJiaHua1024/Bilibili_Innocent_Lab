@@ -4,6 +4,8 @@ import android.os.Bundle
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import com.Bilibili_Innocent_Lab.xposedmodule.hook.adapter.dex.*
+import com.Bilibili_Innocent_Lab.xposedmodule.hook.feature.interpolation.FrameInterpolationNative
+import com.Bilibili_Innocent_Lab.xposedmodule.hook.feature.interpolation.packing.FrameNativeLoader
 import com.Bilibili_Innocent_Lab.xposedmodule.runtime.noroot.NPatchRuntimeProfiles
 import dalvik.system.DexClassLoader
 import org.junit.Assert.*
@@ -38,10 +40,20 @@ class NPatchDexSourceInstrumentedTest {
         }
         assertEquals(DexSourceFingerprint.inspectCodePaths(listOf(original.path))?.value, source.value)
         val loader = DexClassLoader(original.path, context.codeCacheDir.path, null, ClassLoader.getSystemClassLoader())
+        val isolateNativeFailure = InstrumentationRegistry.getArguments().getString("verifyNativeIsolation") == "true"
+        if (isolateNativeFailure) {
+            // Fail only optional frame preparation in the instrumentation process; no host state is changed.
+            val missing = File(context.codeCacheDir, "missing-frame-module-${System.nanoTime()}.apk")
+            assertEquals(FrameNativeLoader.Status.FAILED, FrameInterpolationNative.prepare(missing, context.codeCacheDir))
+        }
         val query = DexAssistQuery.PLAYER_DEFAULT_QUALITY
         val result = DexKitAssistEngine.resolveAll(setOf(query), source.codePaths, loader).getValue(query)
         assertTrue("Native DexKit did not resolve original host code: $result", result is DexAssistResult.Candidates)
         assertTrue((result as DexAssistResult.Candidates).methods.isNotEmpty())
+        if (isolateNativeFailure) {
+            assertEquals(FrameNativeLoader.Status.FAILED, FrameInterpolationNative.status)
+            assertEquals("AVAILABLE", DexKitAssistEngine.nativeAvailability())
+        }
         instrumentation.sendStatus(0, Bundle().apply {
             putString("stream", "\nNPatch original DEX: count=${source.dexEntryCount}; " +
                 "fingerprint=${source.value}; original bytes matched; native query passed\n")

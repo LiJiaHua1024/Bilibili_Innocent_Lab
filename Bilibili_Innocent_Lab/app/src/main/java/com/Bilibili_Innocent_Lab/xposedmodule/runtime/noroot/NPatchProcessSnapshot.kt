@@ -14,7 +14,10 @@ internal data class NPatchProcessSnapshot(
     val source: String = "unknown",
     val installedHookCount: Int = 0,
     val targetUpdateTime: Long,
-    val moduleVersionCode: Long
+    val moduleVersionCode: Long,
+    val process64Bit: Boolean? = null,
+    val dexKitState: String = "UNKNOWN",
+    val frameNativeState: String = "UNKNOWN"
 )
 
 /** 独立的本地只读协议，不改变主进程激活回执、许可或可导出报告 schema。 */
@@ -23,6 +26,8 @@ internal object NPatchProcessCodec {
     const val MAX_CHARS = 12 * 1024
     private val process = Regex("tv\\.danmaku\\.bili(?::[A-Za-z0-9_.-]{1,96})?")
     private val sources = setOf("unknown", "module_direct", "manager")
+    private val dexKitStates = setOf("UNKNOWN", "NOT_TRIED", "AVAILABLE", "UNAVAILABLE")
+    private val frameStates = setOf("UNKNOWN", "NOT_PREPARED", "PREPARING", "READY", "BUSY", "UNSUPPORTED_ABI", "RESTART_REQUIRED", "FAILED")
 
     fun encode(rows: List<NPatchProcessSnapshot>): String {
         require(rows.size <= MAX_PROCESSES && rows.map { it.processName }.distinct().size == rows.size)
@@ -31,7 +36,9 @@ internal object NPatchProcessCodec {
             put(JSONObject().put("process", row.processName).put("pid", row.pid)
                 .put("mode", row.mode.name).put("state", row.state.name).put("source", row.source)
                 .put("hooks", row.installedHookCount).put("targetUpdate", row.targetUpdateTime)
-                .put("moduleVersion", row.moduleVersionCode))
+                .put("moduleVersion", row.moduleVersionCode)
+                .put("process64", row.process64Bit ?: JSONObject.NULL)
+                .put("dexkit", row.dexKitState).put("frameNative", row.frameNativeState))
         } }.toString().also { require(it.length <= MAX_CHARS) }
     }
 
@@ -41,12 +48,15 @@ internal object NPatchProcessCodec {
         require(array.length() <= MAX_PROCESSES)
         List(array.length()) { index ->
             val row = array.getJSONObject(index)
-            require(row.length() == 8)
+            require(row.length() == 11)
+            val process64 = row.get("process64")
+            require(process64 == JSONObject.NULL || process64 is Boolean)
             NPatchProcessSnapshot(row.get("process") as String, row.integer("pid").toInt(),
                 NPatchMode.valueOf(row.get("mode") as String),
                 NPatchProcessState.valueOf(row.get("state") as String),
                 row.get("source") as String, row.integer("hooks").toInt(),
-                row.integer("targetUpdate"), row.integer("moduleVersion")).also { require(valid(it)) }
+                row.integer("targetUpdate"), row.integer("moduleVersion"), process64 as? Boolean,
+                row.get("dexkit") as String, row.get("frameNative") as String).also { require(valid(it)) }
         }.also { require(it.map { row -> row.processName }.distinct().size == it.size) }
     }.getOrNull()
 
@@ -58,6 +68,7 @@ internal object NPatchProcessCodec {
 
     private fun valid(row: NPatchProcessSnapshot): Boolean =
         process.matches(row.processName) && row.pid > 0 && row.source in sources &&
+            row.dexKitState in dexKitStates && row.frameNativeState in frameStates &&
             row.installedHookCount in 0..4096 && row.targetUpdateTime > 0L && row.moduleVersionCode > 0L &&
             (row.state == NPatchProcessState.INSTALLED || row.installedHookCount == 0)
 }

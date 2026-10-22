@@ -10,6 +10,8 @@ import android.os.HandlerThread
 import android.os.Looper
 import androidx.core.content.ContextCompat
 import com.Bilibili_Innocent_Lab.xposedmodule.BuildConfig
+import com.Bilibili_Innocent_Lab.xposedmodule.hook.adapter.dex.DexKitAssistEngine
+import com.Bilibili_Innocent_Lab.xposedmodule.hook.feature.interpolation.FrameInterpolationNative
 import com.Bilibili_Innocent_Lab.xposedmodule.runtime.CrossAppBroadcastCompat
 import com.Bilibili_Innocent_Lab.xposedmodule.runtime.HostRuntimeDiagnosticsQueryContract
 import com.highcapable.betterandroid.system.extension.component.getPackageInfoOrNull
@@ -22,7 +24,7 @@ import java.util.concurrent.atomic.AtomicBoolean
 /** 各个已加载进程就地回复，不启动未运行进程，不落盘，不参与授权或主进程心跳。 */
 internal object NPatchProcessDiagnostics {
     private val action = "${BuildConfig.APPLICATION_ID}.QUERY_NPATCH_PROCESSES"
-    private const val PROTOCOL = 1
+    private const val PROTOCOL = 2
     private const val TIMEOUT_MS = 1_500L
     private val queryInFlight = AtomicBoolean(false)
     @Volatile private var current: NPatchProcessSnapshot? = null
@@ -34,7 +36,7 @@ internal object NPatchProcessDiagnostics {
         val info = app.packageManager.getPackageInfoOrNull(app.packageName) ?: return
         val initial = NPatchProcessSnapshot(processName, android.os.Process.myPid(), mode,
             NPatchProcessState.LOADED, targetUpdateTime = info.lastUpdateTime,
-            moduleVersionCode = BuildConfig.VERSION_CODE.toLong())
+            moduleVersionCode = BuildConfig.VERSION_CODE.toLong(), process64Bit = android.os.Process.is64Bit())
         // 进程名与数值同查询端校验，未知/隔离进程不能凭部分信息伪装成功。
         NPatchProcessCodec.encode(listOf(initial))
         // 只读内存快照不依赖 UI；宿主主线程启动缓慢/卡住时仍可诊断其它已加载进程。
@@ -50,7 +52,8 @@ internal object NPatchProcessDiagnostics {
                     runCatching {
                         val extras = getResultExtras(true)
                         val rows = NPatchProcessCodec.decode(extras.getString("rows") ?: "[]") ?: return
-                        val row = current ?: return
+                        val row = current?.copy(dexKitState = DexKitAssistEngine.nativeAvailability(),
+                            frameNativeState = FrameInterpolationNative.status.name) ?: return
                         if (rows.size >= NPatchProcessCodec.MAX_PROCESSES || rows.any { it.processName == row.processName }) return
                         extras.putString("nonce", nonce)
                         extras.putString("rows", NPatchProcessCodec.encode(rows + row))

@@ -25,6 +25,9 @@ class NPatchProcessCodecTest {
             raw.replace("\"hooks\":0", "\"hooks\":1").replace("INSTALLED", "DISABLED"),
             raw.replace("\"moduleVersion\":21", "\"moduleVersion\":0"),
             raw.replace("\"pid\":123", "\"pid\":123,\"extra\":true"),
+            raw.replace("\"process64\":null", "\"process64\":\"true\""),
+            raw.replace("\"dexkit\":\"UNKNOWN\"", "\"dexkit\":\"invented\""),
+            raw.replace("\"frameNative\":\"UNKNOWN\"", "\"frameNative\":\"invented\""),
             " ".repeat(NPatchProcessCodec.MAX_CHARS + 1),
             "[$raw,$raw]"
         )) assertNull(invalid.take(120), NPatchProcessCodec.decode(invalid))
@@ -32,5 +35,17 @@ class NPatchProcessCodecTest {
         assertNull(NPatchProcessCodec.decode("[$objectText,$objectText]"))
         val tooMany = (1..17).map { row.copy(processName = "tv.danmaku.bili:p$it") }
         assertThrows(IllegalArgumentException::class.java) { NPatchProcessCodec.encode(tooMany) }
+    }
+
+    @Test fun `native observations remain independent of hook counts and device bitness`() {
+        for (bitness in listOf(true, false, null)) {
+            val observed = row.copy(process64Bit = bitness, dexKitState = "AVAILABLE", frameNativeState = "FAILED")
+            assertEquals(listOf(observed), NPatchProcessCodec.decode(NPatchProcessCodec.encode(listOf(observed))))
+        }
+        val notQueried = row.copy(dexKitState = "NOT_TRIED", frameNativeState = "NOT_PREPARED")
+        assertEquals(listOf(notQueried), NPatchProcessCodec.decode(NPatchProcessCodec.encode(listOf(notQueried))))
+        val legacy = org.json.JSONObject(NPatchProcessCodec.encode(listOf(row)).removeSurrounding("[", "]"))
+        legacy.remove("process64"); legacy.remove("dexkit"); legacy.remove("frameNative")
+        assertNull(NPatchProcessCodec.decode("[$legacy]"))
     }
 }
