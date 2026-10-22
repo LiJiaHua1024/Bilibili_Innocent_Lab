@@ -240,6 +240,18 @@ UI 还拒绝最低 3,000,000、最高 1,000,000 的反向区间，明确显示�
 
 最终包再次通过真实配置/启停/条款/Web/触屏复制回归，2 项、141.779 秒，见 `final-host-regression.log`。之后正式会员登录态及 5.0 MB 既有缓存保留，缓存播放页的两帧已查看并确认继续解码，见 `retained-account-cache.log`、`upgrade-cache.xml/.png` 和 `upgrade-cache-player-1.png` / `-2.png`；未据此扩大为断网或更多资源验收。
 
+### RELATED_COURSE_INSTALLATION
+
+2026-10-22 复用 `b2570cc3` 相同生产/测试包，通过 UI 验证五类推荐类型和匹配增强均关闭。公开入口 `BV1xx411c7mD` 出现带“课堂”徽标的乐理卡以及两条普通投稿对照，父组 `DISABLED`、0 Hook、各类型叶项无回调，0.330 秒检查通过。
+
+仅开启“过滤课程推荐”后，安装日志确认 `types=[COURSE]`，时长/播放量/匹配增强/强力模式均未开启。首次及保持相同配置的两轮补采均没有课程移除证据，画面也没有“课堂”徽标；预期 `APPLIED` 的检查分别失败，不能把画面消失视为过滤成功。后续冷启动同步当前快照后，严格检查确认父组已执行，课程叶项 `INSTALLED`、0 命中、无运行错误，其余类型叶项无回调，0.609 秒通过。这只证明安装与未命中观测，不证明实际移除。
+
+通过 UI 恢复全关，父组 `DISABLED`、0 Hook、各类型叶项无回调，0.377 秒通过，普通推荐继续显示；本轮没有重新取得“课堂”卡，因此实际命中及命中后恢复仍待验。此前一次仅打开设置 App 后查询旧进程，被当前快照 revision 不一致拦下；该失败记录不作业务证据，后续保留相同严格断言并冷启动重查。可见“课堂”徽标尚未与协议 `COURSE` 类型或真实路由交叉确认；现有公共分类器支持课堂路由，而相关推荐尚未传入 URI，这是后续适配候选，需真实样本后再收敛实现。
+
+证据 `captures/npatch-2b/related-course-acceptance/01-types-baseline-dialog.xml`、`01-types-baseline.png`、`02-all-types-off-selected.xml/.png`、`03-types-off-baseline-evidence.log`、`04-baseline-controls.xml/.png`、`06-course-only-selected.xml/.png`、`07-course-enabled-detail.xml/.png`、`07-course-enabled-evidence.log`、`09-course-retry-*-detail.xml/.png`、`09-course-retry-*-evidence.log`、`course-sampling.log`、`10b-course-on-observed-evidence.log`、`12-course-cleared-selected.xml/.png`、`13-course-off-restored-evidence.log`、`14-restored-controls.xml/.png`。课程设置与能力只记 `installed`，不声明命中成功或永久不适用。
+
+本轮仅更新验收记录与矩阵，复用同一包的 3700 项 JVM、快速 Lint 和 141.779 秒最终包回归；包哈希见 `reused-production-build.json`。类型全部关闭，作者和标签名单仍为空。
+
 ### EMBED_WEB
 
 2B.1 的原生 TLS 修复、恢复原有 Web Hook、关闭/条款拒绝/重新开启、重复打开/返回/后台恢复、正文滚动及复制链接均见路线图 2B.1 验收。当前模块的自由复制开关和安装诊断已有证据；评论/简介复制的具体业务仍需独立行为案例，不因 32 个公共 Hook 安装成功而全部标记通过。
