@@ -2813,6 +2813,26 @@ object VersionAdapter {
 
     internal data class HostIdentity(val versionCode: Int, val fingerprint: String)
 
+    /** Only called after current NPatch authorization, on the adaptation worker; never an admission cache. */
+    internal fun rebindRepackedCache(
+        previous: AdaptResult, identity: HostIdentity, resetTimestamp: Long, actualDex: String?
+    ): AdaptResult? {
+        if (previous.hostFingerprint == identity.fingerprint || previous.ts < resetTimestamp.coerceAtLeast(0L) ||
+            previous.biliVersionCode != identity.versionCode || !previous.isUsableWith(previous.hostFingerprint)) return null
+        fun logicalIdentity(fingerprint: String): List<String>? {
+            val parts = fingerprint.split('|')
+            if (parts.size != 6 || parts[0] != "tv.danmaku.bili" ||
+                parts[1].toLongOrNull() != identity.versionCode.toLong() || parts[3].toLongOrNull()?.let { it > 0L } != true ||
+                parts[4].toLongOrNull()?.let { it > 0L } != true || parts[5] != ADAPTER_RULE_VERSION.toString()) return null
+            return parts.take(3) + parts.last()
+        }
+        val expected = logicalIdentity(identity.fingerprint) ?: return null
+        if (logicalIdentity(previous.hostFingerprint) != expected || actualDex == null ||
+            !actualDex.matches(DEX_SOURCE_FINGERPRINT_PATTERN) || previous.dexSourceFingerprint != actualDex) return null
+        // Preserve the original timestamp so a manual reset cannot be bypassed by renewing old results.
+        return previous.copy(hostFingerprint = identity.fingerprint)
+    }
+
     /** 只在同一次 attach 安装栈内复用；不持有 Context，不作为进程级永久缓存。 */
     internal data class StartupCacheSnapshot(
         val identity: HostIdentity,
@@ -3055,9 +3075,9 @@ object VersionAdapter {
      * **为什么读不出来时保留缓存**：一次 I/O 失败不足以推翻一份正在正常工作的适配结果，
      * 失败放行优于误删。
      *
-     * 这条通道覆盖 [buildHostFingerprint] 看不到的两种情况：变化只发生在带 DEX 的 split
-     * APK 里（宿主指纹只取 `sourceDir`），以及 base APK 的 `lastModified` 因重装而变化但
-     * 内容其实没变（内容指纹稳定，可避免无谓重适配）。
+     * 这条通道覆盖只发生在带 DEX 的 split APK 中的变化（启动身份只取 `sourceDir`）。
+     * NPatch 重新修补导致启动身份变化时，另在适配工作线程按内容核对并重绑定缓存，
+     * 不能声称本审计会恢复已被启动身份拒绝的缓存。
      */
     @androidx.annotation.WorkerThread
     private fun inspectHostDexSource(context: Context): DexSourceFingerprint.Result? = runCatching {
@@ -3170,7 +3190,7 @@ object VersionAdapter {
         val previouslyMissingPopup = PlayerPopupPromotionAdapter.Family.entries.filterTo(linkedSetOf()) { family ->
             popupHistory?.diagnostics.orEmpty().any { it.id == family.diagnostic && it.state == AdaptState.MISSING }
         }
-        val cached = usable?.takeUnless { value ->
+        fun requiresFeatureRefresh(value: AdaptResult): Boolean {
             val popupRefresh = playerPopupPromotionEnabled &&
                 PlayerPopupPromotionAdapter.missing(classLoader, value.playerPopupPromotion).any { family ->
                     value.diagnostics.none { it.id == family.diagnostic && it.state == AdaptState.MISSING }
@@ -3182,7 +3202,7 @@ object VersionAdapter {
                 SponsorPlayerLocator.direct(classLoader) != null,
                 value.sponsorPlayer?.let { SponsorPlayerLocator.resolve(classLoader, it) } != null,
                 value.diagnostics.any { it.id == SponsorPlayerLocator.DIAGNOSTIC && it.state == AdaptState.MISSING })
-            StoryQualityLocator.planned(classLoader, value.playerQuality?.story, playerQualityEnabled,
+            return StoryQualityLocator.planned(classLoader, value.playerQuality?.story, playerQualityEnabled,
                 value.diagnostics.any { it.id == StoryQualityLocator.DIAGNOSTIC && it.state == AdaptState.MISSING }).isNotEmpty() ||
             FollowFeedAdapter.needsQuery(classLoader, value.followFeedStyle, followFeedStyleEnabled,
                 value.diagnostics.any { it.id == FollowFeedAdapter.DIAGNOSTIC && it.state == AdaptState.MISSING }) ||
@@ -3196,6 +3216,7 @@ object VersionAdapter {
                 attempted = value.diagnostics.any { it.id == KotlinDefaultWordsLocator.DIAGNOSTIC && it.state == AdaptState.MISSING }
             )
         }
+        val cached = usable?.takeUnless(::requiresFeatureRefresh)
         if (cached != null) {
             // 缓存命中后的文件维护和 DEX 内容比对一并下沉；不一致只作废缓存。
             auditDexSourceAsync(context, cached)
@@ -3217,11 +3238,30 @@ object VersionAdapter {
                 // `adapt` 已自带 runCatching，但 writeCache 与日志不在其中；宿主进程内
                 // 线程的逃逸异常一律杀进程，整段必须过防波堤。
                 HostThreadGuard.run("adapter.adapt_worker") {
-                    result = runCatching { adapt(context, classLoader, kotlinDefaultWordsEnabled, sponsorBlockEnabled,
+                    // One original-source inspection shared by repack validation and normal adaptation.
+                    // No new disk work or unvalidated cached members enter Application.attach.
+                    val dexSource by lazy(LazyThreadSafetyMode.NONE) { inspectHostDexSource(context) }
+                    val repacked = if (startup.cached == null &&
+                        com.Bilibili_Innocent_Lab.xposedmodule.runtime.noroot.NoRootRuntimeDetector.detect(context,
+                            io.github.libxposed.api.XposedModule::class.java.classLoader, VersionAdapter::class.java.classLoader) ==
+                        com.Bilibili_Innocent_Lab.xposedmodule.runtime.noroot.HookRuntimeMode.NPATCH_LEGACY &&
+                        com.Bilibili_Innocent_Lab.xposedmodule.runtime.noroot.NPatchRuntimeProfiles.read(context).metadataValid) {
+                        loadCached(context, resetTimestamp, identity = null)?.let { previous ->
+                            rebindRepackedCache(previous, startup.identity, resetTimestamp, dexSource?.value)
+                        }?.takeIf { value ->
+                            StartupCacheSnapshot(startup.identity, resetTimestamp.coerceAtLeast(0L), value)
+                                .usableCache(highCandidateExists) != null && !requiresFeatureRefresh(value)
+                        }
+                    } else null
+                    if (repacked != null) {
+                        lastCacheStatus = "npatch-content-rebound"
+                        ModernHookLog.info("[BIL] NPatch 原版 DEX 未变，后台复用适配缓存；下次冷启动生效 dex=${repacked.dexSourceFingerprint}")
+                    }
+                    result = repacked ?: runCatching { adapt(context, classLoader, kotlinDefaultWordsEnabled, sponsorBlockEnabled,
                         commentClassicStyleEnabled, playerPopupPromotionEnabled, previousPopup, previouslyMissingPopup,
                         brandSplashCustomEnabled, previousBrand, previouslyMissingBrand,
                         followFeedStyleEnabled, previousFollow, previouslyMissingFollow,
-                        playerQualityEnabled, previousStoryQuality, previouslyMissingStoryQuality) }.getOrNull()
+                        playerQualityEnabled, previousStoryQuality, previouslyMissingStoryQuality, dexSource) }.getOrNull()
                     result?.let { adapted ->
                         // 写文件缓存（loadApp 快路径载体）；校验后原子替换，旧缓存不会被半截 JSON 覆盖。
                         if (!writeCache(adapted)) {
@@ -3408,9 +3448,9 @@ object VersionAdapter {
                       previousPopup: PlayerPopupPromotionPoints?, previouslyMissingPopup: Set<PlayerPopupPromotionAdapter.Family>,
                       brandSplashCustomEnabled: Boolean, previousBrand: HookPoint?, previouslyMissingBrand: Boolean,
                       followFeedStyleEnabled: Boolean, previousFollow: FollowFeedPoints?, previouslyMissingFollow: Boolean,
-                      playerQualityEnabled: Boolean, previousStoryQuality: StoryQualityPoints?, previouslyMissingStoryQuality: Boolean): AdaptResult? {
+                      playerQualityEnabled: Boolean, previousStoryQuality: StoryQualityPoints?, previouslyMissingStoryQuality: Boolean,
+                      dexSource: DexSourceFingerprint.Result?): AdaptResult? {
         val vc = biliVersionCode(context)
-        val dexSource = inspectHostDexSource(context)
         ModernHookLog.info("[BIL] DEX source count=${dexSource?.dexEntryCount ?: 0}, " +
             "isolated=${dexSource?.codePaths?.all { File(it).parentFile?.name == "bil-host-dex" } == true}")
         val low = locateCommentLow(loader)

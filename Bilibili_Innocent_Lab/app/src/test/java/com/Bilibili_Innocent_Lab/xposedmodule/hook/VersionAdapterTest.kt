@@ -10,6 +10,41 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class VersionAdapterTest {
+    private val repackDex = "dex-v1:38:" + "a".repeat(64)
+    private val repackOld = "tv.danmaku.bili|9090300|9.9.3|1000|100|${VersionAdapterContract.RULE_VERSION}"
+    private val repackNew = "tv.danmaku.bili|9090300|9.9.3|2000|200|${VersionAdapterContract.RULE_VERSION}"
+
+    @Test fun `repack preserves verified member results and original timestamp after content agreement`() {
+        val previous = result().copy(hostFingerprint = repackOld, dexSourceFingerprint = repackDex)
+        val identity = VersionAdapter.HostIdentity(previous.biliVersionCode, repackNew)
+        assertNull(VersionAdapter.StartupCacheSnapshot(identity, previous.ts, previous).usableCache(false))
+        val rebound = requireNotNull(VersionAdapter.rebindRepackedCache(previous, identity, previous.ts, repackDex))
+        assertEquals(previous.copy(hostFingerprint = repackNew), rebound)
+        assertEquals(rebound, VersionAdapter.StartupCacheSnapshot(identity, previous.ts, rebound).usableCache(false))
+        assertNull(VersionAdapter.StartupCacheSnapshot(identity, previous.ts + 1, rebound).usableCache(false))
+    }
+
+    @Test fun `repack rejects changed unknown or unavailable original dex`() {
+        val previous = result().copy(hostFingerprint = repackOld, dexSourceFingerprint = repackDex)
+        val identity = VersionAdapter.HostIdentity(previous.biliVersionCode, repackNew)
+        for (dex in listOf(null, "unavailable", repackDex.replace('a', 'b'), "dex-v1:0:" + "a".repeat(64)))
+            assertNull(VersionAdapter.rebindRepackedCache(previous, identity, 0, dex))
+        assertNull(VersionAdapter.rebindRepackedCache(previous.copy(dexSourceFingerprint = "unavailable"), identity, 0, repackDex))
+    }
+
+    @Test fun `repack cannot bypass version rule reset or structural validity`() {
+        val previous = result().copy(hostFingerprint = repackOld, dexSourceFingerprint = repackDex)
+        val identity = VersionAdapter.HostIdentity(previous.biliVersionCode, repackNew)
+        for (fingerprint in listOf(repackNew.replace("9.9.3", "9.9.4"),
+            repackNew.substringBeforeLast('|') + "|${VersionAdapterContract.RULE_VERSION + 1}",
+            repackNew.replace("9090300", "9090301"), repackOld, "runtime-no-context|rules=79",
+            repackNew.replace("|2000|", "|0|")))
+            assertNull(VersionAdapter.rebindRepackedCache(previous, identity.copy(fingerprint = fingerprint), 0, repackDex))
+        assertNull(VersionAdapter.rebindRepackedCache(previous, identity.copy(versionCode = 0), 0, repackDex))
+        assertNull(VersionAdapter.rebindRepackedCache(previous, identity, previous.ts + 1, repackDex))
+        assertNull(VersionAdapter.rebindRepackedCache(previous.copy(commentLow = VersionAdapter.HookPoint("", "")), identity, 0, repackDex))
+    }
+
     @Test fun `follow optional descriptor and failure history remain within the same host snapshot`() {
         val point = com.Bilibili_Innocent_Lab.xposedmodule.hook.adapter.FollowFeedPoints("iU.d", "f", "tS.G", "tS.H",
             "com.bilibili.bplus.followinglist.home.Q", "current")

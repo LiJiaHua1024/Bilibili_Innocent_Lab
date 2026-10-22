@@ -20,4 +20,15 @@ class AdaptationCacheMaintenanceContractTest {
         assertTrue(worker.contains("if (expected == DEX_SOURCE_UNAVAILABLE) return@run"))
         assertTrue(worker.contains("dexAuditRunning.compareAndSet(false, true)"))
     }
+
+    @Test fun `repack reuse is background only and respects actual framework priority`() {
+        val source = SourceContract.read("hook/VersionAdapter.kt")
+        val startup = source.after("internal fun readStartupCache(").before("fun cacheStatus()")
+        assertFalse(startup.contains("rebindRepackedCache("))
+        assertFalse(startup.contains("inspectHostDexSource("))
+        val worker = source.after("HostThreadGuard.run(\"adapter.adapt_worker\")").before("result = repacked ?:")
+        assertTrue(worker.contains("NoRootRuntimeDetector.detect(context,"))
+        assertTrue(worker.contains("HookRuntimeMode.NPATCH_LEGACY &&"))
+        assertTrue(worker.contains("rebindRepackedCache(previous, startup.identity, resetTimestamp, dexSource?.value)"))
+    }
 }
