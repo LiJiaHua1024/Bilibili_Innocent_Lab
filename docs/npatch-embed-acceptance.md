@@ -359,6 +359,16 @@ UI 还拒绝最低 3,000,000、最高 1,000,000 的反向区间，明确显示�
 
 最终模块 SHA-256 `6eb13359c3f13c189635c53a8b030d93e576986c6d76a73671bb65962b9c3bea`，嵌入宿主 `c3907addd8202971ccce1f7a4f3a65f5283e44675918a866f9468ee53f078c0d`；固定 patcher/native/证书不变，见 `patched-icons-final/verified.json`。投币、收藏、分享的单项也分别隐藏目标并保留其它五项，严格叶证据通过，见 `40-coin-only`、`50-favorite-only`、`60-share-only` 系列及 `individual-results.log`。六项全选的共享首条和横屏对照已验证：目标图标均隐藏，输入栏、进度、播放、倍速和画质控件保留，六叶各自报告应用，见 `70-all`、`71-all-landscape`。横屏返回的一次 UI dump 因宿主未空闲失败，保留失败记录并单独重取，不当作功能结果。首次上滑仍是原视频，不计下一条成功；第二次上滑后标题变更，截图与树确认新条目中目标控件仍隐藏，见 `74-all-next-retry`。最终配置/启停/条款/Web 与原生触屏复制回归 2 项通过（138.155 秒），见 `final-embedded-regression.log`。正式会员状态和已有 5.0 MB 缓存保留，缓存入口的两帧显示实际解码推进，见 `retained-account-cache.log` 与 `upgrade-cache-player-1/2.png`；未关闭网络，不作为断网播放验收。最后在设置中清空六项并冷启动，首轮入口点击未进入 Story、第二轮成功；六个控件均恢复，父组 `DISABLED`、0 Hook/回调，六叶无回调，严格检查通过（0.357 秒），见 `80-clear-config`、`80-restored-entry-1.xml/.png` 与 `80-restored-evidence.log`。不外推为图文卡片、其它版本或 Manager 验收。
 
+### PLAYER_PORTRAIT_CONTROL
+
+范围为同一有线设备上的 8.90.2 / 833 embed / Android 16 / arm64-v8a。公开样本仍为《从 PCL 到 HMCL：我们的 Minecraft 自由社区正在失去什么？》，证据目录 `captures/npatch-2b/portrait-control-acceptance/`。关闭基线 `02-baseline-controls.png` 同时显示竖屏和全屏按钮；开启后 `11-enabled-controls.png` 只隐藏竖屏入口，保留播放、进度和全屏。现有包的当前身份查询却为 `INSTALLED / observed=0 / applied=0 / hooks=1`，见 `12-existing-diagnostics.log`；该零回调结果记录的是原诊断缺口。
+
+补齐单一能力的运行证据：识别有效可见性请求记观察，只在修改参数且原方法正常返回时记应用；原本 GONE 不记应用，原方法抛错保留原异常并记录失败。使用既有参数局部 extra 和诊断公共封装，不新增全局 View Hook、反射定位或页面缓存；原可见性策略不变。
+新增五项回归覆盖真实 Hook DSL 的原调用顺序、无改动/无效参数、异常透传、诊断故障隔离及关闭/非主进程/缺适配点。3740 项 JVM（0 失败、1 跳过）、Debug/AndroidTest APK、快速 Lint 通过，250 Warning，baseline 不变；见 `final-gates.log`、`full-jvm.json`。规则 78、schema 62 和依赖不变。
+
+最终包严格当前身份查询为 `INSTALLED / observed=1 / applied=1 / hooks=1`（2.017 秒），见 `20-final-enabled-evidence.log`。初次 `20-final-enabled-controls.png` 遇到恢复进度时的黑帧、底部控制栏尚未完整出现，不作为控件保留结论；后续已正常实际播放，原生全屏和画质菜单可打开，退出后半屏竖屏入口仍隐藏、全屏/播放/进度保留，见 `21-final-fullscreen-menu`、`22-final-landscape-controls.png`、`23-final-return-controls`。没有使用全局旋转设置或修改宿主画质选择。
+
+最终模块 SHA-256 `9dc6e60df375b95cad2c290c112b02eedaeb1046e5bd731bb5361d90d79ef9a5`，嵌入宿主 `b6e238d71635e960f99c23ab0ebe765409e7dfef180e0cb55e502a07cb6e005f`；固定 patcher/native/证书不变，见 `patched-portrait-final/verified.json`。最终配置/启停/条款/Web 与触屏复制回归 2 项通过（141.138 秒），正式会员登录态、5.0 MB 缓存和两帧实际播放保留，见 `final-embedded-regression.log`、`retained-account-cache.log`、`upgrade-cache-player-1/2.png`。关闭设置后，冷启动的竖屏与全屏按钮都恢复，点击竖屏入口成功进入 Story，见 `30-disable`、`31-restored-controls`、`32-restored-story-0` 与 `restoration-results.log`；当前身份严格查询为 `DISABLED / observed=0 / applied=0 / hooks=0`（2.011 秒）。最后选项关闭。其它宿主版本、Manager 和其余独立入口仍待验。
 ### EMBED_WEB
 
 2B.1 的原生 TLS 修复、恢复原有 Web Hook、关闭/条款拒绝/重新开启、重复打开/返回/后台恢复、正文滚动及复制链接均见路线图 2B.1 验收。当前模块的自由复制开关和安装诊断已有证据；评论/简介复制的具体业务仍需独立行为案例，不因 32 个公共 Hook 安装成功而全部标记通过。

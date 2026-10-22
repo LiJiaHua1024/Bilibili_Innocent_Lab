@@ -357,3 +357,12 @@ WebView 对照：`captures/npatch-stage2-web.png` 与 `npatch-stage2-web-activit
 - [x] UI 清空六项后冷启动，六个控件恢复，父组停用、0 Hook/回调，六叶无回调的严格检查通过（0.357 秒）；最后保留全部关闭状态；更新后的矩阵一致性单测通过，构建守护进程已退出。入口首轮点击未生效、第二轮成功，未把失败点击算作行为通过。`npatch-feature-matrix.tsv` 的 12 行均引用完整案例。
 
 案例 `STORY_ACTION_ICONS`，证据 `captures/npatch-2b/story-icons-acceptance/`；模块 `6eb133…3bea`、嵌入宿主 `c3907a…78c0d`，固定 patcher/native/证书不变。12 行增加行为证据，矩阵现为 359 pending、42 observed、7 installed、2 passed；图文卡片、其它版本及 Manager 保持待验。继续播放器控件及其它 2B.2 条目，完整 2B.2、2B.3 和正式准入尚未完成。
+
+### 2026-10-22 阶段 2B.2：竖屏切换按钮及运行证据
+
+- [x] Story 图标单元已提交为 `5009fa7b`。当前宿主上隐藏竖屏入口的行为有效，但原诊断只有安装结果；补齐有效请求的观察、参数实际修改且原方法成功后的应用证据。宿主本来已隐藏不计应用，异常保持原语义并报告，诊断故障不影响业务。
+- [x] 新增五项回归，3740 项 JVM（0 失败、1 跳过）、Debug/AndroidTest APK 和快速 Lint 通过（250 Warning，baseline 不变）。原可见性策略、规则 78、schema 62 与依赖保持不变。
+- [x] 同证书最终 embed 包中竖屏入口隐藏，普通播放、进度、全屏、画质菜单和返回半屏正常；当前身份查询 `INSTALLED / observed=1 / applied=1 / hooks=1`。关闭后竖屏入口恢复且能进入 Story，诊断 `DISABLED`、0 Hook/回调；最后选项关闭。
+- [x] 最终配置/启停/条款/Web 与触屏复制实机回归 2 项通过（141.138 秒），正式会员登录、5.0 MB 既有缓存和实际解码保留。初次恢复进度时的黑帧没有用来证明控件保留，后续正常播放截图提供对照。
+
+案例 `PLAYER_PORTRAIT_CONTROL`，证据 `captures/npatch-2b/portrait-control-acceptance/`；模块 `9dc6e6…f9a5`、嵌入宿主 `b6e238…005f`，固定 patcher/native/证书不变。设置/能力两行新增 observed，矩阵为 357 pending、44 observed、7 installed、2 passed。继续播完推荐及其它 2B.2 条目，保留其它版本、Manager、完整 2B.2/2B.3 与正式准入待办。

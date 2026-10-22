@@ -170,7 +170,7 @@ setting	player.interactive_overlays.hidden	player_interactive_overlay	player_int
 setting	player.long_press.disabled	player_speed	player_long_press_disabled	-	pending	observed	case:PLAYER_SPEED
 setting	player.long_press_speed.percent	player_speed	player_long_press_speed_percent	-	pending	observed	case:PLAYER_SPEED
 setting	player.popup_promotion.hidden	player_popup_promotion	player_popup_promotion	-	pending	pending	-
-setting	player.portrait_control.hidden	player_portrait_control	player_portrait_control	-	pending	pending	-
+setting	player.portrait_control.hidden	player_portrait_control	player_portrait_control	-	pending	observed	case:PLAYER_PORTRAIT_CONTROL
 setting	player.sponsorblock.automatic	sponsorblock	sponsorblock	-	pending	pending	-
 setting	player.sponsorblock.enabled	sponsorblock	sponsorblock	-	pending	pending	-
 setting	player.status_bar.transparent	player_status_bar	player_status_bar	-	pending	pending	-
@@ -364,7 +364,7 @@ capability	player_interactive_unified_right_material	player_interactive_overlay	
 capability	player_long_press_disabled	player_speed	player.long_press.disabled	-	pending	observed	case:PLAYER_SPEED
 capability	player_long_press_speed_percent	player_speed	player.long_press_speed.percent	-	pending	observed	case:PLAYER_SPEED
 capability	player_popup_promotion	player_popup_promotion	player.popup_promotion.hidden	-	pending	pending	-
-capability	player_portrait_control	player_portrait_control	player.portrait_control.hidden	-	pending	pending	-
+capability	player_portrait_control	player_portrait_control	player.portrait_control.hidden	-	pending	observed	case:PLAYER_PORTRAIT_CONTROL
 capability	player_status_bar	player_status_bar	player.status_bar.transparent	-	pending	pending	-
 capability	roaming_compat	roaming_compat	compat.roaming.enabled	-	pending	pending	-
 capability	search_author_filter_enabled	search_purify	search.author_filter.enabled,search.author_filter.rules	-	pending	pending	-
