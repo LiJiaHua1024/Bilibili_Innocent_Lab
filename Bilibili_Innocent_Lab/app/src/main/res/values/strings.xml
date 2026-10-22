@@ -54,7 +54,7 @@
     <string name="user_terms_pending_failed">Status: configuration synchronization is incomplete, so module features remain disabled. You can retry now.</string>
     <string name="user_terms_pending_local_failed">Current status: the final local state could not be saved. Check available storage and restart the module app before retrying.</string>
     <string name="user_terms_retry_sync">Retry now</string>
-    <string name="user_terms_use_npatch_sync">Synchronize with NPatch (experimental)</string>
+    <string name="user_terms_use_npatch_sync">Use the NPatch channel</string>
     <string name="user_terms_diagnostics_title">Connection diagnostics (read-only)</string>
     <string name="user_terms_diagnostics_module_identity">Module app: visible · userId %1$d · UID %2$d</string>
     <string name="user_terms_diagnostics_profile_primary">User space: primary user</string>
@@ -1490,12 +1490,12 @@
     <string name="player_buffer_wifi_tip">A network change after prefetch starts is handled by the host. This option does not independently stop an existing prefetch task.</string>
     <string name="npatch_profile_unknown">Unknown</string>
     <string name="npatch_profile_manager">Manager mode</string>
-    <string name="npatch_profile_embedded">Embedded mode (experimental)</string>
+    <string name="npatch_profile_embedded">Embedded mode</string>
     <string name="npatch_profile_installed">Installed patch: %1$s\nSignature bypass level: %2$s; Loader: %3$s; API: %4$s</string>
     <string name="npatch_profile_flags">debuggable: %1$s; injectdex: %2$s</string>
     <string name="npatch_profile_manager_version">Installed Manager: %1$s (%2$s)</string>
     <string name="npatch_profile_version_mismatch">Loader and Manager versions differ. Check the patched APK.</string>
-    <string name="npatch_profile_embed_experimental">Embedded mode is experimental. Updating the module requires repatching; scope is fixed and signature bypass is limited to level 2.</string>
+    <string name="npatch_profile_embed_experimental">Verified profile: Bilibili 8.90.2 with the fixed loader 833 on Android 16/arm64. Other combinations are unverified. Repatch when updating the module; scope is fixed and signature bypass is limited to level 2.</string>
     <string name="npatch_profile_source">Configuration source for this host run: %1$s</string>
     <string name="npatch_profile_source_unknown">No current accepted configuration receipt; runtime source is unknown.</string>
     <string name="npatch_profile_cache_unavailable">Manager mirror not updated. Direct delivery remains available; activation requires a valid host receipt.</string>

@@ -6,7 +6,7 @@
 
 [逐项矩阵](npatch-feature-matrix.tsv)由 `SettingsCatalog`、`DiagnosticCapabilityCatalog` 和 `DiagnosticFeatureRegistry` 交叉生成，包含 236 个设置和 174 个能力。设置行的 `links` 是相关能力，能力行的 `links` 是相关设置；`installer_group` 对应 Hook 注册组，具体进程适用性还需按安装器和实际业务核对。`local_scope` 保留纯界面、诊断或宿主前置授权项，避免它们因没有独立 Hook 被遗漏。
 
-状态含义：`pending` 待验、`installed` 已安装、`observed` 已触发、`passed` 对应行为案例通过、`blocked` 当前案例失败、`not_applicable` 有证据证明不适用。每个非待验状态必须引用本页案例；安装成功不升级为行为通过。当前仍有待验行，不宣称 2B 全量完成。
+状态含义：`pending` 待验、`installed` 已安装、`observed` 已触发、`passed` 对应行为案例通过、`blocked` 当前案例失败、`not_applicable` 有证据证明不适用。每个非待验状态必须引用本页案例；安装成功不升级为行为通过。2B 的加载模式正式准入已按限定范围完成，不等于 410 行通用业务穷尽验收；现为 355 pending、46 observed、7 installed、2 passed。
 
 `NPatchAcceptanceMatrixTest` 校验目录版本、完整设置/能力集合、父注册组、状态值及案例引用是否存在。目录变化会使矩阵检查失败，更新模板在 `app/build/reports/npatch/feature-matrix.template.tsv`；合并新增行时保留已核验状态和证据，不整体用模板覆盖。Gradle 已把矩阵和本页计入 Test 输入，改动不会错误复用旧测试结果。矩阵只包含构建期公开元数据，不读取偏好、账号或令牌。
 
@@ -469,6 +469,20 @@ Manager 当前状态检查通过（0.536 秒），真实配置变化、关闭零
 
 保留两次测试准备失败：`39-manager-retained.log` 在勾选未点击“添加”时无模块作用域；`48-manager-retained-confirmed.log` 在检查点后额外打开设置首页，首页刷新自由复制运行 revision，导致合法的新内容指纹。前者补齐 UI 确认；后者从当前稳定配置重新建立检查点且不再打开首页。没有放宽完整身份断言、用新检查点掩盖实际数据删除或把失败记为通过。UI Automation 连接占用时的一次 dump 失败也不代表宿主故障。
 
+### RELEASE_ADMISSION_2B
+
+2026-10-22，2B 按[支持范围](npatch-release-support.md)完成正式准入。最终中英繁文案移除 NPatch 的实验性标识，并明确仅验证 B 站 8.90.2、固定修复版 833、签名等级 2、Android 16/arm64；保留重新修补/固定作用域/设置 App 恢复及未知组合提示。此前各类别、升级/恢复、模式及签名案例复用，没有再次沿通用待验清单扩大修改。
+
+最终源码门禁 `release-acceptance/final-source-gates.log`：Debug/AndroidTest APK、3753 JVM（0 失败、0 错误、1 跳过）、**完整 Lint**、Release R8/资源压缩通过，共 5 分 31 秒。完整报告 `app/build/reports/lint/full/` 为 1109 Warning、1 Hint，原 3 项错误基线不变；未改变依赖、混淆规则或 suppress。`final-jvm.json`、`final-matrix-check.json` 与 `final-daemon-check.json` 分别记录计数、410 行无失效案例引用和守护进程退出。正式发布签名未在本机配置，Release 只用原测试签名作本地验收，未发布。
+
+最终 Debug 模块 SHA-256 `ac7261cbfc0df19a501a842c8ab28cac08251f8018fbe2f11a4858f273acd4a6`，embed 宿主 `0e5d0e112946ef90bacee1593e1c495e75d53b5707070017895c5c52ec9415a6`。最终 Release 模块 SHA-256 `93759e2bc7b7264a13afad00325bb77738887a08791e79f3779d0bc37b4982b1`，embed 宿主 `618390472ef5ad07aca31bd5b619508aee4ed076f88abcd13d80af738fa80c0f`，Modern 入口为实际 R8 名称 `ve0`。均核对原版、固定双 ABI loader、模块字节及原签名链，冻结副本与完整构建输出一致；记录在 `patched-final-debug/verified.json` 与 `patched-final-release/verified.json`。
+
+最终 Debug 的 11 项端点/标准回退契约通过（3.087 秒），见 `final-endpoint-fallback.log`；这是端点及回退检查，不冒充全部为真实跨进程 IPC。真实宿主的 embed 共存配置变化/启停/条款拒绝/Web/适用子进程、原版 38 DEX 的 ART/native 查询及触摸复制共 3 项通过（163.727 秒），见 `final-embedded-native-web-copy.log`，运行的是最终测试实现。Manager 直连与模式往返复用同生产逻辑的 `MODE_ROUNDTRIP` 证据，标准框架没有新增 LSPosed 实机结果。
+
+最后同证书覆盖最终 Release，正常 UI 显示发布构建、当前直连配置已确认、内嵌内容一致及限定支持提示；`23-final-release-current` 曾核对主/Web/下载/播放服务 49/32/32/32 Hook。`24-final-release-web` 截图可见实际隐私正文；`26-final-release-account`、`27-final-release-cache` 保留正式会员及 5.0 MB 条目，`29-final-release-cache-player-1` 与 `30-final-release-cache-player-2` 为缓存入口的两张不同实际视频帧，没有断网。未将 Hook 数量当作上述业务行为的替代证据。
+
+收尾冷启动的首次查询没有本次进程响应，保留 `34-final-current.xml`；随后正常刷新得到当前完整身份，见 `37-final-current-refresh`、`38-final-current-ready` 与 `39-final-support-visible`。未放宽 nonce/身份或查询时限、未用旧 heartbeat 补成功；最终未响应的进程仍保持未知。`final-device-state.json` 为脱敏摘要。测试私有检查点已删除，Manager 所有文件访问按用户“永久授予”指示保留，设备留在最终 Release 当前配置诊断页。
+
 ## 后续顺序
 
-按路线图 2026-10-22 的范围校正继续 2B.3：Manager/embed 模式切换、可维护的发布产物与用户签名/同证书升级流程；随后补齐尚缺的功能类别代表性兼容回归、原 DEX 来源与缓存失效、支持边界及正式发布门禁。设置 App 生命周期和当前协议的升级恢复复用上述证据，不将单个组合外推为任意跨版本兼容。通用业务缺陷单独记录，不再逐行自动修复；矩阵未测项仍保持待验。
+2B 正式准入已完成，当前不再沿本页逐项自动修复通用业务。阶段 3–6 的专项增强、其它系统/ABI/宿主版本/签名组合及第三方接收与长期风控验证继续保留在路线图；矩阵未测项保持待验，不将限定范围的模式准入外推为全部组合已通过。
