@@ -420,3 +420,10 @@ WebView 对照：`captures/npatch-stage2-web.png` 与 `npatch-stage2-web-activit
 - [x] 仅文档与矩阵变更，复用相同生产 APK 的 3753 JVM、快速 Lint 及当前 native/外观 2 项实机结果。证据 `captures/npatch-2b/representative-acceptance/`，结束时背景跟随宿主。
 
 案例 `APPEARANCE_REPRESENTATIVE`。继续 Manager/embed 往返及正式支持矩阵与完整门禁；不再沿通用外观缺陷清单扩大本分支。
+
+### 2026-10-22 阶段 2B.4：本地分享交接与返回
+
+- [x] 外观代表性单元已提交为 `22a69de1`。相同最终 Debug 包的公开视频分享面板、系统文本分享选择页及取消返回通过，预览包含当前标题与宿主短链，原视频及播放保留。
+- [x] 未选择接收者或发送内容，不将本地分享入口等同于第三方 SDK 签名校验或外部投递通过；分享净化开关未开，矩阵不变。证据 `representative-acceptance/31-share-video` 至 `36-share-return`，仅文档变更，复用相同生产包门禁。
+
+案例 `SHARE_HANDOFF`。模式往返、Release/R8 与正式准入继续推进；未测第三方组合保留未知。
