@@ -1510,4 +1510,8 @@
     <string name="npatch_process_row">%1$s (PID %2$d): %3$s; Hook points %4$d; source %5$s</string>
     <string name="npatch_process_unknown">No current process response. Processes that did not respond, including isolated processes, remain unknown.</string>
     <string name="npatch_process_gated">Loaded; feature hooks restricted by runtime policy</string>
+    <string name="npatch_embed_build_matched">Installed embedded module matches the settings app. Restart the host after updating to load it.</string>
+    <string name="npatch_embed_build_different">The embedded module differs from the settings app, even if version numbers match. Repatch with the installed module APK, update the host using the same signing certificate, then restart it. Updating the settings app alone does not update embedded code.</string>
+    <string name="npatch_embed_build_missing">This embedded host does not contain this module. Repatch with the installed module APK.</string>
+    <string name="npatch_embed_build_unknown">Embedded module comparison is unavailable. Check the installed packages and refresh; this does not confirm a match.</string>
 </resources>

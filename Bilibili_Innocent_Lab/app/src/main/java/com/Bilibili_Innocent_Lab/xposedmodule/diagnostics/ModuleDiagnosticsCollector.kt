@@ -34,7 +34,9 @@ internal object ModuleDiagnosticsCollector {
         hostQueryFailure: com.Bilibili_Innocent_Lab.xposedmodule.runtime.ReceiptQueryFailure =
             com.Bilibili_Innocent_Lab.xposedmodule.runtime.ReceiptQueryFailure.NONE,
         nowEpochMs: Long = System.currentTimeMillis(),
-        nPatchProcesses: List<com.Bilibili_Innocent_Lab.xposedmodule.runtime.noroot.NPatchProcessSnapshot> = emptyList()
+        nPatchProcesses: List<com.Bilibili_Innocent_Lab.xposedmodule.runtime.noroot.NPatchProcessSnapshot> = emptyList(),
+        nPatchEmbeddedBuild: com.Bilibili_Innocent_Lab.xposedmodule.runtime.noroot.NPatchEmbeddedBuildState =
+            com.Bilibili_Innocent_Lab.xposedmodule.runtime.noroot.NPatchEmbeddedBuildState.UNKNOWN
     ): ModuleDiagnosticSnapshot {
         val appContext = context.applicationContext ?: context
         @Suppress("DEPRECATION")
@@ -181,6 +183,7 @@ internal object ModuleDiagnosticsCollector {
                 sameAndroidUser = userSpace.sameUser,
                 nPatchEnvironment = com.Bilibili_Innocent_Lab.xposedmodule.runtime.noroot.NPatchRuntimeProfiles
                     .environment(appContext),
+                nPatchEmbeddedBuild = nPatchEmbeddedBuild,
                 noRootSyncDetail = noRootStatus.detail,
                 nPatchProcesses = nPatchProcesses
             )

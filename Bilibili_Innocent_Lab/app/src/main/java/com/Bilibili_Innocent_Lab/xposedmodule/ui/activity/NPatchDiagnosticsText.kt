@@ -5,6 +5,7 @@ import com.Bilibili_Innocent_Lab.xposedmodule.R
 import com.Bilibili_Innocent_Lab.xposedmodule.diagnostics.ModuleDiagnosticInputs
 import com.Bilibili_Innocent_Lab.xposedmodule.diagnostics.DiagnosticHostConfigState
 import com.Bilibili_Innocent_Lab.xposedmodule.runtime.noroot.NPatchMode
+import com.Bilibili_Innocent_Lab.xposedmodule.runtime.noroot.NPatchEmbeddedBuildState
 
 /** 安装参数与运行回执分别展示；没有回执时不把默认 source=manager 当成运行事实。 */
 internal fun nPatchDiagnosticsDetails(context: Context, input: ModuleDiagnosticInputs): String {
@@ -28,7 +29,15 @@ internal fun nPatchDiagnosticsDetails(context: Context, input: ModuleDiagnosticI
             environment.managerVersionName ?: unknown,
             environment.managerVersionCode?.toString() ?: unknown))
         if (environment.versionMismatch) add(context.getString(R.string.npatch_profile_version_mismatch))
-        if (patch.mode == NPatchMode.EMBEDDED) add(context.getString(R.string.npatch_profile_embed_experimental))
+        if (patch.mode == NPatchMode.EMBEDDED) {
+            add(context.getString(R.string.npatch_profile_embed_experimental))
+            add(context.getString(when (input.nPatchEmbeddedBuild) {
+                NPatchEmbeddedBuildState.MATCHED -> R.string.npatch_embed_build_matched
+                NPatchEmbeddedBuildState.DIFFERENT -> R.string.npatch_embed_build_different
+                NPatchEmbeddedBuildState.MODULE_MISSING -> R.string.npatch_embed_build_missing
+                else -> R.string.npatch_embed_build_unknown
+            }))
+        }
         if (input.hostRuntimeReceiptAvailable && input.hostConfigState == DiagnosticHostConfigState.ACCEPTED) {
             add(context.getString(R.string.npatch_profile_source, input.hostConfigSource))
         } else add(context.getString(R.string.npatch_profile_source_unknown))

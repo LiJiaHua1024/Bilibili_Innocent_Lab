@@ -375,6 +375,20 @@ UI 还拒绝最低 3,000,000、最高 1,000,000 的反向区间，明确显示�
 
 账号修复后的同一最终包再次通过 `NPatchEmbeddedHostInstrumentedTest`，126.169 秒，覆盖当前配置身份、启停、条款拒绝、Web 无 Hook/完整安装及重复打开/返回/后台恢复；日志 `embedded-regression.log`。本测试不会登出账号，之后重新确认了登录与缓存保留。
 
+### EMBED_BUILD_IDENTITY
+
+2026-10-22 范围校正后进入 2B.3。仅验证 embed 的安装内容一致性与重新修补路径，不再把全部通用业务条目验收作为本阶段前置。环境仍为有线 `13a7a291`、Android 16/arm64、8.90.2/833 embed/sig2、无 Manager。
+
+诊断后台线程直接比较宿主 APK 的 `assets/npatch/modules/com.Bilibili_Innocent_Lab.xposedmodule.apk` 与当前设置 App APK 的 SHA-256 内容。相同版本码不替代内容比对；缺模块、读取失败、损坏或越界分别保守展示。读取有大小上限、不解压到磁盘、不记录路径/完整哈希、不扩展诊断导出白名单、不改变授权协议。显示一致仅表示已安装内容一致，页面明确提醒更新后仍需冷启动，不把此结果当作运行中进程版本证明。
+
+证据目录 `captures/npatch-2b/embedded-build-acceptance/`。只更新设置 App 时仍是 1.2.0（21），实际检查为 `DIFFERENT`，诊断页面显示重新修补、原证书覆盖安装、冷启动的具体步骤；见 `01-module-only-update.log`、`04-build-mismatch-visible.xml/.png`。同证书重新修补覆盖安装后为 `MATCHED`，页面恢复一致提示，见 `05-repatched-match.log`、`06-match-diagnostics.xml/.png`。未关闭账号或清除 B 站数据。
+
+暂停的通用结束页改动随后保存至 `captures/npatch-2b/deferred-end-page/` 并移出源码。最终专项包再次通过只更新设置 App 的 `DIFFERENT` 检查及重新修补后的 `MATCHED` 检查，见 `10-scoped-module-only.log`、`11-scoped-repatched.log`。最终模块 SHA-256 `45262a068b89d783773e36f24ab740c7f097d32b4a4dad7b9c8f89d4209a639e`、宿主 `5122476c76dba553d6d4a7669df6831be177d330157c6928c2f37f8b44b90020`，固定 patcher/native/证书不变，见 `patched-build-scoped/verified.json`。
+
+新增六项 JVM 回归覆盖精确内容、同长度不同内容、其它模块、缺失/损坏/空包、读取上限和同路径替换后重查；最终专项源码 3746 项 JVM（0 失败、1 跳过），见 `scoped-full-jvm.json`。本项不宣称全新安装、设置 App 重装恢复、不同协议兼容或 Manager/embed 切换已经验收。
+
+最终专项包的 Debug/AndroidTest APK 与快速 Lint 通过（250 Warning，原 3 条错误基线不变），见 `scoped-final-gates.log`。配置变更、当前授权、免 Root 关闭/重开、条款拒绝及 Web 回归通过（129.889 秒），见 `scoped-embedded-regression.log`；前面的 131.892 秒结果仅保留为含暂停改动时的中间验证，不冒充最终专项产物。
+
 ## 后续顺序
 
-账号探测修复验收后，继续评论/简介复制、播放器选项、净化和外观组合，逐行补充矩阵。随后推进构建身份一致性、同版本码不同 APK、设置 App 与内嵌模块升级和恢复链路；未测项保持待验，最终仍需正式支持矩阵和发布门禁。
+按路线图 2026-10-22 的范围校正继续 2B.3：设置 App 与内嵌模块升级、重装与恢复、协议兼容和模式切换；随后补齐功能类别代表性兼容回归、支持边界及发布门禁。通用业务缺陷单独记录，不再逐行自动修复；矩阵未测项仍保持待验。

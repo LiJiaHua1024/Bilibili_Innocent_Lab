@@ -1510,4 +1510,8 @@
     <string name="npatch_process_row">%1$s（PID %2$d）：%3$s；Hook 點 %4$d；來源 %5$s</string>
     <string name="npatch_process_unknown">尚無本次進程回應；未回應的進程（包括隔離進程）維持未知。</string>
     <string name="npatch_process_gated">已載入；功能 Hook 受執行策略限制</string>
+    <string name="npatch_embed_build_matched">已安裝的內嵌模組與設定 App 內容一致；更新後仍需冷啟動宿主才能載入。</string>
+    <string name="npatch_embed_build_different">內嵌模組與設定 App 內容不同，即使版本號相同也需要更新。請用目前模組 APK 重新修補宿主，以原憑證覆蓋安裝後冷啟動。只更新設定 App 不會更新內嵌程式碼。</string>
+    <string name="npatch_embed_build_missing">此嵌入宿主中沒有本模組；請用目前模組 APK 重新修補。</string>
+    <string name="npatch_embed_build_unknown">暫時無法核對內嵌模組。請檢查安裝包後重新整理；此狀態不表示內容一致。</string>
 </resources>

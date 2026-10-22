@@ -183,6 +183,8 @@ internal data class ModuleDiagnosticInputs(
     val remoteConnectionId: Long = 0L,
     /** 已安装宿主的补丁档案，仅用于本地详情；不扩展当前导出报告白名单。 */
     val nPatchEnvironment: com.Bilibili_Innocent_Lab.xposedmodule.runtime.noroot.NPatchEnvironment? = null,
+    val nPatchEmbeddedBuild: com.Bilibili_Innocent_Lab.xposedmodule.runtime.noroot.NPatchEmbeddedBuildState =
+        com.Bilibili_Innocent_Lab.xposedmodule.runtime.noroot.NPatchEmbeddedBuildState.UNKNOWN,
     val noRootSyncDetail: String? = null,
     /** 本次有界查询中实际响应的 NPatch 进程，仅本地展示，不参与激活评估/导出。 */
     val nPatchProcesses: List<com.Bilibili_Innocent_Lab.xposedmodule.runtime.noroot.NPatchProcessSnapshot> = emptyList()
