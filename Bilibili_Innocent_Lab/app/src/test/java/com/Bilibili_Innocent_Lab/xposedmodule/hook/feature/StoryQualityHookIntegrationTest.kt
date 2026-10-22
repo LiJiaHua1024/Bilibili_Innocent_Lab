@@ -52,7 +52,9 @@ class StoryQualityHookIntegrationTest {
     private fun point(method: Method) = VersionAdapter.HookPoint(method.declaringClass.name, method.name,
         method.parameterTypes.map(Class<*>::getName))
     private fun parameters(aid: Long = 123, cid: Long = 456, from: String = "vupload") =
-        Video.PlayableParams(Video.DisplayParams(aid, cid, from))
+        object : Video.PlayableParams(from) {
+            override fun getDisplayParams() = Video.DisplayParams(aid, cid, from)
+        }
 
     private inner class Harness(failId: String? = null, private val useClaims: Boolean = false) {
         val port = PlayerPortTestRegistrar(failId)

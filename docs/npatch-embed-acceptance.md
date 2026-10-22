@@ -315,6 +315,22 @@ UI 还拒绝最低 3,000,000、最高 1,000,000 的反向区间，明确显示�
 
 源证据同目录 `default-quality-owner.log`、`DefaultQuality-h.java`、`PlayerSettingHelper.java`、`PlayerSettingCompanion.java`、`PlayViewRepository.java`、`PlayParams-n.java`、`KeelParams-h.java`、`default-preference-callers.log`、`33-quality-available.xml/.png` 和 `38-long-cold-360-quality.xml/.png`。日志中仅取到显示尺寸的抓取不作为解码分辨率证明；本例按原生画质实际选中状态与播放画面验收，不宣称完成独立解码尺寸测量、Story、其它业务类型或其它版本验证。
 
+### PLAYER_STORY_QUALITY_ABI
+
+2026-10-22，范围与本页相同，证据目录 `captures/npatch-2b/story-quality-acceptance/`。修复前模块设为 360P，进入 `StoryTransparentActivity` 后，原生画质面板仍实际选中“自动（720P 准高清）”，见 `01-story-old-default-dialog.xml/.png`、`05-old-portrait-entry.xml/.png`、`08-old-quality.xml/.png`；原安装仅覆盖普通/全局两族。
+
+新增显式、只读原始 APK 的 ART/DexKit 契约检查，核对 SHA-256、包名、版本和私有只读夹具路径，分别断言语义定位、偏好成员、owner/provider、重解析及资源契约；不注册 Hook、不改账号或配置。真实 8.90.2 的偏好基类 `tangram.basic.d` 是接口，Auto/Fixed 直接实现它，旧实现错误拒绝接口；`Video.PlayableParams.getDisplayParams()` 是抽象方法，由具体业务参数实现，旧访问器又错误拒绝了合法的实例派发。先后失败报告明确区分这两层问题，修复后五项契约全部通过，6.623 秒、`OK (1 test)`，见 `initial-android-contracts.json`、`interface-android-contracts.json`、`abstract-dispatch-android-contracts.json/.log`。
+
+偏好解析仍核对直接继承关系、唯一 Auto/Fixed、字段、类加载器和所有构造桥的 QN 往返；额外接口、间接实现、构造改写 QN 继续拒绝。抽象方法仅放行已核对的 display getter 实例调用，Hook 和其它成员约束保留。规则版本升为 77，schema 62 不变，旧缺失状态重新验证。新增 4 项偏好回归，既有 Story Hook 集成夹具改为实际的抽象基类/具体实例结构，保留全部会话、线程、权限、手动意图及重解析检查；3720 项 JVM（0 失败、1 跳过）、Debug/AndroidTest APK 与快速 Lint 通过，250 Warning，baseline 不变。临时定位探针已删除。严格证据测试另外将相同的公开状态、计数和 Hook 数输出到 instrumentation stream，避免小日志缓冲覆盖日志，不改变验收条件。
+
+在最终候选包的新加载 Story 视频中，原生面板实际选中固定 360P；当前视频手动改为 480P，再改自动，均保留手动选择，下一条恢复固定 360P。模块默认改为 480P、冷启动并切换下一条后，面板实际选中固定 480P。三个当前授权/配置身份严格检查分别通过，见 `16-story-next-default-quality.xml/.png`、`17-story-manual-480-quality.xml/.png`、`18-story-manual-auto-quality.xml/.png`、`20-next-after-manual-default-quality.xml/.png`、`25-story480-next-quality.xml/.png` 及对应 `*-evidence.log`。运行记录 `runtime-live.log` 包含画质组 `INSTALLED`、20 Hook；安装/回调不作为共享首条行为通过证明。
+
+**仍待修复：详情页共享播放器接入的首条视频。** 首次 360P 测试显示“自动（360P）”，不能等同固定目标；把默认改成 480P 后，共享接入首条仍显示“自动（720P）”，见 `14-fixed-default-quality.xml/.png`、`23-cold480-carried-quality.xml/.png`。这条路径保留失败，不将 Story 整体标记通过；下一单元核对共享媒体的生命周期、当前条目与首次目标建立。两行矩阵仍为 `observed`，追加本案例引用，数量不变。其它版本、非普通 UGC、预加载提档、限制模式、会员画质和全部组合仍待验，embed 保持实验性。
+
+同包两项无 Manager 启停/授权/复制实机回归通过（139.026 秒）。登录态、已完成的 5.0 MB 缓存及实际缓存解码画面保留，见 `final-embedded-regression.log`、`retained-account-cache.log`、`upgrade-cache-player-1.png` 与 `upgrade-cache-player-2.png`；未断网。随后通过 UI 恢复“跟随哔哩哔哩”，冷启动进入 Story，首条和下一条原生面板均选中“自动（720P）”，画质组 `DISABLED`、0 Hook、0 回调，0.335 秒严格检查通过，见 `30-follow-restored-saved.png`、`32-follow-carried-quality.xml/.png`、`34-follow-next-quality.xml/.png` 与 `34-follow-next-evidence.log`。本单元结束时默认值留在跟随状态。
+
+当前生产模块 SHA-256 `8c85e53e65b3764710d123f9b5b9229a9d0a18d404846bb579730659af49a9ee`，嵌入宿主 `a7ee6e87cfe1c47edf98e8eee47bac47621e148e179a979e7ef5603fa1af8827`；固定 patcher/native/证书不变，见 `patched-abstract-dispatch/verified.json`。完整 JVM 统计已保存为 `abstract-dispatch-full-jvm.json`；APK/快速检查见 `abstract-dispatch-gates.log`，后续仅测试输出修改的构建见 `bounded-evidence-output-gates.log`。日志进程与构建守护进程已停止。
+
 ### EMBED_WEB
 
 2B.1 的原生 TLS 修复、恢复原有 Web Hook、关闭/条款拒绝/重新开启、重复打开/返回/后台恢复、正文滚动及复制链接均见路线图 2B.1 验收。当前模块的自由复制开关和安装诊断已有证据；评论/简介复制的具体业务仍需独立行为案例，不因 32 个公共 Hook 安装成功而全部标记通过。

@@ -29,7 +29,8 @@ internal class StoryQualityPreferenceAccess private constructor(
         private val ROUND_TRIP_QNS = listOf(16, 80, 127)
 
         fun resolve(loader: ClassLoader, base: Class<*>): StoryQualityPreferenceAccess? = runCatching {
-            if (base.isInterface || !Modifier.isAbstract(base.modifiers) ||
+            if (!Modifier.isAbstract(base.modifiers) || base.isAnnotation ||
+                (base.isInterface && base.interfaces.isNotEmpty()) ||
                 Lookup.classOrNull(loader, base.name) !== base) return null
             if (Lookup.declaredFields(base).any { !Modifier.isStatic(it.modifiers) }) return null
             // R8 匿名子类可能不在 MemberClasses；后缀只是补全候选，语义仍按 ABI 判定。
@@ -40,8 +41,12 @@ internal class StoryQualityPreferenceAccess private constructor(
                 Lookup.classOrNull(loader, name)?.takeIf { candidate -> candidate.name == name }
             }
             val children = (declared + named).distinct().filter { it != base && base.isAssignableFrom(it) }
+            // 8.90.2 是接口，Auto/Fixed 直接实现它且仅继承 Object；旧抽象类契约继续保留。
+            fun directChild(child: Class<*>): Boolean = if (base.isInterface) {
+                child.superclass == Any::class.java && child.interfaces.contentEquals(arrayOf(base))
+            } else child.superclass == base
             if (children.size != 2 || children.any {
-                    it.superclass != base || !Modifier.isFinal(it.modifiers) ||
+                    !directChild(it) || !Modifier.isFinal(it.modifiers) ||
                         Lookup.classOrNull(loader, it.name) !== it
                 }) return null
             val marker = Lookup.classOrNull(loader, MARKER)

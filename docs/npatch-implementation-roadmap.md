@@ -328,3 +328,13 @@ WebView 对照：`captures/npatch-stage2-web.png` 与 `npatch-stage2-web-activit
 - [x] 登录态、5.0 MB 既有缓存与缓存入口实际解码保留；默认画质最终留在跟随状态，相关推荐规则仍全部关闭/清空。
 
 继续补齐 Story 适配及其它 2B.2 项；全量矩阵和 2B.3 尚未完成。
+
+### 2026-10-22 阶段 2B.2：Story 真实 ABI 与新视频默认画质
+
+- [x] 在只读原始 APK 上新增 ART/DexKit 契约验收，分别暴露并修复两个真实差异：Auto/Fixed 直接实现接口，以及具体视频参数实现抽象 `getDisplayParams()`。保留结构、构造往返、类加载器与歧义校验；Hook 仍不接受抽象方法。规则 77、schema 62。
+- [x] 新增 4 项偏好回归，既有 Hook 集成夹具采用抽象基类与具体参数实例；3720 项 JVM（0 失败、1 跳过）、Debug/AndroidTest APK 和快速 Lint 通过，250 Warning，baseline 不变。真实 APK 的语义/偏好/对象链/重解析/资源契约全部通过；临时探针已移除。
+- [x] 新加载 Story 视频分别实际选中固定 360P 和 480P；当前视频手动 480P/自动均保留，下一条恢复模块默认。画质组记录 `INSTALLED`、20 Hook，当前身份严格证据检查通过；两项无 Manager 启停/授权/复制实机回归通过（139.026 秒），登录及缓存播放保留。
+- [x] UI 恢复跟随后，Story 首条和下一条均回到“自动（720P）”；画质组 `DISABLED`、0 Hook/回调的严格检查通过。默认值留在跟随状态。
+- [ ] **共享首条仍待修复**：从详情页接入 Story 的已准备媒体可能绕过已确认的选择起点，默认 480P 时仍实际显示“自动（720P）”；不得把下一条成功当成首条通过。下一单元继续核对共享接入生命周期与首次目标建立。
+
+案例 `PLAYER_STORY_QUALITY_ABI`、证据 `captures/npatch-2b/story-quality-acceptance/`；模块 `8c85e5…a9ee`、嵌入宿主 `a7ee6e…8827`，固定 patcher/native/证书不变。两行画质矩阵仍 `observed`，新增案例引用，计数不变。2B.2 全量、2B.3 与正式准入仍未完成，embed 保持实验性。

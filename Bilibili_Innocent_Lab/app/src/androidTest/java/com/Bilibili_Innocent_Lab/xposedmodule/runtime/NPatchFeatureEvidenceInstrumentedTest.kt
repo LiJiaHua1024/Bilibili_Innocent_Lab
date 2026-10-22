@@ -1,6 +1,7 @@
 package com.Bilibili_Innocent_Lab.xposedmodule.runtime
 
 import android.util.Log
+import android.os.Bundle
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import com.Bilibili_Innocent_Lab.xposedmodule.runtime.noroot.NPatchMode
@@ -22,6 +23,11 @@ import java.util.concurrent.atomic.AtomicReference
 class NPatchFeatureEvidenceInstrumentedTest {
     @Test fun currentEmbeddedHostReportsExpectedFeatureStages() {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
+        fun report(message: String) {
+            Log.i("BilibiliInnocentLab", message)
+            // ROM 的小日志缓冲可能覆盖 logcat；同一份有界公开证据也写入本次测试输出。
+            instrumentation.sendStatus(0, Bundle().apply { putString("stream", "\n$message\n") })
+        }
         val context = instrumentation.targetContext
         val args = InstrumentationRegistry.getArguments()
         fun ids(key: String): Set<String> = args.getString(key).orEmpty()
@@ -55,7 +61,7 @@ class NPatchFeatureEvidenceInstrumentedTest {
                 assertTrue("No current evidence for $id", id in quiet)
                 // The protocol omits some disabled leaves. Absence proves no reported callback,
                 // never that a setting is disabled or that its business behavior passed.
-                Log.i("BilibiliInnocentLab", "NPatch feature acceptance: id=$id report=absent callbacks=none")
+                report("NPatch feature acceptance: id=$id report=absent callbacks=none")
                 return@forEach
             }
             assertFalse("Runtime error for $id", row.runtimeError)
@@ -66,7 +72,7 @@ class NPatchFeatureEvidenceInstrumentedTest {
                 assertEquals(0L, row.appliedCount)
             }
             // Only public capability IDs, bounded counts and enum states leave this boundary.
-            Log.i("BilibiliInnocentLab", "NPatch feature acceptance: id=$id install=${row.installState} " +
+            report("NPatch feature acceptance: id=$id install=${row.installState} " +
                 "observed=${row.observedCount} applied=${row.appliedCount} hooks=${row.installedHookCount}")
         }
     }

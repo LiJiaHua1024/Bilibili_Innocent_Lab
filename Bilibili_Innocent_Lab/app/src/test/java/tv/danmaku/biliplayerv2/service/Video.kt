@@ -9,8 +9,8 @@ class Video {
         fun getFrom() = origin
     }
     // 有意不继承 DisplayParams，也不定义 getAvid/getCid，必须走真实中转 API。
-    class PlayableParams(private val display: DisplayParams, var kind: VideoBizType = VideoBizType.UGC) : FixtureResolveParams(display.getFrom()) {
-        fun getDisplayParams() = display
+    abstract class PlayableParams(origin: String, var kind: VideoBizType = VideoBizType.UGC) : FixtureResolveParams(origin) {
+        abstract fun getDisplayParams(): DisplayParams
         fun getBizType() = kind
     }
 }
