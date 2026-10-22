@@ -1527,4 +1527,8 @@
     <string name="npatch_native_unsupported">unsupported ABI</string>
     <string name="npatch_native_busy">preparing / busy</string>
     <string name="npatch_native_restart">restart required</string>
+    <string name="npatch_startup_latest">Latest admission %1$d ms; Hook installation %2$s ms; retries %3$d; selected transport %4$s; result %5$s.</string>
+    <string name="npatch_startup_history">Observed boots %1$d/8; admission + Hook p50 %2$d ms, max %3$d ms. Only collected sessions, not full cold-start time.</string>
+    <string name="npatch_startup_routes">Transport results consumed before the decision: %1$s. Pending/cancelled routes are unknown.</string>
+    <string name="npatch_guard_failures">Protected task failures in this process: %1$d.</string>
 </resources>

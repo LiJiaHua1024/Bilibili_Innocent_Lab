@@ -75,7 +75,8 @@ internal class AdmissionResponseCoordinator {
 /** 启动窗口内完成新鲜许可；工作线程只读取，不在迟到回调中安装 Hook。 */
 internal object HostAdmissionClient {
     data class Grant(val snapshot: RemoteHookConfigSnapshot, val source: String, val identity: PublicationIdentity? = null)
-    data class Result(val grant: Grant? = null, val reason: String = "admission_unavailable", val disabledRevision: Long = 0L)
+    data class Result(val grant: Grant? = null, val reason: String = "admission_unavailable", val disabledRevision: Long = 0L,
+        val selectedRoute: String = "unknown", val routeEvidence: List<com.Bilibili_Innocent_Lab.xposedmodule.runtime.noroot.NPatchRouteEvidence> = emptyList())
     private data class Routed(val route: String, val result: Result)
     private val boundWorker = HostReceiptWire.executor("bil-bound-admission")
     private val worker = HostReceiptWire.executor("bil-host-admission")
@@ -85,6 +86,14 @@ internal object HostAdmissionClient {
     private const val TAG = "BilibiliInnocentLab"
 
     fun admit(context: Context, normal: RemoteHookConfigSnapshot?, normalFailure: String?, nPatchRuntime: Boolean = false): Result {
+        val observed = ArrayList<com.Bilibili_Innocent_Lab.xposedmodule.runtime.noroot.NPatchRouteEvidence>(4)
+        return admitObserved(context, normal, normalFailure, nPatchRuntime, observed).let {
+            it.copy(routeEvidence = observed.toList())
+        }
+    }
+
+    private fun admitObserved(context: Context, normal: RemoteHookConfigSnapshot?, normalFailure: String?, nPatchRuntime: Boolean,
+        observed: MutableList<com.Bilibili_Innocent_Lab.xposedmodule.runtime.noroot.NPatchRouteEvidence>): Result {
         val app = context.applicationContext ?: context
         val deadline = SystemClock.elapsedRealtime() + HostAdmissionContract.BOOTSTRAP_TIMEOUT_MS
         val responses = LinkedBlockingQueue<Routed>(4)
@@ -179,8 +188,16 @@ internal object HostAdmissionClient {
                     return remoteConfigFallback(normal, normalFailure, timedOut.sawDenied, failure, nPatchRuntime)
                 }
                 completed += 1
+                observed += com.Bilibili_Innocent_Lab.xposedmodule.runtime.noroot.NPatchRouteEvidence(routed.route,
+                    when {
+                        routed.result.grant != null -> "granted"
+                        routed.result.disabledRevision > 0 -> "disabled"
+                        routed.result.reason == "admission_denied" -> "denied"
+                        routed.result.reason == "admission_timeout" -> "timeout"
+                        else -> "unavailable"
+                    })
                 collect = collect.accept(routed.result, acceptGrant = true)
-                collect.grant?.let { return it }
+                collect.grant?.let { return it.copy(selectedRoute = routed.route) }
                 if (collect.sawDenied) {
                     return finishAdmit(normal, normalFailure, drainRouted(collect, responses, acceptGrant = false), nPatchRuntime)
                 }

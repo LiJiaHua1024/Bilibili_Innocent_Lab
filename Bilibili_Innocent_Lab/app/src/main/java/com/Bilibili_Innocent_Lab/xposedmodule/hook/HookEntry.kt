@@ -4919,6 +4919,7 @@ class HookEntry : XposedModule() {
                     installer(appContext)
                 }.onSuccess {
                     authorizedHooksInstalled.set(true)
+                    NPatchProcessDiagnostics.recordInstallation(android.os.SystemClock.elapsedRealtime() - installStartedAtMs)
                     NPatchProcessDiagnostics.record(NPatchProcessState.INSTALLED,
                         installedHooks = hookPointRegistry.snapshot().count { it.state == HookPointRegistry.State.INSTALLED })
                     // B12：存活探测据此回答“活着且已装 Hook”，避免只回“入口在跑”。
@@ -4941,6 +4942,7 @@ class HookEntry : XposedModule() {
                     reportScanResultIfReady(appContext)
                     reportNoRootHeartbeatIfSynced(appContext, config)
                 }.onFailure { throwable ->
+                    NPatchProcessDiagnostics.recordInstallation(android.os.SystemClock.elapsedRealtime() - installStartedAtMs)
                     NPatchProcessDiagnostics.record(NPatchProcessState.FAILED)
                     if (processName == TARGET_PACKAGE) {
                         HostRuntimeDiagnosticsBridge.recordInstallChainFailed()
@@ -5019,6 +5021,13 @@ class HookEntry : XposedModule() {
                     nPatchRuntime = nPatchRuntime)
                 val admissionElapsedMs =
                     android.os.SystemClock.elapsedRealtime() - admissionStartedAtMs
+                NPatchProcessDiagnostics.recordAdmission(admissionElapsedMs, when {
+                    admission.grant != null -> "granted"
+                    admission.disabledRevision > 0L -> "disabled"
+                    admission.reason == "admission_denied" -> "denied"
+                    admission.reason == "admission_timeout" -> "timeout"
+                    else -> "unavailable"
+                }, admission.selectedRoute, admission.routeEvidence)
                 if (processName == TARGET_PACKAGE) {
                     frameworkLog(
                         "[BIL] 启动授权阶段耗时(remote_config=${remoteConfigElapsedMs}ms," +

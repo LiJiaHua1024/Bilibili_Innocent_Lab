@@ -72,6 +72,16 @@ internal fun nPatchDiagnosticsDetails(context: Context, input: ModuleDiagnosticI
             val bitness = row.process64Bit?.let { if (it) "64" else "32" } ?: unknown
             add(context.getString(R.string.npatch_process_native, bitness,
                 nativeStateText(context, row.dexKitState), nativeStateText(context, row.frameNativeState)))
+            val samples = row.startups
+            samples.lastOrNull()?.let { latest ->
+                add(context.getString(R.string.npatch_startup_latest, latest.admissionMs,
+                    latest.installMs?.toString() ?: unknown, latest.attempt - 1, latest.selectedRoute, latest.result))
+                add(context.getString(R.string.npatch_startup_history, samples.size,
+                    com.Bilibili_Innocent_Lab.xposedmodule.runtime.noroot.NPatchStartupCodec.p50(samples.map { it.totalMs }) ?: 0L,
+                    samples.maxOf { it.totalMs }))
+                add(context.getString(R.string.npatch_startup_routes, latest.routes.joinToString(", ") { "${it.route}=${it.result}" }))
+            }
+            add(context.getString(R.string.npatch_guard_failures, row.guardedFailures))
         }
     }.joinToString("\n")
 }

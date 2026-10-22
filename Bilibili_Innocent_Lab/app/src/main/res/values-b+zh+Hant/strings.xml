@@ -1527,4 +1527,8 @@
     <string name="npatch_native_unsupported">ABI 不支援</string>
     <string name="npatch_native_busy">準備中 / 忙碌</string>
     <string name="npatch_native_restart">需要重新啟動</string>
+    <string name="npatch_startup_latest">最近授權 %1$d ms；Hook 安裝 %2$s ms；重試 %3$d 次；選中通道 %4$s；結果 %5$s。</string>
+    <string name="npatch_startup_history">已採集啟動 %1$d/8 次；授權 + Hook 的 p50 %2$d ms、max %3$d ms。僅代表已採集樣本，不是完整冷啟動。</string>
+    <string name="npatch_startup_routes">決策前已收通道結果：%1$s。未完成或取消的通道保持未知。</string>
+    <string name="npatch_guard_failures">目前程序已攔截的工作失敗：%1$d 次。</string>
 </resources>

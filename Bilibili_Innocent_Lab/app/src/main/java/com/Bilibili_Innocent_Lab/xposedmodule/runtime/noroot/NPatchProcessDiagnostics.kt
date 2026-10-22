@@ -24,10 +24,19 @@ import java.util.concurrent.atomic.AtomicBoolean
 /** 各个已加载进程就地回复，不启动未运行进程，不落盘，不参与授权或主进程心跳。 */
 internal object NPatchProcessDiagnostics {
     private val action = "${BuildConfig.APPLICATION_ID}.QUERY_NPATCH_PROCESSES"
-    private const val PROTOCOL = 2
+    private const val PROTOCOL = 3
     private const val TIMEOUT_MS = 1_500L
     private val queryInFlight = AtomicBoolean(false)
     @Volatile private var current: NPatchProcessSnapshot? = null
+    private val startup = NPatchStartupTracker()
+
+    fun recordAdmission(ms: Long, result: String, route: String, routes: List<NPatchRouteEvidence>) {
+        if (current != null) startup.admission(ms, result, route, routes)
+    }
+
+    fun recordInstallation(ms: Long) {
+        if (current != null) startup.installation(ms)
+    }
 
     @Synchronized
     fun initialize(context: Context, processName: String, mode: NPatchMode) {
@@ -53,7 +62,10 @@ internal object NPatchProcessDiagnostics {
                         val extras = getResultExtras(true)
                         val rows = NPatchProcessCodec.decode(extras.getString("rows") ?: "[]") ?: return
                         val row = current?.copy(dexKitState = DexKitAssistEngine.nativeAvailability(),
-                            frameNativeState = FrameInterpolationNative.status.name) ?: return
+                            frameNativeState = FrameInterpolationNative.status.name,
+                            startups = startup.snapshot(),
+                            guardedFailures = com.Bilibili_Innocent_Lab.xposedmodule.runtime.HostThreadGuard.failureCounts()
+                                .values.sum().coerceIn(0L, 1_000_000_000L)) ?: return
                         if (rows.size >= NPatchProcessCodec.MAX_PROCESSES || rows.any { it.processName == row.processName }) return
                         extras.putString("nonce", nonce)
                         extras.putString("rows", NPatchProcessCodec.encode(rows + row))

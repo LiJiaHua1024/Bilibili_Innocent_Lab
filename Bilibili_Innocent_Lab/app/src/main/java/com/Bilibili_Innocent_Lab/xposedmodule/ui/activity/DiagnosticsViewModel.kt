@@ -116,7 +116,8 @@ internal class DiagnosticsViewModel : ViewModel() {
                     hostRuntime = hostRuntime,
                     hostQueryState = hostQueryState,
                     hostQueryFailure = hostQueryFailure,
-                    nPatchProcesses = com.Bilibili_Innocent_Lab.xposedmodule.runtime.noroot.NPatchProcessDiagnostics.query(context),
+                    nPatchProcesses = com.Bilibili_Innocent_Lab.xposedmodule.runtime.noroot.NPatchStartupHistory.enrich(context,
+                        com.Bilibili_Innocent_Lab.xposedmodule.runtime.noroot.NPatchProcessDiagnostics.query(context)),
                     nPatchEmbeddedBuild = com.Bilibili_Innocent_Lab.xposedmodule.runtime.noroot.NPatchEmbeddedBuild.read(context)
                 )
             }.onSuccess { snapshot ->
