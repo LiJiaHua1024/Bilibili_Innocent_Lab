@@ -19,13 +19,14 @@ internal data class NPatchProcessSnapshot(
     val dexKitState: String = "UNKNOWN",
     val frameNativeState: String = "UNKNOWN",
     val startups: List<NPatchStartupEvidence> = emptyList(),
-    val guardedFailures: Long = 0L
+    val guardedFailures: Long = 0L,
+    val support: NPatchSupportEvidence = NPatchSupportEvidence()
 )
 
 /** 独立的本地只读协议，不改变主进程激活回执、许可或可导出报告 schema。 */
 internal object NPatchProcessCodec {
     const val MAX_PROCESSES = 16
-    const val MAX_CHARS = 64 * 1024
+    const val MAX_CHARS = 128 * 1024
     private val process = Regex("tv\\.danmaku\\.bili(?::[A-Za-z0-9_.-]{1,96})?")
     private val sources = setOf("unknown", "module_direct", "manager")
     private val dexKitStates = setOf("UNKNOWN", "NOT_TRIED", "AVAILABLE", "UNAVAILABLE")
@@ -41,7 +42,8 @@ internal object NPatchProcessCodec {
                 .put("moduleVersion", row.moduleVersionCode)
                 .put("process64", row.process64Bit ?: JSONObject.NULL)
                 .put("dexkit", row.dexKitState).put("frameNative", row.frameNativeState)
-                .put("startups", NPatchStartupCodec.encode(row.startups)).put("guardedFailures", row.guardedFailures))
+                .put("startups", NPatchStartupCodec.encode(row.startups)).put("guardedFailures", row.guardedFailures)
+                .put("support", NPatchSupportCodec.encode(row.support)))
         } }.toString().also { require(it.length <= MAX_CHARS) }
     }
 
@@ -51,7 +53,7 @@ internal object NPatchProcessCodec {
         require(array.length() <= MAX_PROCESSES)
         List(array.length()) { index ->
             val row = array.getJSONObject(index)
-            require(row.length() == 13)
+            require(row.length() == 14)
             val process64 = row.get("process64")
             require(process64 == JSONObject.NULL || process64 is Boolean)
             NPatchProcessSnapshot(row.get("process") as String, row.integer("pid").toInt(),
@@ -60,7 +62,8 @@ internal object NPatchProcessCodec {
                 row.get("source") as String, row.integer("hooks").toInt(),
                 row.integer("targetUpdate"), row.integer("moduleVersion"), process64 as? Boolean,
                 row.get("dexkit") as String, row.get("frameNative") as String,
-                NPatchStartupCodec.decode(row.getJSONArray("startups")), row.strictLong("guardedFailures")).also { require(valid(it)) }
+                NPatchStartupCodec.decode(row.getJSONArray("startups")), row.strictLong("guardedFailures"),
+                NPatchSupportCodec.decode(row.getJSONObject("support"))).also { require(valid(it)) }
         }.also { require(it.map { row -> row.processName }.distinct().size == it.size) }
     }.getOrNull()
 

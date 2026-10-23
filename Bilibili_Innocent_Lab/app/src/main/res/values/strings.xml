@@ -1531,4 +1531,8 @@
     <string name="npatch_startup_history">Observed boots %1$d/8; admission + Hook p50 %2$d ms, max %3$d ms. Only collected sessions, not full cold-start time.</string>
     <string name="npatch_startup_routes">Transport results consumed before the decision: %1$s. Pending/cancelled routes are unknown.</string>
     <string name="npatch_guard_failures">Protected task failures in this process: %1$d.</string>
+    <string name="npatch_crash_summary">Crash evidence: %1$s (%2$d records); Media log: %3$s. Media is collected only on support export.</string>
+    <string name="npatch_crash_row">Crash at %1$d: category %2$s, module frame observed %3$s. Frame presence does not establish fault ownership; traces are bounded.</string>
+    <string name="npatch_test_crash_explanation">DEBUG: this deliberately terminates Bilibili. Reopen it, then refresh diagnostics to recover evidence. Native signals, ANRs and earlier bootstrap crashes are outside this Java handler.</string>
+    <string name="npatch_test_crash">Test crash: terminate Bilibili</string>
 </resources>

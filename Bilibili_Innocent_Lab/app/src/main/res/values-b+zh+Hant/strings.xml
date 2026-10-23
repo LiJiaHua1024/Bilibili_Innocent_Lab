@@ -1531,4 +1531,8 @@
     <string name="npatch_startup_history">已採集啟動 %1$d/8 次；授權 + Hook 的 p50 %2$d ms、max %3$d ms。僅代表已採集樣本，不是完整冷啟動。</string>
     <string name="npatch_startup_routes">決策前已收通道結果：%1$s。未完成或取消的通道保持未知。</string>
     <string name="npatch_guard_failures">目前程序已攔截的工作失敗：%1$d 次。</string>
+    <string name="npatch_crash_summary">崩潰證據：%1$s（%2$d 份）；Media 日誌：%3$s。Media 僅在匯出支援包時採集。</string>
+    <string name="npatch_crash_row">崩潰時間 %1$d：類別 %2$s，觀察到模組堆疊 %3$s。堆疊存在不等於根因歸屬，記錄有界。</string>
+    <string name="npatch_test_crash_explanation">DEBUG：此操作會使嗶哩嗶哩結束。重新開啟宿主並重新整理診斷可讀回證據。native 訊號、ANR 和此處理器安裝前的崩潰不在 Java 擷取範圍。</string>
+    <string name="npatch_test_crash">測試崩潰：使嗶哩嗶哩結束</string>
 </resources>

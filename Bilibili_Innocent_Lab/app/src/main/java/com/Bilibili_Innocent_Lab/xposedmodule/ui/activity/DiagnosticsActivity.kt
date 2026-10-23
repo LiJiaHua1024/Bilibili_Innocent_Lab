@@ -574,6 +574,16 @@ class DiagnosticsActivity : SkinnedActivity(),
             ),
             snapshot
         )
+        if (com.Bilibili_Innocent_Lab.xposedmodule.BuildConfig.DEBUG && snapshot.inputs.nPatchEnvironment?.patch?.markerPresent == true) {
+            content.addView(card().apply {
+                addView(bodyText(getString(R.string.npatch_test_crash_explanation)), linearMatch())
+                addView(actionButton(getString(R.string.npatch_test_crash), getString(R.string.npatch_test_crash)) {
+                    runCatching {
+                        com.Bilibili_Innocent_Lab.xposedmodule.runtime.noroot.NPatchProcessDiagnostics.requestTestCrash(applicationContext)
+                    }
+                }, linearWrap())
+            }, cardParams())
+        }
     }
 
     private fun overallCard(snapshot: ModuleDiagnosticSnapshot) = card().apply {

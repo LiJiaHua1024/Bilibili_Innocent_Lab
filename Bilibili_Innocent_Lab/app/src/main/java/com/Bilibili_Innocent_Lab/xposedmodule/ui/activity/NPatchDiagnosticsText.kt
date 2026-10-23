@@ -82,6 +82,10 @@ internal fun nPatchDiagnosticsDetails(context: Context, input: ModuleDiagnosticI
                 add(context.getString(R.string.npatch_startup_routes, latest.routes.joinToString(", ") { "${it.route}=${it.result}" }))
             }
             add(context.getString(R.string.npatch_guard_failures, row.guardedFailures))
+            add(context.getString(R.string.npatch_crash_summary, row.support.crashState, row.support.crashes.size, row.support.mediaState))
+            row.support.crashes.forEach { crash ->
+                add(context.getString(R.string.npatch_crash_row, crash.at, crash.kind, crash.moduleFrame.toString()))
+            }
         }
     }.joinToString("\n")
 }

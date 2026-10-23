@@ -1531,4 +1531,8 @@
     <string name="npatch_startup_history">已采集启动 %1$d/8 次；授权 + Hook 的 p50 %2$d ms、max %3$d ms。仅代表已采集样本，不是完整冷启动。</string>
     <string name="npatch_startup_routes">决策前已收通道结果：%1$s。未完成或取消的通道保持未知。</string>
     <string name="npatch_guard_failures">当前进程已拦截的任务失败：%1$d 次。</string>
+    <string name="npatch_crash_summary">崩溃证据：%1$s（%2$d 份）；Media 日志：%3$s。Media 仅在导出支持包时采集。</string>
+    <string name="npatch_crash_row">崩溃时间 %1$d：类别 %2$s，观察到模块栈 %3$s。栈存在不等于根因归属，记录有界。</string>
+    <string name="npatch_test_crash_explanation">DEBUG：此操作会使哔哩哔哩退出。重新打开宿主并刷新诊断可读回证据。native 信号、ANR 和此处理器安装前的崩溃不在 Java 捕获范围。</string>
+    <string name="npatch_test_crash">测试崩溃：使哔哩哔哩退出</string>
 </resources>

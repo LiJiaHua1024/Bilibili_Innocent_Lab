@@ -5168,6 +5168,9 @@ class HookEntry : XposedModule() {
                     }
                     after {
                         applicationOnCreateCompleted.set(true)
+                        (args.firstOrNull() as? android.app.Application)?.let { application ->
+                            runCatching { NPatchProcessDiagnostics.onApplicationReady(application) }
+                        }
                         if (processName == TARGET_PACKAGE && authorizedHooksInstalled.get() &&
                             activeHookConfig.get()?.getBoolean(com.Bilibili_Innocent_Lab.xposedmodule.agent.AgentPreferences.ENABLED, false) == true) {
                             (args.firstOrNull() as? android.app.Application)?.let { application ->

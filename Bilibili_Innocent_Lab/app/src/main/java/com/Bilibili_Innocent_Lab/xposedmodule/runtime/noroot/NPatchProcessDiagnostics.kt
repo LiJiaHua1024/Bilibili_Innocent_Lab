@@ -21,10 +21,10 @@ import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
 
-/** 各个已加载进程就地回复，不启动未运行进程，不落盘，不参与授权或主进程心跳。 */
+/** 各个已加载进程就地回复；崩溃私有证据独立于授权和主进程心跳。 */
 internal object NPatchProcessDiagnostics {
     private val action = "${BuildConfig.APPLICATION_ID}.QUERY_NPATCH_PROCESSES"
-    private const val PROTOCOL = 3
+    private const val PROTOCOL = 4
     private const val TIMEOUT_MS = 1_500L
     private val queryInFlight = AtomicBoolean(false)
     @Volatile private var current: NPatchProcessSnapshot? = null
@@ -36,6 +36,13 @@ internal object NPatchProcessDiagnostics {
 
     fun recordInstallation(ms: Long) {
         if (current != null) startup.installation(ms)
+    }
+
+    fun onApplicationReady(context: Context) {
+        val row = current ?: return
+        // Host SDKs can replace the early attach-time handler during Application.onCreate.
+        // Chain their completed initialization without changing crash or Hook semantics.
+        NPatchCrashHandler.install(NPatchCrashStore.forProcess(context, row.processName))
     }
 
     @Synchronized
@@ -50,14 +57,28 @@ internal object NPatchProcessDiagnostics {
         NPatchProcessCodec.encode(listOf(initial))
         // 只读内存快照不依赖 UI；宿主主线程启动缓慢/卡住时仍可诊断其它已加载进程。
         // 此 HandlerThread 与动态接收器同进程存活，注册失败必须退出，不能每次查询新建线程。
+        val crashStore = NPatchCrashStore.forProcess(app, processName)
+        NPatchCrashHandler.install(crashStore)
         val callbackThread = HandlerThread("bil-npatch-process-diagnostics").apply { start() }
         try {
             ContextCompat.registerReceiver(app, object : BroadcastReceiver() {
                 override fun onReceive(context: Context, intent: Intent) {
-                    if (intent.action != action || !isOrderedBroadcast || intent.getIntExtra("v", 0) != PROTOCOL) return
+                    if (intent.action != action || (!isOrderedBroadcast && !intent.getBooleanExtra("testCrash", false)) ||
+                        intent.getIntExtra("v", 0) != PROTOCOL) return
                     if (AndroidVersion.isAtLeast(AndroidVersion.U) && sentFromPackage != BuildConfig.APPLICATION_ID) return
                     val nonce = intent.getStringExtra("nonce").orEmpty()
                     if (!HostRuntimeDiagnosticsQueryContract.isValidNonce(nonce)) return
+                    runCatching { NPatchCrashHandler.install(crashStore) }
+                    if (intent.getBooleanExtra("testCrash", false)) {
+                        if (BuildConfig.DEBUG && processName == NoRootSupportState.TARGET_PACKAGE) {
+                            // Explicit DEBUG-only diagnostic action; deliberately outside HostThreadGuard.
+                            Handler(Looper.getMainLooper()).postDelayed({
+                                NPatchCrashHandler.install(crashStore)
+                                error("BIL controlled diagnostic crash")
+                            }, 300L)
+                        }
+                        return
+                    }
                     runCatching {
                         val extras = getResultExtras(true)
                         val rows = NPatchProcessCodec.decode(extras.getString("rows") ?: "[]") ?: return
@@ -65,7 +86,11 @@ internal object NPatchProcessDiagnostics {
                             frameNativeState = FrameInterpolationNative.status.name,
                             startups = startup.snapshot(),
                             guardedFailures = com.Bilibili_Innocent_Lab.xposedmodule.runtime.HostThreadGuard.failureCounts()
-                                .values.sum().coerceIn(0L, 1_000_000_000L)) ?: return
+                                .values.sum().coerceIn(0L, 1_000_000_000L),
+                            support = crashStore.read().let { evidence ->
+                                if (intent.getBooleanExtra("media", false) && processName == NoRootSupportState.TARGET_PACKAGE)
+                                    NPatchCrashStore.readMedia(app, evidence) else evidence
+                            }) ?: return
                         if (rows.size >= NPatchProcessCodec.MAX_PROCESSES || rows.any { it.processName == row.processName }) return
                         extras.putString("nonce", nonce)
                         extras.putString("rows", NPatchProcessCodec.encode(rows + row))
@@ -87,7 +112,7 @@ internal object NPatchProcessDiagnostics {
     }
 
     /** 仅在后台线程调用。结果只含本次已响应进程；超时/无响应保持未知，不沿用历史。 */
-    fun query(context: Context): List<NPatchProcessSnapshot> {
+    fun query(context: Context, includeMedia: Boolean = false): List<NPatchProcessSnapshot> {
         check(Looper.myLooper() != Looper.getMainLooper())
         if (!queryInFlight.compareAndSet(false, true)) return emptyList()
         try {
@@ -115,7 +140,8 @@ internal object NPatchProcessDiagnostics {
             // setPackage 只分派给目标 UID 的动态接收器；结果接收器为系统持有的本次回调。
             // 有序广播累加各进程的有界记录，避免子进程覆盖主进程结果或争抢激活回执。
             CrossAppBroadcastCompat.sendOrderedBroadcast(app,
-                Intent(action).setPackage(NoRootSupportState.TARGET_PACKAGE).putExtra("v", PROTOCOL).putExtra("nonce", nonce),
+                Intent(action).setPackage(NoRootSupportState.TARGET_PACKAGE).putExtra("v", PROTOCOL).putExtra("nonce", nonce)
+                    .putExtra("media", includeMedia),
                 receiver, Handler(Looper.getMainLooper()), initialExtras = Bundle())
             if (!latch.await(TIMEOUT_MS, TimeUnit.MILLISECONDS)) return emptyList()
             return rows
@@ -127,5 +153,13 @@ internal object NPatchProcessDiagnostics {
         } finally {
             queryInFlight.set(false)
         }
+    }
+
+    /** Called only after an explicit DEBUG UI confirmation or opt-in instrumentation. */
+    fun requestTestCrash(context: Context) {
+        if (!BuildConfig.DEBUG) return
+        CrossAppBroadcastCompat.sendBroadcast(context,
+            Intent(action).setPackage(NoRootSupportState.TARGET_PACKAGE).putExtra("v", PROTOCOL)
+                .putExtra("nonce", UUID.randomUUID().toString()).putExtra("testCrash", true))
     }
 }
