@@ -129,6 +129,49 @@ class NativeLibraryCompletionTest {
         assertEquals(listOf(first), store.readSnapshot().collections.history)
     }
 
+    @Test fun unseenHomeCardCanBeAddedWithoutCreatingPlaybackHistoryAndReopened() {
+        var disk: String? = null
+        val store = LocalVirtualLibrary({ disk }, { disk = it })
+        val unseen = second.copy(positionMs = 0)
+        val result = JSONObject(NativeWatchLaterProtocol.respond("/x/v2/history/toview/add",
+            mapOf("resources" to "2"), store) { aid -> unseen.takeIf { it.aid == aid } })
+        assertEquals(0, result.getInt("code"))
+        val restored = LocalVirtualLibrary({ disk }, { error("unexpected write") }).readSnapshot().collections
+        assertEquals(listOf(unseen), restored.watchLater)
+        assertTrue(restored.history.isEmpty())
+    }
+
+    @Test fun addingKnownVideoKeepsResumeProgressAndMissingMetadataFailsAtomically() {
+        val store = LocalVirtualLibrary({ null }, {})
+        store.putHistory(first)
+        NativeWatchLaterProtocol.respond("/x/v2/history/toview/add", mapOf("resources" to "1"), store) {
+            error("Known progress must not be replaced by a fresh metadata request")
+        }
+        assertEquals(listOf(first), store.readSnapshot().collections.watchLater)
+        val before = store.readSnapshot().collections
+        assertThrows(IllegalArgumentException::class.java) {
+            NativeWatchLaterProtocol.respond("/x/v2/history/toview/add", mapOf("resources" to "2,3"), store) {
+                if (it == 2L) second else null
+            }
+        }
+        assertEquals(before, store.readSnapshot().collections)
+    }
+
+    @Test fun incognitoWatchLaterAddDoesNotReadOrModifyThePersistentGuestLibrary() {
+        var disk: String? = null
+        val guest = LocalVirtualLibrary({ disk }, { disk = it })
+        guest.addWatchLater(first)
+        val originalDisk = disk
+        val privateSession = LocalVirtualLibrary({ error("private disk read") }, { error("private disk write") })
+        privateSession.enterIncognito()
+        NativeWatchLaterProtocol.respond("/x/v2/history/toview/add", mapOf("resources" to "2"), privateSession) { second }
+        assertEquals(listOf(second), privateSession.readSnapshot().collections.watchLater)
+        assertEquals(originalDisk, disk)
+        privateSession.resetIncognito()
+        assertTrue(privateSession.readSnapshot().collections.watchLater.isEmpty())
+        assertEquals(listOf(first), LocalVirtualLibrary({ disk }, {}).readSnapshot().collections.watchLater)
+    }
+
     @Test fun incognitoPinSortAndWatchLaterLeaveNoPersistentChanges() {
         val store = LocalVirtualLibrary({ error("disk read") }, { error("disk write") })
         store.enterIncognito(); store.addFavorite(first); store.addFavorite(second); store.addWatchLater(first)

@@ -65,7 +65,7 @@ internal object NativeWatchLaterProtocol {
                 val ids = resources()
                 require(ids.isNotEmpty())
                 val known = state.history + state.watchLater + state.favorites.values.flatten()
-                val videos = ids.map { aid -> requireNotNull(metadata(aid) ?: known.firstOrNull { it.aid == aid }) }
+                val videos = ids.map { aid -> requireNotNull(known.firstOrNull { it.aid == aid } ?: metadata(aid)) }
                 val remaining = state.watchLater.filterNot { it.aid in ids }
                 library.writeSnapshot(snapshot.copy(collections = state.copy(watchLater = videos + remaining)))
                 obj("toast" to "已添加至稍后再看")

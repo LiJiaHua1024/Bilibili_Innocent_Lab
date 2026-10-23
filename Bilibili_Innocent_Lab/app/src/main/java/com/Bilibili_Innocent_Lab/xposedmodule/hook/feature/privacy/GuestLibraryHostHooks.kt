@@ -137,6 +137,7 @@ internal class GuestLibraryHostHooks(
         attempt { GuestNativeFollowListHooks(library, isGuest).install(env) }
         attempt { GuestNativeHistoryHooks(library, isGuest).install(env) }
         attempt { GuestNativeWatchLaterHooks(library, isGuest).install(env) }
+        attempt { GuestNativeWatchLaterAddHooks(library, isGuest).install(env) }
         attempt { GuestNativeListHttpHooks(library, isGuest).install(env) }
 
         attempt {
@@ -175,19 +176,18 @@ internal class GuestLibraryHostHooks(
                 require(it.type isSubclassOf classOf<Activity>())
             }
             val unit = requireNotNull(Lookup.fieldOrNull(access.type("kotlin.Unit"), "INSTANCE")).get(null)
+            val manager = access.type("tv.danmaku.bili.ui.watchlater.widget.WatchLaterManagerV2")
+            val singleton = requireNotNull(Lookup.fieldOrNull(manager, "a")).get(null)
             env.registrar.exact("guest.library.watch_later", menu, "P1", menu) {
                 before {
                     if (!isGuest()) return@before
                     result = unit
                     val target = argOrNull(0) ?: return@before
                     val host = activity.get(target) as? Activity ?: return@before
-                    runCatching {
-                        // MenuService.Z1 uses e.c().a() for this video's avid; c() is its cid.
-                        val repository = requireNotNull(Lookup.fieldOrNull(menu, "e")?.get(target))
-                        val episode = requireNotNull(access.call(repository, "c"))
-                        library.action(host, "watchLater", (access.call(episode, "a") as Number).toLong(),
-                            (access.call(episode, "c") as Number).toLong())
-                    }.onFailure { env.logError("guest_library_watch_later", "[BIL] Local watch-later metadata unavailable") }
+                    val repository = requireNotNull(Lookup.fieldOrNull(menu, "e")?.get(target))
+                    val episode = requireNotNull(access.call(repository, "c"))
+                    val aid = (access.call(episode, "a") as Number).toLong()
+                    access.call(requireNotNull(singleton), "j", host, aid.toString(), null, "", 0, true, 0)
                 }
             }
         }
