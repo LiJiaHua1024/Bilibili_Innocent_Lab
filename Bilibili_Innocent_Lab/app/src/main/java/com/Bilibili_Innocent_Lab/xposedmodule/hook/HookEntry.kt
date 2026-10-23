@@ -129,6 +129,8 @@ import com.Bilibili_Innocent_Lab.xposedmodule.hook.feature.PlayerQualityFeatureI
 import com.Bilibili_Innocent_Lab.xposedmodule.hook.feature.PlayerCodecForceFeatureInstaller
 import com.Bilibili_Innocent_Lab.xposedmodule.hook.feature.PlayerBufferFeatureInstaller
 import com.Bilibili_Innocent_Lab.xposedmodule.hook.feature.PlayerBufferConfig
+import com.Bilibili_Innocent_Lab.xposedmodule.hook.feature.audio.readAudioRescueConfig
+import com.Bilibili_Innocent_Lab.xposedmodule.hook.feature.audio.AudioRescueFeatureInstaller
 import com.Bilibili_Innocent_Lab.xposedmodule.hook.feature.PlayerCapabilityFeatureInstaller
 import com.Bilibili_Innocent_Lab.xposedmodule.hook.feature.PlayerCapabilityOptions
 import com.Bilibili_Innocent_Lab.xposedmodule.hook.feature.PlayerSpeedFeatureInstaller
@@ -3465,6 +3467,7 @@ class HookEntry : XposedModule() {
                         diskMb = prefs.getInt(FeaturePreferences.PLAYER_BUFFER_DISK_MB, PlayerBufferConfig.DEFAULT_DISK_MB),
                         wifiOnly = prefs.getBoolean(FeaturePreferences.PLAYER_BUFFER_WIFI_ONLY, PlayerBufferConfig.DEFAULT_WIFI_ONLY)
                     ),
+                    AudioRescueFeatureInstaller(readAudioRescueConfig(prefs)),
                     PlayerCodecForceFeatureInstaller(
                         codecPreferenceValue = prefs.getInt(
                             FeaturePreferences.PLAYER_CODEC_PREFERENCE,

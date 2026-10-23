@@ -331,7 +331,12 @@ internal object ReleaseHighlightsCatalog {
     )), ReleaseHighlightsBatch(28, listOf(
         ReleaseHighlight("live-home-promotion", HighlightKind.NEW, R.string.highlights_live_home_promotion,
             HighlightDestination("home.live.promotion.hidden"))
-    )))
+    )), ReleaseHighlightsBatch(29, listOf(
+        ReleaseHighlight("player-audio-rescue", HighlightKind.NEW, R.string.player_audio_scope,
+            HighlightDestination("player.audio.peak_guard", alsoCovers = setOf(
+                "player.audio.channels", "player.audio.noise_reduction", "player.audio.voice_focus")),
+            standaloneTitleRes = R.string.player_audio_rescue)
+    ), automatic = false))
     val currentRevision: Int get() = batches.maxOf { it.revision }
     val destinations get() = batches.sortedByDescending { it.revision }.flatMap { it.entries }
         .mapNotNull { it.destination }.distinctBy { it.settingId }

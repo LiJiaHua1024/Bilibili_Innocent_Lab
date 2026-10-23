@@ -332,11 +332,11 @@ class SettingsCatalogTest {
     }
 
     @Test
-    fun `catalog is a unique allowlist with 243 settings`() {
-        assertEquals(243, SettingsCatalog.specs.size)
-        assertEquals(243, SettingsCatalog.specs.map { it.id }.distinct().size)
-        assertEquals(243, SettingsCatalog.specs.map { it.storageKey }.distinct().size)
-        assertEquals(238, SettingsCatalog.specs.count { it.restorePolicy == RestorePolicy.AUTOMATIC })
+    fun `catalog is a unique allowlist with 247 settings`() {
+        assertEquals(247, SettingsCatalog.specs.size)
+        assertEquals(247, SettingsCatalog.specs.map { it.id }.distinct().size)
+        assertEquals(247, SettingsCatalog.specs.map { it.storageKey }.distinct().size)
+        assertEquals(242, SettingsCatalog.specs.count { it.restorePolicy == RestorePolicy.AUTOMATIC })
         assertEquals(5, SettingsCatalog.specs.count { it.restorePolicy == RestorePolicy.MANUAL })
         assertTrue(SettingsCatalog.specs.all { it.accepts(it.defaultValue) })
         assertTrue(SettingsCatalog.specs.all { it.id.matches(Regex("[a-z0-9][a-z0-9._-]{0,127}")) })
@@ -567,7 +567,7 @@ class SettingsCatalogTest {
         val expected = requireNotNull(javaClass.classLoader?.getResourceAsStream("settings-backup/catalog-v13.txt"))
             .bufferedReader().useLines { it.filter(String::isNotBlank).toList() }
         assertEquals(expected, SettingsCatalog.specs.filter { it.introducedCatalogVersion <= 13 }.map { it.id }.sorted())
-        assertEquals(63, SettingsCatalog.CATALOG_VERSION)
+        assertEquals(64, SettingsCatalog.CATALOG_VERSION)
         val added = SettingsCatalog.specs.filter { it.introducedCatalogVersion == 13 }
         assertEquals(6, added.size)
         assertTrue(added.all { it.restorePolicy == RestorePolicy.AUTOMATIC && ImportEffect.RESTART_BILIBILI in it.effects })
@@ -866,8 +866,8 @@ class SettingsCatalogTest {
 
     @Test
     fun `catalog types and manual roaming boundary are explicit`() {
-        assertEquals(147, SettingsCatalog.specs.count { it.type == SettingValueType.BOOLEAN })
-        assertEquals(24, SettingsCatalog.specs.count { it.type == SettingValueType.INTEGER })
+        assertEquals(150, SettingsCatalog.specs.count { it.type == SettingValueType.BOOLEAN })
+        assertEquals(25, SettingsCatalog.specs.count { it.type == SettingValueType.INTEGER })
         assertEquals(72, SettingsCatalog.specs.count { it.type == SettingValueType.STRING })
 
         val roaming = requireNotNull(SettingsCatalog.byId["compat.roaming.enabled"])

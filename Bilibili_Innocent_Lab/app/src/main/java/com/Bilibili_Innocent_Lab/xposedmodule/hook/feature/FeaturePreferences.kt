@@ -2,6 +2,10 @@ package com.Bilibili_Innocent_Lab.xposedmodule.hook.feature
 
 /** 新增功能的稳定配置键；旧功能键在完成迁移前仍保留在 HookEntry。 */
 internal object FeaturePreferences {
+    const val PLAYER_AUDIO_PEAK_GUARD = "player_audio_peak_guard"
+    const val PLAYER_AUDIO_CHANNELS = "player_audio_channels"
+    const val PLAYER_AUDIO_NOISE_REDUCTION = "player_audio_noise_reduction"
+    const val PLAYER_AUDIO_VOICE_FOCUS = "player_audio_voice_focus"
     const val PLAYER_SUBTITLE_STYLE = "player_subtitle_style"
     const val PLAYER_AI_SUBTITLE = "player_ai_subtitle"
     const val HIDE_VIDEO_DETAIL_APP_PROMOTION = "hide_video_detail_app_promotion"

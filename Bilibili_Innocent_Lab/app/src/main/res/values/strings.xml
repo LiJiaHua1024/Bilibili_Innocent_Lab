@@ -1510,4 +1510,19 @@
     <string name="player_buffer_mode">Buffer mode</string>
     <string name="player_buffer_memory_tip">The read-ahead item queue and playback consumer queue each receive half of this budget. Decoded frames and other native allocations are separate; this does not cap total process memory.</string>
     <string name="player_buffer_wifi_tip">A network change after prefetch starts is handled by the host. This option does not independently stop an existing prefetch task.</string>
+    <string name="player_audio_rescue">Audio rescue (experimental)</string>
+    <string name="player_audio_current">%1$d options enabled · restart Bilibili after changing</string>
+    <string name="player_audio_scope">Experimental, disabled by default. Currently supports mono/stereo audio in some video players. Other players, surround and audio passthrough are unsupported. Device validation is still pending.</string>
+    <string name="player_audio_peak_guard">Sudden peak guard</string>
+    <string name="player_audio_peak_guard_tip">Immediately attenuates sudden rises and limits sample peaks to −6 dBFS, with a smooth release. This is separate from overall loudness normalization; it cannot guarantee a safe headphone volume.</string>
+    <string name="player_audio_channels">Channel repair</string>
+    <string name="player_audio_original">Original stereo</string>
+    <string name="player_audio_mono">Mix to mono</string>
+    <string name="player_audio_auto">Automatically fill a missing channel</string>
+    <string name="player_audio_channels_tip">Mono averages left and right (opposite-phase audio may cancel). Auto repair copies audible audio to a persistently silent ear without amplifying the quiet channel noise; ordinary stereo remains unchanged.</string>
+    <string name="player_audio_noise_reduction">Basic noise reduction</string>
+    <string name="player_audio_noise_tip">Reduces low rumble, 50/60 Hz electrical hum and quiet background hiss. May soften quiet speech; does not isolate voices or remove all environmental sounds.</string>
+    <string name="player_audio_voice_focus">Voice clarity</string>
+    <string name="player_audio_voice_tip">Emphasizes the speech band and centered audio, while reducing wide stereo music. Cannot separate a centered BGM from speech; off-center voices may also become quieter.</string>
+    <string name="player_audio_optional_tip">Advance warnings and silence skipping are not enabled in this experiment. They require a verified look-ahead source and synchronized player control; real-time PCM alone cannot predict audio several seconds ahead.</string>
 </resources>

@@ -1,0 +1,31 @@
+package com.Bilibili_Innocent_Lab.xposedmodule.hook.feature.audio
+
+import com.Bilibili_Innocent_Lab.xposedmodule.hook.config.SnapshotHookConfigSource
+import com.Bilibili_Innocent_Lab.xposedmodule.hook.feature.FeaturePreferences
+import com.Bilibili_Innocent_Lab.xposedmodule.settings.backup.SettingsCatalog
+import com.Bilibili_Innocent_Lab.xposedmodule.settings.backup.SettingValue
+import org.junit.Assert.*
+import org.junit.Test
+
+class AudioRescueConfigTest {
+    @Test fun `defaults are off and unknown channel mode does not activate audio hooks`() {
+        for (value in listOf(-1, 0, 3, Int.MAX_VALUE)) {
+            val config = readAudioRescueConfig(SnapshotHookConfigSource(mapOf(FeaturePreferences.PLAYER_AUDIO_CHANNELS to value)))
+            assertFalse(config.enabled)
+            assertEquals(0, config.channels)
+        }
+    }
+    @Test fun `each control activates independently`() {
+        for (key in listOf(FeaturePreferences.PLAYER_AUDIO_PEAK_GUARD, FeaturePreferences.PLAYER_AUDIO_NOISE_REDUCTION, FeaturePreferences.PLAYER_AUDIO_VOICE_FOCUS)) {
+            assertTrue(readAudioRescueConfig(SnapshotHookConfigSource(mapOf(key to true))).enabled)
+        }
+        for (mode in 1..2) assertTrue(AudioRescueConfig(channels = mode).enabled)
+    }
+    @Test fun `audio settings are typed backed up and delivered through catalog`() {
+        val specs = SettingsCatalog.specs.filter { it.id.startsWith("player.audio.") }
+        assertEquals(4, specs.size)
+        assertTrue(specs.all { it.introducedCatalogVersion == 64 })
+        assertEquals(3, specs.count { it.defaultValue == SettingValue.Bool(false) })
+        assertEquals(SettingValue.IntValue(0), specs.single { it.id == "player.audio.channels" }.defaultValue)
+    }
+}

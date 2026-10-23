@@ -579,6 +579,7 @@ internal fun MainActivity.enhancePlaybackCategory(
         }
     }
     playerBufferSettingsRows(this)
+    playerAudioRescueSettingsRows(this, uiSettings)
     playerFrameInterpolationSettingsRows(this, uiSettings)
     TextView(
         lparams = LayoutParams(widthMatchParent = true) {
