@@ -3055,6 +3055,7 @@ object VersionAdapter {
             commentTopology = commentTopology.takeIf { requested(StartupAdapterPlan.Family.COMMENT_TOPOLOGY) },
             commentSection = commentSection.takeIf { requested(StartupAdapterPlan.Family.COMMENT_SECTION) },
             splashAds = splashAds.takeIf { requested(StartupAdapterPlan.Family.SPLASH) },
+            videoRelate = videoRelate.takeIf { requested(StartupAdapterPlan.Family.VIDEO_RELATE) },
             diagnostics = diagnostics.map { diagnostic ->
                 val family = StartupAdapterPlan.diagnosticFamily(diagnostic.id)
                 if (diagnostic.id == "protocol.structure" || family?.name in startupExcluded)
@@ -3366,9 +3367,11 @@ object VersionAdapter {
         return quickLocatePlanned(loader, omitted)
     }
 
+    /** Inline the gate so skipped families never construct a captured locator closure. */
+    private inline fun <T> requested(excluded: Set<String>, family: StartupAdapterPlan.Family, locate: () -> T?): T? =
+        if (family.name in excluded) null else locate()
+
     private fun quickLocatePlanned(loader: ClassLoader, excluded: Set<String>): AdaptResult? {
-        fun <T> requested(family: StartupAdapterPlan.Family, locate: () -> T?): T? =
-            if (family.name in excluded) null else locate()
         val low = StartupTrace.measure("locate.low") { locateCommentLow(loader) }
         val high = StartupTrace.measure("locate.high") { locateCommentHigh(loader) }
         val mine = StartupTrace.measure("locate.mine") { locateMineEntry(loader) }
@@ -3377,29 +3380,29 @@ object VersionAdapter {
         val homeTopBar = StartupTrace.measure("locate.hometopbar") { locateHomeTopBar(loader) }
         val mineVip = StartupTrace.measure("locate.minevip") { locateMineVip(loader) }
         val blockUpdate = StartupTrace.measure("locate.blockupdate") { locateBlockUpdate(loader) }
-        val dynamicTabs = requested(StartupAdapterPlan.Family.DYNAMIC_TABS) { StartupTrace.measure("locate.dynamictabs") { locateDynamicTabs(loader) } }
-        val fullNumbers = requested(StartupAdapterPlan.Family.FULL_NUMBERS) { StartupTrace.measure("locate.fullnumbers") { locateFullNumbers(loader) } }
-        val playerPortrait = requested(StartupAdapterPlan.Family.PLAYER_PORTRAIT) { StartupTrace.measure("locate.playerportrait") { locatePlayerPortrait(loader) } }
-        val playerInteractiveOverlays = requested(StartupAdapterPlan.Family.PLAYER_INTERACTIVE) { StartupTrace.measure("locate.playerinteractiveoverlays") { locatePlayerInteractiveOverlays(loader) } }
-        val pgcAutoActivityPopup = requested(StartupAdapterPlan.Family.PGC_POPUP) { StartupTrace.measure("locate.pgcautoactivitypopup") { locatePgcAutoActivityPopup(loader) } }
-        val playerStatusBar = requested(StartupAdapterPlan.Family.PLAYER_STATUS_BAR) { StartupTrace.measure("locate.playerstatusbar") { locatePlayerStatusBar(loader) } }
+        val dynamicTabs = requested(excluded, StartupAdapterPlan.Family.DYNAMIC_TABS) { StartupTrace.measure("locate.dynamictabs") { locateDynamicTabs(loader) } }
+        val fullNumbers = requested(excluded, StartupAdapterPlan.Family.FULL_NUMBERS) { StartupTrace.measure("locate.fullnumbers") { locateFullNumbers(loader) } }
+        val playerPortrait = requested(excluded, StartupAdapterPlan.Family.PLAYER_PORTRAIT) { StartupTrace.measure("locate.playerportrait") { locatePlayerPortrait(loader) } }
+        val playerInteractiveOverlays = requested(excluded, StartupAdapterPlan.Family.PLAYER_INTERACTIVE) { StartupTrace.measure("locate.playerinteractiveoverlays") { locatePlayerInteractiveOverlays(loader) } }
+        val pgcAutoActivityPopup = requested(excluded, StartupAdapterPlan.Family.PGC_POPUP) { StartupTrace.measure("locate.pgcautoactivitypopup") { locatePgcAutoActivityPopup(loader) } }
+        val playerStatusBar = requested(excluded, StartupAdapterPlan.Family.PLAYER_STATUS_BAR) { StartupTrace.measure("locate.playerstatusbar") { locatePlayerStatusBar(loader) } }
         val homeRecommendFeed = StartupTrace.measure("locate.homerecommendfeed") { locateHomeRecommendFeed(loader) }
-        val videoRelate = StartupTrace.measure("locate.videorelate") { locateVideoRelate(loader) }
+        val videoRelate = requested(excluded, StartupAdapterPlan.Family.VIDEO_RELATE) { StartupTrace.measure("locate.videorelate") { locateVideoRelate(loader) } }
         val homeTabs = StartupTrace.measure("locate.hometabs") { locateHomeTabs(loader) }
         val homeComponents = StartupTrace.measure("locate.homecomponents") { locateHomeComponents(loader) }
         val mineComponents = StartupTrace.measure("locate.minecomponents") { locateMineComponents(loader, mine) }
         val mineAccountMine = StartupTrace.measure("locate.mineaccountmine") { locateMineAccountMinePoints(loader) }
         val storyFeed = StartupTrace.measure("locate.storyfeed") { locateStoryFeed(loader) }
         val bottomBar = StartupTrace.measure("locate.bottombar") { locateBottomBar(loader) }
-        val playerQuality = requested(StartupAdapterPlan.Family.PLAYER_QUALITY) { StartupTrace.measure("locate.playerquality") { locateDefaultVideoQuality(loader) } }
-        val teenagersMode = requested(StartupAdapterPlan.Family.TEENAGERS) { StartupTrace.measure("locate.teenagersmode") { locateTeenagersMode(loader) } }
-        val commentPurify = requested(StartupAdapterPlan.Family.COMMENT_PURIFY) { StartupTrace.measure("locate.commentpurify") { locateCommentPurify(loader) } }
-        val commentFilter = requested(StartupAdapterPlan.Family.COMMENT_FILTER) { StartupTrace.measure("locate.commentfilter") { locateCommentFilter(loader) } }
-        val commentTopologyOutcome = requested(StartupAdapterPlan.Family.COMMENT_TOPOLOGY) { StartupTrace.measure("locate.commenttopologyoutcome") { locateCommentTopologyWithDiagnostic(loader) } }
+        val playerQuality = requested(excluded, StartupAdapterPlan.Family.PLAYER_QUALITY) { StartupTrace.measure("locate.playerquality") { locateDefaultVideoQuality(loader) } }
+        val teenagersMode = requested(excluded, StartupAdapterPlan.Family.TEENAGERS) { StartupTrace.measure("locate.teenagersmode") { locateTeenagersMode(loader) } }
+        val commentPurify = requested(excluded, StartupAdapterPlan.Family.COMMENT_PURIFY) { StartupTrace.measure("locate.commentpurify") { locateCommentPurify(loader) } }
+        val commentFilter = requested(excluded, StartupAdapterPlan.Family.COMMENT_FILTER) { StartupTrace.measure("locate.commentfilter") { locateCommentFilter(loader) } }
+        val commentTopologyOutcome = requested(excluded, StartupAdapterPlan.Family.COMMENT_TOPOLOGY) { StartupTrace.measure("locate.commenttopologyoutcome") { locateCommentTopologyWithDiagnostic(loader) } }
             ?: CommentTopologyLocateOutcome(null, "startup-not-requested")
         val commentTopology = commentTopologyOutcome.points
-        val commentSection = requested(StartupAdapterPlan.Family.COMMENT_SECTION) { StartupTrace.measure("locate.commentsection") { locateCommentSection(loader) } }
-        val splashAds = requested(StartupAdapterPlan.Family.SPLASH) { StartupTrace.measure("locate.splashads") { locateSplashAds(loader) } }
+        val commentSection = requested(excluded, StartupAdapterPlan.Family.COMMENT_SECTION) { StartupTrace.measure("locate.commentsection") { locateCommentSection(loader) } }
+        val splashAds = requested(excluded, StartupAdapterPlan.Family.SPLASH) { StartupTrace.measure("locate.splashads") { locateSplashAds(loader) } }
         if (excluded.isEmpty() && low == null && high == null && mine == null &&
             pause.requestMethods.isEmpty() && pause.legacyCallback == null &&
             pause.panelShow == null && pause.countdown == null && banner == null &&

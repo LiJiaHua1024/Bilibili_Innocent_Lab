@@ -2516,8 +2516,7 @@ class HookEntry : XposedModule() {
                 }
             }
             val hostAdaptResult by lazy(LazyThreadSafetyMode.NONE) {
-                val excluded = if (nPatchStartup.get() && processName == TARGET_PACKAGE)
-                    StartupAdapterPlan.excluded(prefs) else emptySet()
+                val excluded = StartupAdapterPlan.excludedForProcess(prefs, processName, nPatchStartup.get())
                 val runtime = StartupTrace.measure("adapter.quick") {
                     VersionAdapter.quickLocateForStartup(biliClassLoader, excluded)
                 }

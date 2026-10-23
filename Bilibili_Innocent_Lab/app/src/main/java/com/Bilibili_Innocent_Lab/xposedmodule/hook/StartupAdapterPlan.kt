@@ -8,7 +8,9 @@ import com.Bilibili_Innocent_Lab.xposedmodule.hook.feature.PlayerQualityConfig
 internal object StartupAdapterPlan {
     enum class Family {
         DYNAMIC_TABS, FULL_NUMBERS, PLAYER_PORTRAIT, PLAYER_INTERACTIVE, PGC_POPUP, PLAYER_STATUS_BAR,
-        PLAYER_QUALITY, TEENAGERS, COMMENT_PURIFY, COMMENT_FILTER, COMMENT_TOPOLOGY, COMMENT_SECTION, SPLASH
+        PLAYER_QUALITY, TEENAGERS, COMMENT_PURIFY, COMMENT_FILTER, COMMENT_TOPOLOGY, COMMENT_SECTION, SPLASH,
+        /** Main-process-only consumer; configuration dependencies remain full in the main process. */
+        VIDEO_RELATE
     }
 
     private val switches = mapOf(
@@ -36,7 +38,20 @@ internal object StartupAdapterPlan {
         // Topology shares ReplyInfo/member roles; retaining this preparation is conservative even
         // when the standalone filter is off. Copy's low/high bind families are never excluded here.
         if (Family.COMMENT_TOPOLOGY in requested) requested += Family.COMMENT_FILTER
-        return (Family.entries.toSet() - requested).mapTo(linkedSetOf()) { it.name }
+        val auditedOptional = switches.keys + Family.PLAYER_QUALITY
+        return (auditedOptional - requested).mapTo(linkedSetOf()) { it.name }
+    }
+
+    fun excludedForProcess(config: HookConfigSource, processName: String, nPatchRuntime: Boolean): Set<String> {
+        if (!nPatchRuntime) return emptySet()
+        return when (processName) {
+            "tv.danmaku.bili" -> excluded(config)
+            // These families' installers already return non-main-process before using their points.
+            // Retain all other families and common copy/Banner/game/merchandise registration.
+            "tv.danmaku.bili:web", "tv.danmaku.bili:download", "tv.danmaku.bili:ijkservice" ->
+                Family.entries.mapTo(linkedSetOf()) { it.name }
+            else -> emptySet()
+        }
     }
 
     fun diagnosticFamily(id: String): Family? = when {
@@ -53,6 +68,7 @@ internal object StartupAdapterPlan {
         id in setOf("comment.topology", "dex.assist.comment_topology") -> Family.COMMENT_TOPOLOGY
         id == "comment.section" -> Family.COMMENT_SECTION
         id == "splash.ads" -> Family.SPLASH
+        id == "video.relate" -> Family.VIDEO_RELATE
         else -> null
     }
 }

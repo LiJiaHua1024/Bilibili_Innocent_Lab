@@ -43,6 +43,22 @@ class VersionAdapterTest {
         assertEquals(stored.commentHigh, merged.commentHigh)
     }
 
+    @Test fun `child projection cannot restore main only relate points from a complete cache`() {
+        val stored = result().copy(diagnostics = listOf(
+            VersionAdapter.AdaptDiagnostic("video.relate", VersionAdapter.AdaptState.FOUND, "cached")))
+        assertNotNull(stored.videoRelate)
+        val live = with(VersionAdapter) {
+            stored.copy(videoRelate = null, startupExcluded = setOf("VIDEO_RELATE")).applyStartupExclusions()
+        }
+        val merged = requireNotNull(VersionAdapter.mergeRuntimeWithCached(live, stored))
+        assertNull(merged.videoRelate)
+        assertEquals(stored.commentLow, merged.commentLow)
+        assertEquals(stored.commentHigh, merged.commentHigh)
+        assertEquals(stored.banner, merged.banner)
+        assertEquals(VersionAdapter.AdaptState.NOT_REQUESTED, merged.diagnostics.single().state)
+        assertNotNull(VersionAdapter.AdaptResult.fromJson(stored.toJson()))
+    }
+
     @Test fun `planned locator omits only selected families and full offline lookup remains available`() {
         val loader = requireNotNull(javaClass.classLoader)
         val full = requireNotNull(VersionAdapter.quickLocate(loader))
