@@ -2679,6 +2679,13 @@ class HookEntry : XposedModule() {
 
             // 已授权安装链所需的宿主 Context；只在当前调用栈使用，不进入长期缓存。
             val attachedContext = authorizationContext.applicationContext ?: authorizationContext
+            val insightInstaller = com.Bilibili_Innocent_Lab.xposedmodule.hook.feature.insight.AiInsightFeatureInstaller(
+                enabled = prefs.getBoolean(FeaturePreferences.AI_INSIGHT_ENABLED, false),
+                automaticChapters = prefs.getBoolean(FeaturePreferences.AI_INSIGHT_AUTO_CHAPTERS, false),
+                sources = semanticSettings?.sources.orEmpty(),
+                cacheRoot = java.io.File(attachedContext.filesDir, "bil_insight"),
+                cachedClasses = { sponsorClassesRef.get() }
+            )
             // 判定结果硬盘缓存：宿主私有 files/bil_semantic/<面>.bin。启动时先在后台删掉未启用面的文件，
             // 保证"关闭 → 重启"后磁盘上没有任何残留判定。
             val semanticStoreRoot = runCatching { attachedContext.filesDir }.getOrNull()
@@ -3664,6 +3671,7 @@ class HookEntry : XposedModule() {
                         cachedMenuPoints = hostAdaptResult?.playerSpeedMenu
                     ),
                     sponsorInstaller,
+                    insightInstaller,
                     SystemMediaNotificationFeatureInstaller(
                         enabled = prefs.getBoolean(
                             FeaturePreferences.SYSTEM_MEDIA_NOTIFICATION,

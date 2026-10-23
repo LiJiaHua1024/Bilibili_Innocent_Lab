@@ -1,4 +1,7 @@
 <resources xmlns:tools="http://schemas.android.com/tools">
+    <string name="ai_insight_title">AI Insight video assistant</string>
+    <string name="ai_insight_auto_chapters">Generate native chapters automatically</string>
+    <string name="ai_insight_help">Experimental. Restart Bilibili after changing. Opening a video sends its subtitles, title, description and sampled public comments/danmaku to the first configured chat source below (OpenAI compatible or Cloudflare; JEV is excluded). Summaries are cached by video part. Ask and comment topics are available on the detail card. Videos without subtitles use metadata only. Native chapters require a video of at least 10 minutes with subtitles and no official chapters; they appear on the next native progress refresh or reopening.</string>
     <string name="app_name">Bilibili_Innocent_Lab</string>
     <string name="xposed_desc">A cleaner, more complete Bilibili interface</string>
     <string name="about_module">This module uses libxposed Modern API 101/102.\nLearn more https://github.com/libxposed/api</string>

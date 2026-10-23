@@ -16,6 +16,7 @@ internal class AgentModelClient(
     private val capabilities = AgentBoundedCache<String, AgentModelCapabilities>(clock = clock)
     private val tokenParameters = AgentBoundedCache<String, String>(clock = clock)
     private val rejectedReasoning = AgentBoundedCache<String, Boolean>(clock = clock)
+    private val jsonObjectOnly = AgentBoundedCache<String, Boolean>(clock = clock)
 
     init { require(outputTokenBudget in 256..8192) }
 
@@ -35,6 +36,11 @@ internal class AgentModelClient(
         cancelled: () -> Boolean
     ): AgentModelTurn = generateImpl(source, messages, tools, withVision, timeoutMs, cancelled, probing = false)
 
+    /** 结构化业务输出；仅在服务端明确拒绝 schema 格式时退回 JSON 模式，仍保留契约和本地校验。 */
+    fun generateStructured(source: AgentModelSource, messages: JSONArray, schema: JSONObject,
+        timeoutMs: Int, cancelled: () -> Boolean): AgentModelTurn =
+        generateImpl(source, messages, JSONArray(), false, timeoutMs, cancelled, probing = false, schema = schema)
+
     /** 只供显式无副作用能力挑战；普通任务没有跳过视觉门禁的参数。 */
     internal fun probeGenerate(
         source: AgentModelSource,
@@ -47,7 +53,7 @@ internal class AgentModelClient(
 
     private fun generateImpl(
         source: AgentModelSource, messages: JSONArray, tools: JSONArray, withVision: Boolean,
-        timeoutMs: Int, cancelled: () -> Boolean, probing: Boolean
+        timeoutMs: Int, cancelled: () -> Boolean, probing: Boolean, schema: JSONObject? = null
     ): AgentModelTurn {
         if (cancelled()) throw AgentModelException(AgentModelException.Reason.CANCELLED)
         if (source.protocol != AgentSourceProtocol.CHAT) throw AgentModelException(AgentModelException.Reason.INVALID_REQUEST)
@@ -62,10 +68,25 @@ internal class AgentModelClient(
         val optionalReasoning = knownReasoningParams(source)?.takeIf { rejectedReasoning[source.fingerprint] != true }
         optionalReasoning?.keys()?.forEach { body.put(it, optionalReasoning.get(it)) }
         var removedReasoning = false
+        var objectMode = schema != null && jsonObjectOnly[source.fingerprint] == true
+        fun applyFormat() {
+            if (schema == null) return
+            body.put("response_format", if (objectMode) JSONObject().put("type", "json_object") else
+                JSONObject().put("type", "json_schema").put("json_schema", schema))
+            val formatted = JSONArray(messages.toString())
+            if (objectMode) {
+                val last = formatted.getJSONObject(formatted.length() - 1)
+                requireRequest(last.optString("role") == "user" && last.opt("content") is String)
+                last.put("content", last.getString("content") + "\nJSON schema：" + schema.getJSONObject("schema"))
+            }
+            body.put("messages", formatted)
+        }
+        applyFormat()
         val deadline = System.nanoTime() + timeoutMs.coerceIn(1, AgentHttpsTransport.MAX_TIMEOUT_MS) * 1_000_000L
         var parameter = tokenParameters[source.fingerprint] ?: "max_tokens"
         val rejectedTokens = hashSetOf<String>()
-        repeat(3) { attempt ->
+        val attempts = if (schema == null) 3 else 4
+        repeat(attempts) { attempt ->
             body.remove("max_tokens")
             body.remove("max_completion_tokens")
             body.put(parameter, outputTokenBudget)
@@ -81,11 +102,16 @@ internal class AgentModelClient(
                 val turn = decode(payload, allowed, historyIds)
                 tokenParameters[source.fingerprint] = parameter
                 if (removedReasoning) rejectedReasoning[source.fingerprint] = true
+                if (schema != null && objectMode) jsonObjectOnly[source.fingerprint] = true
                 return turn
             } catch (e: AgentModelException) {
                 // 只对明确拒绝的参数做有界回退，共用截止时间；永不剥掉 tools 或输出预算。
-                if (attempt == 2) throw e
+                if (attempt == attempts - 1) throw e
                 when {
+                    e.reason == AgentModelException.Reason.RESPONSE_FORMAT_PARAMETER && schema != null && !objectMode -> {
+                        objectMode = true
+                        applyFormat()
+                    }
                     e.reason == AgentModelException.Reason.TOKEN_PARAMETER &&
                         (e.rejectedParameter == null || e.rejectedParameter == parameter) -> {
                         rejectedTokens += parameter

@@ -1418,6 +1418,30 @@ internal fun MainActivity.experimentalFeaturesCard(
                     textColor = colorResource(R.color.colorTextDark)
                     textSize = 12f
                 }
+                MaterialSwitch(lparams = LayoutParams(widthMatchParent = true) { bottomMargin = 5.dp }) {
+                    text = stringResource(R.string.ai_insight_title)
+                    textColor = colorResource(R.color.colorTextGray)
+                    textSize = 15f
+                    isAllCaps = false
+                    bindSettingDestination(this, FeaturePreferences.AI_INSIGHT_ENABLED)
+                    isChecked = prefs().getBoolean(FeaturePreferences.AI_INSIGHT_ENABLED, false)
+                    setOnCheckedChangeListener { _, checked -> prefs().edit { putBoolean(FeaturePreferences.AI_INSIGHT_ENABLED, checked) } }
+                }
+                TextView(lparams = LayoutParams(widthMatchParent = true) { bottomMargin = 8.dp }) {
+                    text = stringResource(R.string.ai_insight_help)
+                    textColor = colorResource(R.color.colorTextGray)
+                    textSize = 12f
+                }
+                MaterialSwitch(lparams = LayoutParams(widthMatchParent = true) { bottomMargin = 10.dp }) {
+                    text = stringResource(R.string.ai_insight_auto_chapters)
+                    textColor = colorResource(R.color.colorTextGray)
+                    textSize = 14f
+                    isAllCaps = false
+                    bindSettingDestination(this, FeaturePreferences.AI_INSIGHT_AUTO_CHAPTERS)
+                    bindSettingDependency(this, "compat.ai_insight.auto_chapters")
+                    isChecked = prefs().getBoolean(FeaturePreferences.AI_INSIGHT_AUTO_CHAPTERS, false)
+                    setOnCheckedChangeListener { _, checked -> prefs().edit { putBoolean(FeaturePreferences.AI_INSIGHT_AUTO_CHAPTERS, checked) } }
+                }
                 // JEV 语义判定配置：Key / 地址 / 灵敏度 / 首屏等待，都在同一个面板里保存。
                 TextView(lparams = LayoutParams(widthMatchParent = true) { bottomMargin = 5.dp }) {
                     semanticJevSummaryView = this

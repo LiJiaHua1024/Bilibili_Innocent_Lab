@@ -1,5 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources xmlns:tools="http://schemas.android.com/tools">
+    <string name="ai_insight_title">AI Insight 视频助手</string>
+    <string name="ai_insight_auto_chapters">自动生成原生章节</string>
+    <string name="ai_insight_help">实验功能，修改后重启哔哩哔哩。打开视频会将字幕、标题、简介及抽样公开热评和弹幕发送给下方首个已配置的对话模型（OpenAI 兼容或 Cloudflare，排除 JEV）。总结按视频分 P 缓存，详情卡片支持 Ask 问答和评论话题。无字幕时仅依据元信息。原生章节适用于无官方章节的 10 分钟以上字幕视频，在宿主下次进度信息刷新或重新打开时生效。</string>
     <string name="app_name">Bilibili_Innocent_Lab</string>
     <string name="xposed_desc">为Bilibili补全纯净界面</string>
     <string name="about_module">此模块使用 libxposed Modern API 101/102 构建。\n了解更多 https://github.com/libxposed/api</string>

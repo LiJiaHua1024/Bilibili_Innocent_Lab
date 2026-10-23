@@ -34,7 +34,7 @@ import com.Bilibili_Innocent_Lab.xposedmodule.settings.appearance.HostCardMateri
 internal object SettingsCatalog {
     const val PRODUCT_ID = "bilibili-innocent-lab.settings"
     const val SCOPE_ID = "core-user-settings"
-    const val CATALOG_VERSION = 63
+    const val CATALOG_VERSION = 64
     const val ID_PLAYER_DEFAULT_SPEED = "player.default_speed.percent"
     const val ID_PLAYER_LONG_PRESS_SPEED = "player.long_press_speed.percent"
     const val ID_PLAYER_SPEED_MENU = "player.speed_menu.percents"
@@ -195,6 +195,10 @@ internal object SettingsCatalog {
         bool(com.Bilibili_Innocent_Lab.xposedmodule.agent.AgentPreferences.CATALOG_ID,
             com.Bilibili_Innocent_Lab.xposedmodule.agent.AgentPreferences.ENABLED, R.string.agent_title,
             restorePolicy = RestorePolicy.MANUAL, introducedCatalogVersion = 47),
+        bool("compat.ai_insight.enabled", FeaturePreferences.AI_INSIGHT_ENABLED, R.string.ai_insight_title,
+            restorePolicy = RestorePolicy.MANUAL, introducedCatalogVersion = 64),
+        bool("compat.ai_insight.auto_chapters", FeaturePreferences.AI_INSIGHT_AUTO_CHAPTERS, R.string.ai_insight_auto_chapters,
+            introducedCatalogVersion = 64),
         // JEV 语义判定的非敏感配置；API Key 是 hook_config 运行时键，不进目录、不进备份。
         text(ID_SEMANTIC_JEV_ENDPOINT, FeaturePreferences.SEMANTIC_JEV_ENDPOINT, R.string.semantic_jev_endpoint,
             maxStringLength = SemanticJudge.MAX_ENDPOINT_LENGTH, introducedCatalogVersion = 31),
@@ -1028,7 +1032,7 @@ internal object SettingsCatalog {
     val byStorageKey: Map<String, SettingSpec> = specs.associateBy(SettingSpec::storageKey)
 
     init {
-        check(specs.size == 243) { "Expected 243 catalog settings, found ${specs.size}" }
+        check(specs.size == 245) { "Expected 245 catalog settings, found ${specs.size}" }
         check(byId.size == specs.size) { "Duplicate logical setting id" }
         check(specs.map(SettingSpec::storageKey).distinct().size == specs.size) {
             "Duplicate settings storage key"

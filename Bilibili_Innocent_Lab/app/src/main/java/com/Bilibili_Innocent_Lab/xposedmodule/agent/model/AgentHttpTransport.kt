@@ -130,6 +130,8 @@ internal object AgentHttpsTransport : AgentHttpTransport {
         val decisionParameter = if (status in setOf(400, 422)) rejectedDecisionParameter(root, error) else null
         // 只认结构化拒绝，不能从任意错误正文推断能力或把正文展示给用户。
         val reason = when {
+            status in setOf(400, 422) && code in setOf("unsupported_parameter", "unsupported_value", "unsupported_feature") &&
+                parameter in setOf("response_format", "response_format.type") -> AgentModelException.Reason.RESPONSE_FORMAT_PARAMETER
             parameterRejected &&
                 parameter in setOf("max_tokens", "max_completion_tokens") -> AgentModelException.Reason.TOKEN_PARAMETER
             parameterRejected && optionalParameter in setOf("enable_thinking", "thinking", "reasoning") &&
@@ -147,6 +149,7 @@ internal object AgentHttpsTransport : AgentHttpTransport {
                 AgentModelException.Reason.OPTIONAL_PARAMETER -> optionalParameter
                 AgentModelException.Reason.TOKEN_PARAMETER -> parameter
                 AgentModelException.Reason.DECISION_PARAMETER -> decisionParameter
+                AgentModelException.Reason.RESPONSE_FORMAT_PARAMETER -> "response_format"
                 else -> null
             })
     }

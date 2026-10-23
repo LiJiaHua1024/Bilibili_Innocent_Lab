@@ -18,6 +18,7 @@ internal object SettingsDependencies {
         children(FeaturePreferences.PLAYER_FRAME_INTERPOLATION,
             "player.frame_interpolation.max_fps", "player.frame_interpolation.status_toast", FRAME_MODEL)
         children(FeaturePreferences.SPONSORBLOCK_ENABLED, "player.sponsorblock.automatic")
+        children(FeaturePreferences.AI_INSIGHT_ENABLED, "compat.ai_insight.auto_chapters")
         put("player.long_press_speed.percent", Requirement(FeaturePreferences.PLAYER_DISABLE_LONG_PRESS, false))
         children(FeaturePreferences.HIDE_MINE_VIP, "mine.vip.space_kept")
         children(HookEntry.PREF_LOG_ENABLED, "diagnostics.logging.level")
