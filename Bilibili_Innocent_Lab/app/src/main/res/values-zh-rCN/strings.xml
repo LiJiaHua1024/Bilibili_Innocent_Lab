@@ -748,7 +748,7 @@
     <string name="no_root_enable_failed">无法开启免 Root 支持</string>
     <string name="no_root_disable_failed">无法关闭免 Root 支持</string>
     <string name="no_root_restart_confirm_title">手动重新启动哔哩哔哩？</string>
-    <string name="no_root_restart_confirm_message">免 Root 模式无法强制停止其他应用。请打开哔哩哔哩的应用详情，在系统界面强制停止后再重新打开。</string>
+    <string name="no_root_restart_confirm_message">请在系统应用详情中强制停止哔哩哔哩，然后返回这里，继续打开并验证当前配置。</string>
     <string name="no_root_restart_open_app_details">打开应用详情</string>
     <string name="no_root_restart_sync_failed">当前配置落盘失败，请检查诊断后重试。</string>
     <string name="no_root_restart_sync_timeout">NPatch 同步超时；仍将打开应用详情，请先返回模块重试同步，再重新打开哔哩哔哩。</string>
@@ -1553,4 +1553,9 @@
     <string name="npatch_support_description">将诊断报告、补丁档案、已观测启动样本和脱敏崩溃及 Media 证据导出为 ZIP。</string>
     <string name="npatch_support_export">导出支持包</string>
     <string name="npatch_support_preview">ZIP 包含原诊断报告、补丁与进程档案、已采集启动耗时、每个响应进程最多三份脱敏 Java 崩溃记录和 Media 白名单事件。不包含异常消息、路径、凭据、偏好值或原始日志。选择本地保存位置后才采集；无响应保持未知，不会自动发送内容。</string>
+
+    <string name="no_root_restart_resume_title">打开哔哩哔哩并验证？</string>
+    <string name="no_root_restart_resume_message">请确认已在系统应用详情中强制停止哔哩哔哩。打开仍在运行的应用不会重启它。打开前会再次保存当前配置，只有收到匹配的宿主回执才确认生效。</string>
+    <string name="no_root_restart_launch_verify">打开并验证</string>
+    <string name="no_root_restart_launch_failed">无法打开哔哩哔哩</string>
 </resources>

@@ -748,7 +748,7 @@
     <string name="no_root_enable_failed">Could not enable no-root support</string>
     <string name="no_root_disable_failed">Could not disable no-root support</string>
     <string name="no_root_restart_confirm_title">Restart Bilibili manually?</string>
-    <string name="no_root_restart_confirm_message">No-root mode cannot force-stop another app. Open the Bilibili app details, force stop it there, then launch it again.</string>
+    <string name="no_root_restart_confirm_message">Return here after force stopping Bilibili. You can then open it and verify the current settings.</string>
     <string name="no_root_restart_open_app_details">Open app details</string>
     <string name="no_root_restart_sync_failed">Could not persist the current settings. Check Diagnostics and retry.</string>
     <string name="no_root_restart_sync_timeout">NPatch synchronization timed out. App details will still open; retry synchronization before relaunching Bilibili.</string>
@@ -1553,4 +1553,9 @@
     <string name="npatch_support_description">Export the report, patch profile, observed startup samples, and sanitized crash and Media evidence as a ZIP file.</string>
     <string name="npatch_support_export">Export support bundle</string>
     <string name="npatch_support_preview">The ZIP contains the original diagnostic report, patch and process metadata, collected startup timings, up to three sanitized Java crash records per responding process, and allowlisted Media events. Exception messages, paths, credentials, preference values, and raw logs are excluded. Evidence is collected after choosing a local save location. Missing responses remain unknown; no content is sent automatically.</string>
+
+    <string name="no_root_restart_resume_title">Open Bilibili and verify?</string>
+    <string name="no_root_restart_resume_message">Make sure you force stopped Bilibili in system app details. Opening an already running app does not restart it. Current settings will be saved again before opening; activation requires a matching host receipt.</string>
+    <string name="no_root_restart_launch_verify">Open and verify</string>
+    <string name="no_root_restart_launch_failed">Could not open Bilibili</string>
 </resources>

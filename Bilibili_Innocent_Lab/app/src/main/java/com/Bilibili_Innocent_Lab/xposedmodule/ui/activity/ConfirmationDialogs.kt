@@ -59,17 +59,18 @@ import android.widget.TextView as NativeTextView
  * 弹窗采用 scale + alpha 动画（GPU 加速、不触发布局重绘，低功耗），
  * 符合 Material 3 的 emphasized easing 标准。
  */
-internal fun MainActivity.showRestartConfirmDialog(anchor: View? = null) {
+internal fun MainActivity.showRestartConfirmDialog(anchor: View? = null, resumeNoRoot: Boolean = false) {
     val density = resources.displayMetrics.density
     val dialog = Dialog(this).also { installDialogElasticInteraction(it) }
-    val useNoRootFlow = shouldUseNoRootRestartFlow()
+    val useNoRootFlow = resumeNoRoot || shouldUseNoRootRestartFlow()
     val container = createModalContainer()
 
     // 标题
     container.addView(
         NativeTextView(this).apply {
             text = getString(
-                if (useNoRootFlow) R.string.no_root_restart_confirm_title
+                if (resumeNoRoot) R.string.no_root_restart_resume_title
+                else if (useNoRootFlow) R.string.no_root_restart_confirm_title
                 else R.string.restart_bilibili_confirm_title
             )
             textColor = getColor(R.color.colorTextDark)
@@ -82,7 +83,8 @@ internal fun MainActivity.showRestartConfirmDialog(anchor: View? = null) {
     if (useNoRootFlow) {
         container.addView(
             NativeTextView(this).apply {
-                text = getString(R.string.no_root_restart_confirm_message)
+                text = getString(if (resumeNoRoot) R.string.no_root_restart_resume_message
+                    else R.string.no_root_restart_confirm_message)
                 textColor = getColor(R.color.colorTextGray)
                 textSize = 13f
                 setLineSpacing(4 * density, 1f)
@@ -119,7 +121,8 @@ internal fun MainActivity.showRestartConfirmDialog(anchor: View? = null) {
     buttonRow.addView(
         NativeTextView(this).apply {
             text = getString(
-                if (useNoRootFlow) R.string.no_root_restart_open_app_details
+                if (resumeNoRoot) R.string.no_root_restart_launch_verify
+                else if (useNoRootFlow) R.string.no_root_restart_open_app_details
                 else R.string.dialog_confirm
             )
             textColor = monetColors.onPrimary
@@ -141,7 +144,7 @@ internal fun MainActivity.showRestartConfirmDialog(anchor: View? = null) {
             setOnClickListener {
                 dismissWithAnimation(dialog, container) {
                     if (useNoRootFlow) {
-                        flushNoRootSupportBeforeOpeningDetails()
+                        flushNoRootSupportBeforeOpeningDetails(openHost = resumeNoRoot)
                     } else {
                         restartBilibili()
                     }
@@ -507,11 +510,11 @@ private fun buildRestartShellCommand(): String =
     """.trimIndent().replace("\n", " ")
 
 /** 重启前确保当前 enabled 快照或关闭 tombstone 已完成一次有界 NPatch 写入。 */
-private fun MainActivity.flushNoRootSupportBeforeOpeningDetails() {
+private fun MainActivity.flushNoRootSupportBeforeOpeningDetails(openHost: Boolean = false) {
     val bridge = noRootPrefsBridge
     if (bridge == null) {
         toast(getString(R.string.no_root_restart_sync_failed))
-        openBilibiliAppDetails(this)
+        if (!openHost) openBilibiliAppDetails(this)
         return
     }
     noRootStatusView?.setText(R.string.no_root_status_syncing)
@@ -519,7 +522,7 @@ private fun MainActivity.flushNoRootSupportBeforeOpeningDetails() {
     val activityRef = WeakReference(this)
     NoRootSupportController.flushBeforeRestart(appContext, bridge) { result ->
         Handler(Looper.getMainLooper()).post {
-            activityRef.get()?.finishNoRootRestartFlush(result)
+            activityRef.get()?.finishNoRootRestartFlush(result, openHost = openHost)
         }
     }
 }

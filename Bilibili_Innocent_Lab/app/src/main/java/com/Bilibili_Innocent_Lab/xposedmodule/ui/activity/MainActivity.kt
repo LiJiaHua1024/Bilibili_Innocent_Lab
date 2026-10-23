@@ -76,6 +76,7 @@ import com.highcapable.betterandroid.system.extension.component.isComponentEnabl
 import com.highcapable.betterandroid.system.extension.component.versionCodeCompat
 import com.highcapable.betterandroid.system.extension.utils.AndroidVersion
 import com.highcapable.betterandroid.ui.extension.view.firstChildOrNull
+import com.highcapable.betterandroid.ui.extension.component.startActivityOrElse
 import com.highcapable.betterandroid.ui.extension.view.parentOrNull
 import com.highcapable.betterandroid.ui.extension.view.textColor
 import com.highcapable.betterandroid.ui.extension.view.textToString
@@ -215,9 +216,9 @@ class MainActivity : SkinnedActivity() {
             val intent = Intent(
                 Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
                 "package:${HookEntry.TARGET_PACKAGE}".toUri()
-            ).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            ) // Activity Result 必须保留当前任务，不能加 NEW_TASK 提前收到取消回调。
             return runCatching {
-                activity.startActivity(intent)
+                activity.noRootDetailsLauncher.launch(intent)
                 true
             }.getOrElse { throwable ->
                 Log.e("BilibiliInnocentLab", "open Bilibili app details failed", throwable)
@@ -239,6 +240,27 @@ class MainActivity : SkinnedActivity() {
     }
 
     private val homeComponent by lazy { ComponentName(packageName, "${BuildConfig.APPLICATION_ID}.Home") } 
+
+    private var pendingNoRootRelaunch = false
+    private val noRootDetailsLauncher = registerForActivityResult(
+        ActivityResultContracts.StartActivityForResult()
+    ) {
+        // 系统详情页没有“已强停”的可信返回值，返回后由用户确认继续。
+        pendingNoRootRelaunch = true
+        scheduleNoRootRelaunch()
+    }
+
+    private fun scheduleNoRootRelaunch() {
+        if (!pendingNoRootRelaunch) return
+        window.decorView.post {
+            if (pendingNoRootRelaunch && userTermsDecision.isAuthorized &&
+                !isFinishing && !isDestroyed && hasWindowFocus() &&
+                lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) {
+                pendingNoRootRelaunch = false
+                showRestartConfirmDialog(resumeNoRoot = true)
+            }
+        }
+    }
 
     private val settingsBackupLauncher = registerForActivityResult(
         ActivityResultContracts.StartActivityForResult()
@@ -992,12 +1014,16 @@ class MainActivity : SkinnedActivity() {
      * 验证流程：先把哔哩哔哩拉起来，再走完整探测窗口。宿主已在运行时回执立刻到，
      * 冷启动时靠窗口内重发与新心跳确认；仍无回执才判定“模块未生效”。
      */
-    private fun verifyNoRootHostRuntime() {
+    internal fun verifyNoRootHostRuntime() {
         val appContext = applicationContext
-        runCatching {
+        val opened = runCatching {
             packageManager
                 .getLaunchIntentForPackage(NoRootSupportState.TARGET_PACKAGE)
-                ?.let { startActivity(it.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
+                ?.let { startActivityOrElse(it.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) } ?: false
+        }.getOrDefault(false)
+        if (!opened) {
+            toast(getString(R.string.no_root_restart_launch_failed))
+            return
         }
         HostRuntimeProbeClient.probeAsync(appContext, verify = true) {
             runOnUiThread {
@@ -1780,10 +1806,14 @@ class MainActivity : SkinnedActivity() {
 
     override fun onWindowFocusChanged(hasFocus: Boolean) {
         super.onWindowFocusChanged(hasFocus)
-        if (hasFocus) scheduleReleaseHighlights()
+        if (hasFocus) {
+            scheduleNoRootRelaunch()
+            scheduleReleaseHighlights()
+        }
     }
 
     override fun onSaveInstanceState(outState: Bundle) {
+        outState.putBoolean("no_root_relaunch", pendingNoRootRelaunch)
         settingsHome?.saveState(outState)
         outState.putLong("compat_retry_revision", compatibilityRetryTracker.pendingRevision ?: 0L)
         outState.putInt("compat_retry_failures", compatibilityRetryTracker.failures)
@@ -3496,7 +3526,8 @@ class MainActivity : SkinnedActivity() {
      */
     internal fun finishNoRootRestartFlush(
         result: NoRootSupportController.FlushResult,
-        allowFocusRetry: Boolean = true
+        allowFocusRetry: Boolean = true,
+        openHost: Boolean = false
     ) {
         if (isFinishing || isDestroyed ||
             !lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)
@@ -3504,7 +3535,7 @@ class MainActivity : SkinnedActivity() {
         if (!hasWindowFocus()) {
             if (allowFocusRetry) {
                 window.decorView.postDelayed(
-                    { finishNoRootRestartFlush(result, allowFocusRetry = false) },
+                    { finishNoRootRestartFlush(result, allowFocusRetry = false, openHost = openHost) },
                     100L
                 )
             }
@@ -3515,10 +3546,12 @@ class MainActivity : SkinnedActivity() {
             NoRootSupportController.FlushResult.SUCCESS -> null
             NoRootSupportController.FlushResult.FAILED -> R.string.no_root_restart_sync_failed
             NoRootSupportController.FlushResult.TIMED_OUT ->
-                R.string.no_root_restart_sync_timeout
+                if (openHost) R.string.no_root_restart_sync_failed else R.string.no_root_restart_sync_timeout
         }
         messageRes?.let { toast(getString(it)) }
-        openBilibiliAppDetails(this)
+        if (openHost) {
+            if (result == NoRootSupportController.FlushResult.SUCCESS) verifyNoRootHostRuntime()
+        } else openBilibiliAppDetails(this)
     }
 
     internal fun toggleSecondaryMenu(section: SettingsSearchSection) {
@@ -3870,6 +3903,7 @@ class MainActivity : SkinnedActivity() {
 
     override fun onResume() {
         super.onResume()
+        scheduleNoRootRelaunch()
         updateUiResumed = true
         ColdStartUpdateSession.observe(updateUiOwner, updateNoticeObserver)
         scheduleColdStartUpdate()
@@ -4407,6 +4441,7 @@ class MainActivity : SkinnedActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        pendingNoRootRelaunch = savedInstanceState?.getBoolean("no_root_relaunch") ?: false
         pendingHighlightsFrom = ReleaseHighlightsStore.prepare(applicationContext)
         if (savedInstanceState?.containsKey("highlights_from") == true) {
             savedInstanceState.getInt("highlights_from",-1)
