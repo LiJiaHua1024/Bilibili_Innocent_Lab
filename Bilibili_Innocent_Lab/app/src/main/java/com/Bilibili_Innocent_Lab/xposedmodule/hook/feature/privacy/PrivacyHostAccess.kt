@@ -19,7 +19,7 @@ internal class PrivacyHostAccess(val loader: ClassLoader) {
     private fun member(owner: Class<*>, name: String, static: Boolean, args: Array<out Any?>): Method {
         val key = Key(owner, name, args.map { it?.javaClass }, static)
         return methods.getOrPut(key) {
-            requireNotNull(Lookup.declaredMethods(owner, true) { m ->
+            requireNotNull(Lookup.methods(owner, includeSuperclasses = true, makeAccessible = true) { m ->
                 m.name == name && m.isStatic == static &&
                     m.parameterCount == args.size && m.parameterTypes.indices.all { i ->
                         val value = args[i]

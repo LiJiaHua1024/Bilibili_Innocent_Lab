@@ -6,11 +6,15 @@ internal object PrivacyNetworkPolicy {
         "bilivideo.com", "hdslb.com", "biligame.com").any { host == it || host.endsWith(".$it") }
 
     fun blockHttp(host: String, path: String, method: String): Boolean {
-        if (!isBiliHost(host)) return false
-        if (host == "data.bilibili.com" || host.endsWith(".data.bilibili.com") ||
-            host == "api.bilibili.com" && path.startsWith("/x/report/") ||
-            host == "dataflow.biliapi.com") return true
-        val p = path.lowercase()
+        val normalizedHost = host.lowercase().trimEnd('.')
+        if (!isBiliHost(normalizedHost)) return false
+        if (normalizedHost == "data.bilibili.com" || normalizedHost.endsWith(".data.bilibili.com") ||
+            normalizedHost == "api.bilibili.com" && path.startsWith("/x/report/") ||
+            normalizedHost == "dataflow.biliapi.com") return true
+        val p = path.lowercase().trimEnd('/')
+        // Endpoint names are path segments, including terminal /click and /report.
+        if (p.split('/').any { it in setOf("click", "report", "feedback", "heartbeat",
+                "neuron", "exposure", "impression") }) return true
         if (listOf("/history/report", "/history/heartbeat", "/history/add", "/history/upload",
                 "/history/clear", "/history/delete", "/history/del", "/history/search",
                 "/click/", "/report/", "/feedback/", "/search/history", "/search/sync",
@@ -18,7 +22,7 @@ internal object PrivacyNetworkPolicy {
                 "/fav/resource/", "/fav/video/", "/toview/add", "/toview/del")
                 .any(p::contains)) return true
         // Unknown writes never leave an incognito session. Read-only POSTs are explicitly allowed.
-        if (method !in setOf("GET", "HEAD", "OPTIONS")) {
+        if (method.uppercase() !in setOf("GET", "HEAD", "OPTIONS")) {
             return !listOf("/x/player/playurl", "/x/v2/playurl", "/x/player/wbi/playurl")
                 .contains(p)
         }
@@ -30,6 +34,7 @@ internal object PrivacyNetworkPolicy {
         val method = fullName.substringAfter('/', "").lowercase()
         if (service.contains("heartbeat") || service.contains("report") ||
             service.contains("neuron")) return true
+        if (method in setOf("room", "enter", "leave", "expose", "exposure", "impression", "record")) return true
         if (service.contains("history") && !method.startsWith("get")) return true
         if (service.contains("search") && listOf("addhistory", "delhistory", "clearhistory",
                 "synchistory", "report").any(method::contains)) return true
@@ -43,7 +48,7 @@ internal object PrivacyNetworkPolicy {
             .mapValues { (key, value) ->
                 when (key.lowercase()) {
                     "buvid", "buvid3", "buvid4", "device_id", "deviceid", "fp_local", "fp_remote",
-                    "guestid", "guest_id", "android_id", "oaid", "imei" -> identity.buvid
+                    "fp", "guestid", "guest_id", "android_id", "oaid", "imei" -> identity.buvid
                     "session_id", "sessionid", "session" -> identity.sessionId
                     else -> value
                 }

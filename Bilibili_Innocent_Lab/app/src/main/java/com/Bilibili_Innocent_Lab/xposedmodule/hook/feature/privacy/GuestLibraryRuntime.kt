@@ -188,6 +188,16 @@ internal class GuestLibraryRuntime(
 
     fun action(context: Context, action: String) = openUi(context) { it.action(action) }
 
+    /** Resolve the explicit menu target, never silently reuse the previous confirmed playback. */
+    fun action(context: Context, action: String, aid: Long, cid: Long) {
+        val token = token() ?: return
+        val video = synchronized(gate) {
+            if (!valid(token)) return
+            metadata[aid to cid] ?: metadata.values.lastOrNull { it.aid == aid }?.copy(cid = cid)
+        }
+        if (video == null) failure(token) else action(context, action, video)
+    }
+
     /** An explicit detail-button action can target that video before a history heartbeat exists. */
     fun action(context: Context, action: String, video: LocalVirtualLibrary.Video) {
         recordVideo(video)
@@ -366,7 +376,7 @@ internal class GuestLibraryRuntime(
         val base = file.baseFile
         val pending = File(base.path + ".pending")
         // Android AtomicFile.finishWrite logs/swallows sync/rename failures. For strict failure
-        // rollback use our own sibling staging file and checked PsSIX rename instead: the old
+        // rollback use our own sibling staging file and checked POSIX rename instead: the old
         // AtomicFile base is untouched until commit, and no fallible IO follows the commit point.
         // AtomicFile.openRead above retains compatibility with its legacy backup recovery.
         try {

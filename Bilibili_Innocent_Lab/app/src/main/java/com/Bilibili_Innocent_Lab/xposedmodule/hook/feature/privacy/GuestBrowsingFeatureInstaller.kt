@@ -10,12 +10,16 @@ import com.Bilibili_Innocent_Lab.xposedmodule.hook.feature.HookEnvironment
 import com.Bilibili_Innocent_Lab.xposedmodule.hook.feature.reportRuntimeEvidence
 import com.Bilibili_Innocent_Lab.xposedmodule.hook.modern.ModernHookParam
 import com.Bilibili_Innocent_Lab.xposedmodule.runtime.KavaMemberLookup as Lookup
+import android.view.View
+import android.view.ViewGroup
+import androidx.core.view.isGone
+import androidx.core.view.updateLayoutParams
 import java.lang.reflect.Method
 import java.util.concurrent.atomic.AtomicBoolean
 
 /**
  * 8.90.2 已核实的客户端游客提示入口，不改变账户状态、服务端响应或主动登录路由。
- * 暂停处理和底部登录引导尚未实现；八个锚点全部注册也不代表免登录浏览完整覆盖。
+ * 动态列表底部登录条有独立适配；注册成功不代表全部播放/分页场景均已验证。
  */
 internal class GuestBrowsingFeatureInstaller(
     private val enabled: Boolean,
@@ -141,14 +145,45 @@ internal class GuestBrowsingFeatureInstaller(
             Lookup.classOrNull(loader, ONE_PASS_COMPANION), "x", Void.TYPE, true,
             classOf<String>(), Lookup.classOrNull(loader, "androidx.fragment.app.FragmentActivity"),
             classOf<Boolean>()), null)
-        // 八处锚点注册数与完整功能覆盖是两回事，禁止报 success 或 complete=true。
+        // 8.90.2 et1.c is exclusively the dynamic-feed login row (dy_login_bottom).
+        // Do not hide arbitrary views named "login" or alter the explicit Mine login route.
         runCatching {
-            environment.reportStatus(STATUS, "partial:$installed/8")
+            val holder = requireNotNull(Lookup.classOrNull(loader, "et1.c"))
+            val root = requireNotNull(Lookup.fieldOrNull(holder, "itemView", includeSuperclasses = true))
+            val saved = java.util.WeakHashMap<View, Pair<Int, Int>>()
+            fun update(target: Any?) {
+                val view = target?.let(root::get) as? View ?: return
+                if (isGuest()) {
+                    saved.putIfAbsent(view, view.visibility to (view.layoutParams?.height ?: ViewGroup.LayoutParams.WRAP_CONTENT))
+                    view.isGone = true
+                    view.layoutParams?.let { view.updateLayoutParams { height = 0 } }
+                    evidenceOnce(applied, FeatureRuntimeStage.APPLIED)
+                } else saved.remove(view)?.let { (visibility, height) ->
+                    view.visibility = visibility
+                    view.layoutParams?.let { view.updateLayoutParams { this.height = height } }
+                }
+            }
+            val constructor = requireNotNull(Lookup.constructorOrNull(holder, classOf<ViewGroup>()))
+            environment.registrar.constructor("$ID.dynamic-login-row-create", constructor) {
+                after { if (!hasThrowable) update(instance) }
+            }
+            installed++
+            val model = requireNotNull(Lookup.classOrNull(loader, "com.bilibili.bplus.followinglist.model.d5"))
+            val binder = requireNotNull(Lookup.classOrNull(loader, "et1.a"))
+            val service = requireNotNull(Lookup.classOrNull(loader, "com.bilibili.bplus.followinglist.service.i1"))
+            environment.registrar.exact("$ID.dynamic-login-row-bind", holder, "G0", model, binder, service, classOf<List<*>>()) {
+                after { if (!hasThrowable) update(instance) }
+            }
+            installed++
+        }.onFailure { missing += "dynamic-login-row" }
+        // Registration counts are separate from end-to-end feature coverage.
+        runCatching {
+            environment.reportStatus(STATUS, "partial:$installed/10")
             environment.logInfo(
                 "${ID}_coverage",
-                "[BIL] 游客浏览部分覆盖: hooks=$installed/8; missing=${missing.joinToString()}; " +
+                "[BIL] 游客浏览部分覆盖: hooks=$installed/10; missing=${missing.joinToString()}; " +
                     "registration-failed=${failed.joinToString()}; " +
-                    "unimplemented=playback-pause,bottom-login-guide"
+                    "unverified=playback-pause,server-comment-pagination"
             )
         }
         if (installed == 0) {

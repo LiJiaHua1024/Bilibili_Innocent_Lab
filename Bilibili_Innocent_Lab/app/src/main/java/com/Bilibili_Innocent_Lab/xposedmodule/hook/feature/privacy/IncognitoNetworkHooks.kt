@@ -9,7 +9,10 @@ import java.lang.reflect.InvocationTargetException
 import java.lang.reflect.Proxy
 
 /** Per-process HTTP/RPC boundary. Adapter failures never send the original authenticated request. */
-internal class IncognitoNetworkHooks(private val session: IncognitoSession) {
+internal class IncognitoNetworkHooks(
+    private val session: IncognitoSession,
+    private val isolationReady: () -> Boolean = { true }
+) {
     fun install(env: HookEnvironment): Int {
         val host = PrivacyHostAccess(requireNotNull(env.classLoader))
         val client = host.type("okhttp3.OkHttpClient")
@@ -28,7 +31,11 @@ internal class IncognitoNetworkHooks(private val session: IncognitoSession) {
         val signType = host.type("com.bilibili.nativelibrary.LibBili")
         val formType = host.type("okhttp3.FormBody")
         val formBuilder = host.type("okhttp3.FormBody\$Builder")
-        fun applied() = env.reportRuntimeEvidence("incognito_privacy", FeatureRuntimeStage.APPLIED)
+        val appliedPaths = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
+        fun applied(path: String) {
+            env.reportRuntimeEvidence("incognito_privacy", FeatureRuntimeStage.APPLIED)
+            if (appliedPaths.add(path)) env.reportStatus("incognito_transport_$path", "local-success")
+        }
         fun success(original: Any): Any {
             val builder = host.create(responseBuilder)
             host.call(builder, "request", original)
@@ -101,9 +108,9 @@ internal class IncognitoNetworkHooks(private val session: IncognitoSession) {
                     val original = requireNotNull(request.invoke(chain))
                     try {
                         val url = requireNotNull(host.call(original, "url"))
-                        if (PrivacyNetworkPolicy.blockHttp(host.call(url, "host") as String,
+                        if (!isolationReady() || PrivacyNetworkPolicy.blockHttp(host.call(url, "host") as String,
                                 host.call(url, "encodedPath") as String, host.call(original, "method") as String)) {
-                            applied()
+                            applied("http")
                             success(original)
                         } else proceed.invoke(chain, sanitize(original, requireNotNull(session.identity())))
                     } catch (e: InvocationTargetException) {
@@ -156,6 +163,7 @@ internal class IncognitoNetworkHooks(private val session: IncognitoSession) {
         val message = host.type("com.google.protobuf.GeneratedMessageLite")
         val handler = host.type("com.bilibili.lib.moss.api.MossResponseHandler")
         val rule = host.type("com.bilibili.lib.moss.api.MossHttpRule")
+        val readErrors = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
         val onNext = requireNotNull(Lookup.methodOrNull(handler, "onNext", classOf<Any>()))
         val onComplete = requireNotNull(Lookup.methodOrNull(handler, "onCompleted"))
         fun reply(md: Any): Any {
@@ -171,14 +179,29 @@ internal class IncognitoNetworkHooks(private val session: IncognitoSession) {
                 // Unknown descriptors fail closed as well: the protective framework would otherwise
                 // retry the original RPC after a reflection/marshaller exception in this callback.
                 val blocked = runCatching {
-                    PrivacyNetworkPolicy.blockRpc(host.call(requireNotNull(md), "getFullMethodName") as String)
+                    !isolationReady() || PrivacyNetworkPolicy.blockRpc(host.call(requireNotNull(md), "getFullMethodName") as String)
                 }.getOrDefault(true)
-                if (!blocked) return@before
+                if (!blocked) {
+                    // Only error class/code, once per RPC method; no URL, content, identity or token.
+                    if (name == "asyncUnaryCall") argOrNull(2)?.let { callback ->
+                        val rpc = runCatching { host.call(requireNotNull(md), "getFullMethodName") as String }.getOrDefault("unknown")
+                        args[2] = Proxy.newProxyInstance(host.loader, arrayOf(handler)) { _, method, values ->
+                            if (method.name == "onError" && readErrors.add(rpc)) {
+                                val error = values?.getOrNull(0)
+                                val code = error?.let { runCatching { host.call(it, "getCode") as? Number }.getOrNull() }
+                                env.logError("incognito_rpc_read", "[BIL] Anonymous RPC failed: $rpc; type=${error?.javaClass?.simpleName}; code=$code")
+                            }
+                            try { method.invoke(callback, *(values ?: emptyArray())) }
+                            catch (failure: InvocationTargetException) { throw failure.targetException }
+                        }
+                    }
+                    return@before
+                }
                 result = null
                 runCatching {
                     val response = reply(requireNotNull(md))
                     if (name == "blockingUnaryCall") result = response
-                    applied()
+                    applied("rpc")
                     if (name == "asyncUnaryCall") argOrNull(2)?.let { callback ->
                         onNext.invoke(callback, response)
                         onComplete.invoke(callback)
@@ -190,6 +213,46 @@ internal class IncognitoNetworkHooks(private val session: IncognitoSession) {
                 }
             }
         }
-        return 8
+        // Client/bidirectional streams carry presence and activity (e.g. Reply/Room's
+        // join/leave events). Give callers a live local sink, rather than null or an error
+        // that causes reconnection; no original stream or queued request is created.
+        for (name in listOf("asyncClientStreamingCall", "asyncBidiStreamingCall")) {
+            env.registrar.exact("incognito.rpc.$name", moss, name, descriptor, handler) {
+                before {
+                    result = null
+                    runCatching {
+                        val callback = argOrNull(1)
+                        val sink = IncognitoStreamSink(
+                            acknowledge = { id -> callback?.let { host.call(it, "onUpstreamAck", id) } },
+                            complete = { callback?.let { onComplete.invoke(it) } })
+                        result = Proxy.newProxyInstance(host.loader, arrayOf(handler)) { proxy, method, values ->
+                            when (method.name) {
+                                "equals" -> proxy === values?.getOrNull(0)
+                                "hashCode" -> System.identityHashCode(proxy)
+                                "toString" -> "BIL local incognito stream"
+                                "onNextForAck" -> sink.acceptForAck()
+                                "onCompleted", "onError" -> { sink.close(); null }
+                                else -> null
+                            }
+                        }
+                        applied("stream")
+                    }.onFailure { env.reportRuntimeEvidence("incognito_privacy", FeatureRuntimeStage.ERROR) }
+                }
+            }
+        }
+        env.registrar.exact("incognito.rpc.asyncServerStreamingCall", moss, "asyncServerStreamingCall",
+            descriptor, message, handler) {
+            before {
+                val blocked = runCatching { !isolationReady() || PrivacyNetworkPolicy.blockRpc(
+                    host.call(requireNotNull(argOrNull(0)), "getFullMethodName") as String) }.getOrDefault(true)
+                if (!blocked) return@before
+                result = null
+                runCatching {
+                    argOrNull(2)?.let { callback -> onComplete.invoke(callback) }
+                    applied("server_stream")
+                }.onFailure { env.reportRuntimeEvidence("incognito_privacy", FeatureRuntimeStage.ERROR) }
+            }
+        }
+        return 11
     }
 }

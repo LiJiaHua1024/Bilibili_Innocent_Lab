@@ -15,9 +15,17 @@ internal class PrivacyFeatureRuntime(
             if (!incognito) FeatureInstallResult.Skipped("disabled")
             else {
                 val session = IncognitoSession().apply { enter() }
-                val count = installAccountIsolation(env, session)
-                val network = IncognitoNetworkHooks(session).install(env)
+                // Keep reads sealed until every account/identity adapter has installed. An optional
+                // host API disappearing must not leave an authenticated network path open.
+                val ready = java.util.concurrent.atomic.AtomicBoolean(false)
+                val network = IncognitoNetworkHooks(session) { ready.get() }.install(env)
+                val count = runCatching { installAccountIsolation(env, session) }.getOrElse {
+                    env.reportRuntimeEvidence("incognito_privacy", FeatureRuntimeStage.ERROR)
+                    env.reportStatus("incognito_privacy_status", "blocked:account-isolation")
+                    return@FunctionalFeatureInstaller FeatureInstallResult.Installed(network, complete = false)
+                }
                 val web = IncognitoWebHooks().install(env)
+                ready.set(true)
                 activeSession = session
                 activeIdentityBus = IncognitoIdentityBus(context, session) {
                     env.reportRuntimeEvidence("incognito_privacy", FeatureRuntimeStage.ERROR)
@@ -96,7 +104,7 @@ internal class PrivacyFeatureRuntime(
             val owner = host.type(ownerName)
             Lookup.declaredMethods(owner) { it.returnType == classOf<String>() && it.parameterCount == 0 &&
                 it.name in setOf("getBuvid", "getLocalBuvid", "getRemoteBuvid", "softGetBuvid",
-                    "getFpLocal", "getFpRemote", "getSessionId", "getGuestId", "getAccessKey") }.forEach { m ->
+                    "getFpLocal", "getFpRemote", "getFp", "getSessionId", "getGuestId", "getAccessKey") }.forEach { m ->
                 env.registrar.exact("incognito.identity.$ownerName.${m.name}", owner, m.name) {
                     before {
                         result = when (m.name) {
@@ -120,7 +128,7 @@ internal class PrivacyFeatureRuntime(
         // Protobuf serializers read fields directly. Intercept setters, not just getters.
         for ((name, setters) in mapOf(
             "com.bapis.bilibili.metadata.Metadata" to mapOf("setAccessKey" to false, "setBuvid" to true),
-            "com.bapis.bilibili.metadata.device.Device" to mapOf("setBuvid" to true, "setFpLocal" to true, "setFpRemote" to true, "setGuestId" to true)
+            "com.bapis.bilibili.metadata.device.Device" to mapOf("setBuvid" to true, "setFpLocal" to true, "setFpRemote" to true, "setFp" to true, "setGuestId" to true)
         )) {
             val owner = Lookup.classOrNull(host.loader, name) ?: continue
             setters.forEach { (setter, fingerprint) ->
@@ -131,15 +139,50 @@ internal class PrivacyFeatureRuntime(
                 count++
             }
         }
-        // Suppress producers as well as transport: no Neurons queue is persisted for later replay.
-        val neurons = host.type("com.bilibili.lib.neuron.api.Neurons")
-        Lookup.declaredMethods(neurons) { it.returnType == Void.TYPE && it.name.startsWith("report") }.forEach { m ->
-            env.registrar.exact("incognito.neurons.${m.name}.${m.parameterTypes.joinToString { it.name }}",
-                neurons, m.name, *m.parameterTypes) {
-                before { result = null; env.reportRuntimeEvidence("incognito_privacy", FeatureRuntimeStage.APPLIED) }
+        // 8.90.2 hv2.a creates the actual RPC metadata bytes and identify_v1 header.
+        // Clean the serialized message too: cached builders/ByteString setters bypass String hooks.
+        val metadataFactory = host.type("hv2.a")
+        for ((method, value) in mapOf("l" to { "" }, "a" to { session.identity()!!.buvid })) {
+            env.registrar.exact("incognito.rpc.identity.$method", metadataFactory, method) {
+                before { result = value() }
             }
             count++
         }
+        val metadataEvidence = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
+        for ((method, typeName) in mapOf("p" to "com.bapis.bilibili.metadata.Metadata",
+            "m" to "com.bapis.bilibili.metadata.device.Device")) {
+            val type = host.type(typeName)
+            env.registrar.exact("incognito.rpc.metadata.$method", metadataFactory, method) {
+                after {
+                    if (hasThrowable) return@after
+                    val bytes = result as? ByteArray
+                    // Set the safe fallback before reflection. PROTECT_HOST must never restore
+                    // the original credentials when a future host changes this adapter.
+                    result = byteArrayOf()
+                    runCatching {
+                        val original = requireNotNull(host.static(type, "parseFrom", requireNotNull(bytes)))
+                        val builder = requireNotNull(host.call(original, "toBuilder"))
+                        val buvid = requireNotNull(session.identity()).buvid
+                        host.call(builder, "setBuvid", buvid)
+                        if (method == "p") host.call(builder, "setAccessKey", "")
+                        else {
+                            for (setter in listOf("setFp", "setFpLocal", "setFpRemote", "setGuestId"))
+                                host.call(builder, setter, buvid)
+                            host.call(builder, "setFts", 0L)
+                        }
+                        result = host.call(requireNotNull(host.call(builder, "build")), "toByteArray")
+                        if (metadataEvidence.add(method)) env.reportStatus("incognito_rpc_metadata_$method", "sanitized")
+                    }.onFailure {
+                        env.reportRuntimeEvidence("incognito_privacy", FeatureRuntimeStage.ERROR)
+                        if (metadataEvidence.add("error-$method")) env.logError("incognito_rpc_metadata_$method",
+                            "[BIL] RPC metadata adapter failed: ${it.javaClass.simpleName}; " +
+                                if (it is IllegalArgumentException) it.message.orEmpty() else "host-call-failed")
+                    }
+                }
+            }
+            count++
+        }
+        count += IncognitoTelemetryHooks(session).install(env)
         val provider = host.type("com.bilibili.search2.provider.BiliSearchSuggestionProvider")
         env.registrar.exact("incognito.search.query", provider, "query", classOf<android.net.Uri>(),
             classOf<Array<String>>(), classOf<String>(), classOf<Array<String>>(), classOf<String>()) {

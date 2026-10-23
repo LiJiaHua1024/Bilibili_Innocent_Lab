@@ -19,6 +19,15 @@ class PrivacyNetworkPolicyTest {
         ).forEach { (host, path, method) -> assertTrue("$host$path", PrivacyNetworkPolicy.blockHttp(host,path,method)) }
     }
 
+    @Test fun terminalTelemetryPathsAndPresenceAreBlockedWithoutMatchingContentNames() {
+        listOf("/x/click", "/x/report/", "/x/feedback", "/x/exposure").forEach {
+            assertTrue(PrivacyNetworkPolicy.blockHttp("API.BILIBILI.COM.", it, "get"))
+        }
+        assertFalse(PrivacyNetworkPolicy.blockHttp("api.bilibili.com", "/x/reporters/list", "GET"))
+        assertTrue(PrivacyNetworkPolicy.blockRpc("bilibili.main.community.reply.v1.Reply/Room"))
+        assertFalse(PrivacyNetworkPolicy.blockRpc("bilibili.main.community.reply.v1.Reply/MainList"))
+    }
+
     @Test fun contentReadsStillWorkAndHostMatchingIsBounded() {
         listOf("/x/v2/view", "/x/v2/reply/main", "/x/player/playurl").forEach {
             assertFalse(PrivacyNetworkPolicy.blockHttp("api.bilibili.com", it, "GET"))

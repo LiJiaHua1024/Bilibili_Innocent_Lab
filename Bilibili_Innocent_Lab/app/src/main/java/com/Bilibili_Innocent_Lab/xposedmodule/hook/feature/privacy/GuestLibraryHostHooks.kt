@@ -129,23 +129,25 @@ internal class GuestLibraryHostHooks(
 
         attempt {
             val access = PrivacyHostAccess(loader)
-            val component = access.type("$KING_COMPONENT\$FavoriteComponent")
-            val binding = access.type("cy3.t0")
             val continuation = access.type("kotlin.coroutines.Continuation")
-            val favorite = requireNotNull(Lookup.fieldOrNull(binding, "e")).also {
-                require(it.type isSubclassOf classOf<View>())
-            }
-            // 8.90.2 uses a touch-flow listener here; replacing onClick alone leaves that listener
-            // consuming every gesture. Bind after the initial coroutine turn, before user interaction.
-            env.registrar.exact("guest.library.favorite_view", component, "h", binding, continuation) {
-                after {
-                    if (!isGuest() || hasThrowable) return@after
-                    val view = argOrNull(0)?.let(favorite::get) as? View ?: return@after
-                    val componentReference = java.lang.ref.WeakReference(instance ?: return@after)
-                    fun selectFavorite(target: View) {
+            val unitType = access.type("kotlin.Unit")
+            val unit = requireNotNull(Lookup.fieldOrNull(unitType, "INSTANCE")).get(null)
+            val king = access.type(KING_POSITION)
+            val activity = requireNotNull(Lookup.declaredFields(king, true) {
+                !it.isStatic && it.type isSubclassOf classOf<Activity>()
+            }.singleOrNull())
+            // Verified 8.90.2 click/long-click collectors. Preserve the host touch listeners:
+            // after an explicit guest login the same view must immediately use its original flow.
+            for (gesture in listOf("1", "2")) {
+                val collector = access.type("$KING_COMPONENT\$FavoriteComponent\$bind\$3\$$gesture\$a")
+                val componentField = requireNotNull(Lookup.fieldOrNull(collector, "a"))
+                env.registrar.exact("guest.library.favorite_flow.$gesture", collector, "a", unitType, continuation) {
+                    before {
+                        if (!isGuest()) return@before
+                        result = unit
                         runCatching {
-                            val componentValue = componentReference.get() ?: return
-                            val contract = requireNotNull(Lookup.fieldOrNull(component, "b")?.get(componentValue))
+                            val componentValue = requireNotNull(instance?.let(componentField::get))
+                            val contract = requireNotNull(Lookup.fieldOrNull(componentValue.javaClass, "b")?.get(componentValue))
                             require(contract.javaClass.name == "$KING_POSITION\$create\$contract\$1")
                             val service = requireNotNull(Lookup.fieldOrNull(contract.javaClass, "h")?.get(contract))
                             val repository = requireNotNull(Lookup.fieldOrNull(service.javaClass, "h")?.get(service))
@@ -153,17 +155,9 @@ internal class GuestLibraryHostHooks(
                             val video = PrivacyVideoMetadata.read(access, reply).copy(
                                 aid = (access.call(repository, "a") as Number).toLong(),
                                 cid = (access.call(repository, "d") as Number).toLong())
-                            library.action(target.context, "favorite", video)
+                            val hostActivity = activity.get(service) as? Activity ?: return@before
+                            library.action(hostActivity, "favorite", video)
                         }.onFailure { env.logError("guest_library_favorite", "[BIL] Local favorite metadata unavailable") }
-                    }
-                    view.post {
-                        if (isGuest() && view.isAttachedToWindow) {
-                            view.setOnTouchListener(null)
-                            view.setOnClickListener { if (isGuest()) selectFavorite(it) }
-                            view.setOnLongClickListener {
-                                if (!isGuest()) false else { selectFavorite(it); true }
-                            }
-                        }
                     }
                 }
             }
@@ -211,7 +205,13 @@ internal class GuestLibraryHostHooks(
                     result = unit
                     val target = argOrNull(0) ?: return@before
                     val host = activity.get(target) as? Activity ?: return@before
-                    library.action(host, "watchLater")
+                    runCatching {
+                        // MenuService.Z1 uses e.c().a() for this video's avid; c() is its cid.
+                        val repository = requireNotNull(Lookup.fieldOrNull(menu, "e")?.get(target))
+                        val episode = requireNotNull(access.call(repository, "c"))
+                        library.action(host, "watchLater", (access.call(episode, "a") as Number).toLong(),
+                            (access.call(episode, "c") as Number).toLong())
+                    }.onFailure { env.logError("guest_library_watch_later", "[BIL] Local watch-later metadata unavailable") }
                 }
             }
         }
