@@ -636,6 +636,40 @@ class MainActivity : SkinnedActivity() {
 
     /** 免 Root 配置只在用户明确开启后同步；回调不得持有 Activity 或 View。 */
     internal var noRootPrefsBridge: SharedPreferences? = null
+    internal var liveApplyStatusView: NativeTextView? = null
+    private var liveApplyPending = false
+
+    internal fun applyNPatchValues() {
+        if (liveApplyPending) return
+        val bridge = noRootPrefsBridge
+        if (bridge == null || !NoRootSupportStore.isDesiredEnabled(applicationContext)) {
+            liveApplyStatusView?.setText(R.string.npatch_live_failed)
+            return
+        }
+        liveApplyPending = true
+        liveApplyStatusView?.setText(R.string.npatch_live_working)
+        val ref = WeakReference(this)
+        val app = applicationContext
+        NoRootSupportController.flushBeforeRestart(app, bridge) { flushed ->
+            if (flushed != NoRootSupportController.FlushResult.SUCCESS) {
+                Handler(Looper.getMainLooper()).post {
+                    ref.get()?.let { activity ->
+                        activity.liveApplyPending = false
+                        activity.liveApplyStatusView?.setText(R.string.npatch_live_failed)
+                    }
+                }
+            } else com.Bilibili_Innocent_Lab.xposedmodule.runtime.noroot.NPatchLiveConfig.applyFromSettings(app) { report ->
+                ref.get()?.let { activity ->
+                    activity.liveApplyPending = false
+                    if (!activity.isFinishing && !activity.isDestroyed) {
+                        activity.liveApplyStatusView?.text = if (report.status in setOf("APPLIED", "UNCHANGED", "RESTART_REQUIRED"))
+                            activity.getString(R.string.npatch_live_result, report.applied, report.deferred)
+                        else activity.getString(R.string.npatch_live_failed)
+                    }
+                }
+            }
+        }
+    }
     internal var noRootSwitch: com.Bilibili_Innocent_Lab.xposedmodule.ui.view.MaterialSwitch? = null
     internal var noRootStatusView: NativeTextView? = null
     /** B12：状态未确认/未生效时的唯一操作入口（验证或打开 NPatch Manager）。 */

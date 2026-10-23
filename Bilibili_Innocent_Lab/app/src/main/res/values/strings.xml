@@ -1569,4 +1569,9 @@
     <string name="npatch_setup_done">Done</string>
     <string name="npatch_setup_restart">Restart and verify</string>
     <string name="npatch_setup_diagnostics">Open Diagnostics</string>
+    <string name="npatch_live_apply">Apply supported values now</string>
+    <string name="npatch_live_tip">Updates values for already enabled, fully installed copy controls/manual light style, danmaku weight/colour rules, and home title/duration/play-count filters. Auto light, new capabilities, layout, web and other processes still need a restart. Existing content is not refreshed.</string>
+    <string name="npatch_live_working">Saving and verifying supported values…</string>
+    <string name="npatch_live_result">Applied: %1$d; pending restart: %2$d. Only future main-page content uses these values. Verify the full settings after a cold start.</string>
+    <string name="npatch_live_failed">Could not confirm live application. Keep the settings app available, restart Bilibili or check Diagnostics, then retry.</string>
 </resources>

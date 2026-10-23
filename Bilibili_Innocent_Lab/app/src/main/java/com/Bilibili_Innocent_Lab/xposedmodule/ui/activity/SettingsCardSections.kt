@@ -1512,6 +1512,28 @@ internal fun MainActivity.experimentalFeaturesCard(
                     isFocusable = true
                     setOnClickListener { showNPatchSetupDialog(anchor = it) }
                 }
+                TextView(lparams = LayoutParams(widthMatchParent = true) { bottomMargin = 5.dp }) {
+                    text = stringResource(R.string.npatch_live_apply)
+                    textColor = colorResource(R.color.colorTextGray)
+                    textSize = 15f
+                    setPadding(12.dp, 10.dp, 12.dp, 10.dp)
+                    background = selfRippleBackground(10f)
+                    isClickable = true
+                    isFocusable = true
+                    setOnClickListener { applyNPatchValues() }
+                }
+                TextView(lparams = LayoutParams(widthMatchParent = true) { bottomMargin = 12.dp }) {
+                    text = stringResource(R.string.npatch_live_tip)
+                    textColor = colorResource(R.color.colorTextGray)
+                    textSize = 12f
+                    setLineSpacing(6f, 1f)
+                }
+                TextView(lparams = LayoutParams(widthMatchParent = true) { bottomMargin = 12.dp }) {
+                    textColor = colorResource(R.color.colorTextGray)
+                    textSize = 12f
+                    setLineSpacing(6f, 1f)
+                    liveApplyStatusView = this
+                }
                 MaterialSwitch(
                     lparams = LayoutParams(widthMatchParent = true) {
                         bottomMargin = 5.dp

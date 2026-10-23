@@ -184,6 +184,7 @@ class HookEntry : XposedModule() {
 
     private val modernRuntime = ModernHookRuntime(this)
     private val targetHooksStarted = java.util.concurrent.atomic.AtomicBoolean(false)
+    private var loadedModuleArtifact: com.Bilibili_Innocent_Lab.xposedmodule.runtime.noroot.LoadedModuleArtifact? = null
 
     @Volatile
     private var loadedProcessName: String = ""
@@ -2268,6 +2269,10 @@ class HookEntry : XposedModule() {
     }
 
     override fun onModuleLoaded(param: XposedModuleInterface.ModuleLoadedParam) {
+        if (param.processName == TARGET_PACKAGE) {
+            loadedModuleArtifact = com.Bilibili_Innocent_Lab.xposedmodule.runtime.noroot.LoadedModuleArtifact.capture(
+                runCatching { moduleApplicationInfo.sourceDir }.getOrNull())
+        }
         moduleInstance = this
         loadedProcessName = param.processName
         ModernHookLog.bind(modernRuntime)
@@ -2450,6 +2455,7 @@ class HookEntry : XposedModule() {
             }
             // 局部遮蔽把功能安装链统一约束在只读配置接口上。
             val prefs: HookConfigSource = hookConfig
+            val liveConfig = hookConfig as? com.Bilibili_Innocent_Lab.xposedmodule.hook.config.LiveHookConfigState
             // JEV 语义判定的共享配置（实验性功能 → 兼容）；Key 为空或地址非法时为 null，任何过滤面都不建判定器。
             // 硬盘缓存根目录要等宿主 Context 就绪后补上（见 attachedContext 处）。
             var semanticSettings = SemanticSettings.from(
@@ -3010,6 +3016,7 @@ class HookEntry : XposedModule() {
                             FeaturePreferences.HOME_RECOMMEND_TITLE_FILTER_KEYWORDS,
                             ""
                         ).orEmpty(),
+                        liveRules = liveConfig?.let { state -> { state.home() } },
                         removeLive = prefs.getBoolean(
                             FeaturePreferences.REMOVE_HOME_RECOMMEND_LIVE,
                             false
@@ -3551,6 +3558,7 @@ class HookEntry : XposedModule() {
                             FeaturePreferences.DANMAKU_WEIGHT_FILTER_MINIMUM,
                             DanmakuPurifyPolicy.DEFAULT_MINIMUM_WEIGHT
                         ),
+                        liveRules = liveConfig?.let { state -> { state.danmaku() } },
                         removeVipColorful = prefs.getBoolean(
                             FeaturePreferences.REMOVE_VIP_COLORFUL_DANMAKU,
                             false
@@ -4912,7 +4920,8 @@ class HookEntry : XposedModule() {
 
             fun performAuthorizationAndInstall(
                 appContext: Context,
-                config: RemoteHookConfigSnapshot
+                config: RemoteHookConfigSnapshot,
+                identity: com.Bilibili_Innocent_Lab.xposedmodule.settings.remote.PublicationIdentity?
             ) {
                 if (!config.authorized) {
                     NPatchProcessDiagnostics.record(NPatchProcessState.REJECTED)
@@ -4920,7 +4929,9 @@ class HookEntry : XposedModule() {
                     frameworkLog("[BIL] Hook 授权未确认，当前宿主进程不安装任何功能")
                     return
                 }
-                activeHookConfig.set(SnapshotHookConfigSource(config.values))
+                val live = if (nPatchStartup.get() && processName == TARGET_PACKAGE && identity != null)
+                    com.Bilibili_Innocent_Lab.xposedmodule.hook.config.LiveHookConfigState(config, identity) else null
+                activeHookConfig.set(live ?: SnapshotHookConfigSource(config.values))
                 if (!authorizedInstallStarted.compareAndSet(false, true)) {
                     authorizedInstallerRef.set(null)
                     return
@@ -4953,6 +4964,14 @@ class HookEntry : XposedModule() {
                     }
                     if (processName == TARGET_PACKAGE) {
                         HostRuntimeDiagnosticsBridge.recordInstallChainCompleted()
+                        if (live != null) runCatching {
+                            com.Bilibili_Innocent_Lab.xposedmodule.runtime.noroot.NPatchLiveConfig.registerHost(
+                                appContext, live, loadedModuleArtifact) {
+                                runtimeCommentFreeCopyEnabled = live.getBoolean(PREF_FREE_COPY_ENABLED, true)
+                                runtimeDescriptionFreeCopyEnabled = live.getBoolean(PREF_FREE_COPY_DESC_ENABLED, true)
+                                freeCopyLightMode = live.getBoolean(PREF_FREE_COPY_LIGHT_MODE, false)
+                            }
+                        }.onFailure { frameworkLog("[BIL] 热应用端点不可用，配置继续使用启动快照") }
                     }
                     reportScanResultIfReady(appContext)
                     reportNoRootHeartbeatIfSynced(appContext, config)
@@ -5088,7 +5107,7 @@ class HookEntry : XposedModule() {
                         identity?.fingerprint ?: "")
                 }
                 frameworkLog("[BIL] 已获得新鲜启动许可(source=${grant.source}, generation=${config.generation})")
-                performAuthorizationAndInstall(appContext, config)
+                performAuthorizationAndInstall(appContext, config, grant.identity)
             }
 
             fun authorizeAndInstall(context: Context?, applicationHint: android.app.Application? = null) {
