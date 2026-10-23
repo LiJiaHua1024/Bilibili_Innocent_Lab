@@ -10,6 +10,51 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class VersionAdapterTest {
+    @Test fun `startup omission survives cached found points without becoming cacheable`() {
+        val stored = result().copy(diagnostics = listOf(
+            VersionAdapter.AdaptDiagnostic("number.full", VersionAdapter.AdaptState.FOUND, "cached"),
+            VersionAdapter.AdaptDiagnostic("protocol.structure", VersionAdapter.AdaptState.FOUND, "cached")))
+        val projected = with(VersionAdapter) {
+            stored.copy(startupExcluded = setOf("FULL_NUMBERS")).applyStartupExclusions()
+        }
+        val merged = requireNotNull(VersionAdapter.mergeRuntimeWithCached(projected, stored))
+        assertNull(merged.fullNumbers)
+        assertEquals(stored.commentLow, merged.commentLow)
+        assertTrue(merged.diagnostics.all { it.state == VersionAdapter.AdaptState.NOT_REQUESTED })
+        assertTrue(merged.diagnosticSummary().contains("not_requested=2"))
+        assertFalse(merged.isUsableWith(stored.hostFingerprint))
+        org.junit.Assert.assertThrows(IllegalStateException::class.java) { merged.toJson() }
+        assertNotNull(VersionAdapter.AdaptResult.fromJson(stored.toJson()))
+        val poisoned = stored.toJson().apply {
+            getJSONArray("diag").getJSONObject(0).put("state", "NOT_REQUESTED")
+        }
+        assertNull(VersionAdapter.AdaptResult.fromJson(poisoned))
+    }
+
+    @Test fun `requested live point still wins when another startup family is omitted`() {
+        val stored = result()
+        val liveNumbers = VersionAdapter.FullNumberPoints(listOf(VersionAdapter.HookPoint("runtime.Numbers", "format")))
+        val live = with(VersionAdapter) {
+            stored.copy(fullNumbers = liveNumbers, startupExcluded = setOf("COMMENT_PURIFY")).applyStartupExclusions()
+        }
+        val merged = requireNotNull(VersionAdapter.mergeRuntimeWithCached(live, stored))
+        assertEquals(liveNumbers, merged.fullNumbers)
+        assertNull(merged.commentPurify)
+        assertEquals(stored.commentHigh, merged.commentHigh)
+    }
+
+    @Test fun `planned locator omits only selected families and full offline lookup remains available`() {
+        val loader = requireNotNull(javaClass.classLoader)
+        val full = requireNotNull(VersionAdapter.quickLocate(loader))
+        assertNotNull(full.commentPurify)
+        val partial = requireNotNull(VersionAdapter.quickLocateForStartup(loader, setOf("COMMENT_PURIFY", "COMMENT_TOPOLOGY")))
+        assertNull(partial.commentPurify)
+        assertNull(partial.commentTopology)
+        assertEquals(full.commentLow, partial.commentLow)
+        assertEquals(VersionAdapter.AdaptState.NOT_REQUESTED, partial.diagnostics.single { it.id == "comment.purify.search" }.state)
+        assertEquals(full.commentPurify, VersionAdapter.quickLocateForStartup(loader, setOf("future-unknown-family"))?.commentPurify)
+    }
+
     private val repackDex = "dex-v1:38:" + "a".repeat(64)
     private val repackOld = "tv.danmaku.bili|9090300|9.9.3|1000|100|${VersionAdapterContract.RULE_VERSION}"
     private val repackNew = "tv.danmaku.bili|9090300|9.9.3|2000|200|${VersionAdapterContract.RULE_VERSION}"

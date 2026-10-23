@@ -2439,6 +2439,7 @@ class HookEntry : XposedModule() {
                 java.util.concurrent.atomic.AtomicReference<((Context) -> Unit)?>(null)
             val activeHookConfig =
                 java.util.concurrent.atomic.AtomicReference<HookConfigSource?>(null)
+            val nPatchStartup = java.util.concurrent.atomic.AtomicBoolean(false)
             lateinit var scheduleAuthorizationRetry: (Context, android.app.Application?) -> Unit
 
             fun installAuthorizedHooks(authorizationContext: Context) {
@@ -2515,7 +2516,11 @@ class HookEntry : XposedModule() {
                 }
             }
             val hostAdaptResult by lazy(LazyThreadSafetyMode.NONE) {
-                val runtime = StartupTrace.measure("adapter.quick") { VersionAdapter.quickLocate(biliClassLoader) }
+                val excluded = if (nPatchStartup.get() && processName == TARGET_PACKAGE)
+                    StartupAdapterPlan.excluded(prefs) else emptySet()
+                val runtime = StartupTrace.measure("adapter.quick") {
+                    VersionAdapter.quickLocateForStartup(biliClassLoader, excluded)
+                }
                 StartupTrace.measure("adapter.merge") { VersionAdapter.mergeRuntimeWithCached(
                     runtime = runtime,
                     cached = startupCache.cached
@@ -3685,7 +3690,7 @@ class HookEntry : XposedModule() {
                 try {
                 // 读版本适配缓存（loadApp 阶段读 B 站 cache 文件，快路径零开销）；
                 // 缓存缺失（首次启动/版本变化后 attach 适配尚未写入）时即时快速定位
-                // （纯内存反射 ~1ms），避免「首次启动评论 hook 用失效签名」。
+                // （同步结构定位），避免「首次启动评论 hook 用失效签名」。
                 // 注：quickLocate 结果不持久化（AdaptResult 无真实 vc，写文件会被
                 // loadCached 拒绝）；attach 阶段 ensureAdapted 会重跑适配线程写正确缓存
                 val adaptResult = hostAdaptResult
@@ -4993,6 +4998,7 @@ class HookEntry : XposedModule() {
                 val runtimeMode = com.Bilibili_Innocent_Lab.xposedmodule.runtime.noroot.NoRootRuntimeDetector.detect(
                     appContext, XposedModule::class.java.classLoader, HookEntry::class.java.classLoader)
                 val nPatchRuntime = runtimeMode == com.Bilibili_Innocent_Lab.xposedmodule.runtime.noroot.HookRuntimeMode.NPATCH_LEGACY
+                nPatchStartup.set(nPatchRuntime)
                 if (nPatchRuntime) {
                     val profile = com.Bilibili_Innocent_Lab.xposedmodule.runtime.noroot.NPatchRuntimeProfiles.read(appContext, appContext.packageName)
                     runCatching { NPatchProcessDiagnostics.initialize(appContext, processName, profile.mode) }

@@ -188,7 +188,9 @@ object VersionAdapter {
     enum class AdaptState {
         FOUND,
         MISSING,
-        NOT_APPLICABLE
+        NOT_APPLICABLE,
+        /** Startup-only omitted locator; never serialized into the complete adaptation cache. */
+        NOT_REQUESTED
     }
 
     data class AdaptDiagnostic(
@@ -1852,9 +1854,14 @@ object VersionAdapter {
         val commentClassicStyle: CommentClassicStylePoints? = null,
         val playerPopupPromotion: PlayerPopupPromotionPoints? = null,
         val brandSplashDecoder: HookPoint? = null,
-        val followFeedStyle: FollowFeedPoints? = null
+        val followFeedStyle: FollowFeedPoints? = null,
+        /** Ephemeral startup projection, excluded from all persisted cache schemas. */
+        val startupExcluded: Set<String> = emptySet()
     ) {
         fun toJson(): JSONObject = JSONObject().apply {
+            check(startupExcluded.isEmpty() && diagnostics.none { it.state == AdaptState.NOT_REQUESTED }) {
+                "Partial startup adaptation cannot be persisted"
+            }
             put("sv", SCHEMA_VERSION)
             put("v", biliVersionCode)
             put("ts", ts)
@@ -1899,13 +1906,14 @@ object VersionAdapter {
         }
 
         fun isUsableWith(expectedFingerprint: String): Boolean =
-            hostFingerprint == expectedFingerprint && isStructurallyValid()
+            startupExcluded.isEmpty() && diagnostics.none { it.state == AdaptState.NOT_REQUESTED } &&
+                hostFingerprint == expectedFingerprint && isStructurallyValid()
 
         fun diagnosticSummary(): String = diagnostics
             .groupingBy { it.state }
             .eachCount()
             .let { counts ->
-                AdaptState.entries.joinToString(",") { state ->
+                AdaptState.entries.filter { it != AdaptState.NOT_REQUESTED || (counts[it] ?: 0) > 0 }.joinToString(",") { state ->
                     "${state.name.lowercase()}=${counts[state] ?: 0}"
                 }
             }
@@ -1915,7 +1923,8 @@ object VersionAdapter {
                 paramClassNames?.all { it.isNotBlank() } != false
 
         private fun isStructurallyValid(): Boolean =
-            biliVersionCode >= 0 && hostFingerprint.isNotBlank() &&
+            startupExcluded.isEmpty() && diagnostics.none { it.state == AdaptState.NOT_REQUESTED } &&
+                biliVersionCode >= 0 && hostFingerprint.isNotBlank() &&
                 (dexSourceFingerprint == DEX_SOURCE_UNAVAILABLE ||
                     dexSourceFingerprint.matches(DEX_SOURCE_FINGERPRINT_PATTERN)) &&
                 protocolFingerprint.matches(PROTOCOL_FINGERPRINT_PATTERN) &&
@@ -2963,6 +2972,7 @@ object VersionAdapter {
                 when {
                     live == null -> stored
                     stored == null -> live
+                    live.state == AdaptState.NOT_REQUESTED -> live
                     stored.state == AdaptState.FOUND && live.state != AdaptState.FOUND -> stored
                     id.startsWith(DEX_ASSIST_ID_PREFIX) &&
                         stored.state == AdaptState.FOUND -> stored
@@ -3025,6 +3035,32 @@ object VersionAdapter {
             playerPopupPromotion = PlayerPopupPromotionAdapter.merge(runtime.playerPopupPromotion, cached.playerPopupPromotion),
             brandSplashDecoder = runtime.brandSplashDecoder ?: cached.brandSplashDecoder,
             followFeedStyle = runtime.followFeedStyle ?: cached.followFeedStyle
+        ).applyStartupExclusions()
+    }
+
+    internal fun AdaptResult.applyStartupExclusions(): AdaptResult {
+        if (startupExcluded.isEmpty()) return this
+        fun requested(family: StartupAdapterPlan.Family) = family.name !in startupExcluded
+        return copy(
+            dynamicTabs = dynamicTabs.takeIf { requested(StartupAdapterPlan.Family.DYNAMIC_TABS) },
+            fullNumbers = fullNumbers.takeIf { requested(StartupAdapterPlan.Family.FULL_NUMBERS) },
+            playerPortrait = playerPortrait.takeIf { requested(StartupAdapterPlan.Family.PLAYER_PORTRAIT) },
+            playerInteractiveOverlays = playerInteractiveOverlays.takeIf { requested(StartupAdapterPlan.Family.PLAYER_INTERACTIVE) },
+            pgcAutoActivityPopup = pgcAutoActivityPopup.takeIf { requested(StartupAdapterPlan.Family.PGC_POPUP) },
+            playerStatusBar = playerStatusBar.takeIf { requested(StartupAdapterPlan.Family.PLAYER_STATUS_BAR) },
+            playerQuality = playerQuality.takeIf { requested(StartupAdapterPlan.Family.PLAYER_QUALITY) },
+            teenagersMode = teenagersMode.takeIf { requested(StartupAdapterPlan.Family.TEENAGERS) },
+            commentPurify = commentPurify.takeIf { requested(StartupAdapterPlan.Family.COMMENT_PURIFY) },
+            commentFilter = commentFilter.takeIf { requested(StartupAdapterPlan.Family.COMMENT_FILTER) },
+            commentTopology = commentTopology.takeIf { requested(StartupAdapterPlan.Family.COMMENT_TOPOLOGY) },
+            commentSection = commentSection.takeIf { requested(StartupAdapterPlan.Family.COMMENT_SECTION) },
+            splashAds = splashAds.takeIf { requested(StartupAdapterPlan.Family.SPLASH) },
+            diagnostics = diagnostics.map { diagnostic ->
+                val family = StartupAdapterPlan.diagnosticFamily(diagnostic.id)
+                if (diagnostic.id == "protocol.structure" || family?.name in startupExcluded)
+                    diagnostic.copy(state = AdaptState.NOT_REQUESTED, detail = "startup-not-requested")
+                else diagnostic
+            }
         )
     }
 
@@ -3318,10 +3354,21 @@ object VersionAdapter {
     }
 
     /**
-     * 即时快速定位（loadApp 阶段用，不依赖缓存/attach 适配时序）：
-     * 纯内存反射 ~1ms，返回 low/high 定位结果（无版本/时间戳）。
+     * 即时结构定位；完整结果供离线检查，启动可按已审计的消费者需求投影。
+     * 耗时依宿主结构与请求家族而定；启动投影不持久化为完整适配缓存。
      */
-    fun quickLocate(loader: ClassLoader): AdaptResult? {
+    fun quickLocate(loader: ClassLoader): AdaptResult? = quickLocateForStartup(loader, emptySet())
+
+    /** Only audited startup consumers may omit a family; the public/offline locator remains full. */
+    internal fun quickLocateForStartup(loader: ClassLoader, excluded: Set<String>): AdaptResult? {
+        val omitted = excluded.toSet().takeIf { values -> values.all { name -> StartupAdapterPlan.Family.entries.any { it.name == name } } }
+            ?: emptySet()
+        return quickLocatePlanned(loader, omitted)
+    }
+
+    private fun quickLocatePlanned(loader: ClassLoader, excluded: Set<String>): AdaptResult? {
+        fun <T> requested(family: StartupAdapterPlan.Family, locate: () -> T?): T? =
+            if (family.name in excluded) null else locate()
         val low = StartupTrace.measure("locate.low") { locateCommentLow(loader) }
         val high = StartupTrace.measure("locate.high") { locateCommentHigh(loader) }
         val mine = StartupTrace.measure("locate.mine") { locateMineEntry(loader) }
@@ -3330,12 +3377,12 @@ object VersionAdapter {
         val homeTopBar = StartupTrace.measure("locate.hometopbar") { locateHomeTopBar(loader) }
         val mineVip = StartupTrace.measure("locate.minevip") { locateMineVip(loader) }
         val blockUpdate = StartupTrace.measure("locate.blockupdate") { locateBlockUpdate(loader) }
-        val dynamicTabs = StartupTrace.measure("locate.dynamictabs") { locateDynamicTabs(loader) }
-        val fullNumbers = StartupTrace.measure("locate.fullnumbers") { locateFullNumbers(loader) }
-        val playerPortrait = StartupTrace.measure("locate.playerportrait") { locatePlayerPortrait(loader) }
-        val playerInteractiveOverlays = StartupTrace.measure("locate.playerinteractiveoverlays") { locatePlayerInteractiveOverlays(loader) }
-        val pgcAutoActivityPopup = StartupTrace.measure("locate.pgcautoactivitypopup") { locatePgcAutoActivityPopup(loader) }
-        val playerStatusBar = StartupTrace.measure("locate.playerstatusbar") { locatePlayerStatusBar(loader) }
+        val dynamicTabs = requested(StartupAdapterPlan.Family.DYNAMIC_TABS) { StartupTrace.measure("locate.dynamictabs") { locateDynamicTabs(loader) } }
+        val fullNumbers = requested(StartupAdapterPlan.Family.FULL_NUMBERS) { StartupTrace.measure("locate.fullnumbers") { locateFullNumbers(loader) } }
+        val playerPortrait = requested(StartupAdapterPlan.Family.PLAYER_PORTRAIT) { StartupTrace.measure("locate.playerportrait") { locatePlayerPortrait(loader) } }
+        val playerInteractiveOverlays = requested(StartupAdapterPlan.Family.PLAYER_INTERACTIVE) { StartupTrace.measure("locate.playerinteractiveoverlays") { locatePlayerInteractiveOverlays(loader) } }
+        val pgcAutoActivityPopup = requested(StartupAdapterPlan.Family.PGC_POPUP) { StartupTrace.measure("locate.pgcautoactivitypopup") { locatePgcAutoActivityPopup(loader) } }
+        val playerStatusBar = requested(StartupAdapterPlan.Family.PLAYER_STATUS_BAR) { StartupTrace.measure("locate.playerstatusbar") { locatePlayerStatusBar(loader) } }
         val homeRecommendFeed = StartupTrace.measure("locate.homerecommendfeed") { locateHomeRecommendFeed(loader) }
         val videoRelate = StartupTrace.measure("locate.videorelate") { locateVideoRelate(loader) }
         val homeTabs = StartupTrace.measure("locate.hometabs") { locateHomeTabs(loader) }
@@ -3344,15 +3391,16 @@ object VersionAdapter {
         val mineAccountMine = StartupTrace.measure("locate.mineaccountmine") { locateMineAccountMinePoints(loader) }
         val storyFeed = StartupTrace.measure("locate.storyfeed") { locateStoryFeed(loader) }
         val bottomBar = StartupTrace.measure("locate.bottombar") { locateBottomBar(loader) }
-        val playerQuality = StartupTrace.measure("locate.playerquality") { locateDefaultVideoQuality(loader) }
-        val teenagersMode = StartupTrace.measure("locate.teenagersmode") { locateTeenagersMode(loader) }
-        val commentPurify = StartupTrace.measure("locate.commentpurify") { locateCommentPurify(loader) }
-        val commentFilter = StartupTrace.measure("locate.commentfilter") { locateCommentFilter(loader) }
-        val commentTopologyOutcome = StartupTrace.measure("locate.commenttopologyoutcome") { locateCommentTopologyWithDiagnostic(loader) }
+        val playerQuality = requested(StartupAdapterPlan.Family.PLAYER_QUALITY) { StartupTrace.measure("locate.playerquality") { locateDefaultVideoQuality(loader) } }
+        val teenagersMode = requested(StartupAdapterPlan.Family.TEENAGERS) { StartupTrace.measure("locate.teenagersmode") { locateTeenagersMode(loader) } }
+        val commentPurify = requested(StartupAdapterPlan.Family.COMMENT_PURIFY) { StartupTrace.measure("locate.commentpurify") { locateCommentPurify(loader) } }
+        val commentFilter = requested(StartupAdapterPlan.Family.COMMENT_FILTER) { StartupTrace.measure("locate.commentfilter") { locateCommentFilter(loader) } }
+        val commentTopologyOutcome = requested(StartupAdapterPlan.Family.COMMENT_TOPOLOGY) { StartupTrace.measure("locate.commenttopologyoutcome") { locateCommentTopologyWithDiagnostic(loader) } }
+            ?: CommentTopologyLocateOutcome(null, "startup-not-requested")
         val commentTopology = commentTopologyOutcome.points
-        val commentSection = StartupTrace.measure("locate.commentsection") { locateCommentSection(loader) }
-        val splashAds = StartupTrace.measure("locate.splashads") { locateSplashAds(loader) }
-        if (low == null && high == null && mine == null &&
+        val commentSection = requested(StartupAdapterPlan.Family.COMMENT_SECTION) { StartupTrace.measure("locate.commentsection") { locateCommentSection(loader) } }
+        val splashAds = requested(StartupAdapterPlan.Family.SPLASH) { StartupTrace.measure("locate.splashads") { locateSplashAds(loader) } }
+        if (excluded.isEmpty() && low == null && high == null && mine == null &&
             pause.requestMethods.isEmpty() && pause.legacyCallback == null &&
             pause.panelShow == null && pause.countdown == null && banner == null &&
             homeTopBar == null && mineVip == null && blockUpdate == null &&
@@ -3364,10 +3412,11 @@ object VersionAdapter {
             playerQuality == null && teenagersMode == null && commentPurify == null &&
             commentFilter == null && commentTopology == null && commentSection == null &&
             splashAds == null) return null
-        val protocolFingerprint = StartupTrace.measure("adapter.protocol") { buildProtocolStructureFingerprint(
-            loader, homeRecommendFeed, videoRelate, commentFilter, playerQuality,
-            splashAds, mineAccountMine
-        ) }
+        val protocolFingerprint = StartupTrace.measure("adapter.protocol") {
+            if (excluded.isEmpty()) buildProtocolStructureFingerprint(loader, homeRecommendFeed, videoRelate,
+                commentFilter, playerQuality, splashAds, mineAccountMine)
+            else buildProtocolStructureFingerprint(loader, null, null, null, null, null, null)
+        }
         return AdaptResult(
             biliVersionCode = 0,
             ts = 0L,
@@ -3434,8 +3483,9 @@ object VersionAdapter {
                 AdaptDiagnostic(StoryQualityLocator.DIAGNOSTIC, AdaptState.NOT_APPLICABLE, "quick-locate")
             ) + PlayerPopupPromotionAdapter.Family.entries.map {
                 AdaptDiagnostic(it.diagnostic, AdaptState.NOT_APPLICABLE, "quick-locate")
-            }
-        )
+            },
+            startupExcluded = excluded
+        ).applyStartupExclusions()
     }
 
     /** 智能定位核心：对内置候选类做存在性验证 + 方法签名特征匹配。

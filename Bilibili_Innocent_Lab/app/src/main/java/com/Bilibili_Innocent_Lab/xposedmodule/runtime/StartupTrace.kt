@@ -37,7 +37,7 @@ internal class StartupTraceRecorder(
     fun <T> measure(id: String, action: () -> T): T {
         // IDs are code-owned. A malformed diagnostic must never prevent the original action.
         if (!validId(id)) return action()
-        val stack = frames.get()
+        val stack = checkNotNull(frames.get()) // withInitial always supplies a non-null deque.
         // Shared lookup helpers also run in business callbacks. Only explicit startup roots collect.
         if (stack.isEmpty() && roots != null && id !in roots) return action()
         val key = synchronized(this) { Key(attempt, id, mainThread()) }
