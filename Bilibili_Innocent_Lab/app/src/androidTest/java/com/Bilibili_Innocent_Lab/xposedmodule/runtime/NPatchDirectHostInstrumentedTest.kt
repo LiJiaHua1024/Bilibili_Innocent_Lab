@@ -1,6 +1,7 @@
 package com.Bilibili_Innocent_Lab.xposedmodule.runtime
 
 import android.accessibilityservice.AccessibilityServiceInfo
+import android.os.Bundle
 import android.view.accessibility.AccessibilityNodeInfo
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
@@ -47,7 +48,7 @@ class NPatchDirectHostInstrumentedTest {
         assertEquals(HostAdmissionContract.DIRECT, running.bootstrap.configSource)
         assertEquals(first.identity, running.bootstrap.admission)
         assertTrue(running.bootstrap.hookPointInstalledCount > 0)
-        if (mode == NPatchMode.EMBEDDED) assertProcess(NPatchProcessState.INSTALLED, mode)
+        assertProcess(NPatchProcessState.INSTALLED, mode)
 
         val prefs = context.modulePreferences()
         val key = RemoteHookConfigContract.KEY_FREE_COPY_CONFIG_REVISION
@@ -65,25 +66,21 @@ class NPatchDirectHostInstrumentedTest {
         val disabled = awaitHost { it.bootstrap.configState == HostConfigState.REJECTED }
         assertEquals(HostInstallChainState.NOT_STARTED, disabled.bootstrap.installChainState)
         assertEquals(0, disabled.bootstrap.hookPointInstalledCount)
-        if (mode == NPatchMode.EMBEDDED) {
-            assertProcess(NPatchProcessState.DISABLED, mode)
-            assertEmbeddedWebWithoutHooks(NPatchProcessState.DISABLED)
-        }
+        assertProcess(NPatchProcessState.DISABLED, mode)
+        assertWebWithoutHooks(NPatchProcessState.DISABLED)
         val settled = CountDownLatch(1)
         HostRuntimeProbeClient.probeAsync(context, verify = true) { settled.countDown() }
         assertTrue(settled.await(18, TimeUnit.SECONDS))
         assertEquals(NoRootSupportStore.SyncState.DISABLED, NoRootSupportStore.readStatus(context).syncState)
 
-        if (mode == NPatchMode.EMBEDDED) {
-            assertTrue(NoRootSupportController.setDesiredEnabled(context, true))
-            assertTrue(UserTermsConsentStore.writeDecision(context, UserTermsDecision.DECLINED))
-            restartHost()
-            val rejected = awaitHost { it.bootstrap.configState == HostConfigState.REJECTED }
-            assertEquals(HostInstallChainState.NOT_STARTED, rejected.bootstrap.installChainState)
-            assertEquals(0, rejected.bootstrap.hookPointInstalledCount)
-            assertEmbeddedWebWithoutHooks(NPatchProcessState.REJECTED)
-            assertTrue(UserTermsConsentStore.writeDecision(context, UserTermsDecision.ACCEPTED))
-        }
+        assertTrue(NoRootSupportController.setDesiredEnabled(context, true))
+        assertTrue(UserTermsConsentStore.writeDecision(context, UserTermsDecision.DECLINED))
+        restartHost()
+        val rejected = awaitHost { it.bootstrap.configState == HostConfigState.REJECTED }
+        assertEquals(HostInstallChainState.NOT_STARTED, rejected.bootstrap.installChainState)
+        assertEquals(0, rejected.bootstrap.hookPointInstalledCount)
+        assertWebWithoutHooks(NPatchProcessState.REJECTED)
+        assertTrue(UserTermsConsentStore.writeDecision(context, UserTermsDecision.ACCEPTED))
 
         // 留在已启用的修复后宿主，便于人工查看；不触发 Manager 镜像同步。
         assertTrue(NoRootSupportController.setDesiredEnabled(context, true))
@@ -95,11 +92,11 @@ class NPatchDirectHostInstrumentedTest {
             assertProcess(NPatchProcessState.INSTALLED, mode)
             assertEquals(NPatchScopeProbe.ScopeState.UNKNOWN, NPatchScopeProbe.cached(context))
             assertFalse(NoRootSupportStore.readStatus(context).detail.orEmpty().startsWith("manager_cache_"))
-            assertEmbeddedProcessScopes()
         }
+        assertProcessScopes(mode)
     }
 
-    private fun assertEmbeddedProcessScopes() {
+    private fun assertProcessScopes(mode: NPatchMode) {
         openPrivacyPage()
         val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(45)
         var rows = emptyList<NPatchProcessSnapshot>()
@@ -112,7 +109,10 @@ class NPatchDirectHostInstrumentedTest {
                 assertTrue(web.installedHookCount > 0)
                 assertEquals(HostAdmissionContract.DIRECT, web.source)
                 assertEquals(HostAdmissionContract.DIRECT, child.source)
-                android.util.Log.i("BilibiliInnocentLab", "NPatch process acceptance: ${NPatchProcessCodec.encode(rows)}")
+                rows.forEach { assertEquals(mode, it.mode) }
+                val evidence = "NPatch process acceptance: ${NPatchProcessCodec.encode(rows)}"
+                android.util.Log.i("BilibiliInnocentLab", evidence)
+                instrumentation.sendStatus(0, Bundle().apply { putString("stream", "\n$evidence\n") })
                 assertWebActivityReady()
                 // 同一进程重复打开、返回及后台恢复；无需账号，不发送分享消息。
                 shell("input keyevent 3")
@@ -125,10 +125,10 @@ class NPatchDirectHostInstrumentedTest {
             }
             Thread.sleep(500)
         }
-        fail("Embedded process scopes not observed: $rows")
+        fail("$mode process scopes not observed: $rows")
     }
 
-    private fun assertEmbeddedWebWithoutHooks(state: NPatchProcessState) {
+    private fun assertWebWithoutHooks(state: NPatchProcessState) {
         openPrivacyPage()
         val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(45)
         while (System.nanoTime() < deadline) {
@@ -142,7 +142,7 @@ class NPatchDirectHostInstrumentedTest {
             }
             Thread.sleep(500)
         }
-        fail("Embedded Web did not reach $state without feature hooks")
+        fail("Web did not reach $state without feature hooks")
     }
 
     private fun openPrivacyPage() {

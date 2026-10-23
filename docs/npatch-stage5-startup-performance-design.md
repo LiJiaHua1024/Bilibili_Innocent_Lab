@@ -1,6 +1,6 @@
 # 阶段 5：启动关键路径优化设计
 
-设计日期：2026-10-23；设计源码基线：`45f18269`，分支 `feat/npatch-compat`。5.1–5.3 实施及 5.4 后移评估已完成，当前入口为 5.5；实际结果见[实施与证据](npatch-stage5-performance-results.md)，排期以[路线图](npatch-implementation-roadmap.md)为准。本文保留设计目标，不能据此宣称后续优化已经完成。
+设计日期：2026-10-23；设计源码基线：`45f18269`，分支 `feat/npatch-compat`。5.1–5.5 已按限定实测范围完成；实际结果见[实施与证据](npatch-stage5-performance-results.md)，排期以[路线图](npatch-implementation-roadmap.md)为准。本文保留原设计目标；Manager 默认组达到期望，embed 实际减少 17.57%，未达 20%，以实施证据为准，不修改目标或外推未测组合。
 
 ## 1. 目标与范围
 

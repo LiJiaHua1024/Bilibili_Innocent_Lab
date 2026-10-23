@@ -14,6 +14,10 @@
 
 输出保留原始 Instrumentation 日志、原始轮次 JSON、产物哈希与采样前后电池热状态。首帧取系统 Displayed 记录，缺失保持 null，不用 `am start -W` 的返回时间代替；首页/搜索响应为 250ms 轮询及实际输入操作的观察口径。失败不进入成功样本文件，原日志保留；不同配置、模式、缓存状态和产物应分组，详见[阶段 5 设计](../../docs/npatch-stage5-startup-performance-design.md)。
 
+连续日志配对必须同时核对当前 PID 与进程启动时间，避免长时间测试的 PID 重用；模块普通输出和带固定模块名前缀的镜像输出可能只保留其一，不能因少一份镜像就推断宿主没有启动。阶段 5 的完整分组、暂停原因和恢复证据见[实际结果](../../docs/npatch-stage5-performance-results.md)，原样本不因解析修复重写。
+
+首次适配可在已授权备用机显式运行 `NPatchStartupBenchmarkInstrumentedTest#resetAdaptationForFirstStartup` 并传 `-e startupReset true`；它调用设置页同一重适配动作，只请求清除适配记录及更新重置标记，不清宿主数据或恢复许可。先单独验证首启后台完整适配及下一次 `file-hit`，不要混入稳定缓存统计。业务触摸后可运行 `NPatchFeatureEvidenceInstrumentedTest`，传 `expectedMode=MANAGER|EMBEDDED` 和明确的 `applied/observed/quiet` 能力 ID；它只核对当前配置身份和真实回调，不模拟操作成功。
+
 ## Loader 修补与历史验收
 
 当前 embed 使用 Java 存活修复与原生锁反转修复的组合产物。下文先保留 Java 修复及 2026-10-20 的历史验收，再说明原生构建和当前 embed 工具。仅 Java 修复的旧产物仍含 Web 原生死锁，不能用于本轮 embed 验收。

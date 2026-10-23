@@ -9,11 +9,13 @@ import android.view.accessibility.AccessibilityNodeInfo
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import com.Bilibili_Innocent_Lab.xposedmodule.hook.HookEntry
+import com.Bilibili_Innocent_Lab.xposedmodule.hook.VersionAdapter
 import com.Bilibili_Innocent_Lab.xposedmodule.hook.feature.FeaturePreferences
 import com.Bilibili_Innocent_Lab.xposedmodule.runtime.noroot.*
 import com.Bilibili_Innocent_Lab.xposedmodule.settings.backup.*
 import com.Bilibili_Innocent_Lab.xposedmodule.settings.modulePreferences
 import com.Bilibili_Innocent_Lab.xposedmodule.settings.remote.PublicationAuthorityStore
+import com.Bilibili_Innocent_Lab.xposedmodule.settings.remote.RemoteHookConfigContract
 import org.json.JSONObject
 import org.junit.Assert.*
 import org.junit.Assume.assumeTrue
@@ -29,6 +31,28 @@ class NPatchStartupBenchmarkInstrumentedTest {
     private val instrumentation = InstrumentationRegistry.getInstrumentation()
     private val context = instrumentation.targetContext
     private val args = InstrumentationRegistry.getArguments()
+
+    /** Same reset action as settings UI; never clears host/account data or bypasses admission. */
+    @Test fun resetAdaptationForFirstStartup() {
+        assumeTrue(args.getString("startupReset") == "true")
+        val prefs = context.modulePreferences()
+        val started = System.currentTimeMillis()
+        VersionAdapter.clearCache(context, prefs)
+        val reset = prefs.getLong(RemoteHookConfigContract.KEY_ADAPTER_RESET_TIMESTAMP, 0L)
+        assertTrue("Reset action did not update its authoritative marker", reset >= started)
+        // Instrumentation can terminate immediately after this method. Flush the UI action's apply()
+        // before the next test process starts; an in-memory request is not durable reset evidence.
+        assertTrue(prefs.edit().putLong(RemoteHookConfigContract.KEY_ADAPTER_RESET_TIMESTAMP, reset).commit())
+        assertTrue("This opt-in test requires enabled NPatch", NoRootSupportStore.isDesiredEnabled(context))
+        // ConfirmationDialogs also advances the NPatch reset revision. Its publication deliberately
+        // replaces the standard-framework timestamp with this revision; exercise both UI actions.
+        val revision = NoRootSupportStore.markAdapterReset(context)
+        assertTrue(context.getSharedPreferences(NoRootSupportStore.PREF_FILE, android.content.Context.MODE_PRIVATE)
+            .edit().commit())
+        val publication = requireNotNull(PublicationAuthorityStore.current(context))
+        assertEquals(revision, publication.values[RemoteHookConfigContract.KEY_ADAPTER_RESET_TIMESTAMP])
+        report("STARTUP_RESET=$reset; NPATCH_RESET=$revision; current publication checked")
+    }
 
     @Test fun configureFixedProfile() {
         val profile = args.getString("startupProfile")
