@@ -1558,4 +1558,15 @@
     <string name="no_root_restart_resume_message">請確認已在系統應用程式資訊中強制停止嗶哩嗶哩。開啟仍在執行的應用程式不會重新啟動它。開啟前會再次儲存目前設定，只有收到相符的宿主回執才確認生效。</string>
     <string name="no_root_restart_launch_verify">開啟並驗證</string>
     <string name="no_root_restart_launch_failed">無法開啟嗶哩嗶哩</string>
+    <string name="npatch_setup_title">NPatch 使用精靈</string>
+    <string name="npatch_setup_page">NPatch 使用精靈 · %1$d/3</string>
+    <string name="npatch_setup_manager">管理員模式：在 NPatch Manager 中選擇目前模組並新增嗶哩嗶哩作用域。模式未知時先查看診斷。補丁參數相符不代表已啟用。</string>
+    <string name="npatch_setup_embed">嵌入模式：安裝設定 App，以及使用相同模組 APK 修補的宿主。模組更新後需要重新修補；目前支援的 Loader 作用域固定，簽名繞過最高為 2。</string>
+    <string name="npatch_setup_enable">閱讀並接受條款後，開啟 NPatch 免 Root 通道。兩種模式都需要設定 App 提供目前授權，請保持它可用。電池與背景限制由系統決定，精靈不會將其標為已自動驗證。</string>
+    <string name="npatch_setup_verify">儲存設定，在系統應用程式資訊中強停嗶哩嗶哩，再返回開啟並驗證。只有符合目前設定的回執才確認生效。無回執或版本/內容不一致時開啟診斷查看原因。</string>
+    <string name="npatch_setup_previous">上一步</string>
+    <string name="npatch_setup_next">下一步</string>
+    <string name="npatch_setup_done">完成</string>
+    <string name="npatch_setup_restart">重新啟動並驗證</string>
+    <string name="npatch_setup_diagnostics">開啟診斷</string>
 </resources>

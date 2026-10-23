@@ -2530,6 +2530,10 @@ class HookEntry : XposedModule() {
             logEnabled = hookConfig.getBoolean(PREF_LOG_ENABLED, true)
             logVerbose = hookConfig.getString(PREF_LOG_LEVEL, LOG_LEVEL_COMPLETE) != LOG_LEVEL_MINIMAL
             RoamingCompatHook.configure(logEnabled, logVerbose, modernRuntime)
+            // NPatch 设置入口复用菜单边界，独立于漫游分析/兼容开关；不影响其它进程。
+            if (nPatchStartup.get() && processName == TARGET_PACKAGE) {
+                RoamingCompatHook.patchMineEntry(biliClassLoader, includeRoaming = false)
+            }
 
             // 读取自由复制亮色模式开关（默认：暗色）
             freeCopyLightMode = hookConfig.getBoolean(PREF_FREE_COPY_LIGHT_MODE, false)

@@ -1558,4 +1558,15 @@
     <string name="no_root_restart_resume_message">Make sure you force stopped Bilibili in system app details. Opening an already running app does not restart it. Current settings will be saved again before opening; activation requires a matching host receipt.</string>
     <string name="no_root_restart_launch_verify">Open and verify</string>
     <string name="no_root_restart_launch_failed">Could not open Bilibili</string>
+    <string name="npatch_setup_title">NPatch setup guide</string>
+    <string name="npatch_setup_page">NPatch setup · %1$d/3</string>
+    <string name="npatch_setup_manager">In Manager mode, select the installed module and Bilibili scope in NPatch Manager. If the mode is unknown, check Diagnostics before continuing. Parameters alone do not confirm activation.</string>
+    <string name="npatch_setup_embed">In embedded mode, install the settings app and a host patched with the same module APK. Module updates require patching again. Fixed scope and signature level ≤2 apply to the supported loader.</string>
+    <string name="npatch_setup_enable">Read and accept the terms, then enable the NPatch no-root channel below. Manager and embedded modes both require the settings app for current authorization; keep it available. Battery and background restrictions vary by device and are not automatically verified.</string>
+    <string name="npatch_setup_verify">Save your settings, force stop Bilibili through system app details, then return to open and verify it. Only a matching current configuration receipt confirms activation. Use Diagnostics for missing receipts or version/content mismatch.</string>
+    <string name="npatch_setup_previous">Previous</string>
+    <string name="npatch_setup_next">Next</string>
+    <string name="npatch_setup_done">Done</string>
+    <string name="npatch_setup_restart">Restart and verify</string>
+    <string name="npatch_setup_diagnostics">Open Diagnostics</string>
 </resources>

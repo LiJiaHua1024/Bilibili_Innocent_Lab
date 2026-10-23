@@ -125,6 +125,8 @@ object RoamingCompatHook {
 
     /** 注入的「哔哩漫游设置」入口的 uri / id / 图标（与 fork 的 case 9 注入保持一致） */
     private const val ROAMING_URI = "bilibili://biliroaming"
+    private const val MODULE_URI = "bilibili://bilab/settings"
+    private const val MODULE_ENTRY_ID = 114515L
     private const val ROAMING_ENTRY_ID = 114514L
     private const val ROAMING_ENTRY_ICON = "https://i0.hdslb.com/bfs/album/276769577d2a5db1d9f914364abad7c5253086f6.png"
 
@@ -149,6 +151,8 @@ object RoamingCompatHook {
     /** 本进程是否已成功注册「我的」页入口注入钩子（方案 B，见 patchMineEntry） */
     @Volatile
     private var mineEntryPatched = false
+    @Volatile private var roamingEntryRequested = false
+    @Volatile private var moduleEntryRequested = false
 
     /** 本进程本次启动解析出的开关状态（attach 阶段写入，供诊断阶段使用） */
     @Volatile
@@ -433,7 +437,8 @@ object RoamingCompatHook {
      * @param appClassLoader B 站 ClassLoader
      * @return true=已注册（本进程），false=注册失败（类/方法缺失时静默回退）
      */
-    fun patchMineEntry(appClassLoader: ClassLoader?): Boolean {
+    fun patchMineEntry(appClassLoader: ClassLoader?, includeRoaming: Boolean = true): Boolean {
+        if (includeRoaming) roamingEntryRequested = true else moduleEntryRequested = true
         if (mineEntryPatched) return true
         if (appClassLoader == null) return false
         return runCatching {
@@ -466,11 +471,14 @@ object RoamingCompatHook {
                 runtime.install("roaming:mine-build:${buildMethod.toGenericString()}", buildMethod) {
                     after {
                         runCatching {
-                            injectMineEntry(
+                            if (roamingEntryRequested) injectMineEntry(
                                 args.getOrNull(0),
                                 appClassLoader,
                                 groupField,
                                 adapterField
+                            )
+                            if (moduleEntryRequested) injectMineEntry(
+                                args.getOrNull(0), appClassLoader, groupField, adapterField, moduleSettings = true
                             )
                         }
                     }
@@ -496,9 +504,12 @@ object RoamingCompatHook {
                     val uri = item?.let {
                         runCatching { ReflectAccess.getField(it, "uri") as? String }.getOrNull()
                     }
-                    if (uri != ROAMING_URI) return@before
                     val ctx = mineClickContext(thisObject) ?: return@before
-                    openRoamingSettings(ctx)
+                    when {
+                        uri == ROAMING_URI && roamingEntryRequested -> openRoamingSettings(ctx)
+                        uri == MODULE_URI && moduleEntryRequested -> RoamingSettingsLauncher.requestModule(ctx)
+                        else -> return@before
+                    }
                     result = null
                 }
             }
@@ -523,7 +534,8 @@ object RoamingCompatHook {
         fragment: Any?,
         appClassLoader: ClassLoader,
         groupField: Field,
-        adapterField: Field?
+        adapterField: Field?,
+        moduleSettings: Boolean = false
     ) {
         if (fragment == null) return
         val groups = runCatching {
@@ -544,8 +556,9 @@ object RoamingCompatHook {
             if (hasSettings) break
         }
         if (targetList == null) return
+        val entryId = if (moduleSettings) MODULE_ENTRY_ID else ROAMING_ENTRY_ID
         val exists = targetList.any {
-            runCatching { ReflectAccess.getLongField(it, "id") }.getOrDefault(-1L) == ROAMING_ENTRY_ID
+            runCatching { ReflectAccess.getLongField(it, "id") }.getOrDefault(-1L) == entryId
         }
         if (exists) return
         val item = runCatching {
@@ -553,15 +566,21 @@ object RoamingCompatHook {
                 ?: return@runCatching null
             KavaMemberLookup.constructorOrNull(itemClass)?.newInstance()
         }.getOrNull() ?: return
-        ReflectAccess.setLongField(item, "id", ROAMING_ENTRY_ID)
+        ReflectAccess.setLongField(item, "id", entryId)
         val titleContext = mineClickContext(fragment) ?: ReflectAccess.currentApplication()
         ReflectAccess.setField(
             item,
             "title",
-            InjectedUiLocale.messages(titleContext).roamingSettingsTitle
+            InjectedUiLocale.messages(titleContext).let {
+                if (moduleSettings) it.moduleSettingsTitle else it.roamingSettingsTitle
+            }
         )
-        ReflectAccess.setField(item, "icon", ROAMING_ENTRY_ICON)
-        ReflectAccess.setField(item, "uri", ROAMING_URI)
+        val icon = if (moduleSettings) targetList.firstOrNull {
+            runCatching { ReflectAccess.getField(it, "uri") as? String }.getOrNull() == "activity://main/preference"
+        }?.let { runCatching { ReflectAccess.getField(it, "icon") as? String }.getOrNull() }.orEmpty()
+            else ROAMING_ENTRY_ICON
+        ReflectAccess.setField(item, "icon", icon)
+        ReflectAccess.setField(item, "uri", if (moduleSettings) MODULE_URI else ROAMING_URI)
         ReflectAccess.setIntField(item, "visible", 1)
         targetList.add(item)
         runCatching {

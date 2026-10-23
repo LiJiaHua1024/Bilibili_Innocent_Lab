@@ -1558,4 +1558,15 @@
     <string name="no_root_restart_resume_message">请确认已在系统应用详情中强制停止哔哩哔哩。打开仍在运行的应用不会重启它。打开前会再次保存当前配置，只有收到匹配的宿主回执才确认生效。</string>
     <string name="no_root_restart_launch_verify">打开并验证</string>
     <string name="no_root_restart_launch_failed">无法打开哔哩哔哩</string>
+    <string name="npatch_setup_title">NPatch 使用向导</string>
+    <string name="npatch_setup_page">NPatch 使用向导 · %1$d/3</string>
+    <string name="npatch_setup_manager">管理器模式：在 NPatch Manager 中选择当前模块并添加哔哩哔哩作用域。模式未知时先查看诊断。补丁参数符合不代表已激活。</string>
+    <string name="npatch_setup_embed">嵌入模式：安装设置 App，以及使用相同模块 APK 修补的宿主。模块更新后需要重新修补；当前支持的 Loader 作用域固定，签名绕过最高为 2。</string>
+    <string name="npatch_setup_enable">阅读并接受条款后，开启 NPatch 免 Root 通道。两种模式都需要设置 App 提供当前授权，请保持它可用。电池与后台限制由系统决定，向导不会将其标为已自动验证。</string>
+    <string name="npatch_setup_verify">保存配置，在系统应用详情中强停哔哩哔哩，再返回打开并验证。只有匹配当前配置的回执才确认生效。无回执或版本/内容不一致时打开诊断查看原因。</string>
+    <string name="npatch_setup_previous">上一步</string>
+    <string name="npatch_setup_next">下一步</string>
+    <string name="npatch_setup_done">完成</string>
+    <string name="npatch_setup_restart">重启并验证</string>
+    <string name="npatch_setup_diagnostics">打开诊断</string>
 </resources>

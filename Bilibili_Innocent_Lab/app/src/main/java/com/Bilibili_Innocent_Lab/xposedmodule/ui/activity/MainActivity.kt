@@ -262,6 +262,22 @@ class MainActivity : SkinnedActivity() {
         }
     }
 
+    private fun scheduleNPatchSetup() {
+        window.decorView.post {
+            if (!userTermsDecision.isAuthorized || isFinishing || isDestroyed || !hasWindowFocus() ||
+                !lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED) || pendingNoRootRelaunch ||
+                activeConfirmDialog?.isShowing == true) return@post
+            val requested = intent?.getBooleanExtra(
+                com.Bilibili_Innocent_Lab.xposedmodule.runtime.RoamingSettingsLauncher.EXTRA_MODULE_SETUP, false) == true
+            val first = prefs().getInt("npatch_setup_seen", 0) < 1 &&
+                com.Bilibili_Innocent_Lab.xposedmodule.runtime.noroot.NPatchRuntimeProfiles.read(this).markerPresent
+            if (!requested && !first) return@post
+            intent?.removeExtra(com.Bilibili_Innocent_Lab.xposedmodule.runtime.RoamingSettingsLauncher.EXTRA_MODULE_SETUP)
+            prefs().edit { putInt("npatch_setup_seen", 1) }
+            showNPatchSetupDialog()
+        }
+    }
+
     private val settingsBackupLauncher = registerForActivityResult(
         ActivityResultContracts.StartActivityForResult()
     ) { result ->
@@ -1808,6 +1824,7 @@ class MainActivity : SkinnedActivity() {
         super.onWindowFocusChanged(hasFocus)
         if (hasFocus) {
             scheduleNoRootRelaunch()
+            scheduleNPatchSetup()
             scheduleReleaseHighlights()
         }
     }
@@ -3865,6 +3882,7 @@ class MainActivity : SkinnedActivity() {
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
+        scheduleNPatchSetup()
     }
 
     override fun onStart() {
@@ -3922,6 +3940,7 @@ class MainActivity : SkinnedActivity() {
         refreshNoRootProbe()
         renderNoRootUi()
         synchronizeNoRootSupportIfEnabled()
+        scheduleNPatchSetup()
         scheduleReleaseHighlights()
     }
 
@@ -4291,7 +4310,7 @@ class MainActivity : SkinnedActivity() {
         suppressLegacyActivityTransition()
     }
 
-    private fun launchDiagnostics() {
+    internal fun launchDiagnostics() {
         val entry = diagnosticsEntryView
         val title = diagnosticsEntryTitleView
         val sourceWindow = findViewById<View>(Android_R.id.content)

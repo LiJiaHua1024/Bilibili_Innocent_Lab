@@ -98,7 +98,8 @@ class RoamingOpenReceiver : BroadcastReceiver() {
             receiveHostRuntimeProbeReply(context, intent)
             return
         }
-        if (intent.action != ACTION_OPEN_ROAMING_SETTINGS) return
+        if (intent.action != ACTION_OPEN_ROAMING_SETTINGS &&
+            intent.action != RoamingSettingsLauncher.ACTION_OPEN_MODULE_SETTINGS) return
         RoamingSettingsLauncher.reply(context, intent,
             if (AndroidVersion.isAtLeast(AndroidVersion.U)) sentFromPackage else null,
             if (AndroidVersion.isAtLeast(AndroidVersion.U)) sentFromUid else -1)

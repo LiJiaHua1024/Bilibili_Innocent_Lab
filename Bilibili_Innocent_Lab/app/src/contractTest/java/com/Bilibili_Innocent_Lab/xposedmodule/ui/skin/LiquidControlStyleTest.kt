@@ -88,7 +88,8 @@ class LiquidControlStyleTest {
         // 2026-10-12：新增视频缓冲策略实验面板，44 → 45，仍复用同一皮肤容器与 presenter。
         // 2026-10-15：卡片材质改为原版 / 亚克力 / 云母选择弹窗，45 → 46。
         // 2026-10-18：新增推荐视频发布时间过滤面板（PublishTimeFilterDialogs.kt），46 → 47。
-        assertEquals(47, dialogs)
+        // 2026-10-23：新增 NPatch 三步使用向导，继续覆盖公共皮肤容器与 presenter。
+        assertEquals(48, dialogs)
         // 「管理常用」改用定宽 presentSizedModalDialog（EXACTLY 行宽保证把手钉右缘）。
         assertTrue(SettingsUiSource.function("showSettingsFavoritesDialog").contains("presentSizedModalDialog(dialog, container, width, anchor)"))
         val presenter = SettingsUiSource.function("presentSizedModalDialog")

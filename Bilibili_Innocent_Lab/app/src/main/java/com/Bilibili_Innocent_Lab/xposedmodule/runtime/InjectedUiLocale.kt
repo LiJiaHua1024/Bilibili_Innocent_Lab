@@ -46,7 +46,9 @@ internal data class InjectedUiMessages(
     val sponsorSkip: String = "Skip sponsor segment",
     val sponsorUndo: String = "Undo sponsor skip",
     val sponsorSkipped: String = "Sponsor segment skipped",
-    val sponsorUndoAction: String = "Undo"
+    val sponsorUndoAction: String = "Undo",
+    val moduleSettingsTitle: String = "BIL settings",
+    val moduleSettingsUnavailable: String = "Could not open BIL settings. Open the settings app manually, then retry."
 )
 
 /**
@@ -305,6 +307,8 @@ internal object InjectedUiLocale {
         adaptSucceeded = "版本适配完成，功能已就绪",
         adaptFailed = "版本适配失败，部分功能可能受限",
         roamingSettingsTitle = "哔哩漫游设置",
+        moduleSettingsTitle = "BIL 设置",
+        moduleSettingsUnavailable = "无法打开 BIL 设置，请先手动打开设置 App 后重试。",
         latestVersionMessage = "当前已是最新版本",
         replyTopologyEntryLabel = "脉络",
         replyTopologyEntryDescription = "查看回复脉络",
@@ -326,6 +330,8 @@ internal object InjectedUiLocale {
         adaptSucceeded = "版本適配完成，功能已就緒",
         adaptFailed = "版本適配失敗，部分功能可能受限",
         roamingSettingsTitle = "嗶哩漫遊設定",
+        moduleSettingsTitle = "BIL 設定",
+        moduleSettingsUnavailable = "無法開啟 BIL 設定，請先手動開啟設定 App 後重試。",
         latestVersionMessage = "目前已是最新版本",
         replyTopologyEntryLabel = "脈絡",
         replyTopologyEntryDescription = "查看回覆脈絡",
