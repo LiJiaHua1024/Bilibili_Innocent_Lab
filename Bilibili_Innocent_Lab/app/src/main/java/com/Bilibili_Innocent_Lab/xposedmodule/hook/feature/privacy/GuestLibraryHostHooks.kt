@@ -108,60 +108,7 @@ internal class GuestLibraryHostHooks(
                 }
             }
         }
-        attempt {
-            val king = requireNotNull(Lookup.classOrNull(loader, KING_POSITION))
-            val activity = requireNotNull(Lookup.declaredFields(king, true) {
-                !it.isStatic && it.type isSubclassOf classOf<Activity>()
-            }.singleOrNull())
-            for (name in listOf("B0", "C0")) {
-                val method = requireNotNull(Lookup.methodOrNull(king, name))
-                require(method.returnType == Void.TYPE)
-                env.registrar.exact("guest.library.favorite.$name", king, name) {
-                    before {
-                        if (!isGuest()) return@before
-                        result = null
-                        val host = instance?.let(activity::get) as? Activity ?: return@before
-                        library.action(host, "favorite")
-                    }
-                }
-            }
-        }
-
-        attempt {
-            val access = PrivacyHostAccess(loader)
-            val continuation = access.type("kotlin.coroutines.Continuation")
-            val unitType = access.type("kotlin.Unit")
-            val unit = requireNotNull(Lookup.fieldOrNull(unitType, "INSTANCE")).get(null)
-            val king = access.type(KING_POSITION)
-            val activity = requireNotNull(Lookup.declaredFields(king, true) {
-                !it.isStatic && it.type isSubclassOf classOf<Activity>()
-            }.singleOrNull())
-            // Verified 8.90.2 click/long-click collectors. Preserve the host touch listeners:
-            // after an explicit guest login the same view must immediately use its original flow.
-            for (gesture in listOf("1", "2")) {
-                val collector = access.type("$KING_COMPONENT\$FavoriteComponent\$bind\$3\$$gesture\$a")
-                val componentField = requireNotNull(Lookup.fieldOrNull(collector, "a"))
-                env.registrar.exact("guest.library.favorite_flow.$gesture", collector, "a", unitType, continuation) {
-                    before {
-                        if (!isGuest()) return@before
-                        result = unit
-                        runCatching {
-                            val componentValue = requireNotNull(instance?.let(componentField::get))
-                            val contract = requireNotNull(Lookup.fieldOrNull(componentValue.javaClass, "b")?.get(componentValue))
-                            require(contract.javaClass.name == "$KING_POSITION\$create\$contract\$1")
-                            val service = requireNotNull(Lookup.fieldOrNull(contract.javaClass, "h")?.get(contract))
-                            val repository = requireNotNull(Lookup.fieldOrNull(service.javaClass, "h")?.get(service))
-                            val reply = requireNotNull(Lookup.fieldOrNull(repository.javaClass, "b")?.get(repository))
-                            val video = PrivacyVideoMetadata.read(access, reply).copy(
-                                aid = (access.call(repository, "a") as Number).toLong(),
-                                cid = (access.call(repository, "d") as Number).toLong())
-                            val hostActivity = activity.get(service) as? Activity ?: return@before
-                            library.action(hostActivity, "favorite", video)
-                        }.onFailure { env.logError("guest_library_favorite", "[BIL] Local favorite metadata unavailable") }
-                    }
-                }
-            }
-        }
+        attempt { GuestNativeFavoriteHooks(library, isGuest).install(env) }
 
         attempt {
             val access = PrivacyHostAccess(loader)
@@ -245,8 +192,6 @@ internal class GuestLibraryHostHooks(
         private const val MINE_MANAGER = "tv.danmaku.bili.ui.main2.mine.MinePageManager"
         private const val MINE_ITEM = "com.bilibili.lib.homepage.mine.MenuGroup\$Item"
         private const val MINE_FRAGMENT = "tv.danmaku.bili.ui.main2.mine.HomeUserCenterFragment"
-        private const val KING_COMPONENT = "com.bilibili.ship.theseus.united.page.intro.module.kingposition.KingPositionComponent2"
-        private const val KING_POSITION = "com.bilibili.ship.theseus.united.page.intro.module.kingposition.KingPositionService"
 
         fun sectionForUri(uri: String?): String? = when (uri?.substringBefore('?')?.trimEnd('/')) {
             "bilibili://main/drawer/history" -> "history"

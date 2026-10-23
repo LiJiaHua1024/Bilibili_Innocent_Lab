@@ -28,13 +28,15 @@ class LocalVirtualLibrary(
     }
 
     data class Follow(val mid: Long, val name: String)
+    data class FolderInfo(val id: Long, val intro: String = "", val cover: String = "")
 
     // 视频以 aid + cid 唯一；列表按最近写入在前排列，收藏夹名称作为本地键。
     data class Collections(
         val history: List<Video> = emptyList(),
         val favorites: Map<String, List<Video>> = mapOf(DEFAULT_FOLDER to emptyList()),
         val watchLater: List<Video> = emptyList(),
-        val follows: List<Follow> = emptyList()
+        val follows: List<Follow> = emptyList(),
+        val folderInfo: Map<String, FolderInfo> = emptyMap()
     )
 
     data class Snapshot internal constructor(
@@ -142,6 +144,12 @@ class LocalVirtualLibrary(
         it.copy(favorites = it.favorites + (name to emptyList()))
     }
 
+    fun createFavoriteFolder(name: String, info: FolderInfo) = update {
+        validateFolderName(name)
+        require(name !in it.favorites && it.favorites.size < maxFolders) { "Folder unavailable" }
+        it.copy(favorites = it.favorites + (name to emptyList()), folderInfo = it.folderInfo + (name to info))
+    }
+
     fun renameFavoriteFolder(name: String, newName: String) = update {
         validateFolderName(name)
         validateFolderName(newName)
@@ -150,13 +158,40 @@ class LocalVirtualLibrary(
         require(newName !in it.favorites) { "Folder already exists" }
         it.copy(favorites = it.favorites.entries.associate { (key, videos) ->
             (if (key == name) newName else key) to videos
+        }, folderInfo = it.folderInfo.entries.associate { (key, info) ->
+            (if (key == name) newName else key) to info
         })
+    }
+
+    fun editFavoriteFolder(name: String, newName: String, info: FolderInfo) = update {
+        validateFolderName(newName)
+        require(name in it.favorites && (name == newName || newName !in it.favorites)) { "Folder unavailable" }
+        require(name != DEFAULT_FOLDER || name == newName) { "Cannot rename default folder" }
+        it.copy(favorites = it.favorites.entries.associate { (key, videos) ->
+            (if (key == name) newName else key) to videos
+        }, folderInfo = (it.folderInfo - name) + (newName to info))
     }
 
     fun deleteFavoriteFolder(name: String) = update {
         validateFolderName(name)
         require(name != DEFAULT_FOLDER) { "Cannot delete the default folder" }
-        it.copy(favorites = it.favorites - name)
+        it.copy(favorites = it.favorites - name, folderInfo = it.folderInfo - name)
+    }
+
+    /** Official favorites apply to an archive, not one part (cid), and commit all folders atomically. */
+    fun setFavoriteFolders(video: Video, selected: Set<String>) = update { before ->
+        validateVideo(video)
+        require(selected.all { it in before.favorites }) { "Folder does not exist" }
+        before.copy(favorites = before.favorites.mapValues { (name, videos) ->
+            val withoutArchive = videos.filterNot { it.aid == video.aid }
+            if (name in selected) putVideo(withoutArchive, video) else withoutArchive
+        })
+    }
+
+    fun toggleFavorite(video: Video): Boolean = locked {
+        val selected = current().favorites.values.any { videos -> videos.any { it.aid == video.aid } }
+        setFavoriteFolders(video, if (selected) emptySet() else setOf(DEFAULT_FOLDER))
+        !selected
     }
 
     fun addFavorite(video: Video, folder: String = DEFAULT_FOLDER) = update {
@@ -263,11 +298,19 @@ class LocalVirtualLibrary(
             validateFollow(it)
             require(mids.add(it.mid)) { "Duplicate follow" }
         }
+        val ids = HashSet<Long>()
+        source.folderInfo.forEach { (name, info) ->
+            require(name in source.favorites && ids.add(info.id)) { "Invalid folder metadata" }
+            validateId(info.id)
+            validateText(info.intro, MAX_TITLE_LENGTH)
+            validateText(info.cover, MAX_COVER_LENGTH)
+        }
         return Collections(
             history = videos(source.history),
             favorites = Immutable.unmodifiableMap(favorites),
             watchLater = videos(source.watchLater),
-            follows = Immutable.unmodifiableList(ArrayList(source.follows))
+            follows = Immutable.unmodifiableList(ArrayList(source.follows)),
+            folderInfo = Immutable.unmodifiableMap(LinkedHashMap(source.folderInfo))
         )
     }
 
@@ -311,11 +354,15 @@ class LocalVirtualLibrary(
             .put("updatedAtMs", video.updatedAtMs).put("cover", video.cover ?: JSONObject.NULL)
             .put("authorMid", video.authorMid).put("authorName", video.authorName)
         fun videos(items: List<Video>) = JSONArray().apply { items.forEach { put(videoJson(it)) } }
-        val root = JSONObject().put("version", 1)
+        val root = JSONObject().put("version", if (collections.folderInfo.isEmpty()) 1 else 2)
             .put("history", videos(collections.history))
             .put("favorites", JSONArray().apply {
                 collections.favorites.forEach { (name, items) ->
-                    put(JSONObject().put("name", name).put("videos", videos(items)))
+                    put(JSONObject().put("name", name).put("videos", videos(items)).apply {
+                        collections.folderInfo[name]?.let { info ->
+                            put("info", JSONObject().put("id", info.id).put("intro", info.intro).put("cover", info.cover))
+                        }
+                    })
                 }
             })
             .put("watchLater", videos(collections.watchLater))
@@ -329,7 +376,8 @@ class LocalVirtualLibrary(
         validateJsonSyntax(text)
         val root = JSONObject(text)
         requireKeys(root, setOf("version", "history", "favorites", "watchLater", "follows"))
-        require(number(root, "version") == 1L)
+        val version = number(root, "version")
+        require(version in 1L..2L)
         fun videos(array: JSONArray): List<Video> {
             require(array.length() <= maxEntries)
             return List(array.length()) { index ->
@@ -347,18 +395,27 @@ class LocalVirtualLibrary(
         val folders = root.getJSONArray("favorites")
         require(folders.length() in 1..maxFolders)
         val favorites = LinkedHashMap<String, List<Video>>()
+        val folderInfo = LinkedHashMap<String, FolderInfo>()
         repeat(folders.length()) { index ->
             val folder = folders.getJSONObject(index)
-            requireKeys(folder, setOf("name", "videos"))
+            val hasInfo = version == 2L && folder.has("info")
+            requireKeys(folder, if (hasInfo) setOf("name", "videos", "info") else setOf("name", "videos"))
             val name = string(folder, "name")
+            if (hasInfo) {
+                val info = folder.getJSONObject("info")
+                requireKeys(info, setOf("id", "intro", "cover"))
+                folderInfo[name] = FolderInfo(number(info, "id"), string(info, "intro"), string(info, "cover"))
+            }
             require(name !in favorites)
             favorites[name] = videos(folder.getJSONArray("videos"))
         }
+        require(version != 2L || folderInfo.isNotEmpty())
         val follows = root.getJSONArray("follows")
         require(follows.length() <= maxEntries)
         freeze(Collections(
             history = videos(root.getJSONArray("history")),
             favorites = favorites,
+            folderInfo = folderInfo,
             watchLater = videos(root.getJSONArray("watchLater")),
             follows = List(follows.length()) { index ->
                 val follow = follows.getJSONObject(index)

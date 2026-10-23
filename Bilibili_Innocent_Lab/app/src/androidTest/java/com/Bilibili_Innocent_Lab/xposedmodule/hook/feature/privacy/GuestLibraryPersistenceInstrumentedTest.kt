@@ -95,4 +95,50 @@ class GuestLibraryPersistenceInstrumentedTest {
         assertEquals(0, context.accesses.get())
         assertEquals(0, errors.get())
     }
+    @Test fun nativeFavoriteCommitPersistsBeforeFeedbackAndObserverNotification() {
+        val directory = File(app.cacheDir, "guest-library-test-${UUID.randomUUID()}").apply { mkdirs() }
+        val context = StorageContext(app, directory, false)
+        val errors = AtomicInteger()
+        val runtime = GuestLibraryRuntime(context, false, { true }, { errors.incrementAndGet() })
+        val feedback = AtomicInteger()
+        val notified = CountDownLatch(1)
+        val observed = AtomicReference<LocalVirtualLibrary.Collections>()
+        runtime.observeCollections { state ->
+            if (feedback.get() == 1) { observed.set(state); notified.countDown() }
+        }
+        try {
+            runtime.editCollections({ store ->
+                store.createFavoriteFolder("native", LocalVirtualLibrary.FolderInfo(42, "description"))
+                store.setFavoriteFolders(video, setOf("native"))
+            }, { feedback.incrementAndGet() })
+            assertTrue("Native observer did not follow committed feedback", notified.await(5, TimeUnit.SECONDS))
+            val reloaded = GuestLibraryRuntime(context, false, { true }, { errors.incrementAndGet() })
+            val loaded = CountDownLatch(1)
+            val restored = AtomicReference<LocalVirtualLibrary.Collections>()
+            reloaded.readCollections { restored.set(it); loaded.countDown() }
+            assertTrue(loaded.await(5, TimeUnit.SECONDS))
+            assertEquals(observed.get(), restored.get())
+            assertEquals(42L, restored.get().folderInfo.getValue("native").id)
+            assertEquals(listOf(video), restored.get().favorites.getValue("native"))
+            assertEquals(0, errors.get())
+        } finally { directory.listFiles()?.forEach { it.delete() }; directory.delete() }
+    }
+
+    @Test fun identityRefreshPublishesEmptyNativeFavoriteStateWithoutDiskAccess() {
+        val context = StorageContext(app, File(app.cacheDir, "must-not-be-opened"), true)
+        val errors = AtomicInteger()
+        val runtime = GuestLibraryRuntime(context, true, { true }, { errors.incrementAndGet() })
+        val committed = CountDownLatch(1)
+        runtime.editCollections({ store ->
+            store.createFavoriteFolder("temporary", LocalVirtualLibrary.FolderInfo(42, "temporary"))
+            store.setFavoriteFolders(video, setOf("temporary"))
+        }, { committed.countDown() })
+        assertTrue(committed.await(5, TimeUnit.SECONDS))
+        val cleared = CountDownLatch(1)
+        runtime.observeCollections { if (it == LocalVirtualLibrary.Collections()) cleared.countDown() }
+        runtime.refreshIdentity()
+        assertTrue("Native selection was not cleared", cleared.await(5, TimeUnit.SECONDS))
+        assertEquals(0, context.accesses.get())
+        assertEquals(0, errors.get())
+    }
 }

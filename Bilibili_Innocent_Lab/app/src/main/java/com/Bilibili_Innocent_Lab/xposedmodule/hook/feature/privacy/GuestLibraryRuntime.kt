@@ -106,7 +106,10 @@ internal class GuestLibraryRuntime(
                                 resetting = false
                             }
                         }
-                        onMain(next) { toast(GuestLibraryStrings.resolve(application).refreshed) }
+                        onMain(next) {
+                            notifyCollections(LocalVirtualLibrary.Collections())
+                            toast(GuestLibraryStrings.resolve(application).refreshed)
+                        }
                     } catch (_: Exception) {
                         // Keep the barrier closed after a failed reset; never expose the previous session.
                         notifyError()
@@ -184,6 +187,50 @@ internal class GuestLibraryRuntime(
         }
     }
 
+    // Observers are process adapters containing weak host references, never Activity/View closures.
+    private val collectionObservers = java.util.concurrent.CopyOnWriteArrayList<(LocalVirtualLibrary.Collections) -> Unit>()
+
+    private fun notifyCollections(snapshot: LocalVirtualLibrary.Collections) {
+        collectionObservers.forEach { observer ->
+            try { observer(snapshot) } catch (_: Exception) { notifyError() }
+        }
+    }
+
+    internal fun observeCollections(observer: (LocalVirtualLibrary.Collections) -> Unit) {
+        collectionObservers += observer
+    }
+
+    internal fun readCollections(callback: (LocalVirtualLibrary.Collections) -> Unit) {
+        val token = token() ?: return
+        query(token) { callback(it.collections) }
+    }
+
+    internal fun videoMetadata(aid: Long, cid: Long): LocalVirtualLibrary.Video? = synchronized(gate) {
+        if (token() == null) null
+        else metadata[aid to cid] ?: metadata.values.lastOrNull { it.aid == aid }?.copy(cid = cid)
+    }
+
+    /** Native UI owns its success/error feedback; acknowledge only after a successful local commit. */
+    internal fun editCollections(
+        mutation: (LocalVirtualLibrary) -> Unit,
+        done: (LocalVirtualLibrary.Collections) -> Unit,
+        failed: (Throwable) -> Unit = {}
+    ) {
+        val token = token() ?: return
+        execute(token) {
+            try {
+                mutation(library)
+                val snapshot = library.readSnapshot().collections
+                onMain(token) {
+                    try { done(snapshot) } finally { notifyCollections(snapshot) }
+                }
+            } catch (error: Exception) {
+                onMain(token) { failed(error) }
+                failure(token)
+            }
+        }
+    }
+
     fun show(context: Context, section: String = "home") = openUi(context) { it.show(section) }
 
     fun action(context: Context, action: String) = openUi(context) { it.action(action) }
@@ -244,7 +291,9 @@ internal class GuestLibraryRuntime(
         }
         checkActive(token)
         mutation(library)
+        val snapshot = library.readSnapshot().collections
         onMain(token) {
+            notifyCollections(snapshot)
             toast(GuestLibraryStrings.resolve(application).saved)
             done()
         }
