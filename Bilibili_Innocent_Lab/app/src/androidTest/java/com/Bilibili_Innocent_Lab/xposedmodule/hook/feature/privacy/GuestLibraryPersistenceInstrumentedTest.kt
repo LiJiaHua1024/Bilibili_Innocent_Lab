@@ -141,4 +141,38 @@ class GuestLibraryPersistenceInstrumentedTest {
         assertEquals(0, context.accesses.get())
         assertEquals(0, errors.get())
     }
+    @Test fun nativeRequestCompletesWithFailureWhenIdentityChangesDuringExecution() {
+        val context = StorageContext(app, File(app.cacheDir, "must-not-be-opened"), true)
+        val runtime = GuestLibraryRuntime(context, true, { true }, {})
+        val started = CountDownLatch(1)
+        val release = CountDownLatch(1)
+        val finished = CountDownLatch(1)
+        val failed = AtomicReference<Boolean>()
+        runtime.nativeRequest({
+            started.countDown()
+            check(release.await(5, TimeUnit.SECONDS))
+            "stale result"
+        }) { outcome -> failed.set(outcome.isFailure); finished.countDown() }
+        assertTrue(started.await(5, TimeUnit.SECONDS))
+        runtime.refreshIdentity()
+        release.countDown()
+        assertTrue("Native RPC was left pending", finished.await(5, TimeUnit.SECONDS))
+        assertEquals(true, failed.get())
+        assertEquals(0, context.accesses.get())
+    }
+
+    @Test fun nativeDeleteInvalidatesPreciseResumeCacheAfterCommit() {
+        val context = StorageContext(app, File(app.cacheDir, "must-not-be-opened"), true)
+        val runtime = GuestLibraryRuntime(context, true, { true }, {})
+        runtime.recordVideo(video)
+        runtime.recordProgress(video.aid, video.cid, 65432, video.durationMs)
+        assertEquals(65432L, position(runtime))
+        val finished = CountDownLatch(1)
+        runtime.nativeRequest({ it.clearHistory() }) { finished.countDown() }
+        assertTrue(finished.await(5, TimeUnit.SECONDS))
+        assertNull(runtime.cachedResumePosition(video.cid))
+        assertNull(position(runtime))
+        assertEquals(0, context.accesses.get())
+    }
+
 }

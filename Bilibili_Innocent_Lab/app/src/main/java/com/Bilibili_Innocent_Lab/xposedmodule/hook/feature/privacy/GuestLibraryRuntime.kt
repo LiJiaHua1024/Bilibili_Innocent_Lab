@@ -231,6 +231,53 @@ internal class GuestLibraryRuntime(
         }
     }
 
+    /** Native suspend/RPC requests must complete on cancellation too; never fall back to the cloud. */
+    internal fun <T> nativeRequest(operation: (LocalVirtualLibrary) -> T, complete: (Result<T>) -> Unit) {
+        val requestToken = token()
+        if (requestToken == null) {
+            main.post { runCatching { complete(Result.failure(java.io.IOException("Local session unavailable"))) }.onFailure { notifyError() } }
+            return
+        }
+        io.execute {
+            val outcome = runCatching { nativeOperation(requestToken, operation) }
+            main.post {
+                val current = if (valid(requestToken)) outcome
+                    else Result.failure(java.io.IOException("Local session changed"))
+                runCatching { complete(current) }.onFailure { notifyError() }
+            }
+        }
+    }
+
+    /** BiliCall.execute already runs on the host network executor; disk IO stays on our serial executor. */
+    internal fun <T> nativeBlocking(operation: (LocalVirtualLibrary) -> T): T {
+        check(Looper.myLooper() != Looper.getMainLooper()) { "Local library IO on main thread" }
+        val requestToken = token() ?: throw java.io.IOException("Local session unavailable")
+        val value = io.submit<T> { nativeOperation(requestToken, operation) }.get()
+        checkActive(requestToken)
+        return value
+    }
+
+    private fun <T> nativeOperation(requestToken: Token, operation: (LocalVirtualLibrary) -> T): T {
+        checkActive(requestToken)
+        runningToken = requestToken
+        try {
+            val before = library.readSnapshot()
+            val value = operation(library)
+            checkActive(requestToken)
+            val after = library.readSnapshot()
+            if (before.stamp !== after.stamp) onMain(requestToken) {
+                resumeCache.clear()
+                after.collections.history.forEach { resumeCache[it.aid to it.cid] = it }
+                notifyCollections(after.collections)
+            }
+            return value
+        } finally {
+            runningToken = null
+        }
+    }
+
+    internal var nativePage: ((android.app.Activity, String) -> Boolean)? = null
+
     fun show(context: Context, section: String = "home") = openUi(context) { it.show(section) }
 
     fun action(context: Context, action: String) = openUi(context) { it.action(action) }

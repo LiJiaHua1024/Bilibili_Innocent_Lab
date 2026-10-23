@@ -7,6 +7,7 @@ import android.view.View
 import android.widget.TextView
 import com.Bilibili_Innocent_Lab.xposedmodule.hook.feature.HookEnvironment
 import com.Bilibili_Innocent_Lab.xposedmodule.runtime.KavaMemberLookup as Lookup
+import androidx.core.net.toUri
 import com.highcapable.kavaref.extension.classOf
 import com.highcapable.kavaref.extension.isStatic
 
@@ -16,6 +17,9 @@ internal class GuestLibraryHostHooks(
 ) {
     fun install(env: HookEnvironment): Int {
         val loader = env.classLoader ?: return 0
+        library.nativePage = { activity, section ->
+            if (section in setOf("history", "favorites", "follows")) { openNative(activity, section); true } else false
+        }
         var installed = 0
         fun attempt(action: () -> Unit) {
             runCatching(action).onSuccess { installed++ }.onFailure {
@@ -49,7 +53,7 @@ internal class GuestLibraryHostHooks(
                     val section = sectionForUri(uri.get(target) as? String) ?: return@before
                     result = null
                     val host = instance?.let(activity::get) as? Activity ?: return@before
-                    library.show(host, section)
+                    openNative(host, section)
                 }
             }
         }
@@ -70,7 +74,7 @@ internal class GuestLibraryHostHooks(
                     if (observed.compareAndSet(false, true)) runCatching {
                         env.reportStatus("guest_library_$section", "applied")
                     }
-                    (argOrNull(0) as? Activity)?.let { library.show(it, section) }
+                    (argOrNull(0) as? Activity)?.let { openNative(it, section) }
                 }
             }
         }
@@ -83,7 +87,7 @@ internal class GuestLibraryHostHooks(
                         if (!isGuest()) return@before
                         result = null
                         val host = instance?.let(getActivity::invoke) as? Activity ?: return@before
-                        library.show(host, "follows")
+                        openNative(host, "follows")
                     }
                 }
             }
@@ -109,6 +113,9 @@ internal class GuestLibraryHostHooks(
             }
         }
         attempt { GuestNativeFavoriteHooks(library, isGuest).install(env) }
+        attempt { GuestNativeFollowListHooks(library, isGuest).install(env) }
+        attempt { GuestNativeHistoryHooks(library, isGuest).install(env) }
+        attempt { GuestNativeListHttpHooks(library, isGuest).install(env) }
 
         attempt {
             val access = PrivacyHostAccess(loader)
@@ -163,6 +170,18 @@ internal class GuestLibraryHostHooks(
             }
         }
         return installed
+    }
+
+    private fun openNative(activity: Activity, section: String) {
+        when (section) {
+            "history" -> activity.startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW,
+                "bilibili://history".toUri()).setPackage(activity.packageName))
+            "favorites" -> activity.startActivity(android.content.Intent().setClassName(activity.packageName,
+                "tv.danmaku.bili.ui.favorites.FavoritesActivityV2"))
+            "follows" -> activity.startActivity(android.content.Intent().setClassName(activity.packageName,
+                GuestNativeFollowListHooks.ACTIVITY).putExtra(GuestNativeFollowListHooks.EXTRA, true))
+            else -> library.show(activity, section)
+        }
     }
 
     private fun bindLocalHeader(root: View) {

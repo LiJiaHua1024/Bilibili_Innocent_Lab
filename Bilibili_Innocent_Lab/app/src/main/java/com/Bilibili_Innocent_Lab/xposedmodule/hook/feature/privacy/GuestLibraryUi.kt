@@ -48,6 +48,7 @@ internal class GuestLibraryUi(
             .setNegativeButton(android.R.string.cancel, null).show()
     }
     fun show(section: String) {
+        reference.get()?.let { if (runtime.nativePage?.invoke(it, section) == true) return }
         runtime.query(token) { state ->
             when (section) {
                 "history" -> videos(strings.history, state.collections.history) { l, v -> l.removeHistory(v.aid, v.cid) }
