@@ -112,7 +112,13 @@ internal object NPatchProcessDiagnostics {
     }
 
     /** 仅在后台线程调用。结果只含本次已响应进程；超时/无响应保持未知，不沿用历史。 */
-    fun query(context: Context, includeMedia: Boolean = false): List<NPatchProcessSnapshot> {
+    fun query(context: Context, includeMedia: Boolean = false): List<NPatchProcessSnapshot> =
+        queryRows(context, includeMedia, requireCurrentModule = true)
+
+    fun observe(context: Context, includeMedia: Boolean = false): NPatchModuleObservation =
+        NPatchModuleObservation.fromRows(queryRows(context, includeMedia, requireCurrentModule = false), BuildConfig.VERSION_CODE.toLong())
+
+    private fun queryRows(context: Context, includeMedia: Boolean, requireCurrentModule: Boolean): List<NPatchProcessSnapshot> {
         check(Looper.myLooper() != Looper.getMainLooper())
         if (!queryInFlight.compareAndSet(false, true)) return emptyList()
         try {
@@ -131,7 +137,7 @@ internal object NPatchProcessDiagnostics {
                         if (extras.getString("nonce") != nonce) return@runCatching emptyList()
                         val decoded = NPatchProcessCodec.decode(extras.getString("rows").orEmpty()) ?: return@runCatching emptyList()
                         // 内嵌模块可能落后于独立设置 App，不能把旧模块的运行状态冒充当前版本。
-                        if (decoded.any { it.targetUpdateTime != target.lastUpdateTime ||
+                        if (decoded.any { it.targetUpdateTime != target.lastUpdateTime || requireCurrentModule &&
                             it.moduleVersionCode != BuildConfig.VERSION_CODE.toLong() }) emptyList() else decoded.sortedBy { it.processName }
                     }.getOrDefault(emptyList())
                     latch.countDown()

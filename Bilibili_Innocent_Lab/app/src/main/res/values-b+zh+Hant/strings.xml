@@ -1535,4 +1535,12 @@
     <string name="npatch_crash_row">崩潰時間 %1$d：類別 %2$s，觀察到模組堆疊 %3$s。堆疊存在不等於根因歸屬，記錄有界。</string>
     <string name="npatch_test_crash_explanation">DEBUG：此操作會使嗶哩嗶哩結束。重新開啟宿主並重新整理診斷可讀回證據。native 訊號、ANR 和此處理器安裝前的崩潰不在 Java 擷取範圍。</string>
     <string name="npatch_test_crash">測試崩潰：使嗶哩嗶哩結束</string>
+    <string name="npatch_module_version_current">宿主本次回應模組版本 %1$s；設定 App 版本 %2$d。版本碼一致不證明 APK 內容相同。</string>
+    <string name="npatch_module_version_different">宿主本次回應模組版本 %1$s，與設定 App %2$d 不同。舊模組觀測不會作為目前程序功能證據。</string>
+    <string name="npatch_module_content_different">內嵌模組內容不同或遺失。僅更新設定 App 無法更新內嵌程式碼。</string>
+    <string name="npatch_module_version_previous">尚無本次版本回應；歷史確認的模組版本 %1$d（時間 %2$d）與設定 App %3$d 不同。這僅為歷史證據。</string>
+    <string name="npatch_module_version_unknown">未取得相容目前協定的版本回應。舊協定、宿主未啟動或無回應均保持未知。</string>
+    <string name="npatch_module_recover_manager">先冷啟動宿主並重新整理；若版本仍不同或持續無回應，請在 NPatch Manager 中重新選擇目前模組 APK，確認作用域後再冷啟動。</string>
+    <string name="npatch_open_manager">開啟 NPatch Manager</string>
+    <string name="npatch_manager_launch_failed">未找到可存取的 NPatch Manager 入口。</string>
 </resources>

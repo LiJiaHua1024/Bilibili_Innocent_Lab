@@ -36,7 +36,8 @@ internal object ModuleDiagnosticsCollector {
         nowEpochMs: Long = System.currentTimeMillis(),
         nPatchProcesses: List<com.Bilibili_Innocent_Lab.xposedmodule.runtime.noroot.NPatchProcessSnapshot> = emptyList(),
         nPatchEmbeddedBuild: com.Bilibili_Innocent_Lab.xposedmodule.runtime.noroot.NPatchEmbeddedBuildState =
-            com.Bilibili_Innocent_Lab.xposedmodule.runtime.noroot.NPatchEmbeddedBuildState.UNKNOWN
+            com.Bilibili_Innocent_Lab.xposedmodule.runtime.noroot.NPatchEmbeddedBuildState.UNKNOWN,
+        nPatchObservedModuleVersions: List<Long> = emptyList()
     ): ModuleDiagnosticSnapshot {
         val appContext = context.applicationContext ?: context
         @Suppress("DEPRECATION")
@@ -185,7 +186,10 @@ internal object ModuleDiagnosticsCollector {
                     .environment(appContext),
                 nPatchEmbeddedBuild = nPatchEmbeddedBuild,
                 noRootSyncDetail = noRootStatus.detail,
-                nPatchProcesses = nPatchProcesses
+                nPatchProcesses = nPatchProcesses,
+                nPatchObservedModuleVersions = nPatchObservedModuleVersions,
+                nPatchPreviousModuleVersion = noRootStatus.heartbeatModuleVersion,
+                nPatchPreviousModuleAt = noRootStatus.heartbeatReceivedAt
             )
         )
     }

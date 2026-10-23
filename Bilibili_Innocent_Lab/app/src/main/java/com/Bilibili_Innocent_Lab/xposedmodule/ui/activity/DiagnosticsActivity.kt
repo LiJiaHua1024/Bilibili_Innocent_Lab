@@ -574,6 +574,17 @@ class DiagnosticsActivity : SkinnedActivity(),
             ),
             snapshot
         )
+        if (snapshot.inputs.nPatchEnvironment?.patch?.mode == com.Bilibili_Innocent_Lab.xposedmodule.runtime.noroot.NPatchMode.MANAGER) {
+            content.addView(card().apply {
+                addView(bodyText(getString(R.string.npatch_module_recover_manager)), linearMatch())
+                addView(actionButton(getString(R.string.npatch_open_manager), getString(R.string.npatch_open_manager)) {
+                    val intent = FrameworkManagerLauncher.resolvePackage(this@DiagnosticsActivity, "top.nkbe.npatch")
+                    if (intent == null || runCatching { startActivity(intent) }.isFailure) {
+                        Toast.makeText(this@DiagnosticsActivity, R.string.npatch_manager_launch_failed, Toast.LENGTH_LONG).show()
+                    }
+                }, linearWrap())
+            }, cardParams())
+        }
         if (com.Bilibili_Innocent_Lab.xposedmodule.BuildConfig.DEBUG && snapshot.inputs.nPatchEnvironment?.patch?.markerPresent == true) {
             content.addView(card().apply {
                 addView(bodyText(getString(R.string.npatch_test_crash_explanation)), linearMatch())

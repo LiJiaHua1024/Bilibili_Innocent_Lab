@@ -1535,4 +1535,12 @@
     <string name="npatch_crash_row">崩溃时间 %1$d：类别 %2$s，观察到模块栈 %3$s。栈存在不等于根因归属，记录有界。</string>
     <string name="npatch_test_crash_explanation">DEBUG：此操作会使哔哩哔哩退出。重新打开宿主并刷新诊断可读回证据。native 信号、ANR 和此处理器安装前的崩溃不在 Java 捕获范围。</string>
     <string name="npatch_test_crash">测试崩溃：使哔哩哔哩退出</string>
+    <string name="npatch_module_version_current">宿主本次响应模块版本 %1$s；设置 App 版本 %2$d。版本码一致不证明 APK 内容相同。</string>
+    <string name="npatch_module_version_different">宿主本次响应模块版本 %1$s，与设置 App %2$d 不同。旧模块观测不会作为当前进程功能证据。</string>
+    <string name="npatch_module_content_different">内嵌模块内容不同或缺失。仅更新设置 App 无法更新内嵌代码。</string>
+    <string name="npatch_module_version_previous">尚无本次版本响应；历史确认的模块版本 %1$d（时间 %2$d）与设置 App %3$d 不同。这仅为历史证据。</string>
+    <string name="npatch_module_version_unknown">未取得兼容当前协议的版本响应。旧协议、宿主未启动或无响应均保持未知。</string>
+    <string name="npatch_module_recover_manager">先冷启动宿主并刷新；若版本仍不同或持续无响应，请在 NPatch Manager 中重新选择当前模块 APK，确认作用域后再冷启动。</string>
+    <string name="npatch_open_manager">打开 NPatch Manager</string>
+    <string name="npatch_manager_launch_failed">未找到可访问的 NPatch Manager 入口。</string>
 </resources>

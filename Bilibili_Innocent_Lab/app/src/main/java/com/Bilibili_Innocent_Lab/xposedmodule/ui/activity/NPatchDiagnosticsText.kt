@@ -40,6 +40,21 @@ internal fun nPatchDiagnosticsDetails(context: Context, input: ModuleDiagnosticI
             NPatchCompatibility.EMBEDDED_LEVEL_INVALID -> R.string.npatch_compatibility_embed_invalid
         }))
         if (environment.versionMismatch) add(context.getString(R.string.npatch_profile_version_mismatch))
+        val versions = input.nPatchObservedModuleVersions.joinToString(", ").ifEmpty { unknown }
+        add(when (com.Bilibili_Innocent_Lab.xposedmodule.runtime.noroot.NPatchModuleDrift.assess(
+            input.moduleVersionCode, input.nPatchObservedModuleVersions, input.nPatchPreviousModuleVersion, input.nPatchEmbeddedBuild)) {
+            com.Bilibili_Innocent_Lab.xposedmodule.runtime.noroot.NPatchModuleDrift.CURRENT_VERSION ->
+                context.getString(R.string.npatch_module_version_current, versions, input.moduleVersionCode)
+            com.Bilibili_Innocent_Lab.xposedmodule.runtime.noroot.NPatchModuleDrift.RUNTIME_DIFFERENT ->
+                context.getString(R.string.npatch_module_version_different, versions, input.moduleVersionCode)
+            com.Bilibili_Innocent_Lab.xposedmodule.runtime.noroot.NPatchModuleDrift.EMBEDDED_DIFFERENT ->
+                context.getString(R.string.npatch_module_content_different)
+            com.Bilibili_Innocent_Lab.xposedmodule.runtime.noroot.NPatchModuleDrift.PREVIOUS_DIFFERENT ->
+                context.getString(R.string.npatch_module_version_previous, input.nPatchPreviousModuleVersion,
+                    input.nPatchPreviousModuleAt, input.moduleVersionCode)
+            else -> context.getString(R.string.npatch_module_version_unknown)
+        })
+        if (patch.mode == NPatchMode.MANAGER) add(context.getString(R.string.npatch_module_recover_manager))
         if (patch.mode == NPatchMode.EMBEDDED) {
             add(context.getString(R.string.npatch_profile_embed_experimental))
             add(context.getString(R.string.npatch_embed_recovery))

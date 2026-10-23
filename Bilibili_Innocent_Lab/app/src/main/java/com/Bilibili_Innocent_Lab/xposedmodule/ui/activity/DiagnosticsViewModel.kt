@@ -109,6 +109,7 @@ internal class DiagnosticsViewModel : ViewModel() {
         worker.submit {
             if (worker.isShutdown || generation.get() != request) return@submit
             runCatching {
+                val observation = com.Bilibili_Innocent_Lab.xposedmodule.runtime.noroot.NPatchProcessDiagnostics.observe(context)
                 ModuleDiagnosticsCollector.collect(
                     context = context,
                     skin = skin,
@@ -117,7 +118,8 @@ internal class DiagnosticsViewModel : ViewModel() {
                     hostQueryState = hostQueryState,
                     hostQueryFailure = hostQueryFailure,
                     nPatchProcesses = com.Bilibili_Innocent_Lab.xposedmodule.runtime.noroot.NPatchStartupHistory.enrich(context,
-                        com.Bilibili_Innocent_Lab.xposedmodule.runtime.noroot.NPatchProcessDiagnostics.query(context)),
+                        observation.processes),
+                    nPatchObservedModuleVersions = observation.versions,
                     nPatchEmbeddedBuild = com.Bilibili_Innocent_Lab.xposedmodule.runtime.noroot.NPatchEmbeddedBuild.read(context)
                 )
             }.onSuccess { snapshot ->
