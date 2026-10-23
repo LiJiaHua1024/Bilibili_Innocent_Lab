@@ -84,7 +84,14 @@
     <string name="paused_page_ad_enable">Hide paused-page video ads</string>
     <string name="paused_page_ad_tip">When enabled, promo ads that may pop up after pausing some videos are not displayed</string>
     <string name="roaming_compat_enable">Roaming version support extension</string>
-    <string name="roaming_compat_tip">Provides higher-version compatibility support for the roaming module; requires restarting Bilibili twice to take effect. Before enabling this feature, cold-start the host with only the roaming module enabled so that it can build a complete cache for the host.</string>
+    <string name="roaming_compat_tip">Requires an enabled BiliRoaming module. NPatch reuses a verified analysis cache when the host and roaming content match. A first build or changed content still requires analysis; check its result before restarting again. Unknown loaders keep the original recovery procedure.</string>
+    <string name="roaming_cache_check">Check NPatch roaming cache</string>
+    <string name="roaming_cache_waiting">Waiting for the current host analysis. Keep the host open, then check again.</string>
+    <string name="roaming_cache_disabled">The roaming extension is off in this host process. Enable it and cold-start the host first.</string>
+    <string name="roaming_cache_ready">An analysis cache is ready and backed up. Restart once to use it; this does not confirm every roaming feature.</string>
+    <string name="roaming_cache_reused">A matching analysis cache was reused in this process. No further cache restart is needed.</string>
+    <string name="roaming_cache_unavailable">No verified cache result. Check that a compatible roaming module is loaded, inspect its log and retry after a cold start. For a fresh analysis, use “Re-adapt current version”.</string>
+    <string name="roaming_cache_restart">Cache ready — continue to restart</string>
     <string name="gamecard_ad_settings">Video detail page ads</string>
     <string name="gamecard_ad_enable">Hide game ads inside the \"Video mentioned\" section</string>
     <string name="gamecard_ad_tip">Cleans up the \"Video mentioned\" ads under videos with game tags</string>

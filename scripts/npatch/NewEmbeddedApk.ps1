@@ -8,6 +8,7 @@ param(
     [Parameter(Mandatory)] [string] $Java21,
     [Parameter(Mandatory)] [string] $ApkSigner,
     [Parameter(Mandatory)] [string] $OutputDirectory,
+    [string] $RoamingModuleApk,
     [string] $SigningKeyStore,
     [string] $SigningKeyAlias,
     [string] $SigningStorePasswordEnvironment,

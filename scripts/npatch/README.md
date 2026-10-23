@@ -127,6 +127,8 @@ $env:JAVA_HOME = 'C:/Program Files/Java/jdk-17' # apksigner 使用
     -OutputDirectory '<不存在的输出目录>'
 ```
 
+配合漫游的 embed 产物可额外传入 `-RoamingModuleApk '<兼容漫游.apk>'`（两个产物入口均支持）。它只接受包名 `me.iacn.biliroaming` 且有合法 Legacy 入口的已签名 APK，保留原字节，逐项校验内嵌结果，并将版本、SHA-256 和模块证书记入 `verified.json` 的 `roamingModule`。更新任一内嵌模块均需重新修补。该参数不用于 Manager；Manager 在其作用域界面同时启用 BIL 与漫游。APK 可嵌入不等于其全部功能兼容，当前缓存验收输入和边界见[阶段 6 记录](../../docs/npatch-stage6-experience.md)。
+
 发布模块先完成 Release/R8 构建并签名，再把该**同一份已签名模块 APK**用于修补和独立设置 App 安装。默认使用 NPatch 测试证书；已有自有证书的宿主必须显式提供匹配的 keystore，不能退回默认密钥。只接受环境变量**名称**，口令值由 `apksigner` 直接读取，不进入 patcher 参数、日志或产物记录。`Aapt2` 默认从所选 `ApkSigner` 的同目录查找，也可显式传入。
 
 R8 会按工程已有规则改写 `META-INF/xposed/java_init.list`，入口不保证仍叫 `HookEntry`。工具接受一个合法的原名或混淆类名，并继续核对 Modern API 101/102、静态作用域及禁用热重载的档案；多入口或未知 API 档案被拒绝，实际入口名进入 `verified.json`。已用真实 Release/R8 产物的混淆入口 `ve0` 完成修补、同证书覆盖安装、四进程当前配置诊断及 Web 内容检查。该本地验收包使用既有测试签名，不等于取得或使用正式发布密钥。
@@ -146,7 +148,7 @@ R8 会按工程已有规则改写 `META-INF/xposed/java_init.list`，入口不�
 
 首次自有签名构建可用同证书的已签名 APK 作为证书参照；覆盖升级必须使用当前安装宿主的证书参照，并先核对新产物的 `verified.json`，再 `adb -s <serial> install -r <产物>`。不同证书无法保留原应用数据覆盖安装，工具会拒绝，不会自行卸载。宿主密钥与独立设置 App 的密钥分别保持各自升级链，不能混淆。模式切换用相同输入和宿主签名，将 `-Mode` 改为 `manager` 或 `embedded` 后覆盖安装、冷启动；Manager 另外安装并配置模块/宿主作用域，embed 固定内嵌作用域。仅更新设置 App 不等于更新 embed 代码。
 
-`TestPatchedApk.ps1` 在新的输出目录生成一次性测试密钥，离线检查自有签名/同证书重建、Manager 档案、错误证书/口令/应用 ID、缺失密钥、未知 patcher、已修补输入与已有输出拒绝，并检查日志/产物记录没有口令。它不连接手机，输入参数与产物脚本一致，另需 `KeyTool`。测试密钥仅用于夹具，口令在本次进程结束时清除，不应拿这些测试产物分发。
+`TestPatchedApk.ps1` 在新的输出目录生成一次性测试密钥，离线检查自有签名/同证书重建、Manager 档案、错误证书/口令/应用 ID、缺失密钥、未知 patcher、已修补输入与已有输出拒绝，并检查日志/产物记录没有口令。它不连接手机，输入参数与产物脚本一致，另需 `KeyTool`。提供可选 `RoamingModuleApk` 时还验证双模块字节和自有宿主签名；错误漫游包名及 Manager 模式误用均必须拒绝。测试密钥仅用于夹具，口令在本次进程结束时清除，不应拿这些测试产物分发。
 
 安装修补后的 B 站及同版本独立模块设置 App；后者提供当前许可与配置，必须保留。首次打开设置 App，接受条款并选择 NPatch 免 Root 通道，冷启动 B 站后验证回执。embed 无需安装 Manager，作用域固定在 APK 内；独立设置 App 不写宿主 UID 的 Remote Store，也不查询 Manager 作用域。更改普通设置后重启宿主；**更新模块代码时必须用最新模块 APK 重新修补宿主**，只更新设置 App 不会替换 APK 内模块。同版本码的开发包也必须核对 `verified.json` 中的模块哈希。
 

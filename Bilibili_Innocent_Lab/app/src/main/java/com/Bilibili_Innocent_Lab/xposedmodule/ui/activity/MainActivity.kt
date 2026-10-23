@@ -637,6 +637,43 @@ class MainActivity : SkinnedActivity() {
     /** 免 Root 配置只在用户明确开启后同步；回调不得持有 Activity 或 View。 */
     internal var noRootPrefsBridge: SharedPreferences? = null
     internal var liveApplyStatusView: NativeTextView? = null
+    internal var roamingCacheStatusView: NativeTextView? = null
+    internal var roamingCacheRestartView: NativeTextView? = null
+    private var roamingCacheQueryPending = false
+
+    internal fun checkRoamingCache() {
+        if (roamingCacheQueryPending) return
+        if (!roamingCompatEnabled || !NoRootSupportStore.isDesiredEnabled(applicationContext)) {
+            roamingCacheStatusView?.setText(if (!roamingCompatEnabled) R.string.roaming_cache_disabled else R.string.roaming_cache_unavailable)
+            roamingCacheRestartView?.visibility = View.GONE
+            return
+        }
+        roamingCacheQueryPending = true
+        roamingCacheStatusView?.setText(R.string.roaming_cache_waiting)
+        roamingCacheRestartView?.visibility = View.GONE
+        val ref = WeakReference(this)
+        com.Bilibili_Innocent_Lab.xposedmodule.runtime.noroot.NPatchRoamingStatus.query(applicationContext) { response ->
+            ref.get()?.let { activity ->
+                activity.roamingCacheQueryPending = false
+                if (activity.isFinishing || activity.isDestroyed) return@let
+                val status = when {
+                    !activity.roamingCompatEnabled -> com.Bilibili_Innocent_Lab.xposedmodule.hook.roaming.RoamingCacheStatus.DISABLED
+                    !NoRootSupportStore.isDesiredEnabled(activity.applicationContext) -> com.Bilibili_Innocent_Lab.xposedmodule.hook.roaming.RoamingCacheStatus.UNAVAILABLE
+                    else -> response
+                }
+                activity.roamingCacheStatusView?.setText(when (status) {
+                    com.Bilibili_Innocent_Lab.xposedmodule.hook.roaming.RoamingCacheStatus.DISABLED -> R.string.roaming_cache_disabled
+                    com.Bilibili_Innocent_Lab.xposedmodule.hook.roaming.RoamingCacheStatus.WAITING,
+                    com.Bilibili_Innocent_Lab.xposedmodule.hook.roaming.RoamingCacheStatus.REBUILDING -> R.string.roaming_cache_waiting
+                    com.Bilibili_Innocent_Lab.xposedmodule.hook.roaming.RoamingCacheStatus.READY_NEXT_START -> R.string.roaming_cache_ready
+                    com.Bilibili_Innocent_Lab.xposedmodule.hook.roaming.RoamingCacheStatus.REUSED -> R.string.roaming_cache_reused
+                    else -> R.string.roaming_cache_unavailable
+                })
+                activity.roamingCacheRestartView?.visibility = if (status ==
+                    com.Bilibili_Innocent_Lab.xposedmodule.hook.roaming.RoamingCacheStatus.READY_NEXT_START) View.VISIBLE else View.GONE
+            }
+        }
+    }
     private var liveApplyPending = false
 
     internal fun applyNPatchValues() {

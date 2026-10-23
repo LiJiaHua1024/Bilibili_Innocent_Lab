@@ -17,6 +17,7 @@ import com.Bilibili_Innocent_Lab.xposedmodule.runtime.RoamingSettingsLauncher
 import com.Bilibili_Innocent_Lab.xposedmodule.runtime.TargetAppStorage
 import com.Bilibili_Innocent_Lab.xposedmodule.runtime.TargetProcess
 import com.Bilibili_Innocent_Lab.xposedmodule.hook.config.HookConfigSource
+import com.Bilibili_Innocent_Lab.xposedmodule.hook.roaming.NPatchRoamingCache
 import com.Bilibili_Innocent_Lab.xposedmodule.hook.modern.ModernHookLog
 import com.Bilibili_Innocent_Lab.xposedmodule.hook.modern.ModernHookParam
 import com.Bilibili_Innocent_Lab.xposedmodule.hook.modern.ModernHookRuntime
@@ -98,6 +99,10 @@ import java.util.Collections
  *
  * 由 HookEntry 中的「漫游版本支持扩展」开关（PREF_ROAMING_COMPAT_ENABLED，
  * 默认关闭）控制；关闭或未安装 BiliRoaming 时本扩展不写入任何文件。
+ *
+ * NPatch 833 主进程走独立的 NPatchRoamingCache：内容身份绑定完整分析产物，安装时间
+ * 变化时有条件复用，缺失可恢复，损坏/内容变化/显式重建仍分析；不读 Legacy 回调表。
+ * 下文旧最小缓存和无条件时间刷新仅保留在标准框架/未知加载器的既有降级路径。
  */
 object RoamingCompatHook {
 
@@ -157,6 +162,7 @@ object RoamingCompatHook {
     /** 本进程本次启动解析出的开关状态（attach 阶段写入，供诊断阶段使用） */
     @Volatile
     private var resolvedEnabled = false
+    @Volatile private var npatchCacheManaged = false
 
     /**
      * biliAccounts.getAccessKey 补齐块：漫游全量分析在 B 站 9.0.0 上解析不出
@@ -711,6 +717,7 @@ object RoamingCompatHook {
                     .putBoolean(HookEntry.PREF_ROAMING_COMPAT_ENABLED, enabled)
                     .apply()
                 if (!enabled) {
+                    NPatchRoamingCache.disable()
                     // 关闭时立即移除 hookinfo.pb：即使 B 站正在运行，下次启动
                     // 漫游也会重新走原生获取流程，不再沿用开启期间写入的缓存。
                     restoreNativeRoaming(context)
@@ -749,14 +756,27 @@ object RoamingCompatHook {
         context: Context?,
         appClassLoader: ClassLoader?,
         prefs: HookConfigSource?,
-        authoritativeEnabled: Boolean? = null
+        authoritativeEnabled: Boolean? = null,
+        nPatchRuntime: Boolean = false,
+        adapterReset: Long = 0L
     ) {
         val ctx = context ?: run {
             logInfo("br_no_ctx", "$LOG_PREFIX attach 无上下文，跳过（callApplicationOnCreate 兜底重试）")
             return
         }
         InjectedUiLocale.initializeHost(ctx)
+        // Locale initialization is shared; only roaming cache ownership is main-process-only.
+        if (nPatchRuntime && !TargetProcess.isMainProcess(ctx, HookEntry.TARGET_PACKAGE)) return
         ensureReceiverRegistered(ctx)
+        if (nPatchRuntime && TargetProcess.isMainProcess(ctx, HookEntry.TARGET_PACKAGE)) {
+            val enabled = authoritativeEnabled == true
+            resolvedEnabled = enabled
+            val runtime = hookRuntime
+            if (runtime != null) {
+                npatchCacheManaged = NPatchRoamingCache.start(ctx, runtime, adapterReset, enabled, appClassLoader)
+                if (npatchCacheManaged) return
+            }
+        }
         ensureHookInfoCache(ctx, appClassLoader, prefs, authoritativeEnabled)
     }
 
@@ -1020,6 +1040,10 @@ object RoamingCompatHook {
      * @param appClassLoader 目标 App 的 ClassLoader（保留参数，供后续扩展使用）
      */
     fun reportScanResult(context: Context?, appClassLoader: ClassLoader?) {
+        if (npatchCacheManaged) {
+            context?.let(NPatchRoamingCache::afterApplicationCreated)
+            return
+        }
         runCatching {
             val cacheFile = context?.let { File(it.cacheDir, HOOK_INFO_FILE_NAME) } ?: cacheFile()
             if (cacheFile.exists()) {

@@ -1576,6 +1576,34 @@ internal fun MainActivity.experimentalFeaturesCard(
                     textColor = colorResource(R.color.colorTextDark)
                     textSize = 12f
                 }
+                TextView(lparams = LayoutParams(widthMatchParent = true)) {
+                    text = stringResource(R.string.roaming_cache_check)
+                    textColor = colorResource(R.color.colorTextGray)
+                    textSize = 15f
+                    setPadding(12.dp, 10.dp, 12.dp, 10.dp)
+                    background = selfRippleBackground(10f)
+                    isClickable = true
+                    isFocusable = true
+                    setOnClickListener { checkRoamingCache() }
+                }
+                TextView(lparams = LayoutParams(widthMatchParent = true)) {
+                    textColor = colorResource(R.color.colorTextGray)
+                    textSize = 12f
+                    setLineSpacing(6f, 1f)
+                    roamingCacheStatusView = this
+                }
+                TextView(lparams = LayoutParams(widthMatchParent = true)) {
+                    text = stringResource(R.string.roaming_cache_restart)
+                    textColor = colorResource(R.color.colorTextGray)
+                    textSize = 15f
+                    setPadding(12.dp, 10.dp, 12.dp, 10.dp)
+                    background = selfRippleBackground(10f)
+                    visibility = View.GONE
+                    isClickable = true
+                    isFocusable = true
+                    setOnClickListener { showRestartConfirmDialog(it) }
+                    roamingCacheRestartView = this
+                }
                 // 预见式返回动画（Android 14+）：实验性开关，运行时切换 window 的
                 // OnBackInvokedCallback 体系，返回时显示系统缩放预览动画。
                 // Android 16（API 36）+ 系统对 targetSdk 36+ 的应用强制启用

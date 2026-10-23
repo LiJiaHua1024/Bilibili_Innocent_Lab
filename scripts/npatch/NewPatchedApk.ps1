@@ -9,6 +9,7 @@ param(
     [Parameter(Mandatory)] [string] $Java21,
     [Parameter(Mandatory)] [string] $ApkSigner,
     [Parameter(Mandatory)] [string] $OutputDirectory,
+    [string] $RoamingModuleApk,
     [string] $SigningKeyStore,
     [string] $SigningKeyAlias,
     [string] $SigningStorePasswordEnvironment,
@@ -23,6 +24,9 @@ $expectedLibraries = [ordered]@{
     'x86_64' = '7933cae217a3f0183d15fee01674d682d4d8eb6a6f227d208cf6bbbc356ca5d1'
 }
 $modulePackage = 'com.Bilibili_Innocent_Lab.xposedmodule'
+if ($RoamingModuleApk -and $Mode -ne 'embedded') {
+    throw 'RoamingModuleApk is only for embedded mode; configure the Manager scope separately.'
+}
 if (!$Aapt2) {
     $Aapt2 = @('aapt2.exe','aapt2') | ForEach-Object { Join-Path (Split-Path $ApkSigner) $_ } |
         Where-Object { Test-Path -LiteralPath $_ } | Select-Object -First 1
@@ -99,6 +103,31 @@ try {
         throw 'Module APK has an unsupported modern API profile.'
     }
 } finally { $moduleArchive.Dispose() }
+$roamingProfile = $null
+if ($RoamingModuleApk) {
+    $RoamingModuleApk = (Resolve-Path -LiteralPath $RoamingModuleApk).Path
+    $roamingSigner = Get-Signer $RoamingModuleApk
+    $roamingBadging = & $Aapt2 dump badging $RoamingModuleApk 2>&1
+    if ($LASTEXITCODE -ne 0) { throw 'Roaming APK manifest inspection failed.' }
+    $roamingPackageLine = $roamingBadging | Where-Object { "$_" -match '^package: ' } | Select-Object -First 1
+    if ("$roamingPackageLine" -notmatch "^package: name='me\.iacn\.biliroaming' versionCode='([0-9]+)' versionName='([^']*)'") {
+        throw 'Roaming APK must use the me.iacn.biliroaming application ID.'
+    }
+    $roamingVersion = $Matches[1]; $roamingVersionName = $Matches[2]
+    $roamingArchive = [IO.Compression.ZipFile]::OpenRead($RoamingModuleApk)
+    try {
+        $entry = (Read-ZipText $roamingArchive 'assets/xposed_init').Trim()
+        $names = @($entry -split '\r?\n' | Where-Object { $_.Trim() -and !$_.Trim().StartsWith('#') })
+        if (!$names.Count -or @($names | Where-Object { $_.Trim() -notmatch '^[A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*)*$' }).Count) {
+            throw 'Roaming APK has no valid legacy module entry.'
+        }
+    } finally { $roamingArchive.Dispose() }
+    $roamingProfile = [ordered]@{
+        packageName = 'me.iacn.biliroaming'; versionCode = $roamingVersion; versionName = $roamingVersionName
+        sha256 = (Get-FileHash -LiteralPath $RoamingModuleApk -Algorithm SHA256).Hash.ToLowerInvariant()
+        certificateSha256 = $roamingSigner
+    }
+}
 $referenceSigner = Get-Signer $ReferencePatchedApk
 if (!$SigningKeyStore -and $referenceSigner -ne '08b00b38cd98762bf261952c2c1014c09208ac2c278fd3085421994a516c3e23') {
     throw 'Reference uses a custom certificate; provide its matching custom signing options.'
@@ -114,6 +143,7 @@ $output = (New-Item -ItemType Directory -Path $OutputDirectory).FullName
 $log = Join-Path $output 'patch.log'
 # 固定普通 entry-hook 和等级 2；模式来自显式枚举，不接受追加任意参数。
 [string[]]$modeArguments = if ($Mode -eq 'embedded') { @('--embed', $ModuleApk) } else { @('--manager') }
+if ($RoamingModuleApk) { $modeArguments += @('--embed', $RoamingModuleApk) }
 & $Java21 -cp "$BcprovJar;$PatcherJar" (Join-Path $PSScriptRoot 'RunPatcher.java') `
     @modeArguments --sigbypasslv 2 -o $output $OriginalApk *> $log
 if ($LASTEXITCODE -ne 0) { throw "Patcher failed; inspect $log" }
@@ -138,6 +168,11 @@ try {
     }
     $embedded = $archive.GetEntry("assets/npatch/modules/$modulePackage.apk")
     $origin = $archive.GetEntry('assets/npatch/origin.apk')
+    $roaming = $archive.GetEntry('assets/npatch/modules/me.iacn.biliroaming.apk')
+    if (($roamingProfile -and ($null -eq $roaming -or (Get-EntryHash $roaming) -ne $roamingProfile.sha256)) -or
+        (!$roamingProfile -and $null -ne $roaming)) {
+        throw 'Embedded roaming bytes differ from the explicitly supplied APK.'
+    }
     if ($null -eq $origin -or (Get-EntryHash $origin) -ne $originalHash -or
         ($Mode -eq 'embedded' -and ($null -eq $embedded -or (Get-EntryHash $embedded) -ne $moduleHash)) -or
         ($Mode -eq 'manager' -and $null -ne $embedded)) {
@@ -152,7 +187,7 @@ try {
 } finally { $archive.Dispose() }
 $signer = Get-Signer $patched
 if ($signer -ne $referenceSigner) { throw 'Signing certificate mismatch; do not install this output APK.' }
-[ordered]@{
+$verification = [ordered]@{
     mode = $Mode; signatureLevel = 2; injectdex = $false
     loaderProfile = '833-manager-binder-and-trivial-tls-v1'; nativeLibraries = $expectedLibraries
     patcherSha256 = $expectedPatcher; originalSha256 = $originalHash; moduleSha256 = $moduleHash
@@ -162,6 +197,8 @@ if ($signer -ne $referenceSigner) { throw 'Signing certificate mismatch; do not 
     moduleVersionCode = $moduleVersion; moduleVersionName = $moduleVersionName
     moduleEntry = $moduleEntry
     signing = if ($SigningKeyStore) { 'custom-keystore' } else { 'npatch-test-key' }
-} | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $output 'verified.json') -Encoding utf8
+}
+if ($roamingProfile) { $verification.roamingModule = $roamingProfile }
+$verification | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath (Join-Path $output 'verified.json') -Encoding utf8
 Write-Output "Verified $Mode APK: $patched"
 Write-Output "Evidence: $(Join-Path $output 'verified.json')"

@@ -8,7 +8,8 @@ param(
     [Parameter(Mandatory)] [string] $Java21,
     [Parameter(Mandatory)] [string] $ApkSigner,
     [Parameter(Mandatory)] [string] $KeyTool,
-    [Parameter(Mandatory)] [string] $OutputDirectory
+    [Parameter(Mandatory)] [string] $OutputDirectory,
+    [string] $RoamingModuleApk
 )
 $ErrorActionPreference = 'Stop'
 if (Test-Path -LiteralPath $OutputDirectory) { throw 'Choose a new test output directory.' }
@@ -67,6 +68,20 @@ try {
     $profile = Get-Content (Join-Path $manager.OutputDirectory 'verified.json') -Raw | ConvertFrom-Json
     if ($profile.mode -ne 'manager') { throw 'Manager artifact has the wrong mode.' }
     $results.Add('PASS manager artifact with fixed native loader and no embedded module')
+    if ($RoamingModuleApk) {
+        $roaming = $signed.Clone(); $roaming.RoamingModuleApk = $RoamingModuleApk
+        $roaming.OutputDirectory = Join-Path $root 'custom-roaming'
+        & "$PSScriptRoot/NewEmbeddedApk.ps1" @roaming | Out-Null
+        $roamingResult = Get-Content (Join-Path $roaming.OutputDirectory 'verified.json') -Raw | ConvertFrom-Json
+        if ($roamingResult.roamingModule.packageName -ne 'me.iacn.biliroaming' -or
+            $roamingResult.roamingModule.sha256 -ne (Get-FileHash -LiteralPath $RoamingModuleApk -Algorithm SHA256).Hash.ToLowerInvariant() -or
+            $roamingResult.certificateSha256 -ne $first.certificateSha256) { throw 'Roaming bytes or host signing chain changed.' }
+        $results.Add('PASS optional roaming bytes and custom host certificate retained')
+    }
+    $bad = $common.Clone(); $bad.Mode = 'manager'; $bad.RoamingModuleApk = $ModuleApk; $bad.OutputDirectory = Join-Path $root 'manager-roaming'
+    Expect-Rejection 'roaming embedded option in Manager mode' $bad
+    $bad = $common.Clone(); $bad.RoamingModuleApk = $ModuleApk; $bad.OutputDirectory = Join-Path $root 'wrong-roaming-package'
+    Expect-Rejection 'wrong roaming application ID' $bad
     $bad = $common.Clone(); $bad.OutputDirectory = Join-Path $root 'partial'; $bad.SigningKeyStore = $key
     Expect-Rejection 'partial signing configuration' $bad
     $bad = $common.Clone(); $bad.ReferencePatchedApk = $seed; $bad.OutputDirectory = Join-Path $root 'missing-key'
@@ -119,6 +134,8 @@ try {
     if (@($logs | Where-Object { $_.Contains($secret) -or $_.Contains($wrongSecret) }).Count) { throw 'Signing secret appeared in a log.' }
     $results.Add('PASS password absent from logs and artifact metadata')
     $results | Set-Content (Join-Path $root 'results.log')
+    # An expected native signing failure must not make a fully passed suite exit as failed.
+    $global:LASTEXITCODE = 0
     $results
 } finally {
     [Environment]::SetEnvironmentVariable($variable, $null, 'Process')

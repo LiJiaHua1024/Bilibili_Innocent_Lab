@@ -4751,7 +4751,9 @@ class HookEntry : XposedModule() {
                 attachedContext,
                 biliClassLoader,
                 prefs = null,
-                authoritativeEnabled = roamingCompatEnabled
+                authoritativeEnabled = roamingCompatEnabled,
+                nPatchRuntime = nPatchStartup.get(),
+                adapterReset = versionAdapterResetTimestamp
             )
             if (processName == TARGET_PACKAGE) {
                 HostRuntimeDiagnosticsBridge.recordInstallation(
@@ -4964,6 +4966,9 @@ class HookEntry : XposedModule() {
                     }
                     if (processName == TARGET_PACKAGE) {
                         HostRuntimeDiagnosticsBridge.recordInstallChainCompleted()
+                        if (live != null) runCatching {
+                            com.Bilibili_Innocent_Lab.xposedmodule.runtime.noroot.NPatchRoamingStatus.registerHost(appContext)
+                        }.onFailure { frameworkLog("[BIL] 漫游缓存查询不可用") }
                         if (live != null) runCatching {
                             com.Bilibili_Innocent_Lab.xposedmodule.runtime.noroot.NPatchLiveConfig.registerHost(
                                 appContext, live, loadedModuleArtifact) {

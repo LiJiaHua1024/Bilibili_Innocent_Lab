@@ -107,7 +107,14 @@
     <string name="paused_page_ad_enable">隐藏视频暂停页广告</string>
     <string name="paused_page_ad_tip">开启后不再展示某些视频暂停后可能弹出的推广广告</string>
     <string name="roaming_compat_enable">漫游版本支持扩展</string>
-    <string name="roaming_compat_tip">为漫游提供更高版本兼容支持，开启后需要重启两次哔哩哔哩生效。请确保在开启本功能前，在单独使用漫游的情况下冷启动宿主以确保其对宿主构建完整缓存。</string>
+    <string name="roaming_compat_tip">需先启用兼容的哔哩漫游。NPatch 下宿主与漫游内容一致时复用已验证的分析缓存；首次构建或内容变化仍需分析，请先检查结果再继续重启。未知加载器沿用原恢复流程。</string>
+    <string name="roaming_cache_check">检查 NPatch 漫游缓存</string>
+    <string name="roaming_cache_waiting">正在等待当前宿主完成分析，请保持宿主运行，稍后再检查。</string>
+    <string name="roaming_cache_disabled">当前宿主进程未开启漫游扩展，请开启后先冷启动宿主。</string>
+    <string name="roaming_cache_ready">分析缓存已就绪并备份，再重启一次即可使用；此状态不代表所有漫游功能均已生效。</string>
+    <string name="roaming_cache_reused">当前进程已复用内容匹配的分析缓存，无需为缓存再次重启。</string>
+    <string name="roaming_cache_unavailable">尚无可验证的缓存结果。请确认兼容漫游已加载，检查其日志并冷启动后重试；需要重新分析时可使用“重新适配当前版本”。</string>
+    <string name="roaming_cache_restart">缓存已就绪，继续重启</string>
     <string name="gamecard_ad_settings">视频详细页广告</string>
     <string name="gamecard_ad_enable">隐藏视频提及区域中的游戏广告</string>
     <string name="gamecard_ad_tip">开启后净化带有游戏标签的视频下的“视频提及”广告</string>

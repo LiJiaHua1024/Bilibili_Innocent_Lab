@@ -334,6 +334,8 @@ internal fun MainActivity.showAdaptConfirmDialog(anchor: View? = null) {
                     runCatching { VersionAdapter.clearCache(activity, runCatching { prefs() }.getOrNull()) }
                     if (NoRootSupportStore.isDesiredEnabled(applicationContext)) {
                         NoRootSupportStore.markAdapterReset(applicationContext)
+                        activity.roamingCacheStatusView?.setText(R.string.roaming_cache_unavailable)
+                        activity.roamingCacheRestartView?.visibility = View.GONE
                         synchronizeNoRootSupportIfEnabled()
                     }
                     activity.toast(getString(R.string.adapt_manual_done))

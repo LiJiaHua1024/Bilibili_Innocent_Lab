@@ -107,7 +107,14 @@
     <string name="paused_page_ad_enable">隱藏影片暫停頁廣告</string>
     <string name="paused_page_ad_tip">啟用後，不再顯示部分影片暫停時可能彈出的宣傳廣告</string>
     <string name="roaming_compat_enable">漫遊版本相容性擴充</string>
-    <string name="roaming_compat_tip">為漫遊模組提供較新版本的相容支援；啟用後需重新啟動 Bilibili 兩次才會生效。請確保在啟用本功能前，先在僅使用漫遊模組的情況下冷啟動宿主，以確保漫遊已為該宿主建立完整快取。</string>
+    <string name="roaming_compat_tip">需先啟用相容的嗶哩漫遊。NPatch 下宿主與漫遊內容一致時重用已驗證的分析快取；首次建立或內容變更仍需分析，請先檢查結果再繼續重新啟動。未知載入器沿用原恢復流程。</string>
+    <string name="roaming_cache_check">檢查 NPatch 漫遊快取</string>
+    <string name="roaming_cache_waiting">正在等待目前宿主完成分析，請保持宿主執行，稍後再檢查。</string>
+    <string name="roaming_cache_disabled">目前宿主程序未開啟漫遊擴充，請開啟後先冷啟動宿主。</string>
+    <string name="roaming_cache_ready">分析快取已就緒並備份，再重新啟動一次即可使用；此狀態不代表所有漫遊功能均已生效。</string>
+    <string name="roaming_cache_reused">目前程序已重用內容相符的分析快取，無需為快取再次重新啟動。</string>
+    <string name="roaming_cache_unavailable">尚無可驗證的快取結果。請確認相容漫遊已載入，檢查其記錄並冷啟動後重試；需要重新分析時可使用「重新適配目前版本」。</string>
+    <string name="roaming_cache_restart">快取已就緒，繼續重新啟動</string>
     <string name="gamecard_ad_settings">影片詳細頁廣告</string>
     <string name="gamecard_ad_enable">隱藏影片提及區域中的遊戲廣告</string>
     <string name="gamecard_ad_tip">啟用後，淨化帶有遊戲標籤之影片下方的「影片提及」廣告</string>
