@@ -1528,7 +1528,7 @@
     <string name="npatch_native_busy">准备中 / 忙碌</string>
     <string name="npatch_native_restart">需要重启</string>
     <string name="npatch_startup_latest">最近授权 %1$d ms；Hook 安装 %2$s ms；重试 %3$d 次；选中通道 %4$s；结果 %5$s。</string>
-    <string name="npatch_startup_history">已采集启动 %1$d/8 次；授权 + Hook 的 p50 %2$d ms、max %3$d ms。仅代表已采集样本，不是完整冷启动。</string>
+    <string name="npatch_startup_history">已采集安装耗时：%1$d/8；授权 + Hook 的 p50：%2$s ms，max：%3$s ms。排除尚未安装的样本，不是完整冷启动。</string>
     <string name="npatch_startup_routes">决策前已收通道结果：%1$s。未完成或取消的通道保持未知。</string>
     <string name="npatch_guard_failures">当前进程已拦截的任务失败：%1$d 次。</string>
     <string name="npatch_crash_summary">崩溃证据：%1$s（%2$d 份）；Media 日志：%3$s。Media 仅在导出支持包时采集。</string>
@@ -1543,4 +1543,10 @@
     <string name="npatch_module_recover_manager">先冷启动宿主并刷新；若版本仍不同或持续无响应，请在 NPatch Manager 中重新选择当前模块 APK，确认作用域后再冷启动。</string>
     <string name="npatch_open_manager">打开 NPatch Manager</string>
     <string name="npatch_manager_launch_failed">未找到可访问的 NPatch Manager 入口。</string>
+    <string name="npatch_health_summary">已采集启动：%1$d；其中取得授权：%2$d；样本内重试合计：%3$d。每次已观测启动保留最后一次尝试。</string>
+    <string name="npatch_health_route">%1$s：授权取得数 / 已收结果数 = %2$d / %3$d（%4$s）。</string>
+    <string name="npatch_health_routes_scope">比率仅覆盖决策前已收到的运输结果。未完成、取消或迟到的通道均保持未知。</string>
+    <string name="npatch_manager_health">Manager Provider 可达性：%1$s。与宿主当前授权独立。</string>
+    <string name="npatch_manager_reachable">可达</string>
+    <string name="npatch_manager_not_applicable">无需检测：嵌入模式不依赖 Manager</string>
 </resources>

@@ -1528,7 +1528,7 @@
     <string name="npatch_native_busy">preparing / busy</string>
     <string name="npatch_native_restart">restart required</string>
     <string name="npatch_startup_latest">Latest admission %1$d ms; Hook installation %2$s ms; retries %3$d; selected transport %4$s; result %5$s.</string>
-    <string name="npatch_startup_history">Observed boots %1$d/8; admission + Hook p50 %2$d ms, max %3$d ms. Only collected sessions, not full cold-start time.</string>
+    <string name="npatch_startup_history">Collected installation timings: %1$d/8; admission + Hook p50: %2$s ms; max: %3$s ms. Pending installations excluded; not total cold-start time.</string>
     <string name="npatch_startup_routes">Transport results consumed before the decision: %1$s. Pending/cancelled routes are unknown.</string>
     <string name="npatch_guard_failures">Protected task failures in this process: %1$d.</string>
     <string name="npatch_crash_summary">Crash evidence: %1$s (%2$d records); Media log: %3$s. Media is collected only on support export.</string>
@@ -1543,4 +1543,10 @@
     <string name="npatch_module_recover_manager">Cold-start the host and refresh. If versions still differ or no response arrives, reselect the current module APK in NPatch Manager, confirm scope, then cold-start again.</string>
     <string name="npatch_open_manager">Open NPatch Manager</string>
     <string name="npatch_manager_launch_failed">No accessible NPatch Manager entry is available.</string>
+    <string name="npatch_health_summary">Observed boots: %1$d; admission grants: %2$d; retries across sampled boots: %3$d. Latest attempt per observed boot.</string>
+    <string name="npatch_health_route">%1$s: grants / completed results = %2$d / %3$d (%4$s).</string>
+    <string name="npatch_health_routes_scope">Rates cover transport results consumed before the admission decision. Pending, cancelled and late routes remain unknown.</string>
+    <string name="npatch_manager_health">Manager provider reachability: %1$s. This is independent of host admission.</string>
+    <string name="npatch_manager_reachable">reachable</string>
+    <string name="npatch_manager_not_applicable">not applicable: embed does not depend on Manager</string>
 </resources>

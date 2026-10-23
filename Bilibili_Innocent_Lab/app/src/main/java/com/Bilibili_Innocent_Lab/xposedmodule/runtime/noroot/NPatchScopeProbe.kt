@@ -47,6 +47,21 @@ internal object NPatchScopeProbe {
 
     fun cached(context: Context): ScopeState = effectiveScope(NPatchRuntimeProfiles.read(context).mode, cached)
 
+    /** Diagnostics worker only. Reuse the bounded read-only provider query; embed never probes Manager. */
+    fun probeReachability(context: Context): NPatchManagerReachability {
+        check(android.os.Looper.myLooper() != android.os.Looper.getMainLooper())
+        val patch = NPatchRuntimeProfiles.read(context)
+        if (!patch.markerPresent) return NPatchManagerReachability.NOT_APPLICABLE
+        if (patch.mode != NPatchMode.MANAGER) return classifyReachability(patch.mode, ScopeState.UNKNOWN)
+        return classifyReachability(patch.mode, probeWithTimeout(context))
+    }
+
+    internal fun classifyReachability(mode: NPatchMode, scope: ScopeState): NPatchManagerReachability = when {
+        mode == NPatchMode.EMBEDDED -> NPatchManagerReachability.NOT_APPLICABLE
+        mode == NPatchMode.MANAGER && scope != ScopeState.UNKNOWN -> NPatchManagerReachability.REACHABLE
+        else -> NPatchManagerReachability.UNKNOWN
+    }
+
     /** embed 的作用域固定在 APK 内，Manager 的空列表或旧查询结果不能否决它。 */
     internal fun effectiveScope(mode: NPatchMode, managerScope: ScopeState): ScopeState =
         if (mode == NPatchMode.EMBEDDED) ScopeState.UNKNOWN else managerScope

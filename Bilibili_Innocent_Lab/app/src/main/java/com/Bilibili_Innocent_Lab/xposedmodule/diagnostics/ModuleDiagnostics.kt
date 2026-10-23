@@ -190,7 +190,9 @@ internal data class ModuleDiagnosticInputs(
     val nPatchProcesses: List<com.Bilibili_Innocent_Lab.xposedmodule.runtime.noroot.NPatchProcessSnapshot> = emptyList(),
     val nPatchObservedModuleVersions: List<Long> = emptyList(),
     val nPatchPreviousModuleVersion: Long = 0L,
-    val nPatchPreviousModuleAt: Long = 0L
+    val nPatchPreviousModuleAt: Long = 0L,
+    val nPatchManagerReachability: com.Bilibili_Innocent_Lab.xposedmodule.runtime.noroot.NPatchManagerReachability =
+        com.Bilibili_Innocent_Lab.xposedmodule.runtime.noroot.NPatchManagerReachability.NOT_APPLICABLE
 )
 
 /**

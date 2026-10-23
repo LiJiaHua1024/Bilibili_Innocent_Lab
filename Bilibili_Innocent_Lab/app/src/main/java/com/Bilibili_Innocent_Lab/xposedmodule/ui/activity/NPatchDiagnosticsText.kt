@@ -71,6 +71,11 @@ internal fun nPatchDiagnosticsDetails(context: Context, input: ModuleDiagnosticI
         if (input.noRootSyncDetail?.startsWith("manager_cache_") == true) {
             add(context.getString(R.string.npatch_profile_cache_unavailable))
         }
+        add(context.getString(R.string.npatch_manager_health, context.getString(when (input.nPatchManagerReachability) {
+            com.Bilibili_Innocent_Lab.xposedmodule.runtime.noroot.NPatchManagerReachability.REACHABLE -> R.string.npatch_manager_reachable
+            com.Bilibili_Innocent_Lab.xposedmodule.runtime.noroot.NPatchManagerReachability.NOT_APPLICABLE -> R.string.npatch_manager_not_applicable
+            else -> R.string.npatch_profile_unknown
+        })))
         add(context.getString(R.string.npatch_process_observation))
         if (input.nPatchProcesses.isEmpty()) add(context.getString(R.string.npatch_process_unknown))
         input.nPatchProcesses.forEach { row ->
@@ -88,12 +93,18 @@ internal fun nPatchDiagnosticsDetails(context: Context, input: ModuleDiagnosticI
             add(context.getString(R.string.npatch_process_native, bitness,
                 nativeStateText(context, row.dexKitState), nativeStateText(context, row.frameNativeState)))
             val samples = row.startups
+            val health = com.Bilibili_Innocent_Lab.xposedmodule.runtime.noroot.NPatchHealth.summarize(samples)
+            add(context.getString(R.string.npatch_health_summary, health.observedBoots, health.grantedBoots, health.retryCount))
+            add(context.getString(R.string.npatch_startup_history, health.measuredBoots,
+                health.p50Ms?.toString() ?: unknown, health.maxMs?.toString() ?: unknown))
+            health.routes.forEach { route ->
+                add(context.getString(R.string.npatch_health_route, route.route, route.granted, route.completed,
+                    route.grantedPercent?.let { "$it%" } ?: unknown))
+            }
+            add(context.getString(R.string.npatch_health_routes_scope))
             samples.lastOrNull()?.let { latest ->
                 add(context.getString(R.string.npatch_startup_latest, latest.admissionMs,
                     latest.installMs?.toString() ?: unknown, latest.attempt - 1, latest.selectedRoute, latest.result))
-                add(context.getString(R.string.npatch_startup_history, samples.size,
-                    com.Bilibili_Innocent_Lab.xposedmodule.runtime.noroot.NPatchStartupCodec.p50(samples.map { it.totalMs }) ?: 0L,
-                    samples.maxOf { it.totalMs }))
                 add(context.getString(R.string.npatch_startup_routes, latest.routes.joinToString(", ") { "${it.route}=${it.result}" }))
             }
             add(context.getString(R.string.npatch_guard_failures, row.guardedFailures))

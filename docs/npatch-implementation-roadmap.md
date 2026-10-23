@@ -526,3 +526,13 @@ WebView 对照：`captures/npatch-stage2-web.png` 与 `npatch-stage2-web-activit
 Debug/AndroidTest 构建通过。首轮全量测试中无关的 SponsorSegmentRepositoryTest 短截止时间用例等待超时，保留 `drift/gates.log`，未修改源码或放宽断言；同源顺序重跑 3775 JVM（0 失败、0 错误、1 跳过）通过，34 秒。随后审阅并修正本次历史版本文案的格式参数警告；最终源码再次顺序通过 3775 JVM（1 分 21 秒）与 Debug/AndroidTest/快速 Lint。此前 8 秒的快速检查为复用主源码分析，不代表重新分析耗时；原 3 项错误基线未改，守护进程结束后已核对退出。
 
 有线实机 `captures/npatch-stage4/drift/`：只更新设置 App 时，同版本内嵌内容差异在正常 UI 明确显示；重新修补并同签名覆盖后，本次模块版本 21、内嵌内容一致分别显示。embed/Manager 真实进程检查分别通过（6.708/7.756 秒）。Manager 的恢复按钮实际打开 `top.nkbe.npatch`，未改作用域或系统设置。数字版本不一致分支为 JVM 验证，本轮未为制造差异改写版本号；旧协议没有被伪装成已识别版本。
+
+### 2026-10-23 阶段 4.4：授权健康度汇总
+
+版本漂移单元已提交为 `29adabef`。健康度按每进程最多 8 次已采集启动汇总授权取得数、重试数，以及 provider/binder/local/broadcast 的“取得授权 / 决策前已收结果”与比率。没有收到的、取消和迟到通道保持未知，不算失败，也不冒充全部请求命中率。耗时 p50/max 排除尚无安装耗时的样本；当前配置来源和选中运输通道继续独立展示。
+
+Manager 可达性复用既有有界 Provider 体检。可达不等于已在作用域或宿主已获准；未知不等于未安装。embed 不查询 Manager。检查到通用诊断采集器也供遥测使用，最终将体检限定到显式诊断工作线程，并通过参数注入，自动遥测不会新增此查询。任务保护仅输出有界总数，不输出 key。
+
+新增 4 项 JVM 测试覆盖未知运输分母、未安装样本、重试/启动区分、重复刷新去重及 Manager/作用域/模式边界。最终 3779 JVM（0 失败、0 错误、1 跳过，1 分 2 秒）、Debug/AndroidTest 和快速 Lint（4 分 3 秒）通过，251 Warning、原 3 项错误基线不变。Gradle 停止后仍驻留的项目专属 Kotlin 编译守护进程，已在确认无项目 GradleDaemon 后按完整命令行归属关闭并核对，无全局 Java 进程清理。
+
+有线机 `captures/npatch-stage4/health-final/`：Manager/embed 实际进程查询分别通过（6.224/7.196 秒），均安装 49 Hook；正常 UI 确认 Manager Provider 可达、四路已收结果分母、样本数与耗时。embed 显示“无需检测：嵌入模式不依赖 Manager”；再次刷新后采集启动数保持 1，不把刷新变成新启动。统计仅覆盖主动采集窗口，没有新增启动期落盘或缓存授权。后续剩余 N6 ZIP 支持包出口。

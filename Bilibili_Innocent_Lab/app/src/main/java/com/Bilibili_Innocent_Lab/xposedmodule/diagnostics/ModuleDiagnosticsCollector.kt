@@ -37,7 +37,9 @@ internal object ModuleDiagnosticsCollector {
         nPatchProcesses: List<com.Bilibili_Innocent_Lab.xposedmodule.runtime.noroot.NPatchProcessSnapshot> = emptyList(),
         nPatchEmbeddedBuild: com.Bilibili_Innocent_Lab.xposedmodule.runtime.noroot.NPatchEmbeddedBuildState =
             com.Bilibili_Innocent_Lab.xposedmodule.runtime.noroot.NPatchEmbeddedBuildState.UNKNOWN,
-        nPatchObservedModuleVersions: List<Long> = emptyList()
+        nPatchObservedModuleVersions: List<Long> = emptyList(),
+        nPatchManagerReachability: com.Bilibili_Innocent_Lab.xposedmodule.runtime.noroot.NPatchManagerReachability =
+            com.Bilibili_Innocent_Lab.xposedmodule.runtime.noroot.NPatchManagerReachability.UNKNOWN
     ): ModuleDiagnosticSnapshot {
         val appContext = context.applicationContext ?: context
         @Suppress("DEPRECATION")
@@ -189,7 +191,8 @@ internal object ModuleDiagnosticsCollector {
                 nPatchProcesses = nPatchProcesses,
                 nPatchObservedModuleVersions = nPatchObservedModuleVersions,
                 nPatchPreviousModuleVersion = noRootStatus.heartbeatModuleVersion,
-                nPatchPreviousModuleAt = noRootStatus.heartbeatReceivedAt
+                nPatchPreviousModuleAt = noRootStatus.heartbeatReceivedAt,
+                nPatchManagerReachability = nPatchManagerReachability
             )
         )
     }

@@ -120,6 +120,7 @@ internal class DiagnosticsViewModel : ViewModel() {
                     nPatchProcesses = com.Bilibili_Innocent_Lab.xposedmodule.runtime.noroot.NPatchStartupHistory.enrich(context,
                         observation.processes),
                     nPatchObservedModuleVersions = observation.versions,
+                    nPatchManagerReachability = com.Bilibili_Innocent_Lab.xposedmodule.runtime.noroot.NPatchScopeProbe.probeReachability(context),
                     nPatchEmbeddedBuild = com.Bilibili_Innocent_Lab.xposedmodule.runtime.noroot.NPatchEmbeddedBuild.read(context)
                 )
             }.onSuccess { snapshot ->
