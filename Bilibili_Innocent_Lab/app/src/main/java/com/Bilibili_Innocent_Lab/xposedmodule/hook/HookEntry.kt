@@ -2684,7 +2684,8 @@ class HookEntry : XposedModule() {
                 com.Bilibili_Innocent_Lab.xposedmodule.hook.feature.privacy.PrivacyFeatureRuntime(
                     attachedContext,
                     prefs.getBoolean(FeaturePreferences.NO_LOGIN_ENABLED, false),
-                    prefs.getBoolean(FeaturePreferences.INCOGNITO_ENABLED, false)
+                    prefs.getBoolean(FeaturePreferences.INCOGNITO_ENABLED, false),
+                    prefs.getBoolean(FeaturePreferences.SKIP_GUEST_ONBOARDING, false)
                 ).installers()
             )
             // 判定结果硬盘缓存：宿主私有 files/bil_semantic/<面>.bin。启动时先在后台删掉未启用面的文件，

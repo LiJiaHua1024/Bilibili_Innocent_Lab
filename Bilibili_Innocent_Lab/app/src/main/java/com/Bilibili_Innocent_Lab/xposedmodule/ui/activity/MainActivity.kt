@@ -310,6 +310,7 @@ class MainActivity : SkinnedActivity() {
     internal var homeRecommendBlockedAuthors = ""
     internal var noLoginEnabled = false
     internal var incognitoEnabled = false
+    internal var skipGuestOnboarding = false
     internal var homeRecommendSectionPickEnabled = false
     internal var blockAiDeclaredVideos = false
     internal var blockAiDeclaredVideosStrongMode = false
@@ -4327,6 +4328,7 @@ class MainActivity : SkinnedActivity() {
         val uiSettings = ModuleUiSettings.read(modulePrefs)
         noLoginEnabled = uiSettings.bool(FeaturePreferences.NO_LOGIN_ENABLED)
         incognitoEnabled = uiSettings.bool(FeaturePreferences.INCOGNITO_ENABLED)
+        skipGuestOnboarding = uiSettings.bool(FeaturePreferences.SKIP_GUEST_ONBOARDING)
         noRootDesiredEnabled = NoRootSupportStore.isDesiredEnabled(applicationContext)
         if (
             modulePrefs != null &&

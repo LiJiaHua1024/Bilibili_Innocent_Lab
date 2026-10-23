@@ -7,6 +7,7 @@ internal object FeaturePreferences {
     /** 独立、默认关闭；修改后重启宿主生效。 */
     const val NO_LOGIN_ENABLED = "no_login_enabled"
     const val INCOGNITO_ENABLED = "incognito_enabled"
+    const val SKIP_GUEST_ONBOARDING = "skip_guest_onboarding"
 
     const val HIDE_VIDEO_DETAIL_APP_PROMOTION = "hide_video_detail_app_promotion"
     const val HIDE_LIVE_HOME_PROMOTION = "hide_live_home_promotion"

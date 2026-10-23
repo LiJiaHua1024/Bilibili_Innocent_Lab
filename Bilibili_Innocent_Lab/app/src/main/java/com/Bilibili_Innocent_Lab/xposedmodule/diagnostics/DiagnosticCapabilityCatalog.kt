@@ -247,6 +247,8 @@ internal object DiagnosticCapabilityCatalog {
         DiagnosticCapabilityDefinition("home_recommend_ai_declared_removed", "home_recommend_purify", R.string.block_ai_declared_videos, setOf("video.ai_declared.blocked"), introducedCatalogVersion = 14)
     )
     val localOnlySettings = mapOf(
+        // Shared guest_browsing prerequisite; installation and runtime coverage belong to that parent adapter.
+        "browsing.guest.skip_onboarding" to "HOST_GATE",
         "communication.compatibility.enabled" to "LOCAL_DIAGNOSTICS",
         "free_copy.light_mode.enabled" to "LOCAL_APPEARANCE",
         "free_copy.auto_light.enabled" to "LOCAL_APPEARANCE",

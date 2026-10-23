@@ -336,6 +336,9 @@ internal object ReleaseHighlightsCatalog {
             HighlightDestination("browsing.no_login.enabled")),
         ReleaseHighlight("incognito-mode", HighlightKind.NEW, R.string.incognito_enabled_tip,
             HighlightDestination("privacy.incognito.enabled"))
+    )), ReleaseHighlightsBatch(30, listOf(
+        ReleaseHighlight("skip-guest-onboarding", HighlightKind.NEW, R.string.skip_guest_onboarding_tip,
+            HighlightDestination("browsing.guest.skip_onboarding"))
     )))
     val currentRevision: Int get() = batches.maxOf { it.revision }
     val destinations get() = batches.sortedByDescending { it.revision }.flatMap { it.entries }

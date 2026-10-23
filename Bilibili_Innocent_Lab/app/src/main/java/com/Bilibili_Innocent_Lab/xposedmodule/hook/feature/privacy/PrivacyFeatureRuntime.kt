@@ -8,7 +8,8 @@ import com.Bilibili_Innocent_Lab.xposedmodule.runtime.KavaMemberLookup as Lookup
 internal class PrivacyFeatureRuntime(
     private val context: Context,
     private val noLogin: Boolean,
-    private val incognito: Boolean
+    private val incognito: Boolean,
+    private val skipOnboarding: Boolean = false
 ) {
     fun installers(): List<FeatureInstaller> = listOf(
         FunctionalFeatureInstaller("incognito_privacy") { env ->
@@ -53,7 +54,11 @@ internal class PrivacyFeatureRuntime(
                 }
                 env.postToMain?.invoke { library.preload() }
                 val prompts = GuestBrowsingFeatureInstaller(true, guest).install(env)
-                val hooks = GuestLibraryHostHooks(library, guest).install(env) +
+                val onboarding = if (skipOnboarding) runCatching { GuestOnboardingHooks(guest).install(env) }.getOrElse {
+                    env.logError("guest_onboarding", "[BIL] Guest onboarding adapter unavailable")
+                    0
+                } else 0
+                val hooks = onboarding + GuestLibraryHostHooks(library, guest).install(env) +
                     GuestPlaybackHooks(library, guest).install(env) +
                     installMineOverlayGuard(env, guest)
                 FeatureInstallResult.Installed(hooks + ((prompts as? FeatureInstallResult.Installed)?.hookCount ?: 0), complete = false)
