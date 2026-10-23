@@ -805,6 +805,58 @@ internal fun MainActivity.enhanceBrowsingCategory(scope: Hikage.Performer<Native
         topMargin = 12.dp
         bottomMargin = 5.dp
     }) {
+        bindFavoriteSwitch(this, FeaturePreferences.NO_LOGIN_ENABLED, directToggle = true)
+        text = stringResource(R.string.no_login_enabled)
+        isAllCaps = false
+        textColor = colorResource(R.color.colorTextGray)
+        textSize = 15f
+        isChecked = noLoginEnabled
+        setOnCheckedChangeListener { _, checked ->
+            runCatching { prefs().edit { putBoolean(FeaturePreferences.NO_LOGIN_ENABLED, checked) } }
+                .onSuccess { noLoginEnabled = checked }
+                .onFailure {
+                    Log.e("BilibiliInnocentLab", "write noLoginEnabled prefs failed", it)
+                    isChecked = noLoginEnabled
+                }
+        }
+    }
+    TextView(lparams = LayoutParams(widthMatchParent = true)) {
+        alpha = 0.6f
+        setLineSpacing(6f, 1f)
+        text = stringResource(R.string.no_login_enabled_tip)
+        textColor = colorResource(R.color.colorTextDark)
+        textSize = 12f
+    }
+    MaterialSwitch(lparams = LayoutParams(widthMatchParent = true) {
+        topMargin = 12.dp
+        bottomMargin = 5.dp
+    }) {
+        bindFavoriteSwitch(this, FeaturePreferences.INCOGNITO_ENABLED, directToggle = true)
+        text = stringResource(R.string.incognito_enabled)
+        isAllCaps = false
+        textColor = colorResource(R.color.colorTextGray)
+        textSize = 15f
+        isChecked = incognitoEnabled
+        setOnCheckedChangeListener { _, checked ->
+            runCatching { prefs().edit { putBoolean(FeaturePreferences.INCOGNITO_ENABLED, checked) } }
+                .onSuccess { incognitoEnabled = checked }
+                .onFailure {
+                    Log.e("BilibiliInnocentLab", "write incognitoEnabled prefs failed", it)
+                    isChecked = incognitoEnabled
+                }
+        }
+    }
+    TextView(lparams = LayoutParams(widthMatchParent = true)) {
+        alpha = 0.6f
+        setLineSpacing(6f, 1f)
+        text = stringResource(R.string.incognito_enabled_tip)
+        textColor = colorResource(R.color.colorTextDark)
+        textSize = 12f
+    }
+    MaterialSwitch(lparams = LayoutParams(widthMatchParent = true) {
+        topMargin = 12.dp
+        bottomMargin = 5.dp
+    }) {
         bindFavoriteSwitch(this, FeaturePreferences.HOME_RECOMMEND_SECTION_PICK_ENABLED, directToggle = true)
         text = stringResource(R.string.home_recommend_section_pick)
         textColor = colorResource(R.color.colorTextGray)

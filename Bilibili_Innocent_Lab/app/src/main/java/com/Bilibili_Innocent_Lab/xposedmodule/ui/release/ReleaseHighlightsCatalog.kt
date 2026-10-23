@@ -331,6 +331,11 @@ internal object ReleaseHighlightsCatalog {
     )), ReleaseHighlightsBatch(28, listOf(
         ReleaseHighlight("live-home-promotion", HighlightKind.NEW, R.string.highlights_live_home_promotion,
             HighlightDestination("home.live.promotion.hidden"))
+    )), ReleaseHighlightsBatch(29, listOf(
+        ReleaseHighlight("guest-browsing", HighlightKind.NEW, R.string.no_login_enabled_tip,
+            HighlightDestination("browsing.no_login.enabled")),
+        ReleaseHighlight("incognito-mode", HighlightKind.NEW, R.string.incognito_enabled_tip,
+            HighlightDestination("privacy.incognito.enabled"))
     )))
     val currentRevision: Int get() = batches.maxOf { it.revision }
     val destinations get() = batches.sortedByDescending { it.revision }.flatMap { it.entries }

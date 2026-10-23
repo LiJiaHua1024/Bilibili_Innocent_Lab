@@ -20,8 +20,12 @@ internal object DiagnosticCapabilityCatalog {
      * 客户端是按 "比我已知的版本更新" 做增量的，
      * VERSION 涨了却没有任何条目标在新版本上，增量就是空集（有测试钉住）。
      */
-    const val VERSION = 31
+    const val VERSION = 32
     val definitions = listOf(
+        DiagnosticCapabilityDefinition("guest_browsing", "guest_browsing", R.string.no_login_enabled,
+            setOf("browsing.no_login.enabled"), introducedCatalogVersion = 32),
+        DiagnosticCapabilityDefinition("incognito_privacy", "incognito_privacy", R.string.incognito_enabled,
+            setOf("privacy.incognito.enabled"), introducedCatalogVersion = 32),
         DiagnosticCapabilityDefinition("player_buffer_strategy", "player_buffer", R.string.player_buffer_mode,
             setOf("player.buffer.mode", "player.buffer.seconds", "player.buffer.memory_mb"),
             introducedCatalogVersion = 22),
