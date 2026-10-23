@@ -63,6 +63,15 @@ internal object NPatchProcessDiagnostics {
         try {
             ContextCompat.registerReceiver(app, object : BroadcastReceiver() {
                 override fun onReceive(context: Context, intent: Intent) {
+                    if (com.Bilibili_Innocent_Lab.xposedmodule.runtime.StartupTrace.enabled &&
+                        intent.action == NPatchStartupTraceQuery.action) {
+                        if (!isOrderedBroadcast || intent.getIntExtra("v", 0) != 1) return
+                        if (AndroidVersion.isAtLeast(AndroidVersion.U) && sentFromPackage != BuildConfig.APPLICATION_ID) return
+                        val nonce = intent.getStringExtra("nonce").orEmpty()
+                        if (!HostRuntimeDiagnosticsQueryContract.isValidNonce(nonce)) return
+                        runCatching { current?.let { NPatchStartupTraceQuery.respond(this, it, nonce) } }
+                        return
+                    }
                     if (intent.action != action || (!isOrderedBroadcast && !intent.getBooleanExtra("testCrash", false)) ||
                         intent.getIntExtra("v", 0) != PROTOCOL) return
                     if (AndroidVersion.isAtLeast(AndroidVersion.U) && sentFromPackage != BuildConfig.APPLICATION_ID) return
@@ -97,7 +106,9 @@ internal object NPatchProcessDiagnostics {
                         setResultExtras(extras)
                     }
                 }
-            }, IntentFilter(action), HostRuntimeDiagnosticsQueryContract.PERMISSION_QUERY,
+            }, IntentFilter(action).apply {
+                if (com.Bilibili_Innocent_Lab.xposedmodule.runtime.StartupTrace.enabled) addAction(NPatchStartupTraceQuery.action)
+            }, HostRuntimeDiagnosticsQueryContract.PERMISSION_QUERY,
                 Handler(callbackThread.looper), ContextCompat.RECEIVER_EXPORTED)
         } catch (failure: Exception) {
             callbackThread.quitSafely()

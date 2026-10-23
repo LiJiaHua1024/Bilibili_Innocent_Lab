@@ -1,5 +1,6 @@
 package com.Bilibili_Innocent_Lab.xposedmodule.hook
 
+import com.Bilibili_Innocent_Lab.xposedmodule.runtime.StartupTrace
 import android.content.Context
 import android.content.SharedPreferences
 import android.os.Bundle
@@ -3321,36 +3322,36 @@ object VersionAdapter {
      * 纯内存反射 ~1ms，返回 low/high 定位结果（无版本/时间戳）。
      */
     fun quickLocate(loader: ClassLoader): AdaptResult? {
-        val low = locateCommentLow(loader)
-        val high = locateCommentHigh(loader)
-        val mine = locateMineEntry(loader)
-        val pause = locatePausePoints(loader)
-        val banner = locateBanner(loader)
-        val homeTopBar = locateHomeTopBar(loader)
-        val mineVip = locateMineVip(loader)
-        val blockUpdate = locateBlockUpdate(loader)
-        val dynamicTabs = locateDynamicTabs(loader)
-        val fullNumbers = locateFullNumbers(loader)
-        val playerPortrait = locatePlayerPortrait(loader)
-        val playerInteractiveOverlays = locatePlayerInteractiveOverlays(loader)
-        val pgcAutoActivityPopup = locatePgcAutoActivityPopup(loader)
-        val playerStatusBar = locatePlayerStatusBar(loader)
-        val homeRecommendFeed = locateHomeRecommendFeed(loader)
-        val videoRelate = locateVideoRelate(loader)
-        val homeTabs = locateHomeTabs(loader)
-        val homeComponents = locateHomeComponents(loader)
-        val mineComponents = locateMineComponents(loader, mine)
-        val mineAccountMine = locateMineAccountMinePoints(loader)
-        val storyFeed = locateStoryFeed(loader)
-        val bottomBar = locateBottomBar(loader)
-        val playerQuality = locateDefaultVideoQuality(loader)
-        val teenagersMode = locateTeenagersMode(loader)
-        val commentPurify = locateCommentPurify(loader)
-        val commentFilter = locateCommentFilter(loader)
-        val commentTopologyOutcome = locateCommentTopologyWithDiagnostic(loader)
+        val low = StartupTrace.measure("locate.low") { locateCommentLow(loader) }
+        val high = StartupTrace.measure("locate.high") { locateCommentHigh(loader) }
+        val mine = StartupTrace.measure("locate.mine") { locateMineEntry(loader) }
+        val pause = StartupTrace.measure("locate.pause") { locatePausePoints(loader) }
+        val banner = StartupTrace.measure("locate.banner") { locateBanner(loader) }
+        val homeTopBar = StartupTrace.measure("locate.hometopbar") { locateHomeTopBar(loader) }
+        val mineVip = StartupTrace.measure("locate.minevip") { locateMineVip(loader) }
+        val blockUpdate = StartupTrace.measure("locate.blockupdate") { locateBlockUpdate(loader) }
+        val dynamicTabs = StartupTrace.measure("locate.dynamictabs") { locateDynamicTabs(loader) }
+        val fullNumbers = StartupTrace.measure("locate.fullnumbers") { locateFullNumbers(loader) }
+        val playerPortrait = StartupTrace.measure("locate.playerportrait") { locatePlayerPortrait(loader) }
+        val playerInteractiveOverlays = StartupTrace.measure("locate.playerinteractiveoverlays") { locatePlayerInteractiveOverlays(loader) }
+        val pgcAutoActivityPopup = StartupTrace.measure("locate.pgcautoactivitypopup") { locatePgcAutoActivityPopup(loader) }
+        val playerStatusBar = StartupTrace.measure("locate.playerstatusbar") { locatePlayerStatusBar(loader) }
+        val homeRecommendFeed = StartupTrace.measure("locate.homerecommendfeed") { locateHomeRecommendFeed(loader) }
+        val videoRelate = StartupTrace.measure("locate.videorelate") { locateVideoRelate(loader) }
+        val homeTabs = StartupTrace.measure("locate.hometabs") { locateHomeTabs(loader) }
+        val homeComponents = StartupTrace.measure("locate.homecomponents") { locateHomeComponents(loader) }
+        val mineComponents = StartupTrace.measure("locate.minecomponents") { locateMineComponents(loader, mine) }
+        val mineAccountMine = StartupTrace.measure("locate.mineaccountmine") { locateMineAccountMinePoints(loader) }
+        val storyFeed = StartupTrace.measure("locate.storyfeed") { locateStoryFeed(loader) }
+        val bottomBar = StartupTrace.measure("locate.bottombar") { locateBottomBar(loader) }
+        val playerQuality = StartupTrace.measure("locate.playerquality") { locateDefaultVideoQuality(loader) }
+        val teenagersMode = StartupTrace.measure("locate.teenagersmode") { locateTeenagersMode(loader) }
+        val commentPurify = StartupTrace.measure("locate.commentpurify") { locateCommentPurify(loader) }
+        val commentFilter = StartupTrace.measure("locate.commentfilter") { locateCommentFilter(loader) }
+        val commentTopologyOutcome = StartupTrace.measure("locate.commenttopologyoutcome") { locateCommentTopologyWithDiagnostic(loader) }
         val commentTopology = commentTopologyOutcome.points
-        val commentSection = locateCommentSection(loader)
-        val splashAds = locateSplashAds(loader)
+        val commentSection = StartupTrace.measure("locate.commentsection") { locateCommentSection(loader) }
+        val splashAds = StartupTrace.measure("locate.splashads") { locateSplashAds(loader) }
         if (low == null && high == null && mine == null &&
             pause.requestMethods.isEmpty() && pause.legacyCallback == null &&
             pause.panelShow == null && pause.countdown == null && banner == null &&
@@ -3363,10 +3364,10 @@ object VersionAdapter {
             playerQuality == null && teenagersMode == null && commentPurify == null &&
             commentFilter == null && commentTopology == null && commentSection == null &&
             splashAds == null) return null
-        val protocolFingerprint = buildProtocolStructureFingerprint(
+        val protocolFingerprint = StartupTrace.measure("adapter.protocol") { buildProtocolStructureFingerprint(
             loader, homeRecommendFeed, videoRelate, commentFilter, playerQuality,
             splashAds, mineAccountMine
-        )
+        ) }
         return AdaptResult(
             biliVersionCode = 0,
             ts = 0L,

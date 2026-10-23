@@ -70,10 +70,10 @@ internal object KavaMemberLookup {
         cache: ConcurrentHashMap<K, CachedValue<V>>,
         key: K,
         resolver: () -> V?
-    ): V? {
+    ): V? = StartupTrace.measure("lookup.value") {
         cache[key]?.let {
             cacheHits.incrementAndGet()
-            return it.value
+            return@measure it.value
         }
         cacheMisses.incrementAndGet()
         val resolved = try {
@@ -83,17 +83,17 @@ internal object KavaMemberLookup {
             null
         }
         val value = CachedValue(resolved)
-        return cache.putIfAbsent(key, value)?.value ?: resolved
+        cache.putIfAbsent(key, value)?.value ?: resolved
     }
 
     private fun <K, V> cachedList(
         cache: ConcurrentHashMap<K, List<V>>,
         key: K,
         resolver: () -> List<V>
-    ): List<V> {
+    ): List<V> = StartupTrace.measure("lookup.list") {
         cache[key]?.let {
             cacheHits.incrementAndGet()
-            return it
+            return@measure it
         }
         cacheMisses.incrementAndGet()
         val resolved = try {
@@ -102,7 +102,7 @@ internal object KavaMemberLookup {
             lookupFailures.incrementAndGet()
             emptyList()
         }
-        return cache.putIfAbsent(key, resolved) ?: resolved
+        cache.putIfAbsent(key, resolved) ?: resolved
     }
 
     /** 通过指定宿主 ClassLoader 加载类，不触发类初始化；版本漂移时返回 null。 */

@@ -24,6 +24,7 @@ import java.lang.reflect.Constructor
 import java.lang.reflect.Method
 import java.util.Collections
 import com.Bilibili_Innocent_Lab.xposedmodule.runtime.KavaMemberLookup
+import com.Bilibili_Innocent_Lab.xposedmodule.runtime.StartupTrace
 import com.Bilibili_Innocent_Lab.xposedmodule.runtime.InjectedUiLocale
 import com.Bilibili_Innocent_Lab.xposedmodule.runtime.HostRuntimeDiagnosticsBridge
 import com.Bilibili_Innocent_Lab.xposedmodule.runtime.HostThreadGuard
@@ -2286,7 +2287,7 @@ class HookEntry : XposedModule() {
             return
         }
         if (!targetHooksStarted.compareAndSet(false, true)) return
-        installTargetHooks(param.classLoader, loadedProcessName)
+        StartupTrace.measure("entry") { installTargetHooks(param.classLoader, loadedProcessName) }
     }
 
     private fun installTargetHooks(biliClassLoader: ClassLoader, processName: String) {
@@ -2441,6 +2442,7 @@ class HookEntry : XposedModule() {
             lateinit var scheduleAuthorizationRetry: (Context, android.app.Application?) -> Unit
 
             fun installAuthorizedHooks(authorizationContext: Context) {
+            StartupTrace.measure("install") {
 
             val hookConfig = checkNotNull(activeHookConfig.get()) {
                 "Authorized hook config was not selected"
@@ -2508,14 +2510,16 @@ class HookEntry : XposedModule() {
             // 不能用"更新拦截已定位"当整份合并的开关：那会让实时候选表命中的宿主永远
             // 拿不到缓存里的画质/脉络兜底实现（DexKit 自 ecc63f5 起兜底三个点）。
             val startupCache by lazy(LazyThreadSafetyMode.NONE) {
-                VersionAdapter.readStartupCache(authorizationContext, versionAdapterResetTimestamp)
+                StartupTrace.measure("adapter.cache") {
+                    VersionAdapter.readStartupCache(authorizationContext, versionAdapterResetTimestamp)
+                }
             }
             val hostAdaptResult by lazy(LazyThreadSafetyMode.NONE) {
-                val runtime = VersionAdapter.quickLocate(biliClassLoader)
-                VersionAdapter.mergeRuntimeWithCached(
+                val runtime = StartupTrace.measure("adapter.quick") { VersionAdapter.quickLocate(biliClassLoader) }
+                StartupTrace.measure("adapter.merge") { VersionAdapter.mergeRuntimeWithCached(
                     runtime = runtime,
                     cached = startupCache.cached
-                )
+                ) }
             }
 
             // 读取日志开关 + 详细度档位（默认：开启 + 完整）
@@ -3667,7 +3671,7 @@ class HookEntry : XposedModule() {
                 rawComment = { extractRawCommentTextV2(it) }
             )
             additionalNativeCopy = nativeSupplement
-            val legacyCommentCopy = CommentLegacyCopyBridge(biliClassLoader)
+            val legacyCommentCopy = StartupTrace.measure("legacy.comment_prepare") { CommentLegacyCopyBridge(biliClassLoader) }
             if (legacyCommentCopy.isApplicable()) commentFamilies.record("comment2", legacyCommentCopy.isReady())
             val installCommentFreeCopyHooks: () -> Unit = installCommentHooks@{
                 // 只开脉络时只观察 Compose 更多操作，不安装关闭状态的原生复制／滚动 Hook。
@@ -3984,7 +3988,7 @@ class HookEntry : XposedModule() {
                 }
             }
             commentFreeCopyInstallerRef.set(installCommentFreeCopyHooks)
-            if (runtimeCommentFreeCopyEnabled || commentTopologyEnabled) installCommentFreeCopyHooks()
+            if (runtimeCommentFreeCopyEnabled || commentTopologyEnabled) StartupTrace.measure("legacy.comment") { installCommentFreeCopyHooks() }
 
             // ====== 4a. 气泡亮暗色自动跟随：详情页主题缓存 ======
             // 自动跟随开启时，进入视频详情页判定一次 B 站主题并缓存（详情页会话内 B 站
@@ -4695,14 +4699,14 @@ class HookEntry : XposedModule() {
                 }
             }
             freeCopyHookRetryOnAdapt.set {
-                if (runtimeCommentFreeCopyEnabled) installCommentFreeCopyHooks()
+                if (runtimeCommentFreeCopyEnabled) StartupTrace.measure("legacy.comment") { installCommentFreeCopyHooks() }
                 if (runtimeCommentFreeCopyEnabled || runtimeDescriptionFreeCopyEnabled) {
-                    installDescriptionFreeCopyHooks()
+                    StartupTrace.measure("legacy.description") { installDescriptionFreeCopyHooks() }
                 }
                 publishFreeCopyCapabilities()
             }
             if (runtimeCommentFreeCopyEnabled || runtimeDescriptionFreeCopyEnabled) {
-                installDescriptionFreeCopyHooks()
+                StartupTrace.measure("legacy.description") { installDescriptionFreeCopyHooks() }
             }
             if (processName == TARGET_PACKAGE) {
                 val installedCount =
@@ -4749,7 +4753,7 @@ class HookEntry : XposedModule() {
             ) {
                 versionAdaptCheckedThisProcess = true
                 runCatching {
-                    VersionAdapter.ensureAdapted(
+                    StartupTrace.measure("adapter.ensure") { VersionAdapter.ensureAdapted(
                         attachedContext,
                         biliClassLoader,
                         versionAdapterResetTimestamp,
@@ -4822,7 +4826,7 @@ class HookEntry : XposedModule() {
                         followFeedStyleEnabled = prefs.getBoolean(FeaturePreferences.HOST_VIDEO_CARDS, false),
                         playerQualityEnabled = com.Bilibili_Innocent_Lab.xposedmodule.hook.feature.PlayerQualityConfig.normalize(
                             prefs.getInt(FeaturePreferences.PLAYER_DEFAULT_QUALITY_QN, 0)) != 0
-                    )
+                    ) }
                 }.onFailure { throwable ->
                     logError(
                         "version_adapt_err",
@@ -4830,6 +4834,7 @@ class HookEntry : XposedModule() {
                     )
                 }
             }
+            StartupTrace.measure("diagnostics.summary") {
             val kavaDiagnostics = KavaMemberLookup.diagnostics()
             logInfo(
                 "hook_registry_summary",
@@ -4842,6 +4847,8 @@ class HookEntry : XposedModule() {
             )
             if (processName == TARGET_PACKAGE) {
                 HostRuntimeDiagnosticsBridge.recordHookPointSummary(hookPointRegistry.snapshot())
+            }
+            }
             }
             }
 
@@ -4955,8 +4962,7 @@ class HookEntry : XposedModule() {
                 }
             }
 
-            fun authorizeAndInstall(context: Context?, applicationHint: android.app.Application? = null) {
-                if (context == null || !authorizationAttempted.compareAndSet(false, true)) return
+            fun authorizeAndInstallObserved(context: Context, applicationHint: android.app.Application?) {
                 val appContext = context.applicationContext ?: context
                 if (processName == TARGET_PACKAGE) {
                     runCatching {
@@ -5016,9 +5022,9 @@ class HookEntry : XposedModule() {
                     frameworkLog("[BIL] 启动授权尝试(process=$processName)")
                 }
                 val admissionStartedAtMs = android.os.SystemClock.elapsedRealtime()
-                val admission = com.Bilibili_Innocent_Lab.xposedmodule.runtime.HostAdmissionClient.admit(
+                val admission = StartupTrace.measure("admission") { com.Bilibili_Innocent_Lab.xposedmodule.runtime.HostAdmissionClient.admit(
                     appContext, normal, reason,
-                    nPatchRuntime = nPatchRuntime)
+                    nPatchRuntime = nPatchRuntime) }
                 val admissionElapsedMs =
                     android.os.SystemClock.elapsedRealtime() - admissionStartedAtMs
                 NPatchProcessDiagnostics.recordAdmission(admissionElapsedMs, when {
@@ -5074,6 +5080,12 @@ class HookEntry : XposedModule() {
                 }
                 frameworkLog("[BIL] 已获得新鲜启动许可(source=${grant.source}, generation=${config.generation})")
                 performAuthorizationAndInstall(appContext, config)
+            }
+
+            fun authorizeAndInstall(context: Context?, applicationHint: android.app.Application? = null) {
+                if (context == null || !authorizationAttempted.compareAndSet(false, true)) return
+                StartupTrace.attempt()
+                StartupTrace.measure("authorization") { authorizeAndInstallObserved(context, applicationHint) }
             }
 
             scheduleAuthorizationRetry = retry@{ context, applicationHint ->
@@ -5169,7 +5181,7 @@ class HookEntry : XposedModule() {
                     after {
                         applicationOnCreateCompleted.set(true)
                         (args.firstOrNull() as? android.app.Application)?.let { application ->
-                            runCatching { NPatchProcessDiagnostics.onApplicationReady(application) }
+                            runCatching { StartupTrace.measure("application.ready") { NPatchProcessDiagnostics.onApplicationReady(application) } }
                         }
                         if (processName == TARGET_PACKAGE && authorizedHooksInstalled.get() &&
                             activeHookConfig.get()?.getBoolean(com.Bilibili_Innocent_Lab.xposedmodule.agent.AgentPreferences.ENABLED, false) == true) {

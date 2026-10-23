@@ -1,5 +1,21 @@
 # NPatch 1.0.9 (833) loader 修补工具
 
+## 阶段 5 启动采样
+
+`MeasureStartup.ps1` 只用于已授权测试机，显式要求 serial、模式和当前产物的 `verified.json`。运行前先自行构建并同证书覆盖安装设置 App、测试包及相同内嵌内容的宿主；脚本核对两份已安装 APK 的 SHA-256，不代为安装或修补。详细测量需在 Debug 构建时传 `-PinnocentLab.startupTrace=true`，默认构建和 Release 不注册采集入口；原生产查询和支持包协议不变。
+
+脚本会停止并通过明确的主 Activity 重启宿主，每轮等待首页导航/搜索入口、实际点击搜索并确认输入框响应，随后查询本次配置身份与有界耗时。`-ConfigureProfile default|combined` 明确写入固定的宿主功能测试配置，不改变账号授权、条款、手动恢复项或系统设置；不传则保留当前配置。测试期间设置端点因 Instrumentation 存活，该条件写入样本，不能外推设置 App 被强停的结果。`-Warmup` 单独保留但排除一轮预热；升级首启、缓存重绑定/首次适配须先独立核对，不能只靠该开关判断稳定命中。
+
+```powershell
+./scripts/npatch/MeasureStartup.ps1 -Serial 13a7a291 -Mode embedded `
+    -VerifiedManifest '<当前产物目录>/verified.json' `
+    -OutputDirectory '<不存在的证据目录>' -ConfigureProfile default -Warmup -Rounds 5
+```
+
+输出保留原始 Instrumentation 日志、原始轮次 JSON、产物哈希与采样前后电池热状态。首帧取系统 Displayed 记录，缺失保持 null，不用 `am start -W` 的返回时间代替；首页/搜索响应为 250ms 轮询及实际输入操作的观察口径。失败不进入成功样本文件，原日志保留；不同配置、模式、缓存状态和产物应分组，详见[阶段 5 设计](../../docs/npatch-stage5-startup-performance-design.md)。
+
+## Loader 修补与历史验收
+
 当前 embed 使用 Java 存活修复与原生锁反转修复的组合产物。下文先保留 Java 修复及 2026-10-20 的历史验收，再说明原生构建和当前 embed 工具。仅 Java 修复的旧产物仍含 Web 原生死锁，不能用于本轮 embed 验收。
 
 该工具修复已配置 Manager 作用域后，Manager 不可达时缓存模块完全不执行的问题。它只支持下列 SHA-256 的 **833 patcher JAR**，不会猜测适配其它版本：

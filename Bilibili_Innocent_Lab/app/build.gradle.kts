@@ -254,7 +254,12 @@ android {
     }
 
     buildTypes {
+        debug {
+            buildConfigField("boolean", "STARTUP_TRACE", providers.gradleProperty("innocentLab.startupTrace")
+                .map { it.toBooleanStrict().toString() }.getOrElse("false"))
+        }
         release {
+            buildConfigField("boolean", "STARTUP_TRACE", "false")
             isDebuggable = false
             isMinifyEnabled = true
             isShrinkResources = true
