@@ -18,7 +18,7 @@ internal class GuestLibraryHostHooks(
     fun install(env: HookEnvironment): Int {
         val loader = env.classLoader ?: return 0
         library.nativePage = { activity, section ->
-            if (section in setOf("history", "favorites", "follows")) { openNative(activity, section); true } else false
+            if (section in setOf("history", "favorites", "follows", "watchLater")) { openNative(activity, section); true } else false
         }
         var installed = 0
         fun attempt(action: () -> Unit) {
@@ -79,6 +79,27 @@ internal class GuestLibraryHostHooks(
             }
         }
         val fragment = Lookup.classOrNull(loader, MINE_FRAGMENT)
+        if (fragment != null) attempt {
+            val number = requireNotNull(Lookup.fieldOrNull(fragment, "p0"))
+            val numbers = java.util.WeakHashMap<TextView, Unit>()
+            fun update(state: LocalVirtualLibrary.Collections) {
+                if (isGuest()) numbers.keys.toList().forEach { it.text = state.follows.size.toString() }
+            }
+            library.observeCollections(::update)
+            fun bind(target: Any?) {
+                if (!isGuest() || target == null) return
+                val view = number.get(target) as? TextView ?: return
+                numbers[view] = Unit
+                library.readCollections(::update)
+            }
+            env.registrar.exact("guest.library.follow_count", fragment, "jr",
+                requireNotNull(Lookup.classOrNull(loader, "tv.danmaku.bili.ui.main2.api.AccountMine")), classOf<Boolean>()) {
+                after { if (!hasThrowable) bind(instance) }
+            }
+            env.registrar.exact("guest.library.follow_count_resume", fragment, "onResume") {
+                after { if (!hasThrowable) bind(instance) }
+            }
+        }
         if (fragment != null) {
             attempt {
                 val getActivity = requireNotNull(Lookup.inheritedMethodOrNull(fragment, "getActivity"))
@@ -115,6 +136,7 @@ internal class GuestLibraryHostHooks(
         attempt { GuestNativeFavoriteHooks(library, isGuest).install(env) }
         attempt { GuestNativeFollowListHooks(library, isGuest).install(env) }
         attempt { GuestNativeHistoryHooks(library, isGuest).install(env) }
+        attempt { GuestNativeWatchLaterHooks(library, isGuest).install(env) }
         attempt { GuestNativeListHttpHooks(library, isGuest).install(env) }
 
         attempt {
@@ -178,6 +200,8 @@ internal class GuestLibraryHostHooks(
                 "bilibili://history".toUri()).setPackage(activity.packageName))
             "favorites" -> activity.startActivity(android.content.Intent().setClassName(activity.packageName,
                 "tv.danmaku.bili.ui.favorites.FavoritesActivityV2"))
+            "watchLater" -> activity.startActivity(android.content.Intent().setClassName(activity.packageName,
+                "tv.danmaku.bili.ui.main2.WatchLaterActivity"))
             "follows" -> activity.startActivity(android.content.Intent().setClassName(activity.packageName,
                 GuestNativeFollowListHooks.ACTIVITY).putExtra(GuestNativeFollowListHooks.EXTRA, true))
             else -> library.show(activity, section)

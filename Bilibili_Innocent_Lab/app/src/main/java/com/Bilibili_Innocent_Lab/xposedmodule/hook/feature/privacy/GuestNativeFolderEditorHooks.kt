@@ -62,7 +62,7 @@ internal class GuestNativeFolderEditorHooks(
                             store.createFavoriteFolder(name, info)
                         } else {
                             val previous = requireNotNull(state.favorites.keys.singleOrNull { NativeFavoriteFolders.id(state, it) == id })
-                            store.editFavoriteFolder(previous, name, info)
+                            store.editFavoriteFolder(previous, name, info.copy(pinned = state.folderInfo[previous]?.pinned == true))
                         }
                     }, {
                         val row = host.create(apiPlaySet)
@@ -74,6 +74,19 @@ internal class GuestNativeFolderEditorHooks(
                         refreshSheets()
                     }, { error -> resume(host.static(host.type("kotlin.ResultKt"), "createFailure", error)) })
                 }
+            }
+        }
+        // KNTR's folder picker still launches the legacy editor directly. Its HTTP writes are
+        // handled by NativeFavoriteProtocol; keep its public switch consistent with local privacy.
+        env.registrar.exact("guest.favorite.native.legacy_editor_privacy",
+            host.type("com.bilibili.playset.editor.PlaySetEditorFragment"), "Wo") {
+            before { if (isGuest()) set(requireNotNull(instance), "h", true) }
+            after {
+                if (!isGuest()) return@after
+                val editor = requireNotNull(instance)
+                val toggle = Lookup.fieldOrNull(editor.javaClass, "u")?.get(editor) as? android.widget.CompoundButton ?: return@after
+                toggle.isChecked = false
+                toggle.isEnabled = false
             }
         }
         env.reportStatus("guest_native_folder_editor", "adapted-v2")

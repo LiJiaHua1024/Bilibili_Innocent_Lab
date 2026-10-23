@@ -30,6 +30,7 @@ internal class GuestNativeFollowListHooks(private val library: GuestLibraryRunti
                     val rows = follows.map { follow -> host.create(host.type("com.bilibili.relation.api.Attention")).also { row ->
                         requireNotNull(Lookup.fieldOrNull(row.javaClass, "mid")).setLong(row, follow.mid)
                         requireNotNull(Lookup.fieldOrNull(row.javaClass, "uname")).set(row, follow.name)
+                        requireNotNull(Lookup.fieldOrNull(row.javaClass, "face")).set(row, follow.face)
                     } }
                     host.call(requireNotNull(field(live, "D")), "setList", rows)
                     host.call(live, if (rows.isEmpty()) "showEmpty" else "X8")

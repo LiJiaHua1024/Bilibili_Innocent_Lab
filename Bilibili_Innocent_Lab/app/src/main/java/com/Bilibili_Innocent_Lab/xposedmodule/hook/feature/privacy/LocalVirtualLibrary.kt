@@ -22,13 +22,14 @@ class LocalVirtualLibrary(
         val updatedAtMs: Long,
         val cover: String? = null,
         val authorMid: Long = 0,
-        val authorName: String = ""
+        val authorName: String = "",
+        val authorFace: String = ""
     ) {
         val isComplete: Boolean get() = durationMs > 0 && positionMs >= durationMs
     }
 
-    data class Follow(val mid: Long, val name: String)
-    data class FolderInfo(val id: Long, val intro: String = "", val cover: String = "")
+    data class Follow(val mid: Long, val name: String, val face: String = "")
+    data class FolderInfo(val id: Long, val intro: String = "", val cover: String = "", val pinned: Boolean = false)
 
     // 视频以 aid + cid 唯一；列表按最近写入在前排列，收藏夹名称作为本地键。
     data class Collections(
@@ -36,7 +37,8 @@ class LocalVirtualLibrary(
         val favorites: Map<String, List<Video>> = mapOf(DEFAULT_FOLDER to emptyList()),
         val watchLater: List<Video> = emptyList(),
         val follows: List<Follow> = emptyList(),
-        val folderInfo: Map<String, FolderInfo> = emptyMap()
+        val folderInfo: Map<String, FolderInfo> = emptyMap(),
+        val favoriteOrder: List<Long> = emptyList()
     )
 
     data class Snapshot internal constructor(
@@ -298,6 +300,8 @@ class LocalVirtualLibrary(
             validateFollow(it)
             require(mids.add(it.mid)) { "Duplicate follow" }
         }
+        require(source.favoriteOrder.size <= maxEntries * maxFolders && source.favoriteOrder.distinct().size == source.favoriteOrder.size)
+        source.favoriteOrder.forEach(::validateId)
         val ids = HashSet<Long>()
         source.folderInfo.forEach { (name, info) ->
             require(name in source.favorites && ids.add(info.id)) { "Invalid folder metadata" }
@@ -310,7 +314,8 @@ class LocalVirtualLibrary(
             favorites = Immutable.unmodifiableMap(favorites),
             watchLater = videos(source.watchLater),
             follows = Immutable.unmodifiableList(ArrayList(source.follows)),
-            folderInfo = Immutable.unmodifiableMap(LinkedHashMap(source.folderInfo))
+            folderInfo = Immutable.unmodifiableMap(LinkedHashMap(source.folderInfo)),
+            favoriteOrder = Immutable.unmodifiableList(ArrayList(source.favoriteOrder))
         )
     }
 
@@ -334,12 +339,14 @@ class LocalVirtualLibrary(
         require(video.updatedAtMs in 0..MAX_TIMESTAMP_MS) { "Invalid timestamp" }
         validateText(video.title, MAX_TITLE_LENGTH)
         validateText(video.authorName, MAX_NAME_LENGTH)
+        validateText(video.authorFace, MAX_COVER_LENGTH)
         video.cover?.let { validateText(it, MAX_COVER_LENGTH) }
     }
 
     private fun validateFollow(follow: Follow) {
         validateId(follow.mid)
         validateText(follow.name, MAX_NAME_LENGTH)
+        validateText(follow.face, MAX_COVER_LENGTH)
     }
 
     private fun validateFolderName(name: String) {
@@ -348,47 +355,54 @@ class LocalVirtualLibrary(
     }
 
     private fun encode(collections: Collections): String {
+        val extended = collections.favoriteOrder.isNotEmpty() || collections.follows.any { it.face.isNotEmpty() } || collections.folderInfo.values.any { it.pinned } ||
+            (collections.history + collections.watchLater + collections.favorites.values.flatten()).any { it.authorFace.isNotEmpty() }
+        val version = if (extended) 3 else if (collections.folderInfo.isEmpty()) 1 else 2
         fun videoJson(video: Video) = JSONObject()
             .put("aid", video.aid).put("cid", video.cid).put("title", video.title)
             .put("durationMs", video.durationMs).put("positionMs", video.positionMs)
             .put("updatedAtMs", video.updatedAtMs).put("cover", video.cover ?: JSONObject.NULL)
             .put("authorMid", video.authorMid).put("authorName", video.authorName)
+            .apply { if (version >= 3) put("authorFace", video.authorFace) }
         fun videos(items: List<Video>) = JSONArray().apply { items.forEach { put(videoJson(it)) } }
-        val root = JSONObject().put("version", if (collections.folderInfo.isEmpty()) 1 else 2)
+        val root = JSONObject().put("version", version)
             .put("history", videos(collections.history))
             .put("favorites", JSONArray().apply {
                 collections.favorites.forEach { (name, items) ->
                     put(JSONObject().put("name", name).put("videos", videos(items)).apply {
                         collections.folderInfo[name]?.let { info ->
-                            put("info", JSONObject().put("id", info.id).put("intro", info.intro).put("cover", info.cover))
+                            put("info", JSONObject().put("id", info.id).put("intro", info.intro).put("cover", info.cover)
+                                .apply { if (version >= 3) put("pinned", info.pinned) })
                         }
                     })
                 }
             })
             .put("watchLater", videos(collections.watchLater))
             .put("follows", JSONArray().apply {
-                collections.follows.forEach { put(JSONObject().put("mid", it.mid).put("name", it.name)) }
+                collections.follows.forEach { put(JSONObject().put("mid", it.mid).put("name", it.name).apply { if (version >= 3) put("face", it.face) }) }
             })
+        if (version >= 3) root.put("favoriteOrder", JSONArray(collections.favoriteOrder))
         return root.toString().also { require(it.length <= MAX_JSON_LENGTH) { "Library JSON limit exceeded" } }
     }
 
     private fun decode(text: String): Collections = try {
         validateJsonSyntax(text)
         val root = JSONObject(text)
-        requireKeys(root, setOf("version", "history", "favorites", "watchLater", "follows"))
         val version = number(root, "version")
-        require(version in 1L..2L)
+        requireKeys(root, setOf("version", "history", "favorites", "watchLater", "follows") + if (version >= 3) setOf("favoriteOrder") else emptySet())
+        require(version in 1L..3L)
         fun videos(array: JSONArray): List<Video> {
             require(array.length() <= maxEntries)
             return List(array.length()) { index ->
                 val video = array.getJSONObject(index)
-                requireKeys(video, setOf("aid", "cid", "title", "durationMs", "positionMs", "updatedAtMs", "cover", "authorMid", "authorName"))
+                requireKeys(video, setOf("aid", "cid", "title", "durationMs", "positionMs", "updatedAtMs", "cover", "authorMid", "authorName") + if (version >= 3) setOf("authorFace") else emptySet())
                 Video(
                     aid = number(video, "aid"), cid = number(video, "cid"), title = string(video, "title"),
                     durationMs = number(video, "durationMs"), positionMs = number(video, "positionMs"),
                     updatedAtMs = number(video, "updatedAtMs"),
                     cover = if (video.isNull("cover")) null else string(video, "cover"),
-                    authorMid = number(video, "authorMid"), authorName = string(video, "authorName")
+                    authorMid = number(video, "authorMid"), authorName = string(video, "authorName"),
+                    authorFace = if (version >= 3) string(video, "authorFace") else ""
                 )
             }
         }
@@ -398,13 +412,14 @@ class LocalVirtualLibrary(
         val folderInfo = LinkedHashMap<String, FolderInfo>()
         repeat(folders.length()) { index ->
             val folder = folders.getJSONObject(index)
-            val hasInfo = version == 2L && folder.has("info")
+            val hasInfo = version >= 2L && folder.has("info")
             requireKeys(folder, if (hasInfo) setOf("name", "videos", "info") else setOf("name", "videos"))
             val name = string(folder, "name")
             if (hasInfo) {
                 val info = folder.getJSONObject("info")
-                requireKeys(info, setOf("id", "intro", "cover"))
-                folderInfo[name] = FolderInfo(number(info, "id"), string(info, "intro"), string(info, "cover"))
+                requireKeys(info, setOf("id", "intro", "cover") + if (version >= 3) setOf("pinned") else emptySet())
+                folderInfo[name] = FolderInfo(number(info, "id"), string(info, "intro"), string(info, "cover"),
+                    if (version >= 3) info.get("pinned").also { require(it is Boolean) } as Boolean else false)
             }
             require(name !in favorites)
             favorites[name] = videos(folder.getJSONArray("videos"))
@@ -416,11 +431,14 @@ class LocalVirtualLibrary(
             history = videos(root.getJSONArray("history")),
             favorites = favorites,
             folderInfo = folderInfo,
+            favoriteOrder = if (version >= 3) root.getJSONArray("favoriteOrder").let { array ->
+                List(array.length()) { (array.get(it).also { value -> require(value is Int || value is Long) } as Number).toLong() }
+            } else emptyList(),
             watchLater = videos(root.getJSONArray("watchLater")),
             follows = List(follows.length()) { index ->
                 val follow = follows.getJSONObject(index)
-                requireKeys(follow, setOf("mid", "name"))
-                Follow(number(follow, "mid"), string(follow, "name"))
+                requireKeys(follow, setOf("mid", "name") + if (version >= 3) setOf("face") else emptySet())
+                Follow(number(follow, "mid"), string(follow, "name"), if (version >= 3) string(follow, "face") else "")
             }
         ))
     } catch (_: JSONException) {
@@ -499,7 +517,7 @@ class LocalVirtualLibrary(
                     var count = 0
                     if (!consume(']')) {
                         do {
-                            require(++count <= maxOf(maxEntries, maxFolders))
+                            require(++count <= maxEntries * maxFolders)
                             value(depth + 1)
                             if (consume(']')) break
                             require(consume(','))

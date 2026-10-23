@@ -133,6 +133,9 @@ internal class GuestNativeFavoriteHooks(
                             host.call(row, "setCover", state.folderInfo[name]?.cover?.takeIf { it.isNotEmpty() } ?: videos.firstOrNull()?.cover.orEmpty())
                         }
                     }
+                    // The snackbar's isFromModifyFav flag forcibly unchecks row zero in the host adapter.
+                    // Local writes have already committed; preserve their actual selection for every entry path.
+                    host.call(requireNotNull(field(live, "m")), "Y0", false)
                     host.call(live, "Q", pageConstructor.newInstance(rows.size, rows, null, false))
                 }
             }
@@ -176,6 +179,34 @@ internal class GuestNativeFavoriteHooks(
                         live.dismiss()
                     }
                 })
+            }
+        }
+        fun localFolder(id: Long) = snapshot.favorites.keys.any { NativeFavoriteFolders.id(snapshot, it) == id }
+        val detail = host.type("com.bilibili.playset.MultiTypeListDetailActivityV2")
+        fun localDetail(target: Any) = isGuest() && localFolder((host.call(target, "mc") as Number).toLong())
+        env.registrar.exact("guest.favorite.native.owner", detail, "Yc", classOf<Long>()) {
+            before { instance?.let { if (localDetail(it)) result = true } }
+        }
+        // Call the original navigation callback after its local-only login gate. The account
+        // remains anonymous; no global isLogin override is introduced for network operations.
+        env.registrar.exact("guest.favorite.native.manage", detail, "fb") {
+            before {
+                val target = instance ?: return@before
+                if (!localDetail(target)) return@before
+                result = null
+                host.static(detail, "gb", target)
+            }
+        }
+        env.registrar.exact("guest.favorite.native.manage_route", host.type("rt3.a"), "intercept",
+            host.type("com.bilibili.lib.blrouter.RouteInterceptor\$Chain")) {
+            before {
+                if (!isGuest()) return@before
+                val chain = argOrNull(0) ?: return@before
+                val request = requireNotNull(host.call(chain, "getRequest"))
+                if (host.call(request, "getTargetUri").toString().trimEnd('/') != "bilibili://music/playlist/manage_v2") return@before
+                val extras = requireNotNull(host.call(request, "getExtras"))
+                val params = host.call(extras, "getBundle", "params") as? android.os.Bundle ?: return@before
+                if (localFolder(params.getLong("playlistId"))) result = host.call(chain, "next", request)
             }
         }
         GuestNativeFolderEditorHooks(library, isGuest).install(env) {

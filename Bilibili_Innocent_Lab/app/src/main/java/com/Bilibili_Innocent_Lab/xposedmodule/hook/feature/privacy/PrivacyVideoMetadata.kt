@@ -20,6 +20,6 @@ internal object PrivacyVideoMetadata {
                 // 8.90.2 viewunite Owner calls the author name "title"; archive Author uses "name".
                 val getter = if (Lookup.methodOrNull(it.javaClass, "getTitle") != null) "getTitle" else "getName"
                 host.call(it, getter) as String
-            } ?: "")
+            } ?: "", owner?.let { Lookup.methodOrNull(it.javaClass, "getFace")?.invoke(it) as? String }.orEmpty())
     }
 }

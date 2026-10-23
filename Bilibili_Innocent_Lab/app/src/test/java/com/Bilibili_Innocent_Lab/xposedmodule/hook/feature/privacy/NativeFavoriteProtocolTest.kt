@@ -56,7 +56,7 @@ class NativeFavoriteProtocolTest {
     }
     @Test fun unknownMutationIsNotReportedAsSaved() {
         val data = library(); val before = data.readSnapshot()
-        assertEquals(-400, response(data, "folder/add_top").getInt("code"))
+        assertEquals(-400, response(data, "folder/unknown-operation").getInt("code"))
         assertEquals(before.collections, data.readSnapshot().collections)
     }
     @Test fun incognitoNativeReadsAndEditsNeverOpenPersistentStorage() {

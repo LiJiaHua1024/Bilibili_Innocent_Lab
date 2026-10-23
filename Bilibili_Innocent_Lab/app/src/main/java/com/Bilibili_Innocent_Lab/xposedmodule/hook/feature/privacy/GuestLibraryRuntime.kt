@@ -128,6 +128,7 @@ internal class GuestLibraryRuntime(
             require(video.aid in 1..LocalVirtualLibrary.MAX_ID && video.cid in 1..LocalVirtualLibrary.MAX_ID)
             require(video.title.isNotBlank() && video.title.length <= LocalVirtualLibrary.MAX_TITLE_LENGTH)
             require(video.authorName.length <= LocalVirtualLibrary.MAX_NAME_LENGTH)
+            require(video.authorFace.length <= LocalVirtualLibrary.MAX_COVER_LENGTH)
             require((video.cover?.length ?: 0) <= LocalVirtualLibrary.MAX_COVER_LENGTH)
             synchronized(gate) {
                 if (!valid(token)) return
@@ -152,7 +153,7 @@ internal class GuestLibraryRuntime(
             val cached = synchronized(gate) {
                 checkActive(token)
                 confirmedKey = key
-                metadata[key] ?: metadata.values.lastOrNull { it.aid == aid }?.copy(cid = cid)
+                metadata[key] ?: metadata.values.lastOrNull { it.aid == aid }?.let { if (cid > 0) it.copy(cid = cid) else it }
             }
             val before = library.readSnapshot()
             val existing = findVideo(before.collections, key)
@@ -207,7 +208,7 @@ internal class GuestLibraryRuntime(
 
     internal fun videoMetadata(aid: Long, cid: Long): LocalVirtualLibrary.Video? = synchronized(gate) {
         if (token() == null) null
-        else metadata[aid to cid] ?: metadata.values.lastOrNull { it.aid == aid }?.copy(cid = cid)
+        else metadata[aid to cid] ?: metadata.values.lastOrNull { it.aid == aid }?.let { if (cid > 0) it.copy(cid = cid) else it }
     }
 
     /** Native UI owns its success/error feedback; acknowledge only after a successful local commit. */
@@ -287,7 +288,7 @@ internal class GuestLibraryRuntime(
         val token = token() ?: return
         val video = synchronized(gate) {
             if (!valid(token)) return
-            metadata[aid to cid] ?: metadata.values.lastOrNull { it.aid == aid }?.copy(cid = cid)
+            metadata[aid to cid] ?: metadata.values.lastOrNull { it.aid == aid }?.let { if (cid > 0) it.copy(cid = cid) else it }
         }
         if (video == null) failure(token) else action(context, action, video)
     }
@@ -355,11 +356,13 @@ internal class GuestLibraryRuntime(
             val existing = before.follows.any { it.mid == mid }
             if (existing) library.unfollow(mid)
             else {
-                val name = synchronized(gate) { metadata.values.lastOrNull { it.authorMid == mid }?.authorName }
-                    ?.takeIf { it.isNotBlank() } ?: "UID $mid"
-                library.follow(LocalVirtualLibrary.Follow(mid, name))
+                val author = synchronized(gate) { metadata.values.lastOrNull { it.authorMid == mid } }
+                val name = author?.authorName?.takeIf { it.isNotBlank() } ?: "UID $mid"
+                library.follow(LocalVirtualLibrary.Follow(mid, name, author?.authorFace.orEmpty()))
             }
+            val updated = library.readSnapshot().collections
             onMain(token) {
+                notifyCollections(updated)
                 toast(GuestLibraryStrings.resolve(application).saved)
                 done(!existing)
             }

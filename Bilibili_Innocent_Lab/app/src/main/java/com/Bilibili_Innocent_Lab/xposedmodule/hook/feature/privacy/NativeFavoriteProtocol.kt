@@ -16,6 +16,13 @@ internal object NativeFavoriteProtocol {
         "cnt_info" to obj("play" to 0, "collect" to 0), "left_text" to "",
         "right_text" to "${v.durationMs / 60000}:${(v.durationMs / 1000 % 60).toString().padStart(2, '0')}")
 
+    private fun orderedFavorites(state: LocalVirtualLibrary.Collections): List<LocalVirtualLibrary.Video> {
+        val videos = state.favorites.values.flatten().distinctBy { it.aid }
+        val byId = videos.associateBy { it.aid }
+        val order = state.favoriteOrder.toSet()
+        return videos.filter { it.aid !in order } + state.favoriteOrder.mapNotNull(byId::get)
+    }
+
     fun respond(path: String, params: Map<String, String>, library: LocalVirtualLibrary): String {
         val snapshot = library.readSnapshot()
         val state = snapshot.collections
@@ -26,14 +33,14 @@ internal object NativeFavoriteProtocol {
             val fid = NativeFavoriteFolders.id(state, name)
             return obj("fid" to fid, "id" to fid, "mid" to 0, "type" to 11,
                 "attr" to if (name == LocalVirtualLibrary.DEFAULT_FOLDER) 1 else 3,
-                "title" to name, "intro" to state.folderInfo[name]?.intro.orEmpty(), "media_count" to videos.size,
+                "is_top" to (state.folderInfo[name]?.pinned == true), "title" to name, "intro" to state.folderInfo[name]?.intro.orEmpty(), "media_count" to videos.size,
                 "cover" to (state.folderInfo[name]?.cover?.takeIf { it.isNotEmpty() } ?: videos.firstOrNull()?.cover.orEmpty()),
                 "link" to "bilibili://music/playlist/detail/$fid?type=11", "recent_fav" to array(videos.take(3).map(::row)),
                 "upper" to obj("mid" to 0, "name" to "本地账号"), "cnt_info" to obj("collect" to 0, "play" to 0), "fav_state" to 1)
         }
         fun videos(): List<LocalVirtualLibrary.Video> {
             val source = if (id("media_id") > 0) state.favorites.getValue(folder(id("media_id")))
-                else state.favorites.values.flatten().distinctBy { it.aid }
+                else orderedFavorites(state)
             val keyword = params["keyword"].orEmpty()
             return source.filter { it.title.contains(keyword, true) }
         }
@@ -56,18 +63,61 @@ internal object NativeFavoriteProtocol {
                 obj("default_tab" to 1, "tabs" to array(listOf(obj("tab_id" to 1,
                     "tab_name" to "我的收藏", "uri" to uri, "red_dot" to false, "sub_tab" to tabs))))
             }
-            "/x/v3/fav/tab/my_fav" -> obj("count" to state.favorites.size, "list" to array(state.favorites.keys.map(::folderRow)))
+            "/x/v3/fav/tab/my_fav" -> obj("count" to state.favorites.size, "list" to array(state.favorites.keys.sortedWith(compareByDescending<String> { it == LocalVirtualLibrary.DEFAULT_FOLDER }.thenByDescending { state.folderInfo[it]?.pinned == true }).map(::folderRow)))
             "/x/v3/fav/tab/fav", "/x/v3/fav/tab/fav/search", "/x/v3/fav/folder/resources" -> list()
             "/x/v3/fav/resource/list" -> obj("info" to folderRow(folder(id("media_id"))),
                 "medias" to array(if (id("pn") <= 1) videos().map(::row) else emptyList()), "has_more" to false)
             "/x/v3/fav/folder/info" -> folderRow(folder(id("media_id")))
             "/x/v3/fav/folder/created/list", "/x/v3/fav/folder/created/list-all" -> obj("count" to state.favorites.size,
-                "list" to array(state.favorites.keys.map(::folderRow)), "has_more" to false)
+                "list" to array(state.favorites.keys.sortedWith(compareByDescending<String> { it == LocalVirtualLibrary.DEFAULT_FOLDER }.thenByDescending { state.folderInfo[it]?.pinned == true }).map(::folderRow)), "has_more" to false)
             "/x/v3/fav/resource/ids" -> array(videos().map { obj("id" to it.aid, "type" to 2) })
             "/x/v3/fav/tab/fol", "/x/v3/fav/folder/collected/list" -> obj("list" to JSONArray(), "has_more" to false, "total" to 0, "count" to 0)
             "/x/v3/fav/folder/whitelist", "/x/v3/fav/folder/clean-state" -> 0
             "/x/v3/fav/tab/report", "/x/v3/fav/tab/red_dot/clean", "/x/v3/fav/statistics/count",
             "/x/v3/fav/tab/clean_invalid", "/x/v3/fav/resource/clean" -> JSONObject()
+            "/x/v3/fav/folder/add", "/x/v3/fav/folder/edit" -> {
+                val name = params["title"].orEmpty().trim()
+                val creating = path.endsWith("/add")
+                val previous = if (creating) null else folder(id("media_id"))
+                val fid = if (creating) NativeFavoriteFolders.id(name) else id("media_id")
+                val info = LocalVirtualLibrary.FolderInfo(fid, params["intro"].orEmpty(), params["cover"].orEmpty(),
+                    pinned = previous?.let { state.folderInfo[it]?.pinned } == true)
+                if (creating) {
+                    require(state.favorites.keys.none { NativeFavoriteFolders.id(state, it) == fid })
+                    library.createFavoriteFolder(name, info)
+                } else library.editFavoriteFolder(requireNotNull(previous), name, info)
+                // The legacy native editor consumes PlaySet, including its stable ID and private attr.
+                obj("id" to fid, "fid" to fid, "title" to name, "intro" to info.intro, "cover" to info.cover,
+                    "attr" to if (name == LocalVirtualLibrary.DEFAULT_FOLDER) 1 else 3, "type" to 11,
+                    "media_count" to (previous?.let { state.favorites.getValue(it).distinctBy { video -> video.aid }.size } ?: 0))
+            }
+            "/x/v3/fav/folder/add_top" -> {
+                val name = folder(id("fid"))
+                val pinned = when (params["add_top"]) { "true", "1" -> true; "false", "0" -> false; else -> error("Invalid pin state") }
+                val info = (state.folderInfo[name] ?: LocalVirtualLibrary.FolderInfo(NativeFavoriteFolders.id(state, name))).copy(pinned = pinned)
+                val folders = if (pinned) linkedMapOf(name to state.favorites.getValue(name)).apply { putAll(state.favorites) } else state.favorites
+                library.writeSnapshot(snapshot.copy(collections = state.copy(favorites = folders, folderInfo = state.folderInfo + (name to info))))
+                JSONObject()
+            }
+            "/x/v3/fav/resource/sort" -> {
+                val name = if (id("media_id") > 0) folder(id("media_id")) else null
+                val source = if (name == null) orderedFavorites(state) else state.favorites.getValue(name).distinctBy { it.aid }
+                val order = source.map { it.aid }.toMutableList()
+                val moves = params["sort"].orEmpty().split(',').filter { it.isNotBlank() }
+                require(moves.isNotEmpty())
+                moves.forEach { record ->
+                    val fields = record.split(':').map(String::toLong)
+                    require(fields.size == 4 && fields[3] == 2L && (fields[1] == 2L || fields[0] == 0L && fields[1] == 0L))
+                    val (previous, _, moved) = fields
+                    require(moved in order && (previous == 0L || previous in order) && previous != moved)
+                    order.remove(moved)
+                    order.add(if (previous == 0L) 0 else order.indexOf(previous) + 1, moved)
+                }
+                val next = if (name == null) state.copy(favoriteOrder = order) else state.copy(
+                    favorites = state.favorites + (name to order.flatMap { aid -> state.favorites.getValue(name).filter { it.aid == aid } }))
+                library.writeSnapshot(snapshot.copy(collections = next))
+                ""
+            }
             "/x/v3/fav/tab/dels", "/x/v3/fav/resource/batch-del" -> {
                 val ids = resources()
                 val name = if (id("media_id") > 0) folder(id("media_id")) else null

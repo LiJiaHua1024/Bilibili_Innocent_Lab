@@ -121,7 +121,7 @@ internal class GuestLibraryUi(
                 "follow" -> {
                     if (current.authorMid <= 0 || current.authorName.isBlank()) runtime.failure(token)
                     else runtime.mutate(token, current, {
-                        it.follow(LocalVirtualLibrary.Follow(current.authorMid, current.authorName))
+                        it.follow(LocalVirtualLibrary.Follow(current.authorMid, current.authorName, current.authorFace))
                     }) {}
                 }
             }
