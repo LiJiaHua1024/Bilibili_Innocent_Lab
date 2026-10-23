@@ -186,7 +186,7 @@ internal data class ModuleDiagnosticInputs(
     val nPatchEmbeddedBuild: com.Bilibili_Innocent_Lab.xposedmodule.runtime.noroot.NPatchEmbeddedBuildState =
         com.Bilibili_Innocent_Lab.xposedmodule.runtime.noroot.NPatchEmbeddedBuildState.UNKNOWN,
     val noRootSyncDetail: String? = null,
-    /** 本次有界查询中实际响应的 NPatch 进程，仅本地展示，不参与激活评估/导出。 */
+    /** 本次有界查询中实际响应的 NPatch 进程；支持包独立导出，不进入主报告或激活评估。 */
     val nPatchProcesses: List<com.Bilibili_Innocent_Lab.xposedmodule.runtime.noroot.NPatchProcessSnapshot> = emptyList(),
     val nPatchObservedModuleVersions: List<Long> = emptyList(),
     val nPatchPreviousModuleVersion: Long = 0L,

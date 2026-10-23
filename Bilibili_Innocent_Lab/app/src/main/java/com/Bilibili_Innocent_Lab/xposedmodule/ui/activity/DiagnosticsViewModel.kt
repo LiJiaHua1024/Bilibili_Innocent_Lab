@@ -135,13 +135,17 @@ internal class DiagnosticsViewModel : ViewModel() {
         }
     }
 
-    fun export(context: Context, uri: Uri, snapshot: ModuleDiagnosticSnapshot) {
+    fun export(context: Context, uri: Uri, snapshot: ModuleDiagnosticSnapshot, supportBundle: Boolean = false) {
         if (exportState.value is DiagnosticsExportState.Running) return
         exportState.value = DiagnosticsExportState.Running
         val appContext = context.applicationContext ?: context
         worker.submit {
             runCatching {
-                val bytes = DiagnosticReportCodec.encode(snapshot)
+                val bytes = if (supportBundle) {
+                    com.Bilibili_Innocent_Lab.xposedmodule.diagnostics.NPatchSupportBundleCollector.collect(appContext, snapshot)
+                } else DiagnosticReportCodec.encode(snapshot)
+                val maximum = if (supportBundle) com.Bilibili_Innocent_Lab.xposedmodule.diagnostics.NPatchSupportArchive.MAX_FILE_BYTES
+                    else DiagnosticReportCodec.MAX_FILE_BYTES
                 val resolver = appContext.contentResolver
                 resolver.openOutputStream(uri, "wt")?.use { output ->
                     output.write(bytes)
@@ -154,14 +158,15 @@ internal class DiagnosticsViewModel : ViewModel() {
                         val read = input.read(buffer)
                         if (read < 0) break
                         output.write(buffer, 0, read)
-                        require(output.size() <= DiagnosticReportCodec.MAX_FILE_BYTES) {
+                        require(output.size() <= maximum) {
                             "readback_too_large"
                         }
                     }
                     output.toByteArray()
                 } ?: error("readback_unavailable")
                 require(readBack.contentEquals(bytes)) { "readback_mismatch" }
-                val metadata = DiagnosticReportCodec.validate(readBack)
+                val metadata = if (supportBundle) com.Bilibili_Innocent_Lab.xposedmodule.diagnostics.NPatchSupportArchive.validate(readBack)
+                    else DiagnosticReportCodec.validate(readBack)
                 require(metadata.collectedAtEpochMs == snapshot.inputs.collectedAtEpochMs) {
                     "readback_mismatch"
                 }

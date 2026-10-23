@@ -1549,4 +1549,8 @@
     <string name="npatch_manager_health">Manager provider reachability: %1$s. This is independent of host admission.</string>
     <string name="npatch_manager_reachable">reachable</string>
     <string name="npatch_manager_not_applicable">not applicable: embed does not depend on Manager</string>
+    <string name="npatch_support_title">NPatch support bundle</string>
+    <string name="npatch_support_description">Export the report, patch profile, observed startup samples, and sanitized crash and Media evidence as a ZIP file.</string>
+    <string name="npatch_support_export">Export support bundle</string>
+    <string name="npatch_support_preview">The ZIP contains the original diagnostic report, patch and process metadata, collected startup timings, up to three sanitized Java crash records per responding process, and allowlisted Media events. Exception messages, paths, credentials, preference values, and raw logs are excluded. Evidence is collected after choosing a local save location. Missing responses remain unknown; no content is sent automatically.</string>
 </resources>

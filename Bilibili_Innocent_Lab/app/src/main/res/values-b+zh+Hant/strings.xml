@@ -1549,4 +1549,8 @@
     <string name="npatch_manager_health">Manager Provider 可達性：%1$s。與宿主目前授權獨立。</string>
     <string name="npatch_manager_reachable">可達</string>
     <string name="npatch_manager_not_applicable">無需檢測：嵌入模式不依賴 Manager</string>
+    <string name="npatch_support_title">NPatch 支援包</string>
+    <string name="npatch_support_description">將診斷報告、補丁檔案、已觀測啟動樣本和去識別化崩潰及 Media 證據匯出為 ZIP。</string>
+    <string name="npatch_support_export">匯出支援包</string>
+    <string name="npatch_support_preview">ZIP 包含原診斷報告、補丁與程序檔案、已採集啟動耗時、每個回應程序最多三份去識別化 Java 崩潰記錄和 Media 白名單事件。不包含異常訊息、路徑、憑證、偏好值或原始日誌。選擇本機儲存位置後才採集；無回應保持未知，不會自動傳送內容。</string>
 </resources>
