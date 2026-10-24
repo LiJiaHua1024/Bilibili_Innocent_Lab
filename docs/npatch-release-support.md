@@ -1,5 +1,7 @@
 # NPatch 支持范围与恢复
 
+> 当前支持政策（2026-10-24）：仅开放 Manager 模式，不支持集成（embed）模式。为暂时减少内嵌模块宿主的倒卖，`EmbeddedModePolicy.SUPPORTED` 硬编码为 `false`，同时门控 NPatch / LSPatch 集成模式；相关实现保留，未来是否恢复另行决定。下文双模式矩阵与 embed 操作是此前验证记录，不代表当前版本可用。
+
 2026-10-22，2B 已按下表限定组合完成正式准入，最终门禁见[当前路线图](npatch-implementation-roadmap.md)和 [RELEASE_ADMISSION_2B](npatch-embed-acceptance.md#release_admission_2b)。逐业务证据在[行为案例](npatch-embed-acceptance.md)和[目录矩阵](npatch-feature-matrix.tsv)，未测业务不因加载模式验收而自动变为通过。
 
 2026-10-24 的[全目录范围复核](npatch-scope-audit.md)区分 NPatch 核心、支持配套、通用业务和混合增强。本页列出的通用功能是兼容回归对象，不意味着都由 NPatch 专项新增或需要在此专项穷尽修复；阶段 4–6 和 F19 的具体归属也分别说明。

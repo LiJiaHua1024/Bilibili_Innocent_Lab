@@ -87,6 +87,15 @@ internal object HostAdmissionClient {
 
     fun admit(context: Context, normal: RemoteHookConfigSnapshot?, normalFailure: String?, nPatchRuntime: Boolean = false,
               lspatchRuntime: Boolean = false): Result {
+        val runtime = when {
+            nPatchRuntime -> com.Bilibili_Innocent_Lab.xposedmodule.runtime.noroot.HookRuntimeMode.NPATCH_LEGACY
+            lspatchRuntime -> com.Bilibili_Innocent_Lab.xposedmodule.runtime.noroot.HookRuntimeMode.LSPATCH
+            else -> com.Bilibili_Innocent_Lab.xposedmodule.runtime.noroot.HookRuntimeMode.STANDARD_XPOSED
+        }
+        // 在任何传输及 Remote Preferences 回退之前阻断，所有宿主进程使用同一门控。
+        if (com.Bilibili_Innocent_Lab.xposedmodule.runtime.noroot.EmbeddedModePolicy.isHostBlocked(context, runtime)) {
+            return Result(reason = "embedded_mode_unsupported")
+        }
         val observed = ArrayList<com.Bilibili_Innocent_Lab.xposedmodule.runtime.noroot.NPatchRouteEvidence>(4)
         return admitObserved(context, normal, normalFailure, nPatchRuntime, lspatchRuntime, observed).let {
             it.copy(routeEvidence = observed.toList())

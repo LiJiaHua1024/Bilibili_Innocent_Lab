@@ -24,6 +24,7 @@ class HostAdmissionRouteClassifierTest {
             "denied" to HostAdmissionRouteClassifier.StatusClass.AUTHORITY_DENIED,
             "consent_commit_failed" to HostAdmissionRouteClassifier.StatusClass.AUTHORITY_DENIED,
             "manager_sync_required" to HostAdmissionRouteClassifier.StatusClass.AUTHORITY_DENIED,
+            "embedded_mode_unsupported" to HostAdmissionRouteClassifier.StatusClass.AUTHORITY_DENIED,
             "identity_rejected" to HostAdmissionRouteClassifier.StatusClass.UNAVAILABLE,
             "protocol_rejected" to HostAdmissionRouteClassifier.StatusClass.UNAVAILABLE,
             "storage_failed" to HostAdmissionRouteClassifier.StatusClass.UNAVAILABLE,
@@ -50,6 +51,10 @@ class HostAdmissionRouteClassifierTest {
     }
 
     @Test fun termsDeniedAndManagerSyncLatchFallback() {
+        assertEquals(HostAdmissionRouteClassifier.Outcome.AUTHORITY_DENIED,
+            HostAdmissionRouteClassifier.prepare("embedded_mode_unsupported", envelopeValid = true))
+        assertEquals(HostAdmissionRouteClassifier.Outcome.AUTHORITY_DENIED,
+            HostAdmissionRouteClassifier.confirm("embedded_mode_unsupported", successBinding = false))
         assertEquals(
             HostAdmissionRouteClassifier.Outcome.AUTHORITY_DENIED,
             HostAdmissionRouteClassifier.prepare("denied", envelopeValid = true)

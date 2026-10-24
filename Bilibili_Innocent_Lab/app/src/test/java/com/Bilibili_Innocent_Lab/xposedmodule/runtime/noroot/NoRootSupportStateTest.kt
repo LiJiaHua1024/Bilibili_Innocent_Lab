@@ -15,6 +15,26 @@ import org.junit.Test
 
 class NoRootSupportStateTest {
 
+    @Test fun `embedded gate takes precedence over matching historical activation evidence`() {
+        val snapshot = snapshot()
+        val matching = status(desired = true, state = NoRootSupportStore.SyncState.ACTIVE,
+            heartbeatRevision = snapshot.revision, heartbeatModuleVersion = snapshot.moduleVersionCode,
+            heartbeatTargetVersion = TARGET_VERSION, heartbeatTargetUpdateTime = TARGET_UPDATE_TIME,
+            heartbeatTargetPackage = NoRootSupportState.TARGET_PACKAGE, heartbeatReceivedAt = 1_700_000_000_000L)
+        val blocked = NoRootSupportState.displayState(28, matching, snapshot, TARGET_VERSION,
+            TARGET_UPDATE_TIME, probe = HostRuntimeProbeStatus.CONFIRMED, embeddedModeBlocked = true)
+        assertEquals(NoRootDisplayState.EMBEDDED_UNSUPPORTED, blocked)
+        for (npatch in listOf(false, true)) {
+            assertEquals(ActivationDisplayState.EMBEDDED_UNSUPPORTED,
+                NoRootSupportState.activationDisplayState(rootActive = true, frameworkCheckPending = false,
+                    displayState = blocked, lspatchFramework = !npatch, nPatchFramework = npatch,
+                    lspatchHostState = LspatchHostReceiptState.CONFIRMED))
+        }
+        assertEquals(ActivationDisplayState.ACTIVE_LSPOSED,
+            NoRootSupportState.activationDisplayState(rootActive = true, frameworkCheckPending = false,
+                displayState = blocked))
+    }
+
     @Test
     fun `unsupported OS and disabled intent take precedence`() {
         assertEquals(

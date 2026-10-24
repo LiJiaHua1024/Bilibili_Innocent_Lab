@@ -5,6 +5,7 @@ import com.Bilibili_Innocent_Lab.xposedmodule.runtime.HostInstallChainState
 
 internal enum class NoRootDisplayState {
     UNSUPPORTED_OS,
+    EMBEDDED_UNSUPPORTED,
     DISABLED,
     CHECKING,
     MANAGER_MISSING,
@@ -29,6 +30,7 @@ internal data class ActivationDecision(
 
 internal enum class ActivationDisplayState {
     CHECKING,
+    EMBEDDED_UNSUPPORTED,
     ACTIVE_LSPOSED,
     ACTIVE_LSPATCH,
     ACTIVE_NPATCH,
@@ -59,8 +61,10 @@ internal object NoRootSupportState {
         currentTargetVersionCode: Long,
         currentTargetUpdateTime: Long,
         scope: NPatchScopeProbe.ScopeState = NPatchScopeProbe.ScopeState.UNKNOWN,
-        probe: HostRuntimeProbeStatus = HostRuntimeProbeStatus.IDLE
+        probe: HostRuntimeProbeStatus = HostRuntimeProbeStatus.IDLE,
+        embeddedModeBlocked: Boolean = false
     ): NoRootDisplayState {
+        if (embeddedModeBlocked) return NoRootDisplayState.EMBEDDED_UNSUPPORTED
         if (sdkInt < MIN_SUPPORTED_SDK) return NoRootDisplayState.UNSUPPORTED_OS
         if (!status.desiredEnabled) {
             return if (status.syncState == NoRootSupportStore.SyncState.DISABLE_RESTART_REQUIRED) {
@@ -144,6 +148,7 @@ internal object NoRootSupportState {
         // Root 框架的服务证据独立于历史免 Root 设置；NPatch 的作用域和探测结果不能否决它。
         rootActive && !lspatchFramework && !nPatchFramework ->
             ActivationDisplayState.ACTIVE_LSPOSED
+        displayState == NoRootDisplayState.EMBEDDED_UNSUPPORTED -> ActivationDisplayState.EMBEDDED_UNSUPPORTED
         // 作用域缺失时 Manager 仍可能提供 Modern 服务并留下旧回执；它比任何“已激活”
         // 补丁框架断言都更像当前事实，优先于补丁框架的激活结果。
         displayState == NoRootDisplayState.SCOPE_MISSING ->

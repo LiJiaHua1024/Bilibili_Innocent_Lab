@@ -735,6 +735,10 @@ class DiagnosticsActivity : SkinnedActivity(),
 
     private fun itemDetail(id: DiagnosticItemId, snapshot: ModuleDiagnosticSnapshot): String {
         val input = snapshot.inputs
+        if ((id == DiagnosticItemId.ACTIVATION || id == DiagnosticItemId.NO_ROOT) &&
+            com.Bilibili_Innocent_Lab.xposedmodule.runtime.noroot.EmbeddedModePolicy.isSettingsBlocked(this)) {
+            return getString(R.string.embedded_mode_unsupported)
+        }
         return when (id) {
             DiagnosticItemId.MODULE_BUILD -> getString(
                 R.string.diagnostics_module_detail,

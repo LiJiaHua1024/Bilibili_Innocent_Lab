@@ -27,6 +27,7 @@ internal object ActivationCardVisualSpec {
         ActivationDisplayState.LSPATCH_WAITING_FOR_HOST -> DiagnosticStatusTone.INFO
         ActivationDisplayState.UNCONFIRMED -> DiagnosticStatusTone.ATTENTION
         ActivationDisplayState.LSPATCH_HOST_FAILED,
+        ActivationDisplayState.EMBEDDED_UNSUPPORTED,
         ActivationDisplayState.SCOPE_MISSING,
         ActivationDisplayState.NOT_RUNNING,
         ActivationDisplayState.UNAVAILABLE -> DiagnosticStatusTone.ACTION_REQUIRED
@@ -41,6 +42,7 @@ internal object ActivationCardVisualSpec {
         standardPublisherBypassed: Boolean = false
     ): ActivationSummaryState = when {
         displayState == ActivationDisplayState.UNAVAILABLE ||
+            displayState == ActivationDisplayState.EMBEDDED_UNSUPPORTED ||
             displayState == ActivationDisplayState.LSPATCH_HOST_FAILED ||
             displayState == ActivationDisplayState.SCOPE_MISSING ||
             displayState == ActivationDisplayState.NOT_RUNNING ->

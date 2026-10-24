@@ -75,21 +75,21 @@ Bilibili Innocent Lab 是一个面向 Android 哔哩哔哩客户端的 Xposed/LS
 
 **NPatch 免 Root 支持说明**
 
-本模块支持通过 NPatch Manager 或 embed 加载到本地修补的哔哩哔哩客户端。首个验证范围为 **B 站 8.90.2、固定修复版 833、签名等级 2、Android 16/arm64**；完整范围、恢复方法与未测组合见[支持说明](docs/npatch-release-support.md)。代码最低要求 Android 9，Manager 通道最低要求 NPatch Manager 1.0.7，这些下限不代表所有组合均已实测。Manager 模式先添加并启用模块及宿主作用域；embed 模式无需 Manager，需将模块 APK 内嵌到宿主，同时安装并保留独立模块设置 App。两种模式均需接受条款、选择“免 Root 支持”，然后冷启动 B 站验证回执。该可选路径不改变原有 Root/LSPosed 用法。
+本模块支持通过 NPatch Manager 加载到本地修补的哔哩哔哩客户端。**当前版本不支持集成（embed）模式**，暂时关闭该模式以减少内嵌模块宿主的倒卖，相关实现保留。首个验证范围为 **B 站 8.90.2、固定修复版 833、签名等级 2、Android 16/arm64**；完整范围、恢复方法与未测组合见[支持说明](docs/npatch-release-support.md)。代码最低要求 Android 9，Manager 通道最低要求 NPatch Manager 1.0.7，这些下限不代表所有组合均已实测。先在 Manager 中添加并启用模块及宿主作用域，保留独立模块设置 App，接受条款、选择“免 Root 支持”，然后冷启动 B 站验证回执。该可选路径不改变原有 Root/LSPosed 用法。
 
 启用后，NPatch 宿主优先通过模块自己的鉴权通道读取当前完整配置，不再要求开启“通信兼容模式”；Manager Remote Store 同步作为可选镜像，其不可用不阻止直达配置就绪。开启、关闭或修改相关设置后，需要手动强制停止并重新打开哔哩哔哩；只有取得当前授权并通过完整配置校验后，目标进程才会安装模块功能，模块界面收到并验证宿主回执后才会显示为已激活。所有授权端点不可达时，不会仅凭旧缓存启用功能。
 
 设置 App 被系统强行停止后，请先打开设置 App，再冷启动 B 站。覆盖安装设置 App 可保留现有配置；卸载重装会删除其配置、条款记录和账号授权，需重新接受条款并开启免 Root。业务设置可从“设置备份”导入，条款同意、授权凭据和运行回执不会随备份恢复；宿主仍需重新取得当前许可。仅卸载设置 App 不会移除已嵌入宿主的模块代码。
 
-诊断中心的“免 Root 支持”详情可查看补丁模式、签名绕过等级、Loader API/版本、Manager 版本、实际配置来源，以及本次响应的进程及 Hook 点数；没有响应的进程保持未知，安装数量不能替代功能验收。embed 的作用域固定、不支持热重载，更新模块必须重新修补宿主，签名绕过最高为 2。修复 833 原生 loader 的锁反转后，embed 的 `:web` 已恢复原有功能注册与时序；必须使用固定修复版 patcher 重新修补宿主，单独更新模块不能修复旧 loader。833 的 Manager 失联加载问题也需要工具中的 Java loader 修复。修补、自有签名和同证书升级方法见[工具说明](scripts/npatch/README.md)，逐类别兼容、模式往返及恢复证据见[实施路线图](docs/npatch-implementation-roadmap.md)。
+诊断中心的“免 Root 支持”详情可查看补丁模式、签名绕过等级、Loader API/版本、Manager 版本、实际配置来源，以及本次响应的进程及 Hook 点数；没有响应的进程保持未知，安装数量不能替代功能验收。833 的 Manager 失联加载问题需要工具中的 Java loader 修复。修补、自有签名和同证书升级方法见[工具说明](scripts/npatch/README.md)，逐类别兼容及历史模式往返、恢复证据见[实施路线图](docs/npatch-implementation-roadmap.md)；历史集成模式验证记录不代表当前版本开放使用。
 
 > 支持范围以已验证组合为准。其它系统、ABI、宿主版本、签名等级及模块共存组合保持未验证；目录矩阵中的通用业务待验项也不自动提升为通过。用户自有证书已覆盖产物与同证书升级检查，其第三方分享 SDK 和长期账号风控需分别验证。
 
 **LSPatch 免 Root 支持说明**
 
-当前分支已适配 **JingMatrix LSPatch 1.2（487）**，覆盖本地（Manager）与集成（embedded）模式；B 站 9.13.0、签名等级 2、Android 16/arm64 已完成 Debug 实机专项。LSPatch 界面的“本地”对应 `--manager`，集成对应 `--embed`。本地模式需在管理器中选择模块并点击“应用”；集成模式需嵌入与独立设置 App 配套的模块 APK，更新模块后重新修补宿主。
+当前分支已适配 **JingMatrix LSPatch 1.2（487）** 的本地（Manager）模式；B 站 9.13.0、签名等级 2、Android 16/arm64 已完成 Debug 实机专项。LSPatch 界面的“本地”对应 `--manager`，需在管理器中选择模块并点击“应用”。**当前版本不支持集成（embedded / `--embed`）模式**，与 NPatch 共用暂时关闭的代码支持开关，相关实现保留。
 
-保留独立模块设置 App、完成条款授权并冷启动 B 站即可验证；无需开启 NPatch 开关或通信兼容模式。两种模式均读取当前授权配置，无管理器的集成模式也以真实宿主回执确认激活。已复现并修复 [issue #31](https://github.com/jichuo1/Bilibili_Innocent_Lab/issues/31) 所涉及的旧 NPatch 意图与 LSPatch 配置通道冲突，详细产物、恢复步骤、实测边界及其它免 Root 框架候选见[阶段 9 支持记录](docs/lspatch-stage9.md)。旧版 Legacy LSPatch、Canary 和矩阵外组合保持未验证。
+保留独立模块设置 App、完成条款授权并冷启动 B 站即可验证；无需开启 NPatch 开关或通信兼容模式。激活须通过当前授权配置及真实宿主回执确认。已复现并修复 [issue #31](https://github.com/jichuo1/Bilibili_Innocent_Lab/issues/31) 所涉及的旧 NPatch 意图与 LSPatch 配置通道冲突，详细产物、恢复步骤、历史实测边界及其它免 Root 框架候选见[阶段 9 支持记录](docs/lspatch-stage9.md)。旧版 Legacy LSPatch、Canary 和矩阵外组合保持未验证。
 
 ---
 

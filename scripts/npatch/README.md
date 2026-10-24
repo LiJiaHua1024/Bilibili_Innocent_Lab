@@ -1,5 +1,7 @@
 # NPatch 1.0.9 (833) loader 修补工具
 
+> 当前模块版本不支持集成（embed）模式，仅开放 Manager 模式。工具及下文 embed 流程保留供既有实现维护；生成 embed 产物不会绕过模块代码中的支持门控。
+
 ## 阶段 5 启动采样
 
 `MeasureStartup.ps1` 只用于已授权测试机，显式要求 serial、模式和当前产物的 `verified.json`。运行前先自行构建并同证书覆盖安装设置 App、测试包及相同内嵌内容的宿主；脚本核对两份已安装 APK 的 SHA-256，不代为安装或修补。详细测量需在 Debug 构建时传 `-PinnocentLab.startupTrace=true`，默认构建和 Release 不注册采集入口；原生产查询和支持包协议不变。

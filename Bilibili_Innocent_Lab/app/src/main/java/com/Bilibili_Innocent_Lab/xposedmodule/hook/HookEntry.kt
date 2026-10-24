@@ -5100,6 +5100,12 @@ class HookEntry : XposedModule() {
                         return
                     }
                     if (processName == TARGET_PACKAGE) HostRuntimeDiagnosticsBridge.recordConfigRejected(admission.reason)
+                    if (admission.reason == "embedded_mode_unsupported") {
+                        authorizedInstallerRef.set(null)
+                        authorizationRetryPending.set(false)
+                        frameworkLog("[BIL] 当前版本不支持集成模式，本进程不安装功能")
+                        return
+                    }
                     if (processName == TARGET_PACKAGE) {
                         // attach 阶段可能仍处在后台启动窗口，MIUI 会暂时丢弃发往模块 App 的
                         // 跨包回退广播；保留安装闭包，等首个宿主 Activity 可见后再尝试一次。

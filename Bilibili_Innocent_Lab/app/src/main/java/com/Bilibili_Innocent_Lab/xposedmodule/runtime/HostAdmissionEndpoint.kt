@@ -54,6 +54,9 @@ internal object HostAdmissionEndpoint {
             if (extras == null || extras.getInt("version") != HostAdmissionContract.VERSION) return@runCatching status("protocol_rejected")
             val nonce = extras.getString("nonce").orEmpty()
             if (!HostRuntimeDiagnosticsQueryContract.isValidNonce(nonce)) return@runCatching status("protocol_rejected")
+            if (com.Bilibili_Innocent_Lab.xposedmodule.runtime.noroot.EmbeddedModePolicy.isSettingsBlocked(context)) {
+                return@runCatching status("embedded_mode_unsupported", nonce)
+            }
             UserTermsConsentStore.withAuthorityLock {
                 val current = PublicationAuthorityStore.current(context) ?: return@withAuthorityLock status("storage_failed", nonce)
                 if (!current.decision.isAuthorized) return@withAuthorityLock status("denied", nonce)

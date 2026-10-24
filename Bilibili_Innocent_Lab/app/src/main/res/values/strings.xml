@@ -1496,6 +1496,8 @@
     <string name="npatch_profile_unknown">Unknown</string>
     <string name="npatch_profile_manager">Manager mode</string>
     <string name="npatch_profile_embedded">Embedded mode</string>
+    <string name="embedded_mode_unsupported_title">Embedded mode is not supported</string>
+    <string name="embedded_mode_unsupported">This version does not support embedded mode in NPatch or LSPatch. Use Manager (local) mode instead.</string>
     <string name="npatch_profile_installed">Installed patch: %1$s\nSignature bypass level: %2$s; Loader: %3$s; API: %4$s</string>
     <string name="npatch_profile_flags">debuggable: %1$s; injectdex: %2$s</string>
     <string name="npatch_profile_manager_version">Installed Manager: %1$s (%2$s)</string>

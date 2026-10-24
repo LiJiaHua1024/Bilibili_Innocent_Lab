@@ -24,6 +24,11 @@ internal fun nPatchDiagnosticsDetails(context: Context, input: ModuleDiagnosticI
             patch.signatureLevel?.toString() ?: unknown,
             patch.loaderVersionCode?.toString() ?: unknown,
             patch.loaderApi?.toString() ?: unknown))
+        if (com.Bilibili_Innocent_Lab.xposedmodule.runtime.noroot.EmbeddedModePolicy.isBlocked(
+                patch.mode, com.Bilibili_Innocent_Lab.xposedmodule.runtime.noroot.LspatchMode.UNKNOWN)) {
+            add(context.getString(R.string.embedded_mode_unsupported))
+            return@buildList
+        }
         add(context.getString(R.string.npatch_profile_flags,
             patch.debuggable?.toString() ?: unknown, unknown))
         add(context.getString(R.string.npatch_profile_manager_version,

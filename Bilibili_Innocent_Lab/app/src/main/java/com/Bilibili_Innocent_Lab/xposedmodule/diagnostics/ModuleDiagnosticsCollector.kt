@@ -59,7 +59,9 @@ internal object ModuleDiagnosticsCollector {
             } else {
                 NPatchScopeProbe.ScopeState.UNKNOWN
             },
-            probe = HostRuntimeProbeClient.status()
+            probe = HostRuntimeProbeClient.status(),
+            embeddedModeBlocked = com.Bilibili_Innocent_Lab.xposedmodule.runtime.noroot.EmbeddedModePolicy
+                .isSettingsBlocked(appContext)
         )
         val framework = RemoteHookConfigStore.status()
         val lspatchHostState = NoRootSupportState.lspatchHostReceiptState(
@@ -201,7 +203,8 @@ internal object ModuleDiagnosticsCollector {
         DiagnosticRemotePublishState.valueOf(name)
 
     private fun NoRootDisplayState.toDiagnosticState() =
-        DiagnosticNoRootState.valueOf(name)
+        if (this == NoRootDisplayState.EMBEDDED_UNSUPPORTED) DiagnosticNoRootState.ERROR
+        else DiagnosticNoRootState.valueOf(name)
 }
 
 /**
@@ -209,6 +212,7 @@ internal object ModuleDiagnosticsCollector {
  * LSPatch 身份和真实回执，不能仅因新增展示状态扩大诊断格式兼容面。
  */
 internal fun ActivationDisplayState.toDiagnosticActivationState() = when (this) {
+    ActivationDisplayState.EMBEDDED_UNSUPPORTED -> DiagnosticActivationState.UNAVAILABLE
     ActivationDisplayState.ACTIVE_LSPATCH -> DiagnosticActivationState.ACTIVE_LSPOSED
     ActivationDisplayState.LSPATCH_WAITING_FOR_HOST -> DiagnosticActivationState.CHECKING
     ActivationDisplayState.LSPATCH_HOST_FAILED -> DiagnosticActivationState.UNAVAILABLE

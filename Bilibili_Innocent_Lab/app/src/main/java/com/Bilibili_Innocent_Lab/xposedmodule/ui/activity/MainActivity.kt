@@ -998,7 +998,9 @@ class MainActivity : SkinnedActivity() {
             } else {
                 NPatchScopeProbe.ScopeState.UNKNOWN
             },
-            probe = HostRuntimeProbeClient.status()
+            probe = HostRuntimeProbeClient.status(),
+            embeddedModeBlocked = com.Bilibili_Innocent_Lab.xposedmodule.runtime.noroot.EmbeddedModePolicy
+                .isSettingsBlocked(appContext)
         )
     }
 
@@ -1022,6 +1024,7 @@ class MainActivity : SkinnedActivity() {
     @StringRes
     internal fun noRootStatusText(state: NoRootDisplayState): Int = when (state) {
         NoRootDisplayState.UNSUPPORTED_OS -> R.string.no_root_status_unsupported_os
+        NoRootDisplayState.EMBEDDED_UNSUPPORTED -> R.string.embedded_mode_unsupported
         NoRootDisplayState.DISABLED -> R.string.no_root_status_disabled
         NoRootDisplayState.CHECKING -> R.string.no_root_status_checking
         NoRootDisplayState.MANAGER_MISSING -> R.string.no_root_status_manager_missing
@@ -1051,13 +1054,14 @@ class MainActivity : SkinnedActivity() {
             isEnabled = noRootDesiredEnabled ||
                 (
                     AndroidVersion.isAtLeast(AndroidVersion.P) &&
+                        state != NoRootDisplayState.EMBEDDED_UNSUPPORTED &&
                         noRootPrefsBridge != null
                     )
         }
         noRootProgrammaticSwitch = false
         val embedded = com.Bilibili_Innocent_Lab.xposedmodule.runtime.noroot.NPatchRuntimeProfiles
             .read(applicationContext).mode == com.Bilibili_Innocent_Lab.xposedmodule.runtime.noroot.NPatchMode.EMBEDDED
-        noRootStatusView?.text = if (embedded) getString(noRootStatusText(state)) + "\n" +
+        noRootStatusView?.text = if (embedded && state != NoRootDisplayState.EMBEDDED_UNSUPPORTED) getString(noRootStatusText(state)) + "\n" +
             getString(R.string.npatch_embed_usage) else getString(noRootStatusText(state))
         renderNoRootAction(state)
 
@@ -1216,6 +1220,7 @@ class MainActivity : SkinnedActivity() {
         activationTitleView?.setText(
             when (displayState) {
                 ActivationDisplayState.CHECKING -> R.string.module_activation_checking
+                ActivationDisplayState.EMBEDDED_UNSUPPORTED -> R.string.embedded_mode_unsupported_title
                 ActivationDisplayState.ACTIVE_LSPOSED,
                 ActivationDisplayState.ACTIVE_LSPATCH,
                 ActivationDisplayState.ACTIVE_NPATCH -> R.string.module_is_activated
@@ -1242,6 +1247,7 @@ class MainActivity : SkinnedActivity() {
         val showsUserSpaceHint = showsSecondaryUserText || moduleUserSpace.sameUser == false
         activationSourceView?.apply {
             val baseText = when (displayState) {
+                ActivationDisplayState.EMBEDDED_UNSUPPORTED -> getString(R.string.embedded_mode_unsupported)
                 ActivationDisplayState.ACTIVE_LSPATCH -> if (!framework.capable) getString(
                     R.string.activated_by_noapi, "LSPatch"
                 ) else getString(R.string.activated_by, framework.name, framework.apiVersion)
@@ -1407,6 +1413,11 @@ class MainActivity : SkinnedActivity() {
      * Activity 生命周期。关闭分支不调用此方法，因此不会触发任何 NPatch 连接。
      */
     internal fun enableAndSynchronizeNoRootSupport() {
+        if (com.Bilibili_Innocent_Lab.xposedmodule.runtime.noroot.EmbeddedModePolicy.isSettingsBlocked(applicationContext)) {
+            renderNoRootUi()
+            toast(getString(R.string.embedded_mode_unsupported))
+            return
+        }
         val bridge = noRootPrefsBridge ?: run {
             renderNoRootUi()
             return

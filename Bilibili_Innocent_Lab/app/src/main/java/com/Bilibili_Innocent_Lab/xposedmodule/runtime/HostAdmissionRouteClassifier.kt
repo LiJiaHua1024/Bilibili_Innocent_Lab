@@ -21,6 +21,7 @@ internal object HostAdmissionRouteClassifier {
         "denied",
         "consent_commit_failed",
         "manager_sync_required",
+        "embedded_mode_unsupported",
     )
 
     fun classify(status: String?): StatusClass = when (status) {

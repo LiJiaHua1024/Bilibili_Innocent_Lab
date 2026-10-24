@@ -9,6 +9,7 @@ import android.widget.ScrollView
 import android.widget.TextView
 import com.Bilibili_Innocent_Lab.xposedmodule.R
 import com.Bilibili_Innocent_Lab.xposedmodule.runtime.noroot.NoRootSupportStore
+import com.Bilibili_Innocent_Lab.xposedmodule.runtime.noroot.EmbeddedModePolicy
 import com.Bilibili_Innocent_Lab.xposedmodule.runtime.noroot.NPatchMode
 import com.Bilibili_Innocent_Lab.xposedmodule.runtime.noroot.NPatchRuntimeProfiles
 import com.highcapable.betterandroid.ui.extension.view.textColor
@@ -26,13 +27,14 @@ internal fun MainActivity.showNPatchSetupDialog(step: Int = 0, anchor: View? = n
         typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
     })
     val profile = NPatchRuntimeProfiles.read(this)
+    val blocked = EmbeddedModePolicy.isSettingsBlocked(this)
     val unknown = getString(R.string.npatch_profile_unknown)
     val mode = getString(when (profile.mode) {
         NPatchMode.MANAGER -> R.string.npatch_profile_manager
         NPatchMode.EMBEDDED -> R.string.npatch_profile_embedded
         NPatchMode.UNKNOWN -> R.string.npatch_profile_unknown
     })
-    val body = when (page) {
+    val body = if (blocked) getString(R.string.embedded_mode_unsupported) else when (page) {
         0 -> getString(R.string.npatch_profile_installed, mode,
             profile.signatureLevel?.toString() ?: unknown,
             profile.loaderVersionCode?.toString() ?: unknown, profile.loaderApi?.toString() ?: unknown) +
@@ -63,14 +65,14 @@ internal fun MainActivity.showNPatchSetupDialog(step: Int = 0, anchor: View? = n
             topMargin = (8 * density).toInt()
         })
     }
-    if (page == 1 && !NoRootSupportStore.isDesiredEnabled(this)) {
+    if (page == 1 && !blocked && !NoRootSupportStore.isDesiredEnabled(this)) {
         action(R.string.no_root_support_enable, filled = true) {
             enableAndSynchronizeNoRootSupport()
             showNPatchSetupDialog(1)
         }
     }
     if (page == 2) {
-        action(R.string.npatch_setup_restart, filled = true) { showRestartConfirmDialog() }
+        if (!blocked) action(R.string.npatch_setup_restart, filled = true) { showRestartConfirmDialog() }
         action(R.string.npatch_setup_diagnostics) { launchDiagnostics() }
     }
     if (page > 0) action(R.string.npatch_setup_previous) { showNPatchSetupDialog(page - 1) }

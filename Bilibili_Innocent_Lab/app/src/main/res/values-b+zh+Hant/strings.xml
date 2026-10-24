@@ -1496,6 +1496,8 @@
     <string name="npatch_profile_unknown">未知</string>
     <string name="npatch_profile_manager">Manager 模式</string>
     <string name="npatch_profile_embedded">嵌入模式</string>
+    <string name="embedded_mode_unsupported_title">目前版本不支援整合模式</string>
+    <string name="embedded_mode_unsupported">目前版本不支援 NPatch / LSPatch 整合（嵌入）模式，請使用管理器（本機）模式。</string>
     <string name="npatch_profile_installed">已安裝補丁：%1$s\n簽章繞過等級：%2$s；Loader：%3$s；API：%4$s</string>
     <string name="npatch_profile_flags">debuggable：%1$s；injectdex：%2$s</string>
     <string name="npatch_profile_manager_version">已安裝 Manager：%1$s（%2$s）</string>

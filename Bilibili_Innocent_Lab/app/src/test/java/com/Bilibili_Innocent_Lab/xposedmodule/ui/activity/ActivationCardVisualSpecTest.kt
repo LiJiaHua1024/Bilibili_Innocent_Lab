@@ -6,6 +6,13 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class ActivationCardVisualSpecTest {
+    @Test fun `unsupported embedded mode remains actionable in the card and summary`() {
+        assertEquals(DiagnosticStatusTone.ACTION_REQUIRED,
+            ActivationCardVisualSpec.tone(ActivationDisplayState.EMBEDDED_UNSUPPORTED))
+        assertEquals(ActivationSummaryState.ACTION_REQUIRED,
+            ActivationCardVisualSpec.diagnosticsSummaryState(ActivationDisplayState.EMBEDDED_UNSUPPORTED,
+                publishFailed = false, skinFallback = false, noRootNeedsAttention = false))
+    }
     @Test fun `NPatch bypass does not warn but preserves real failures and attention`() {
         fun summary(bypass: Boolean, attention: Boolean = false) = ActivationCardVisualSpec.diagnosticsSummaryState(
             ActivationDisplayState.ACTIVE_NPATCH, publishFailed = true, skinFallback = false,
