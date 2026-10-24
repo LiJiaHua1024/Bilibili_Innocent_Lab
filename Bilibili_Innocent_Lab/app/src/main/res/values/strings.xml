@@ -579,10 +579,6 @@
     <string name="liquid_background_encode_failed">The image could not be converted into a safe internal background.</string>
     <string name="liquid_background_storage_failed">The custom background could not be saved. The previous background was kept.</string>
     <string name="restart_bilibili">Restart Bilibili</string>
-    <string name="restart_bilibili_done">Bilibili restarted</string>
-    <string name="restart_bilibili_failed">Failed to restart Bilibili</string>
-    <string name="restart_root_missing">No usable root permission found. Set up root access (Magisk / KernelSU) first, then retry.</string>
-    <string name="restart_root_denied">Root access was denied. Allow this module in your root manager, then retry.</string>
     <string name="restart_bilibili_confirm_title">Confirm to save and restart Bilibili?</string>
     <string name="adapt_manual">Re-adapt to current version</string>
     <string name="adapt_manual_done">Adaptation records cleared. Restart Bilibili to re-adapt automatically.</string>
@@ -754,7 +750,6 @@
     <string name="no_root_activated_by_npatch">Activated through NPatch (heartbeat verified)</string>
     <string name="no_root_enable_failed">Could not enable no-root support</string>
     <string name="no_root_disable_failed">Could not disable no-root support</string>
-    <string name="no_root_restart_confirm_title">Restart Bilibili manually?</string>
     <string name="no_root_restart_confirm_message">Return here after force stopping Bilibili. You can then open it and verify the current settings.</string>
     <string name="no_root_restart_open_app_details">Open app details</string>
     <string name="no_root_restart_sync_failed">Could not persist the current settings. Check Diagnostics and retry.</string>

@@ -579,10 +579,6 @@
     <string name="liquid_background_encode_failed">無法將圖片轉換為安全的內部背景格式。</string>
     <string name="liquid_background_storage_failed">自訂背景儲存失敗，已保留先前的背景。</string>
     <string name="restart_bilibili">重新啟動 Bilibili</string>
-    <string name="restart_bilibili_done">已重新啟動 Bilibili</string>
-    <string name="restart_bilibili_failed">重新啟動 Bilibili 失敗</string>
-    <string name="restart_root_missing">未偵測到可用的 Root 權限：請先完成 Root（如 Magisk / KernelSU）後重試</string>
-    <string name="restart_root_denied">Root 授權被拒絕：請在 Root 管理器中允許本模組取得 Root 權限後重試</string>
     <string name="restart_bilibili_confirm_title">確認儲存並重新啟動 Bilibili？</string>
     <string name="adapt_manual">重新適配目前版本</string>
     <string name="adapt_manual_done">已清除適配記錄，重新啟動 Bilibili 後將自動重新適配</string>
@@ -754,7 +750,6 @@
     <string name="no_root_activated_by_npatch">由 NPatch 啟用（回執已驗證）</string>
     <string name="no_root_enable_failed">無法開啟免 Root 支援</string>
     <string name="no_root_disable_failed">無法關閉免 Root 支援</string>
-    <string name="no_root_restart_confirm_title">手動重新啟動嗶哩嗶哩？</string>
     <string name="no_root_restart_confirm_message">請在系統應用程式資訊中強制停止嗶哩嗶哩，然後返回這裡，繼續開啟並驗證目前設定。</string>
     <string name="no_root_restart_open_app_details">開啟應用程式資訊</string>
     <string name="no_root_restart_sync_failed">目前設定寫入失敗，請檢查診斷後重試。</string>

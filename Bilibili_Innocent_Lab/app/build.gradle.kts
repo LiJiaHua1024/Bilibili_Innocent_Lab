@@ -272,6 +272,7 @@ android {
         targetCompatibility = JavaVersion.VERSION_17
     }
     buildFeatures {
+        aidl = true
         buildConfig = true
         viewBinding = true
     }
@@ -529,6 +530,8 @@ if (
 }
 
 dependencies {
+    implementation(libs.shizuku.api)
+    implementation(libs.shizuku.provider)
     compileOnly(libs.libxposed.api)
     implementation(libs.libxposed.service)
 

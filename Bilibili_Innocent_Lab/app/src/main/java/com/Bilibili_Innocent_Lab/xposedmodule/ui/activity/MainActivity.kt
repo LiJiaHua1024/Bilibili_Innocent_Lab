@@ -3968,6 +3968,7 @@ class MainActivity : SkinnedActivity() {
             return
         }
 
+        com.Bilibili_Innocent_Lab.xposedmodule.runtime.restart.RestartCapabilities.warm(applicationContext, force = true)
         val framework = RemoteHookConfigStore.status()
         frameworkServiceObserved = frameworkServiceObserved || framework.connected
         frameworkStatusCheckPending = !framework.connected && !frameworkServiceObserved
@@ -4565,6 +4566,8 @@ class MainActivity : SkinnedActivity() {
             }
             return
         }
+        // 授权门禁之后、主界面构建之前预热，只读异步检查不会弹 Root / Shizuku 授权。
+        com.Bilibili_Innocent_Lab.xposedmodule.runtime.restart.RestartCapabilities.warm(applicationContext)
         val attributeRuntimeCheck = runCatching { classOf<AttributeSetResolver>() }
         if (attributeRuntimeCheck.isFailure) {
             showSettingsUiCompatibilityFallback(

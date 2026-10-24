@@ -25,6 +25,7 @@ junit = "4.13.2"
 androidx-test-junit = "1.3.0"
 androidx-test-espresso-core = "3.7.0"
 json = "20260814"
+shizuku = "13.1.5"
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }
@@ -33,6 +34,8 @@ kotlin-ksp = { id = "com.google.devtools.ksp", version.ref = "ksp" }
 hikage = { id = "com.highcapable.hikage", version.ref = "hikage-plugin" }
 
 [libraries]
+shizuku-api = { group = "dev.rikka.shizuku", name = "api", version.ref = "shizuku" }
+shizuku-provider = { group = "dev.rikka.shizuku", name = "provider", version.ref = "shizuku" }
 libxposed-api = { group = "io.github.libxposed", name = "api", version.ref = "libxposed" }
 libxposed-service = { group = "io.github.libxposed", name = "service", version.ref = "libxposed" }
 kavaref-bom = { group = "com.highcapable.kavaref", name = "kavaref-bom", version.ref = "kavaref" }

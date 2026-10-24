@@ -4,7 +4,7 @@
 
 > 2026-10-24 [全目录范围复核](npatch-scope-audit.md)已逐项覆盖 F1–F22 / N1–N7：本清单混有通用业务、产品体验和未证实提案，“NPatch 专属”历史分组不代表技术独占或必须实施。已做的通用修复及混合增强也分别列出，不只排除 F13。
 
-> 后续用户已明确选择 **Shizuku → LSPatch，并一并调查其它免 Root 框架**，见[下一阶段计划](no-root-next-stage-plan.md)。F11 的 Shizuku 路线现已确认排期；LSPatch “支持不佳”为待复现反馈，不沿用 NPatch 通过状态，其它历史候选仍按范围复核处理。
+> 后续用户已明确选择 **Shizuku → LSPatch，并一并调查其它免 Root 框架**，见[下一阶段计划](no-root-next-stage-plan.md)。F11 的 Shizuku 已在[阶段 8](shizuku-stage8.md)实现并通过一加限定专项；LSPatch “支持不佳”为待复现反馈，不沿用 NPatch 通过状态，其它历史候选仍按范围复核处理。
 
 - 状态：历史 Feature 调研；本轮 B1–B12 问题已闭环，扩展路线仍为提案
 - 日期：2026-10-20
@@ -154,7 +154,7 @@
 #### F11 免 Root 一键强停/重启
 
 - **结论**：可行，M；但**先做便宜替代**：现在 `ui/activity/MainActivity.kt:208-221` 的 `openBilibiliAppDetails` 只跳详情页，补一次 `getLaunchIntentForPackage` 自动拉起即可，零依赖（S）。
-- **当前排期**：现有零特权重启向导已在阶段 6.1 交付；2026-10-24 用户明确要求下一步实施 Shizuku，列为阶段 8，随后处理 LSPatch 及其它免 Root 框架兼容调查，详见[计划](no-root-next-stage-plan.md)。Shizuku 尚未实现，不能把该排期写成已支持。
+- **当前状态**：零特权重启向导已在阶段 6.1 交付；Shizuku 已在阶段 8 接入并通过一加备用机 Manager / embed 的限定启停专项，见[记录](shizuku-stage8.md)。随后处理 LSPatch 及其它免 Root 框架兼容调查，详见[计划](no-root-next-stage-plan.md)。Root / Sui 和矩阵外组合不因一加 shell 结果变为已测。
 - **Shizuku 实施前置**：依赖与目标版本文档须实际核对，不能沿用旧离线缓存结论。UserService 权限取决于实际启动身份与授权，不能固定认为都是 shell 2000；首期限定强停/重新拉起、当前回执确认及服务/授权失效恢复，保留零特权和 Root 原路径，不修改用户方向设置。
 
 #### F12 配置热应用（已安装 Hook 的动态值子集）
