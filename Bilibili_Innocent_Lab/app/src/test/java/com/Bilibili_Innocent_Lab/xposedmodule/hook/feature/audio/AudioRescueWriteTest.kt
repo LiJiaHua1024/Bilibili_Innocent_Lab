@@ -6,6 +6,45 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class AudioRescueWriteTest {
+    @Test fun `metrics prove mono on accepted encoded bytes without moving buffer positions`() {
+        val writer = AudioRescueWrite(AudioRescueProcessor(48000, 2, AudioRescueConfig(channels = 1)), 2)
+        val caller = ByteBuffer.wrap(bytes(16000, 0, -8000, 4000))
+        val pending = writer.prepare(caller, 0, 8)!!
+        val replacement = pending.data as ByteBuffer
+        replacement.position(4)
+        val stats = writer.metrics(pending, 4)!!
+        assertEquals(1, stats.frames)
+        assertEquals(16000 / 32768.0, stats.inputPeak, 0.0)
+        assertEquals(8000 / 32768.0, stats.outputPeak, 0.0)
+        assertTrue(stats.inputStereoDifference > 0.0)
+        assertEquals(0.0, stats.outputStereoDifference, 0.0)
+        assertEquals(0, caller.position()); assertEquals(4, replacement.position())
+    }
+
+    @Test fun `metrics exclude unwritten spikes and report actual quantized float short and eight bit output`() {
+        val writer = AudioRescueWrite(AudioRescueProcessor(48000, 2, AudioRescueConfig(peakGuard = true)), 4)
+        val pending = writer.prepare(floatArrayOf(.01f, .01f, 1f, -1f), 0, 4)!!
+        val stats = writer.metrics(pending, 2)!!
+        assertEquals(1, stats.frames)
+        assertTrue(stats.inputPeak < .011)
+        assertEquals(stats.inputPeak, stats.outputPeak, 0.0)
+        val shortWriter = AudioRescueWrite(AudioRescueProcessor(48000, 1, AudioRescueConfig()), 2)
+        val shortStats = shortWriter.metrics(shortWriter.prepare(shortArrayOf(16384), 0, 1)!!, 1)!!
+        assertEquals(.5, shortStats.outputRms, 0.0)
+        val byteWriter = AudioRescueWrite(AudioRescueProcessor(48000, 1, AudioRescueConfig()), 3)
+        val byteStats = byteWriter.metrics(byteWriter.prepare(byteArrayOf(192.toByte()), 0, 1)!!, 1)!!
+        assertEquals(.5, byteStats.outputPeak, 0.0)
+    }
+
+    @Test fun `metrics do not advance DSP state and reject failed or out of bounds writes`() {
+        val p = processor()
+        val writer = AudioRescueWrite(p, 4)
+        val pending = writer.prepare(floatArrayOf(1f, .2f), 0, 2)!!
+        val checkpoint = p.checkpoint()
+        for (accepted in listOf(-6, 0, 3)) assertNull(writer.metrics(pending, accepted))
+        assertNotNull(writer.metrics(pending, 2))
+        assertArrayEquals(checkpoint, p.checkpoint(), 0.0)
+    }
     private fun processor(channels: Int = 2) = AudioRescueProcessor(48000, channels, AudioRescueConfig(true, 1, true, true))
     private fun bytes(vararg samples: Short): ByteArray = ByteBuffer.allocate(samples.size * 2)
         .order(ByteOrder.nativeOrder()).also { b -> samples.forEach { b.putShort(it) } }.array()

@@ -25,11 +25,12 @@ class AudioRescueFeatureInstallerTest {
             .install(environment(registrar, "tv.danmaku.bili:download")))
         assertTrue(registrar.methods.isEmpty())
     }
-    @Test fun `main diagnostics cannot claim service runtime success`() {
+    @Test fun `main process video backend registers the same PCM and lifecycle hooks`() {
         val registrar = Registrar()
-        assertEquals(FeatureInstallResult.Unverified, AudioRescueFeatureInstaller(AudioRescueConfig(true))
+        assertEquals(FeatureInstallResult.Installed(9), AudioRescueFeatureInstaller(AudioRescueConfig(true))
             .install(environment(registrar, "tv.danmaku.bili")))
-        assertTrue(registrar.methods.isEmpty())
+        assertEquals(6, registrar.methods.count { it.startsWith("write:") })
+        assertTrue(registrar.methods.containsAll(listOf("flush:", "stop:", "release:")))
     }
     @Test fun `dedicated service registers six write forms and all reset paths`() {
         val registrar = Registrar()

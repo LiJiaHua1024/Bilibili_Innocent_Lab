@@ -3467,7 +3467,7 @@ class HookEntry : XposedModule() {
                         diskMb = prefs.getInt(FeaturePreferences.PLAYER_BUFFER_DISK_MB, PlayerBufferConfig.DEFAULT_DISK_MB),
                         wifiOnly = prefs.getBoolean(FeaturePreferences.PLAYER_BUFFER_WIFI_ONLY, PlayerBufferConfig.DEFAULT_WIFI_ONLY)
                     ),
-                    AudioRescueFeatureInstaller(readAudioRescueConfig(prefs)),
+                    AudioRescueFeatureInstaller(readAudioRescueConfig(prefs), debugTrace = com.Bilibili_Innocent_Lab.xposedmodule.BuildConfig.DEBUG),
                     PlayerCodecForceFeatureInstaller(
                         codecPreferenceValue = prefs.getInt(
                             FeaturePreferences.PLAYER_CODEC_PREFERENCE,

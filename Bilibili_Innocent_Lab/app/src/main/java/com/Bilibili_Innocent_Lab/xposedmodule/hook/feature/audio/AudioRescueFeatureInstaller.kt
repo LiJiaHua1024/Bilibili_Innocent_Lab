@@ -12,17 +12,22 @@ import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.locks.ReentrantLock
 
-/** The dedicated ijkservice contains the host's player output, unlike main-process UI/ad audio.
+/** Older ijk backends render in ijkservice; Bilibili 9.13.0 also renders video PCM in main.
+ * Scope follows these two media-producing processes and STREAM_MUSIC, never system audio.
  * Android's PCM write contract needs sample access; BetterAndroid offers no equivalent DSP API.
  * No AudioTrack/Activity/player instance is retained by the session values.
  */
-internal class AudioRescueFeatureInstaller(private val config: AudioRescueConfig) : FeatureInstaller {
+internal class AudioRescueFeatureInstaller(
+    private val config: AudioRescueConfig,
+    private val debugTrace: Boolean = false
+) : FeatureInstaller {
     override val id = "player_audio_rescue"
     private class Session(val rate: Int, val channels: Int, val encoding: Int, val config: AudioRescueConfig) {
         val lock = ReentrantLock()
         val generation = AtomicInteger()
         var appliedGeneration = 0
         var writer = AudioRescueWrite(AudioRescueProcessor(rate, channels, config), encoding)
+        var evidenceCaptured = false
         fun reset() { writer = AudioRescueWrite(AudioRescueProcessor(rate, channels, config), encoding) }
     }
     private data class InFlight(val session: Session, val writer: AudioRescueWrite, val pending: AudioRescueWrite.Pending, val generation: Int)
@@ -33,9 +38,8 @@ internal class AudioRescueFeatureInstaller(private val config: AudioRescueConfig
 
     override fun install(environment: HookEnvironment): FeatureInstallResult {
         if (!config.enabled) return FeatureInstallResult.Skipped("disabled")
-        // Main-process diagnostics cannot prove this separate service has started.
-        if (environment.processName == "tv.danmaku.bili") return FeatureInstallResult.Unverified
-        if (environment.processName != PLAYER_PROCESS) return FeatureInstallResult.Skipped("non-main-process")
+        if (environment.processName != MAIN_PROCESS && environment.processName != PLAYER_PROCESS)
+            return FeatureInstallResult.Skipped("non-main-process")
         val int = Int::class.javaPrimitiveType!!
         val signatures = listOf(
             arrayOf(ByteArray::class.java, int, int), arrayOf(ByteArray::class.java, int, int, int),
@@ -72,7 +76,20 @@ internal class AudioRescueFeatureInstaller(private val config: AudioRescueConfig
                     after {
                         val transaction = getObjectExtra(TRANSACTION) as? InFlight ?: return@after
                         try {
-                            transaction.writer.finish(transaction.pending, if (hasThrowable) -1 else (result as? Int ?: -1))
+                            val accepted = if (hasThrowable) -1 else (result as? Int ?: -1)
+                            val evidence = if (debugTrace && !transaction.session.evidenceCaptured)
+                                runCatching { transaction.writer.metrics(transaction.pending, accepted) }.getOrNull() else null
+                            transaction.writer.finish(transaction.pending, accepted)
+                            if (evidence != null && evidence.inputPeak >= .01) {
+                                transaction.session.evidenceCaptured = true
+                                // One aggregate per process via logInfo's existing once-key; no waveform,
+                                // content identifier or PCM buffer is recorded. Diagnostics cannot fail a write.
+                                runCatching { environment.logInfo("$id.pcm", "[BIL] audio_rescue PCM " +
+                                    "rate=${transaction.session.rate} channels=${transaction.session.channels} encoding=${transaction.session.encoding} frames=${evidence.frames} " +
+                                    "inPeakPpm=${(evidence.inputPeak * 1_000_000).toInt()} outPeakPpm=${(evidence.outputPeak * 1_000_000).toInt()} " +
+                                    "inStereoPpm=${(evidence.inputStereoDifference * 1_000_000).toInt()} outStereoPpm=${(evidence.outputStereoDifference * 1_000_000).toInt()} " +
+                                    "inRmsPpm=${(evidence.inputRms * 1_000_000).toInt()} outRmsPpm=${(evidence.outputRms * 1_000_000).toInt()}") }
+                            }
                             if (transaction.generation != transaction.session.generation.get()) transaction.session.reset()
                         } catch (failure: Throwable) {
                             ready.set(false)
@@ -102,6 +119,7 @@ internal class AudioRescueFeatureInstaller(private val config: AudioRescueConfig
         // A partially registered set cannot safely preserve stream state after seeks/flushes.
         // Already registered callbacks stay inert until all required methods are available.
         ready.set(installed == signatures.size + 3)
+        if (debugTrace) runCatching { environment.logInfo("$id.ready", "[BIL] audio_rescue hooks=$installed ready=${ready.get()} process=${environment.processName}") }
         environment.reportStatus("audio_rescue", "installed:$installed;runtime-unverified")
         return if (!ready.get()) FeatureInstallResult.Skipped("registration-failed")
         else FeatureInstallResult.Installed(installed)
@@ -118,6 +136,7 @@ internal class AudioRescueFeatureInstaller(private val config: AudioRescueConfig
     }
 
     companion object {
+        const val MAIN_PROCESS = "tv.danmaku.bili"
         const val PLAYER_PROCESS = "tv.danmaku.bili:ijkservice"
         private const val TRANSACTION = "bil.audio.rescue.write"
     }
