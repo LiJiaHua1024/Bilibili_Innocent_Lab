@@ -75,8 +75,9 @@ class InsightProtocolTest {
             """{"chapters":[{"start":0,"title":"a"},{"start":400.1,"title":"b"},{"start":800,"title":"c"}]}""", input) }
     }
     @Test fun `official chapters short video and missing subtitles prevent generation`() {
-        val raw = """{"chapters":[{"start":0,"title":"a"},{"start":100,"title":"b"},{"start":200,"title":"c"}]}"""
-        for (context in listOf(input.copy(officialChapters = true), input.copy(duration = 599), input.copy(cues = emptyList()))) {
+        val raw = """{"chapters":[{"start":0,"title":"a"},{"start":60,"title":"b"},{"start":120,"title":"c"}]}"""
+        assertEquals(3, InsightProtocol.decode(InsightMode.CHAPTERS, raw, input.copy(duration = 180)).chapters.size)
+        for (context in listOf(input.copy(officialChapters = true), input.copy(duration = 179), input.copy(cues = emptyList()))) {
             rejects { InsightProtocol.decode(InsightMode.CHAPTERS, raw, context) }
         }
     }

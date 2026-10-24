@@ -101,7 +101,8 @@ internal class InsightRepository(
             trace("context mode=$mode cues=${input.cues.size} comments=${input.comments.size} danmaku=${input.danmaku.size} official=${input.officialChapters}")
             check(!cancelled())
             if (mode == InsightMode.COMMENTS) require(input.comments.isNotEmpty()) { "no-comments" }
-            if (mode == InsightMode.CHAPTERS) require(input.timed && !input.officialChapters && input.duration >= 600) { "chapters-unavailable" }
+            if (mode == InsightMode.CHAPTERS) require(input.timed && !input.officialChapters &&
+                input.duration >= InsightProtocol.MIN_CHAPTER_VIDEO_SECONDS) { "chapters-unavailable" }
             val original = JSONArray().put(JSONObject().put("role", "system").put("content", InsightProtocol.system(mode, input)))
                 .put(JSONObject().put("role", "user").put("content", InsightProtocol.prompt(mode, input, question, history)))
             var messages = original

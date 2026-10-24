@@ -120,6 +120,20 @@ class InsightRepositoryTest {
         assertTrue(runCatching { repo.generate(video, InsightMode.CHAPTERS) }.isFailure)
         assertEquals(0, posts.get())
     }
+    @Test fun `chapter requests accept three to five minutes and reject shorter videos before billing`() {
+        val posts = AtomicInteger()
+        val chapters = """{"chapters":[{"start":0,"title":"开始"},{"start":60,"title":"展开"},{"start":120,"title":"结束"}]}"""
+        for (duration in listOf(179, 180, 240, 300)) {
+            val repo = InsightRepository(source, InsightCache(temporary.newFolder()), {
+                input.copy(duration = duration, cues = listOf(InsightCue(0.0, duration.toDouble(), "内容")))
+            }, client(posts, chapters))
+            if (duration < 180) {
+                assertTrue(runCatching { repo.generate(video, InsightMode.CHAPTERS) }.isFailure)
+                assertEquals(0, posts.get())
+            } else assertEquals(3, repo.generate(video, InsightMode.CHAPTERS).output.chapters.size)
+        }
+        assertEquals(3, posts.get())
+    }
     @Test fun `ask uses dialogue context and is not persisted`() {
         val posts = AtomicInteger(); val root = temporary.newFolder()
         val repo = InsightRepository(source, InsightCache(root), { input }, client(posts, """{"answer":"[[t:10]] explanation"}"""))

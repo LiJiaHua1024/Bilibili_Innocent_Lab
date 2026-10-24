@@ -147,7 +147,8 @@ internal class InsightCard(context: Context, private val repository: InsightRepo
         request(InsightMode.SUMMARY, current) { result ->
             summary = result
             body.text = render(result)
-            if (nativeChaptersAvailable && automaticChapters && result.timed && result.duration >= 600) requestChapters(silent = true)
+            if (nativeChaptersAvailable && automaticChapters && result.timed &&
+                result.duration >= InsightProtocol.MIN_CHAPTER_VIDEO_SECONDS) requestChapters(silent = true)
         }
     }
     private fun requestChapters(silent: Boolean = false) {
@@ -243,12 +244,12 @@ internal class InsightCard(context: Context, private val repository: InsightRepo
                             "尚未读取到评论。请先打开宿主评论区，返回后重试。", "No comments loaded. Open the native comments tab, then try again.",
                             "尚未讀取到評論。請先開啟宿主評論區，返回後重試。")
                         error.message == "chapters-unavailable" -> insightText(card.context,
-                            "AI 章节需要可用字幕、10 分钟以上时长，且当前视频没有官方章节。", "AI chapters require subtitles, at least 10 minutes, and no official chapters.",
-                            "AI 章節需要可用字幕、10 分鐘以上時長，且目前影片沒有官方章節。")
+                            "AI 章节需要可用字幕、至少 3 分钟时长，且当前视频没有官方章节。", "AI chapters require subtitles, at least 3 minutes, and no official chapters.",
+                            "AI 章節需要可用字幕、至少 3 分鐘時長，且目前影片沒有官方章節。")
                         else -> insightText(card.context,
-                        "暂时无法生成：字幕、评论或接口不可用，或回答格式无效。点标题重试；自动章节仅适用于无官方章节的 10 分钟以上字幕视频。",
-                        "Could not generate. Context or model unavailable, or invalid response. Tap the title to retry. Chapters require subtitles, at least 10 minutes, and no official chapters.",
-                        "暫時無法生成：字幕、評論或介面不可用，或回答格式無效。點標題重試。自動章節僅適用於無官方章節的 10 分鐘以上字幕影片。")
+                        "暂时无法生成：字幕、评论或接口不可用，或回答格式无效。点标题重试；自动章节仅适用于无官方章节、至少 3 分钟的字幕视频。",
+                        "Could not generate. Context or model unavailable, or invalid response. Tap the title to retry. Chapters require subtitles, at least 3 minutes, and no official chapters.",
+                        "暫時無法生成：字幕、評論或介面不可用，或回答格式無效。點標題重試。自動章節僅適用於無官方章節、至少 3 分鐘的字幕影片。")
                     }
                 }
             })

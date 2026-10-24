@@ -22,7 +22,8 @@ class InsightNativeChaptersTest {
         val points = updated.videoGuide.videoPoint.pointsList
         assertEquals(listOf(0L, 300L, 700L), points.map { it.from })
         assertEquals(listOf(300L, 700L, 900L), points.map { it.to })
-        assertTrue(points.all { it.type == InsightNativeChapters.CHAPTER_TYPE && it.content.startsWith("AI · ") })
+        assertTrue(points.all { it.type == InsightNativeChapters.CHAPTER_TYPE })
+        assertEquals(generated.output.chapters.map { it.title }, points.map { it.content })
         assertTrue(original.videoGuide.videoPoint.pointsList.isEmpty())
         assertEquals(Point(), Point.getDefaultInstance())
     }
@@ -40,9 +41,19 @@ class InsightNativeChaptersTest {
     @Test fun `invalid chapter cache never reaches native renderer`() {
         val original = ProgressReply()
         assertSame(original, adapter.apply(original, generated.copy(timed = false)))
-        assertSame(original, adapter.apply(original, generated.copy(duration = 200)))
+        assertSame(original, adapter.apply(original, generated.copy(duration = 179)))
         assertSame(original, adapter.apply(original, generated.copy(output = InsightOutput("", listOf(
             InsightChapter(0, "a"), InsightChapter(300, "b"), InsightChapter(200, "c"))))))
     }
     @Test fun `unsupported native ABI is refused`() { assertNull(InsightNativeChapters.resolve(String::class.java)) }
+    @Test fun `three minute chapters reach native renderer without title decoration`() {
+        val entry = InsightCache.Entry(InsightOutput("", listOf(InsightChapter(0, "开始"),
+            InsightChapter(60, "展开"), InsightChapter(120, "结束"))), 180, true)
+        val original = ProgressReply()
+        val updated = adapter.apply(original, entry) as ProgressReply
+        assertNotSame(original, updated)
+        assertEquals(listOf("开始", "展开", "结束"), updated.videoGuide.videoPoint.pointsList.map { it.content })
+        assertEquals(180L, updated.videoGuide.videoPoint.pointsList.last().to)
+        assertSame(original, adapter.apply(original, entry.copy(duration = 179)))
+    }
 }

@@ -18,7 +18,8 @@ internal class InsightNativeChapters private constructor(
         (points.invoke(viewPoint.invoke(guide.invoke(reply))) as? List<*>)?.isNotEmpty() == true
     }.getOrDefault(false)
     fun apply(reply: Any, entry: InsightCache.Entry): Any = runCatching {
-        if (reply === replyDefault || entry.output.chapters.size !in 3..12 || !entry.timed || entry.duration < 600) return reply
+        if (reply === replyDefault || entry.output.chapters.size !in 3..12 || !entry.timed ||
+            entry.duration < InsightProtocol.MIN_CHAPTER_VIDEO_SECONDS) return reply
         val oldGuide = guide.invoke(reply) ?: return reply
         val oldList = viewPoint.invoke(oldGuide) ?: return reply
         // 官方响应一旦有任何章节，整份原样保留，绝不拼接或覆盖。
@@ -29,7 +30,7 @@ internal class InsightNativeChapters private constructor(
         val generated = chapters.mapIndexed { index, chapter -> itemPlan.edit(itemDefault) { builder ->
             from.invoke(builder, chapter.start.toLong())
             to.invoke(builder, (chapters.getOrNull(index + 1)?.start ?: entry.duration).toLong())
-            content.invoke(builder, "AI · ${chapter.title}")
+            content.invoke(builder, chapter.title)
             type.invoke(builder, CHAPTER_TYPE)
         } }
         val newList = listPlan.edit(oldList) { addAll.invoke(it, generated); permanent.invoke(it, true) }
