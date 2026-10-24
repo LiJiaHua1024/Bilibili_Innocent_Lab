@@ -192,6 +192,35 @@ internal fun MainActivity.purifyShareCategory(scope: Hikage.Performer<NativeLine
         textColor = colorResource(R.color.colorTextDark)
         textSize = 12f
     }
+    MaterialSwitch(
+        lparams = LayoutParams(widthMatchParent = true) {
+            topMargin = 12.dp
+            bottomMargin = 5.dp
+        }
+    ) {
+        bindFavoriteSwitch(this, FeaturePreferences.WECHAT_SHARE_COMPAT, directToggle = true)
+        bindSettingDestination(this, FeaturePreferences.WECHAT_SHARE_COMPAT)
+        text = stringResource(R.string.wechat_share_compat)
+        isAllCaps = false
+        textColor = colorResource(R.color.colorTextGray)
+        textSize = 15f
+        isChecked = weChatShareCompat
+        setOnCheckedChangeListener { _, checked ->
+            weChatShareCompat = checked
+            runCatching {
+                prefs().edit { putBoolean(FeaturePreferences.WECHAT_SHARE_COMPAT, checked) }
+            }.onFailure { throwable ->
+                Log.e("BilibiliInnocentLab", "write WeChat share compatibility prefs failed", throwable)
+            }
+        }
+    }
+    TextView(lparams = LayoutParams(widthMatchParent = true)) {
+        alpha = 0.6f
+        setLineSpacing(6f, 1f)
+        text = stringResource(R.string.wechat_share_compat_tip)
+        textColor = colorResource(R.color.colorTextDark)
+        textSize = 12f
+    }
 }
 
 /** 进阶净化 · PURIFY_STARTUP 分类；标题即 marker，必须是本组第一个子控件。 */

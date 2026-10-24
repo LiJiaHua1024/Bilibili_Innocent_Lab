@@ -309,6 +309,9 @@ internal object ReleaseHighlightsCatalog {
     )), ReleaseHighlightsBatch(22, listOf(
         ReleaseHighlight("recommend-publish-time", HighlightKind.NEW, R.string.highlights_recommend_publish_time,
             HighlightDestination(SettingsCatalog.ID_RECOMMEND_VIDEO_PUBLISH_TIME_RULE))
+    )), ReleaseHighlightsBatch(23, listOf(
+        ReleaseHighlight("wechat-resigned-sharing", HighlightKind.NEW, R.string.wechat_share_compat_tip,
+            HighlightDestination("share.wechat.resigned_compat"))
     )))
     val currentRevision: Int get() = batches.maxOf { it.revision }
     val destinations get() = batches.sortedByDescending { it.revision }.flatMap { it.entries }

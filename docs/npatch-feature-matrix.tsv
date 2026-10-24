@@ -1,4 +1,4 @@
-# settings=57; capabilities=25
+# settings=58; capabilities=26
 kind	id	installer_group	links	local_scope	manager	embedded	evidence
 setting	ads.game_card.hidden	detail_united_module_purify,game_mentioned_promotion	detail_united_video_mentions_removed,game_mentioned_promotion	-	pending	pending	-
 setting	ads.home_banner.hidden	home_banner	home_banner_feed,home_banner_view	-	pending	pending	-
@@ -195,6 +195,7 @@ setting	search.keyword_filter.enabled	search_purify	search_keyword_filter_enable
 setting	search.keyword_filter.keywords	search_purify	search_keyword_filter_enabled	-	pending	pending	-
 setting	share.content.purified	share_purify	share_content_purified	-	pending	pending	-
 setting	share.mini_program.direct_link	share_purify	share_mini_program_direct_link	-	pending	pending	-
+setting	share.wechat.resigned_compat	wechat_share_compat	wechat_share_compat	-	observed	observed	case:WECHAT_RESIGNED_SHARE
 setting	splash.ads.purified	splash_ad_purify	splash_ad_purify	-	pending	pending	-
 setting	splash.auto_night.enabled	splash_auto_night	splash_auto_night	-	pending	pending	-
 setting	splash.brand.skipped	brand_splash_skip	brand_splash_skip	-	pending	pending	-
@@ -410,3 +411,4 @@ capability	video_related_semantic_filter_enabled	video_relate_filter	video.seman
 capability	video_related_special_removed	video_relate_filter	video.related.special.removed	-	pending	pending	-
 capability	video_related_strong_mode_enabled	video_relate_filter	video.related.strong_mode.enabled	-	pending	observed	case:RELATED_STRONG
 capability	video_related_tag_block	video_relate_filter	video.related.blocked_tags	-	pending	installed	case:RELATED_TAG
+capability	wechat_share_compat	wechat_share_compat	share.wechat.resigned_compat	-	observed	observed	case:WECHAT_RESIGNED_SHARE

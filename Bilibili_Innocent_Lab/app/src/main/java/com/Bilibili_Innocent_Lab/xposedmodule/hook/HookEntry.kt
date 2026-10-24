@@ -121,6 +121,7 @@ import com.Bilibili_Innocent_Lab.xposedmodule.hook.feature.PlayerStatusBarFeatur
 import com.Bilibili_Innocent_Lab.xposedmodule.hook.feature.SearchPurifyFeatureInstaller
 import com.Bilibili_Innocent_Lab.xposedmodule.hook.feature.SearchHomeRecommendFeatureInstaller
 import com.Bilibili_Innocent_Lab.xposedmodule.hook.feature.SharePurifyFeatureInstaller
+import com.Bilibili_Innocent_Lab.xposedmodule.hook.feature.WeChatShareCompatFeatureInstaller
 import com.Bilibili_Innocent_Lab.xposedmodule.hook.feature.StoryPurifyFeatureInstaller
 import com.Bilibili_Innocent_Lab.xposedmodule.hook.feature.StoryActionIcon
 import com.Bilibili_Innocent_Lab.xposedmodule.hook.feature.StoryActionIconsFeatureInstaller
@@ -3587,6 +3588,10 @@ class HookEntry : XposedModule() {
 
             featureInstallCoordinator.installAll(
                 listOf(
+                    WeChatShareCompatFeatureInstaller(
+                        enabled = prefs.getBoolean(FeaturePreferences.WECHAT_SHARE_COMPAT, false),
+                        hostVersionCode = { VersionAdapter.biliVersionCode(authorizationContext) }
+                    ),
                     SharePurifyFeatureInstaller(
                         purifyContent = prefs.getBoolean(
                             FeaturePreferences.PURIFY_SHARE_CONTENT,

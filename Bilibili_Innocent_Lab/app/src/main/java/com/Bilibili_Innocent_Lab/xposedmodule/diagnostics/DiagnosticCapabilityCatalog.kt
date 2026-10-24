@@ -20,7 +20,7 @@ internal object DiagnosticCapabilityCatalog {
      * 客户端是按 "比我已知的版本更新" 做增量的，
      * VERSION 涨了却没有任何条目标在新版本上，增量就是空集（有测试钉住）。
      */
-    const val VERSION = 25
+    const val VERSION = 26
     val definitions = listOf(
         DiagnosticCapabilityDefinition("player_buffer_strategy", "player_buffer", R.string.player_buffer_mode,
             setOf("player.buffer.mode", "player.buffer.seconds", "player.buffer.memory_mb"),
@@ -184,6 +184,8 @@ internal object DiagnosticCapabilityCatalog {
             setOf("splash.custom_selection.enabled"), introducedCatalogVersion = 18),
         DiagnosticCapabilityDefinition("share_content_purified", "share_purify", R.string.purify_share_content, setOf("share.content.purified")),
         DiagnosticCapabilityDefinition("share_mini_program_direct_link", "share_purify", R.string.share_mini_program_direct_link, setOf("share.mini_program.direct_link")),
+        DiagnosticCapabilityDefinition("wechat_share_compat", "wechat_share_compat", R.string.wechat_share_compat,
+            setOf("share.wechat.resigned_compat"), introducedCatalogVersion = 26),
         DiagnosticCapabilityDefinition("external_browser", "external_browser", R.string.force_external_browser, setOf("links.external_browser.enabled")),
         DiagnosticCapabilityDefinition("system_media_notification", "system_media_notification", R.string.system_media_notification, setOf("system.media_notification.enabled")),
         DiagnosticCapabilityDefinition("bv_to_av", "bv_to_av", R.string.show_bv_as_av, setOf("numbers.bv_as_av.enabled")),
@@ -282,6 +284,7 @@ internal object DiagnosticCapabilityCatalog {
         "comments_reply_button_removed",
         "share_content_purified",
         "share_mini_program_direct_link",
+        "wechat_share_compat",
         "live_room_switch_blocked",
         "live_double_tap_pause",
         "player_long_press_disabled",

@@ -255,6 +255,7 @@ The sections below describe capabilities by feature topic. Developer-facing cate
 | --- | --- |
 | Clean up share links | Removes tracking parameters from Bilibili links in the share panel link and share text, keeping only the page number and timestamp. **b23.tv short links are not expanded**, so no network request is made |
 | Convert mini-program cards to plain links | When sharing to WeChat or QQ a plain link card is sent instead; when the title only contains the app name, the real video title is filled back in and no attribution text is appended |
+| Share to re-signed WeChat | Off by default. Enable if you trust the re-signed WeChat on this device to keep native friend and Moments sharing. Restart Bilibili after changing it. Adapted for Bilibili 8.90.2; account-level previews and delivery remain unverified |
 
 #### Launch and system
 

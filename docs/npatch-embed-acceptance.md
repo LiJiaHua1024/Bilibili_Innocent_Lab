@@ -4,9 +4,9 @@
 
 ## 全量目录与状态
 
-[逐项矩阵](npatch-feature-matrix.tsv)由 `SettingsCatalog`、`DiagnosticCapabilityCatalog` 和 `DiagnosticFeatureRegistry` 交叉生成，包含 236 个设置和 174 个能力。设置行的 `links` 是相关能力，能力行的 `links` 是相关设置；`installer_group` 对应 Hook 注册组，具体进程适用性还需按安装器和实际业务核对。`local_scope` 保留纯界面、诊断或宿主前置授权项，避免它们因没有独立 Hook 被遗漏。
+[逐项矩阵](npatch-feature-matrix.tsv)由 `SettingsCatalog`、`DiagnosticCapabilityCatalog` 和 `DiagnosticFeatureRegistry` 交叉生成，包含 237 个设置和 175 个能力。设置行的 `links` 是相关能力，能力行的 `links` 是相关设置；`installer_group` 对应 Hook 注册组，具体进程适用性还需按安装器和实际业务核对。`local_scope` 保留纯界面、诊断或宿主前置授权项，避免它们因没有独立 Hook 被遗漏。
 
-状态含义：`pending` 待验、`installed` 已安装、`observed` 已触发、`passed` 对应行为案例通过、`blocked` 当前案例失败、`not_applicable` 有证据证明不适用。每个非待验状态必须引用本页案例；安装成功不升级为行为通过。2B 的加载模式正式准入已按限定范围完成，不等于 410 行通用业务穷尽验收；现为 355 pending、46 observed、7 installed、2 passed。
+状态含义：`pending` 待验、`installed` 已安装、`observed` 已触发、`passed` 对应行为案例通过、`blocked` 当前案例失败、`not_applicable` 有证据证明不适用。每个非待验状态必须引用本页案例；安装成功不升级为行为通过。2B 的加载模式正式准入已按限定范围完成，不等于 412 行通用业务穷尽验收；embed 现为 355 pending、48 observed、7 installed、2 passed。F19.1 新增两行仅提升到双模式 `observed`，账号内流程仍待验。
 
 `NPatchAcceptanceMatrixTest` 校验目录版本、完整设置/能力集合、父注册组、状态值及案例引用是否存在。目录变化会使矩阵检查失败，更新模板在 `app/build/reports/npatch/feature-matrix.template.tsv`；合并新增行时保留已核验状态和证据，不整体用模板覆盖。Gradle 已把矩阵和本页计入 Test 输入，改动不会错误复用旧测试结果。矩阵只包含构建期公开元数据，不读取偏好、账号或令牌。
 
@@ -485,4 +485,14 @@ Manager 当前状态检查通过（0.536 秒），真实配置变化、关闭零
 
 ## 后续顺序
 
-2B 正式准入已完成，当前不再沿本页逐项自动修复通用业务。阶段 3–6 的专项增强、其它系统/ABI/宿主版本/签名组合及第三方接收与长期风控验证继续保留在路线图；矩阵未测项保持待验，不将限定范围的模式准入外推为全部组合已通过。
+2B 正式准入及阶段 3–6 的限定专项增强已完成。F19.1 当前结果见下例及阶段记录；其余系统/ABI/宿主版本/签名组合、第三方接收与长期风控验证继续保留在路线图，未测项保持待验。
+
+### WECHAT_RESIGNED_SHARE
+
+2026-10-23 实施、2026-10-24 收尾。最终模块 `c3aea1…3a5d`，Manager 宿主 `29aa04…efe7`、embed 宿主 `e01f5b…656a`，固定 8.90.2/833/等级 2/Android 16/arm64。详情与完整哈希见[阶段 7 微信记录](npatch-stage7-wechat-share.md)。
+
+默认关闭的兼容选项仅调整已审计的分享 SDK 实例；最终两种模式均实际从普通视频的微信好友及朋友圈入口拉起 NPatch 重签名微信 8.0.64，当前配置获准、3 Hook、`observed=1` / `applied=1`。关闭后冷启动恢复原 SDK 的未安装误报与 0 Hook；真正未安装时面板省略微信/朋友圈。原签名微信在选项开启时另有交接及当前回执回归。
+
+证据 `captures/npatch-f19/delivery-{embedded|manager}-{friend|timeline}/`、`delivery-embedded-off/`、`delivery-manager-absent/`、`resume-original-manager/`。Manager 初轮许可不可达保留原失败记录，经设置端恢复与冷启动后重新验收，没有计为成功或修改授权检查。
+
+用户明确将账号内预览、取消回调和投递保留待验，未发送消息；`kntr` 仅有结构注册与 JVM 行为证据，真实备用入口及其他消息类型、宿主/接收方版本与标准框架未外推。本轮两条新增设置/能力记录在 Manager 与 embed 均为 `observed`，不提升为全链路 `passed`。

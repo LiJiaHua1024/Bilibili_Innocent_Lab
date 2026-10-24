@@ -492,6 +492,7 @@ class MainActivity : SkinnedActivity() {
     internal var liveRoomDoubleTapPause = false
     internal var purifyShareContent = false
     internal var shareMiniProgramDirectLink = false
+    internal var weChatShareCompat = false
     internal var forceExternalBrowser = false
     internal var systemMediaNotification = false
     internal var splashAutoNight = false
@@ -4764,6 +4765,7 @@ class MainActivity : SkinnedActivity() {
         liveRoomDoubleTapPause = uiSettings.bool(FeaturePreferences.LIVE_ROOM_DOUBLE_TAP_PAUSE)
         purifyShareContent = uiSettings.bool(FeaturePreferences.PURIFY_SHARE_CONTENT)
         shareMiniProgramDirectLink = uiSettings.bool(FeaturePreferences.SHARE_MINI_PROGRAM_DIRECT_LINK)
+        weChatShareCompat = uiSettings.bool(FeaturePreferences.WECHAT_SHARE_COMPAT)
         forceExternalBrowser = uiSettings.bool(FeaturePreferences.FORCE_EXTERNAL_BROWSER)
         systemMediaNotification = uiSettings.bool(FeaturePreferences.SYSTEM_MEDIA_NOTIFICATION)
         splashAutoNight = uiSettings.bool(FeaturePreferences.SPLASH_AUTO_NIGHT)
