@@ -2,6 +2,8 @@
 
 本页随[当前路线图](npatch-implementation-roadmap.md)维护，当前范围为有线机 `13a7a291`、Android 16/arm64、B 站 8.90.2、固定修复版 833/签名等级 2。各案例注明 Manager/embed、Manager 安装状态与产物；不把一种模式的业务结果外推为另一种模式或标准框架实机结果。
 
+本页 36 个案例的范围归属见[全目录复核](npatch-scope-audit.md#412-行目录与-36-个案例的完整覆盖)：8 个加载/产物/恢复案例、2 个重签名扩展案例、26 个通用业务回归案例。保留全部实际证据；业务案例里的通用修复不改称 NPatch 专有缺陷，剩余穷尽验收也不构成专项前置。原 412 行目录不变，另附[逐行范围归类](npatch-scope-matrix.tsv)。
+
 ## 全量目录与状态
 
 [逐项矩阵](npatch-feature-matrix.tsv)由 `SettingsCatalog`、`DiagnosticCapabilityCatalog` 和 `DiagnosticFeatureRegistry` 交叉生成，包含 237 个设置和 175 个能力。设置行的 `links` 是相关能力，能力行的 `links` 是相关设置；`installer_group` 对应 Hook 注册组，具体进程适用性还需按安装器和实际业务核对。`local_scope` 保留纯界面、诊断或宿主前置授权项，避免它们因没有独立 Hook 被遗漏。
