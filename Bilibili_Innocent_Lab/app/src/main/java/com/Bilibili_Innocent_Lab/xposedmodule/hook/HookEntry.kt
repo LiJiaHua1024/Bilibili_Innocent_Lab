@@ -5030,7 +5030,12 @@ class HookEntry : XposedModule() {
                 val runtimeMode = com.Bilibili_Innocent_Lab.xposedmodule.runtime.noroot.NoRootRuntimeDetector.detect(
                     appContext, XposedModule::class.java.classLoader, HookEntry::class.java.classLoader)
                 val nPatchRuntime = runtimeMode == com.Bilibili_Innocent_Lab.xposedmodule.runtime.noroot.HookRuntimeMode.NPATCH_LEGACY
+                val lspatchRuntime = runtimeMode == com.Bilibili_Innocent_Lab.xposedmodule.runtime.noroot.HookRuntimeMode.LSPATCH
                 nPatchStartup.set(nPatchRuntime)
+                if (lspatchRuntime) {
+                    val profile = com.Bilibili_Innocent_Lab.xposedmodule.runtime.noroot.LspatchRuntimeProfiles.read(appContext, appContext.packageName)
+                    frameworkLog("[BIL] LSPatch 运行档案(mode=${profile.mode}, loader=${profile.loaderVersion}, api=${profile.loaderApi}, process=$processName)")
+                }
                 if (nPatchRuntime) {
                     val profile = com.Bilibili_Innocent_Lab.xposedmodule.runtime.noroot.NPatchRuntimeProfiles.read(appContext, appContext.packageName)
                     runCatching { NPatchProcessDiagnostics.initialize(appContext, processName, profile.mode) }
@@ -5040,8 +5045,8 @@ class HookEntry : XposedModule() {
                         "process=$processName, is64Bit=${android.os.Process.is64Bit()}, injectdex=unknown)")
                 }
                 val remoteConfigStartedAtMs = android.os.SystemClock.elapsedRealtime()
-                // NPatch 配置以当前直达端点为准，不先读可能挂起或已过时的 Manager 镜像。
-                val outcome = if (nPatchRuntime) RemoteHookConfigQueryOutcome.Rejected("remote_group_unavailable")
+                // 补丁框架以当前直达端点为准：NPatch 镜像可能过时，LSPatch 集成库不能由设置 App 写入。
+                val outcome = if (nPatchRuntime || lspatchRuntime) RemoteHookConfigQueryOutcome.Rejected("remote_group_unavailable")
                     else queryRemoteHookConfig()
                 val remoteConfigElapsedMs =
                     android.os.SystemClock.elapsedRealtime() - remoteConfigStartedAtMs
@@ -5062,7 +5067,7 @@ class HookEntry : XposedModule() {
                 val admissionStartedAtMs = android.os.SystemClock.elapsedRealtime()
                 val admission = StartupTrace.measure("admission") { com.Bilibili_Innocent_Lab.xposedmodule.runtime.HostAdmissionClient.admit(
                     appContext, normal, reason,
-                    nPatchRuntime = nPatchRuntime) }
+                    nPatchRuntime = nPatchRuntime, lspatchRuntime = lspatchRuntime) }
                 val admissionElapsedMs =
                     android.os.SystemClock.elapsedRealtime() - admissionStartedAtMs
                 NPatchProcessDiagnostics.recordAdmission(admissionElapsedMs, when {

@@ -85,14 +85,16 @@ internal object HostAdmissionClient {
 
     private const val TAG = "BilibiliInnocentLab"
 
-    fun admit(context: Context, normal: RemoteHookConfigSnapshot?, normalFailure: String?, nPatchRuntime: Boolean = false): Result {
+    fun admit(context: Context, normal: RemoteHookConfigSnapshot?, normalFailure: String?, nPatchRuntime: Boolean = false,
+              lspatchRuntime: Boolean = false): Result {
         val observed = ArrayList<com.Bilibili_Innocent_Lab.xposedmodule.runtime.noroot.NPatchRouteEvidence>(4)
-        return admitObserved(context, normal, normalFailure, nPatchRuntime, observed).let {
+        return admitObserved(context, normal, normalFailure, nPatchRuntime, lspatchRuntime, observed).let {
             it.copy(routeEvidence = observed.toList())
         }
     }
 
     private fun admitObserved(context: Context, normal: RemoteHookConfigSnapshot?, normalFailure: String?, nPatchRuntime: Boolean,
+        lspatchRuntime: Boolean,
         observed: MutableList<com.Bilibili_Innocent_Lab.xposedmodule.runtime.noroot.NPatchRouteEvidence>): Result {
         val app = context.applicationContext ?: context
         val deadline = SystemClock.elapsedRealtime() + HostAdmissionContract.BOOTSTRAP_TIMEOUT_MS
@@ -179,13 +181,13 @@ internal object HostAdmissionClient {
             while (completed < calls.size) {
                 val remaining = deadline - SystemClock.elapsedRealtime()
                 if (remaining <= 0L) {
-                    return finishAdmit(normal, normalFailure, drainRouted(collect, responses, acceptGrant = false), nPatchRuntime)
+                    return finishAdmit(normal, normalFailure, drainRouted(collect, responses, acceptGrant = false), nPatchRuntime, lspatchRuntime)
                 }
                 val routed = responses.poll(remaining, TimeUnit.MILLISECONDS)
                 if (routed == null) {
                     val timedOut = drainRouted(collect, responses, acceptGrant = false)
                     val failure = if (timedOut.sawDenied) timedOut.failure else Result(reason = "admission_timeout")
-                    return remoteConfigFallback(normal, normalFailure, timedOut.sawDenied, failure, nPatchRuntime)
+                    return remoteConfigFallback(normal, normalFailure, timedOut.sawDenied, failure, nPatchRuntime, lspatchRuntime)
                 }
                 completed += 1
                 observed += com.Bilibili_Innocent_Lab.xposedmodule.runtime.noroot.NPatchRouteEvidence(routed.route,
@@ -199,14 +201,14 @@ internal object HostAdmissionClient {
                 collect = collect.accept(routed.result, acceptGrant = true)
                 collect.grant?.let { return it.copy(selectedRoute = routed.route) }
                 if (collect.sawDenied) {
-                    return finishAdmit(normal, normalFailure, drainRouted(collect, responses, acceptGrant = false), nPatchRuntime)
+                    return finishAdmit(normal, normalFailure, drainRouted(collect, responses, acceptGrant = false), nPatchRuntime, lspatchRuntime)
                 }
                 when (HostAdmissionRoutePlan.followUp(routed.route, broadcastStarted)) {
                     HostAdmissionRoutePlan.FollowUp.START_BROADCAST -> startBroadcast()
                     HostAdmissionRoutePlan.FollowUp.NONE -> Unit
                 }
             }
-            return finishAdmit(normal, normalFailure, drainRouted(collect, responses, acceptGrant = false), nPatchRuntime)
+            return finishAdmit(normal, normalFailure, drainRouted(collect, responses, acceptGrant = false), nPatchRuntime, lspatchRuntime)
         } catch (_: InterruptedException) {
             Thread.currentThread().interrupt()
             return Result()
@@ -333,9 +335,10 @@ internal object HostAdmissionClient {
         normalFailure: String?,
         collect: HostAdmissionCollect,
         nPatchRuntime: Boolean,
+        lspatchRuntime: Boolean,
     ): Result {
         collect.grant?.takeIf { !collect.sawDenied }?.let { return it }
-        return remoteConfigFallback(normal, normalFailure, collect.sawDenied, collect.failure, nPatchRuntime)
+        return remoteConfigFallback(normal, normalFailure, collect.sawDenied, collect.failure, nPatchRuntime, lspatchRuntime)
     }
 
     /**
@@ -349,9 +352,12 @@ internal object HostAdmissionClient {
         normalFailure: String?,
         sawDenied: Boolean,
         failure: Result,
-        nPatchRuntime: Boolean
+        nPatchRuntime: Boolean,
+        lspatchRuntime: Boolean
     ): Result {
         if (sawDenied) return failure
+        // LSPatch 的宿主本地库和管理器缓存均不能替代设置 App 的当前授权。
+        if (lspatchRuntime) return failure
         val snapshot = normal ?: return failure
         if (HostAdmissionRouteClassifier.allowRemoteConfigFallback(
                 sawDenied,

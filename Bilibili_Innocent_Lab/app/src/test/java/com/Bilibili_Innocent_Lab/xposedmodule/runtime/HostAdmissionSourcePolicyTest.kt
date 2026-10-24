@@ -4,6 +4,15 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class HostAdmissionSourcePolicyTest {
+    @Test fun lspatchUsesCurrentStandardDocumentRegardlessOfOldNpatchSelectionOrMirror() {
+        for (selected in listOf(false, true)) for (revision in listOf(0L, 7L)) {
+            assertEquals(HostAdmissionContract.DIRECT, HostAdmissionSourcePolicy.select(
+                selected, revision, "current", "old", true, false, lspatchChannel = true))
+            assertNull(HostAdmissionSourcePolicy.select(
+                selected, revision, "current", "current", false, false, lspatchChannel = true))
+        }
+    }
+
     @Test fun npatchPrefersCurrentDirectDocumentWithoutCompatibilityModeOrRemoteMirror() {
         for (revision in listOf(0L, 7L)) {
             for (fingerprint in listOf(null, "old", "current")) {

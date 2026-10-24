@@ -608,6 +608,18 @@ class NoRootSupportStateTest {
         )
     }
 
+    @Test fun lspatchEmbeddedWithoutManagerStillRequiresARealHostReceipt() {
+        for (receipt in LspatchHostReceiptState.entries) {
+            assertEquals(when (receipt) {
+                LspatchHostReceiptState.CONFIRMED -> ActivationDisplayState.ACTIVE_LSPATCH
+                LspatchHostReceiptState.FAILED -> ActivationDisplayState.LSPATCH_HOST_FAILED
+                LspatchHostReceiptState.WAITING -> ActivationDisplayState.LSPATCH_WAITING_FOR_HOST
+            }, NoRootSupportState.activationDisplayState(
+                rootActive = false, frameworkCheckPending = true, displayState = NoRootDisplayState.DISABLED,
+                lspatchFramework = true, lspatchHostState = receipt))
+        }
+    }
+
     @Test
     fun `root framework truth table combines capability name and system bit`() {
         val system = XposedService.PROP_CAP_SYSTEM or XposedService.PROP_CAP_REMOTE

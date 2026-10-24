@@ -140,7 +140,6 @@ import com.Bilibili_Innocent_Lab.xposedmodule.settings.remote.ModernFrameworkSta
 import com.Bilibili_Innocent_Lab.xposedmodule.settings.remote.ModernFrameworkStatusListener
 import com.Bilibili_Innocent_Lab.xposedmodule.settings.remote.RemoteHookConfigPublishState
 import com.Bilibili_Innocent_Lab.xposedmodule.settings.remote.RemoteHookConfigStore
-import com.Bilibili_Innocent_Lab.xposedmodule.settings.remote.isLspatch
 import com.Bilibili_Innocent_Lab.xposedmodule.settings.remote.isNpatchConfigChannel
 import com.Bilibili_Innocent_Lab.xposedmodule.settings.terms.UserTermsAuthorizationCoordinator
 import com.Bilibili_Innocent_Lab.xposedmodule.settings.terms.UserTermsAuthorizationListener
@@ -756,7 +755,7 @@ class MainActivity : SkinnedActivity() {
                 frameworkStatusCheckPending = false
                 activationMainHandler.removeCallbacks(frameworkStatusTimeout)
             }
-            if (status.isLspatch && status.capable) {
+            if (com.Bilibili_Innocent_Lab.xposedmodule.runtime.noroot.LspatchRuntimeProfiles.usesDirectConfig(applicationContext, status)) {
                 requestLspatchHostReceipt(status)
             } else {
                 lspatchActivationReceiptTracker.clearConnectionEvidence()
@@ -1180,7 +1179,8 @@ class MainActivity : SkinnedActivity() {
             rootActive = framework.capable,
             frameworkCheckPending = frameworkStatusCheckPending && !framework.connected,
             displayState = noRootState,
-            lspatchFramework = framework.isLspatch,
+            lspatchFramework = com.Bilibili_Innocent_Lab.xposedmodule.runtime.noroot.LspatchRuntimeProfiles
+                .usesDirectConfig(applicationContext, framework),
             lspatchHostState = lspatchHostState,
             nPatchFramework = isNpatchConfigChannel(framework)
         )
@@ -1242,8 +1242,10 @@ class MainActivity : SkinnedActivity() {
         val showsUserSpaceHint = showsSecondaryUserText || moduleUserSpace.sameUser == false
         activationSourceView?.apply {
             val baseText = when (displayState) {
-                ActivationDisplayState.ACTIVE_LSPOSED,
-                ActivationDisplayState.ACTIVE_LSPATCH -> if (framework.apiVersion > 0) getString(
+                ActivationDisplayState.ACTIVE_LSPATCH -> if (!framework.capable) getString(
+                    R.string.activated_by_noapi, "LSPatch"
+                ) else getString(R.string.activated_by, framework.name, framework.apiVersion)
+                ActivationDisplayState.ACTIVE_LSPOSED -> if (framework.apiVersion > 0) getString(
                     R.string.activated_by,
                     framework.name,
                     framework.apiVersion
@@ -1361,7 +1363,7 @@ class MainActivity : SkinnedActivity() {
     }
 
     /**
-     * LSPatch 服务到达只说明 companion 可以发布配置。主页每次进入前台或服务连接改变时最多
+     * LSPatch 服务或安装档案只说明通道类型。主页每次进入前台或服务连接改变时最多
      * 发起一次有界查询；有效回执按 connectionId 绑定，服务重连、页面离开和迟到回调都不能
      * 复用旧的“已激活”证据。
      */
@@ -1372,7 +1374,7 @@ class MainActivity : SkinnedActivity() {
             lspatchActivationReceiptTracker.endSession()
             return
         }
-        if (!framework.isLspatch || !framework.capable) {
+        if (!com.Bilibili_Innocent_Lab.xposedmodule.runtime.noroot.LspatchRuntimeProfiles.usesDirectConfig(applicationContext, framework)) {
             lspatchActivationReceiptTracker.clearConnectionEvidence()
             return
         }
@@ -1382,7 +1384,7 @@ class MainActivity : SkinnedActivity() {
                 !lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)
             ) return@query
             val current = RemoteHookConfigStore.status()
-            if (!current.isLspatch || !current.capable) {
+            if (!com.Bilibili_Innocent_Lab.xposedmodule.runtime.noroot.LspatchRuntimeProfiles.usesDirectConfig(applicationContext, current)) {
                 lspatchActivationReceiptTracker.clearConnectionEvidence()
                 renderActivationUi(current)
                 return@query

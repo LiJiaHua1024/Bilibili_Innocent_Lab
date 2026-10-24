@@ -69,8 +69,9 @@ internal object NoRootSupportStore {
         val payload: String?
     )
 
+    /** 保留 NPatch 用户偏好，但它不能接管当前 LSPatch 的发布、准入与重启。 */
     fun isDesiredEnabled(context: Context): Boolean =
-        prefs(context).getBoolean(KEY_DESIRED_ENABLED, false)
+        prefs(context).getBoolean(KEY_DESIRED_ENABLED, false) && !LspatchRuntimeProfiles.usesDirectConfig(context)
 
     @SuppressLint("UseKtx") // 必须取得 commit 结果，KTX edit(Unit) 无法表达写入失败。
     fun setDesiredEnabled(context: Context, enabled: Boolean): Boolean = synchronized(ioLock) {
@@ -174,13 +175,14 @@ internal object NoRootSupportStore {
 
     fun readStatus(context: Context): Status {
         val prefs = prefs(context)
-        val desired = prefs.getBoolean(KEY_DESIRED_ENABLED, false)
+        val lspatch = LspatchRuntimeProfiles.usesDirectConfig(context)
+        val desired = prefs.getBoolean(KEY_DESIRED_ENABLED, false) && !lspatch
         val storedState = runCatching {
             SyncState.valueOf(prefs.getString(KEY_SYNC_STATE, null).orEmpty())
         }.getOrNull() ?: if (desired) SyncState.CHECKING else SyncState.DISABLED
         return Status(
             desiredEnabled = desired,
-            syncState = if (desired || storedState == SyncState.DISABLE_RESTART_REQUIRED) {
+            syncState = if (desired || !lspatch && storedState == SyncState.DISABLE_RESTART_REQUIRED) {
                 storedState
             } else {
                 SyncState.DISABLED

@@ -811,6 +811,7 @@
     <string name="diagnostics_remote_npatch_selected">NPatch channel selected: the standard publisher is bypassed by design. Config delivery is reported under the NPatch channel item.</string>
     <string name="diagnostics_remote_not_initialized">No publication attempt has been recorded in this process yet.</string>
     <string name="diagnostics_activation_lsposed">Compatible Xposed framework service capability detected. Host adaptation remains a separate evidence item.</string>
+    <string name="diagnostics_activation_host_confirmed">Module installation was confirmed by the current host receipt. Framework service status is shown separately.</string>
     <string name="diagnostics_activation_npatch">A heartbeat matching the current module and Bilibili version was received.</string>
     <string name="diagnostics_activation_checking">Waiting for activation evidence…</string>
     <string name="diagnostics_activation_unavailable">No valid compatible Xposed framework service or matching NPatch heartbeat is currently available.</string>

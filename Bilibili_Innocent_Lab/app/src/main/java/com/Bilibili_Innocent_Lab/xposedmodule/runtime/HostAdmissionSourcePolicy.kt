@@ -20,8 +20,11 @@ internal object HostAdmissionSourcePolicy {
         normalFingerprint: String?,
         allowDirect: Boolean,
         directEnabled: Boolean,
-        nPatchChannel: Boolean = false
+        nPatchChannel: Boolean = false,
+        lspatchChannel: Boolean = false
     ): String? = when {
+        // LSPatch 集成模式的配置库属于宿主 UID；两种模式均使用当前模块文档和完整的新鲜握手。
+        lspatchChannel -> if (allowDirect) HostAdmissionContract.DIRECT else null
         !noRootSelected && (nPatchChannel || normalNoRootRevision > 0L) -> null
         // 已验证 NPatch 身份的启动优先取当前本地文档；不依赖旧兼容模式或 Manager 镜像。
         nPatchChannel && noRootSelected && allowDirect -> HostAdmissionContract.DIRECT

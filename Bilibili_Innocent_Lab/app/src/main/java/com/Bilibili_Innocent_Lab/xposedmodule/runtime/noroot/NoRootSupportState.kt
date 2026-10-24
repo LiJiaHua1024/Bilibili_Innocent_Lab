@@ -155,7 +155,7 @@ internal object NoRootSupportState {
             ActivationDisplayState.UNCONFIRMED
         displayState == NoRootDisplayState.CONFIRMING ->
             ActivationDisplayState.CONFIRMING
-        rootActive && lspatchFramework &&
+        lspatchFramework &&
             lspatchHostState == LspatchHostReceiptState.CONFIRMED ->
             ActivationDisplayState.ACTIVE_LSPATCH
         // 已验证的 NPatch heartbeat 比 LSPatch 的“尚待宿主回执”更强，不能被后者遮住；
@@ -164,12 +164,12 @@ internal object NoRootSupportState {
             (displayState == NoRootDisplayState.ACTIVE ||
                 displayState == NoRootDisplayState.DISABLE_RESTART_REQUIRED_ACTIVE) ->
             ActivationDisplayState.ACTIVE_NPATCH
-        rootActive && lspatchFramework &&
+        lspatchFramework &&
             lspatchHostState == LspatchHostReceiptState.FAILED ->
             ActivationDisplayState.LSPATCH_HOST_FAILED
         // LSPatch 管理器可在尚未启动已修补宿主时向 companion 交付可写服务。
         // 服务可用只证明发布通道可用，不能证明 B 站已读取配置或已装上 Hook。
-        rootActive && lspatchFramework -> ActivationDisplayState.LSPATCH_WAITING_FOR_HOST
+        lspatchFramework -> ActivationDisplayState.LSPATCH_WAITING_FOR_HOST
         rootActive -> ActivationDisplayState.ACTIVE_LSPOSED
         displayState == NoRootDisplayState.ACTIVE ||
             displayState == NoRootDisplayState.DISABLE_RESTART_REQUIRED_ACTIVE ->

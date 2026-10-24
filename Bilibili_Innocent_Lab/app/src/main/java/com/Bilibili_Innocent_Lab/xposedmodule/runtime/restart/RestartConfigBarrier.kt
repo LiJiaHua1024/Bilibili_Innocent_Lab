@@ -25,7 +25,9 @@ internal object RestartConfigBarrier {
                 @Suppress("UseKtx") // 同步 commit 的布尔结果是保存屏障，不能丢弃。
                 val persisted = runCatching {
                     preferences.edit().commit() && PublicationAuthorityStore.current(app)?.let { captured ->
-                        captured.decision.isAuthorized && RemoteHookConfigStore.publish(app, captured.decision) is RemoteHookConfigPublishResult.Success
+                        captured.decision.isAuthorized &&
+                            (com.Bilibili_Innocent_Lab.xposedmodule.runtime.noroot.LspatchRuntimeProfiles.usesDirectConfig(app) ||
+                                RemoteHookConfigStore.publish(app, captured.decision) is RemoteHookConfigPublishResult.Success)
                     } == true
                 }.getOrDefault(false)
                 main.post { done(persisted) }

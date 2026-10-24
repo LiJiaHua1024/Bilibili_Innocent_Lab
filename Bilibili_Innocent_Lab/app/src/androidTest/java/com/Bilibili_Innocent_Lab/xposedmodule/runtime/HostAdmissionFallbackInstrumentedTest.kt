@@ -35,6 +35,13 @@ class HostAdmissionFallbackInstrumentedTest {
         assertEquals("remote_config_transport_fallback", result.grant?.source)
     }
 
+    @Test fun lspatchCannotTreatAnOldStandardMirrorAsCurrentAuthorization() {
+        val result = HostAdmissionClient.admit(context, standard, null, lspatchRuntime = true)
+        assertNull(result.grant)
+        // 不可信调用可立即被拒，也可等到系统跨包运输超时；两者都不能退回旧镜像。
+        assertTrue(result.reason in setOf("admission_unavailable", "admission_timeout"))
+    }
+
     @Test fun npatchCannotUseAnOldPositiveRevisionAfterUserDisablesWhileManagerIsUnavailable() {
         val result = HostAdmissionClient.admit(context, standard.copy(noRootRevision = 42L), null, nPatchRuntime = true)
         assertNull(result.grant)

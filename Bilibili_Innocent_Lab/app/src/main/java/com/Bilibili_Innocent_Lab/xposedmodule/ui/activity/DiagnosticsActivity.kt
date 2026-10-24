@@ -813,7 +813,8 @@ class DiagnosticsActivity : SkinnedActivity(),
             DiagnosticItemId.ACTIVATION -> getString(
                 when (input.activationState) {
                     DiagnosticActivationState.ACTIVE_LSPOSED ->
-                        R.string.diagnostics_activation_lsposed
+                        if (input.frameworkCapable) R.string.diagnostics_activation_lsposed
+                        else R.string.diagnostics_activation_host_confirmed
                     DiagnosticActivationState.ACTIVE_NPATCH ->
                         R.string.diagnostics_activation_npatch
                     DiagnosticActivationState.CHECKING ->

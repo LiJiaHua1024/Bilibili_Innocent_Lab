@@ -85,6 +85,12 @@ Bilibili Innocent Lab 是一个面向 Android 哔哩哔哩客户端的 Xposed/LS
 
 > 支持范围以已验证组合为准。其它系统、ABI、宿主版本、签名等级及模块共存组合保持未验证；目录矩阵中的通用业务待验项也不自动提升为通过。用户自有证书已覆盖产物与同证书升级检查，其第三方分享 SDK 和长期账号风控需分别验证。
 
+**LSPatch 免 Root 支持说明**
+
+当前分支已适配 **JingMatrix LSPatch 1.2（487）**，覆盖本地（Manager）与集成（embedded）模式；B 站 9.13.0、签名等级 2、Android 16/arm64 已完成 Debug 实机专项。LSPatch 界面的“本地”对应 `--manager`，集成对应 `--embed`。本地模式需在管理器中选择模块并点击“应用”；集成模式需嵌入与独立设置 App 配套的模块 APK，更新模块后重新修补宿主。
+
+保留独立模块设置 App、完成条款授权并冷启动 B 站即可验证；无需开启 NPatch 开关或通信兼容模式。两种模式均读取当前授权配置，无管理器的集成模式也以真实宿主回执确认激活。已复现并修复 [issue #31](https://github.com/jichuo1/Bilibili_Innocent_Lab/issues/31) 所涉及的旧 NPatch 意图与 LSPatch 配置通道冲突，详细产物、恢复步骤、实测边界及其它免 Root 框架候选见[阶段 9 支持记录](docs/lspatch-stage9.md)。旧版 Legacy LSPatch、Canary 和矩阵外组合保持未验证。
+
 ---
 
 ## 功能介绍

@@ -811,6 +811,7 @@
     <string name="diagnostics_remote_npatch_selected">已選擇 NPatch 通道：標準發佈依設計不啟用，設定投遞狀態見「NPatch 通道」一項。</string>
     <string name="diagnostics_remote_not_initialized">目前處理程序尚未記錄發佈嘗試。</string>
     <string name="diagnostics_activation_lsposed">已偵測到相容的 Xposed 框架服務能力；宿主適配仍作為獨立證據項目顯示。</string>
+    <string name="diagnostics_activation_host_confirmed">已透過目前宿主回執確認模組安裝。框架服務狀態單獨顯示。</string>
     <string name="diagnostics_activation_npatch">已收到與目前模組及嗶哩嗶哩版本相符的 heartbeat。</string>
     <string name="diagnostics_activation_checking">正在等待啟用證據…</string>
     <string name="diagnostics_activation_unavailable">目前沒有有效的相容 Xposed 框架服務或相符的 NPatch heartbeat。</string>

@@ -12,7 +12,7 @@ import com.Bilibili_Innocent_Lab.xposedmodule.settings.terms.UserTermsConsentSto
 import com.Bilibili_Innocent_Lab.xposedmodule.settings.terms.UserTermsPendingCompletion
 import java.util.UUID
 
-/** 标准框架的完整文档受兼容模式控制；已开启的 NPatch 使用独立的当前直达文档。 */
+/** 标准框架的完整直达文档受兼容模式控制；已确认的补丁框架独立使用当前文档及新鲜握手。 */
 internal object HostAdmissionEndpoint {
     private val leases = AdmissionLeaseBook(SystemClock::elapsedRealtime)
 
@@ -61,6 +61,8 @@ internal object HostAdmissionEndpoint {
                 val nPatchChannel = com.Bilibili_Innocent_Lab.xposedmodule.settings.remote.isNpatchAdmissionChannel(
                     com.Bilibili_Innocent_Lab.xposedmodule.settings.remote.RemoteHookConfigStore.status(),
                     NPatchRuntimeProfiles.read(context).markerPresent)
+                val lspatchChannel = com.Bilibili_Innocent_Lab.xposedmodule.runtime.noroot.LspatchRuntimeProfiles
+                    .usesDirectConfig(context)
                 when (method) {
                     HostAdmissionContract.METHOD_PREPARE -> {
                         val now = SystemClock.elapsedRealtime()
@@ -75,7 +77,8 @@ internal object HostAdmissionEndpoint {
                             normalFingerprint = extras.getString("normalFingerprint"),
                             allowDirect = extras.getBoolean("allowDirect", false),
                             directEnabled = current.directAllowed,
-                            nPatchChannel = nPatchChannel
+                            nPatchChannel = nPatchChannel,
+                            lspatchChannel = lspatchChannel
                         ) ?: return@withAuthorityLock status("manager_sync_required", nonce).apply {
                             // Manager 离线时宿主可能仍读到旧开启文档；携带当前关闭 revision，
                             // 让宿主在放弃安装闭包后通过已有身份/nonce 探测回执确认停用；标准通道不附带此信息。
@@ -105,7 +108,7 @@ internal object HostAdmissionEndpoint {
                             ?: return@withAuthorityLock status("stale", nonce)
                         if (lease.identity != current.identity ||
                             lease.source == HostAdmissionContract.DIRECT &&
-                                !(current.directAllowed || nPatchChannel && current.noRootRevision > 0L)
+                                !(current.directAllowed || lspatchChannel || nPatchChannel && current.noRootRevision > 0L)
                         ) {
                             // 握手期间权威记录已换成另一份仍授权的文档，或关掉了直达来源。
                             // 条款拒绝走上面的 denied，不会落到这里。
