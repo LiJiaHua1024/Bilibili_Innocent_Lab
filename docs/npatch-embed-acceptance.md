@@ -485,7 +485,7 @@ Manager 当前状态检查通过（0.536 秒），真实配置变化、关闭零
 
 ## 后续顺序
 
-2B 正式准入及阶段 3–6 的限定专项增强已完成。F19.1 当前结果见下例及阶段记录；其余系统/ABI/宿主版本/签名组合、第三方接收与长期风控验证继续保留在路线图，未测项保持待验。
+2B 正式准入及阶段 3–6 的限定专项增强已完成。F19.1 / F19.2 当前结果见下例及阶段记录；其余系统/ABI/宿主版本/签名组合、第三方接收与长期风控验证继续保留在路线图，未测项保持待验。
 
 ### WECHAT_RESIGNED_SHARE
 
@@ -496,3 +496,13 @@ Manager 当前状态检查通过（0.536 秒），真实配置变化、关闭零
 证据 `captures/npatch-f19/delivery-{embedded|manager}-{friend|timeline}/`、`delivery-embedded-off/`、`delivery-manager-absent/`、`resume-original-manager/`。Manager 初轮许可不可达保留原失败记录，经设置端恢复与冷启动后重新验收，没有计为成功或修改授权检查。
 
 用户明确将账号内预览、取消回调和投递保留待验，未发送消息；`kntr` 仅有结构注册与 JVM 行为证据，真实备用入口及其他消息类型、宿主/接收方版本与标准框架未外推。本轮两条新增设置/能力记录在 Manager 与 embed 均为 `observed`，不提升为全链路 `passed`。
+
+### QQ_RESIGNED_SHARE
+
+2026-10-24，复用 F19.1 冻结模块和两种宿主产物，固定 8.90.2 / 833 / 等级 2 / Android 16 / arm64。设备原有 QQ 9.2.20 / 11650 为原签名包；同原包构造的 NPatch Manager 重签名副本已核对实际安装哈希和不同证书。完整输入、源码依据及边界见 [F19.2 记录](npatch-stage7-qq-share.md)。
+
+embed 的原签名好友和 QQ 空间均交接到 QQ 登录页；QQ / TIM 均未安装时正确隐藏这两个入口。重签名 QQ 在 Manager / embed 下的普通视频好友、QQ 空间均由真实 SDK 启动 QQ `JumpActivity` 并进入登录页，未复现未安装误报，无需新增 QQ Hook 或设置。当前配置身份、实际模式、DIRECT 许可和安装链检查通过；QQ 专项操作期间微信兼容回调保持 0，不以该能力冒充 QQ 行为证据。
+
+材料 `captures/npatch-f19-qq/embedded-official-{friend|qzone}/`、`embedded-absent/`、`embedded-resigned-friend-repeat/`、`embedded-resigned-qzone/`、`manager-resigned-{preflight|friend|qzone}/`。QQ 首次隐私 / 升级提示、登录页文本自动化误判与人工配对复核均保留，未升级、登录或发送消息。
+
+账号内预览、取消回调与投递继续待验；QQ 自身 embed / LSPatch、TIM、独立 QQ 空间 App、其它版本 / 消息类型与备用真实业务入口未验证。本例没有对应新设置或能力，不新增矩阵行，不提高分享净化开关或既有 `SHARE_HANDOFF` 的状态；本轮只改文档，复用相同生产源码的既有检查。

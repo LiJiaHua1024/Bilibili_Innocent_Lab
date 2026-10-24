@@ -1,6 +1,6 @@
 # NPatch 专项：Feature 拆解、可实施性与实施方案
 
-> 当前实施入口：[NPatch 当前实施路线图](npatch-implementation-roadmap.md)。本文保留历史研究，不是当前实现规格。2026-10-23 已复核关键结论并纠错；F19.1 当前实现及无账号验证见[阶段记录](npatch-stage7-wechat-share.md)，QQ 留到实施时研究。已完成项以路线图、阶段记录和当前代码为准，探索项先验证；F6 缓存许可方案继续撤回。
+> 当前实施入口：[NPatch 当前实施路线图](npatch-implementation-roadmap.md)。本文保留历史研究，不是当前实现规格。2026-10-23 已复核关键结论并纠错；F19.1 当前实现及无账号验证见[微信记录](npatch-stage7-wechat-share.md)，F19.2 的限定 QQ 对照无需新增 Hook，见 [QQ 记录](npatch-stage7-qq-share.md)。已完成项以路线图、阶段记录和当前代码为准，探索项先验证；F6 缓存许可方案继续撤回。
 
 - 状态：历史 Feature 调研；本轮 B1–B12 问题已闭环，扩展路线仍为提案
 - 日期：2026-10-20
@@ -20,7 +20,7 @@
 - **历史优先项 B1–B4 已修复**：关闭门控、状态归位、Manager 不可达误判及诊断徽章已完成回归；后文 F1–F3 保留原调研推导，当前结果见专项验收结论。
 - **代码热重载未启用**：`module.prop` 为 `autoHotReload=false`，当前没有完整的 Hook 迁移/重建实现，不能直接启用框架热重载。它与阶段 6 已实现的白名单配置值热应用是不同能力。
 - **`--injectdex` 不是子进程的必要条件**：默认修补下子进程照样加载模块，缺口在模块自己的 installer 门控。现有文档相关表述需要更正。
-- **当前进度**：阶段 1–6 已完成声明范围；F19.1 已实现并完成限定无账号交接验证，账号内流程按用户决定后排，其余阶段 7 项目继续按路线图研究。
+- **当前进度**：阶段 1–6 已完成声明范围；F19.1 微信兼容及 F19.2 QQ 对照均完成限定双模式无账号交接验证，账号内流程按用户决定后排，其余阶段 7 项目继续按路线图研究。
 
 ---
 
@@ -197,14 +197,14 @@
 - **整体是 L**：6 个未改 permission、4 个非前缀 authority、4 个 taskAffinity、267 处 dex 常量全在宿主 APK 内，安装期 `DUPLICATE_PERMISSION` / `CONFLICTING_PROVIDER` 模块侧兜不住，必须先做宿主 Manifest/dex 后处理。
 - **建议 spike 顺序**：先宿主后处理确认能装能启动 → 再改模块 target identity。
 
-#### F19 微信重签名原生分享兼容（已实现，账号内待验），QQ 实施时研究
+#### F19 微信兼容与 QQ 对照（限定无账号部分完成，账号内待验）
 
-- **场景与排期（2026-10-24 更新）**：用户所指是微信/QQ 自身被 NPatch/LSPatch 重签名后，B 站误报未安装。微信已按仅 Hook B 站、保留原生分享的方向实施；QQ 留到具体实施时专项研究。调查见[完整 F19 调查](npatch-f19-share-investigation.md)，当前结果见[实施记录](npatch-stage7-wechat-share.md)。
+- **场景与排期（2026-10-24 更新）**：用户所指是微信/QQ 自身被 NPatch/LSPatch 重签名后，B 站误报未安装。微信已按仅 Hook B 站、保留原生分享的方向实施；QQ 已专项对照原签名与 NPatch 重签名 9.2.20，未复现误报，双模式原生交接止于登录页，无需新增 Hook。调查见[完整 F19 调查](npatch-f19-share-investigation.md)，当前结果见[微信记录](npatch-stage7-wechat-share.md)和 [QQ 记录](npatch-stage7-qq-share.md)。
 - **准确报错分支**：B 站 8.90.2 的 `kz3.a.t()` 以 `createWXAPI(..., true)` 开启微信证书检查；`isWXAppInstalled()` 返回 false 后显示 `share_global_string_31`（`(>_>)请先安装微信~`）并抛出 `ShareException(-234)`。SDK 在 B 站进程查询微信自身证书，与内置证书比较；同 APK 的 `kntr` 分享包装也开启该检查。
 - **当前实现**：默认关闭的兼容选项已对两套已审计分享包装使用 SDK 的 `checkSignature=false`，覆盖新建/已有实例，保留包存在、参数、目标和消息/回调处理。仅适配 B 站 8.90.2；Manager/embed 的普通视频好友/朋友圈交接已有实际证据，账号内预览、取消回调和投递按用户决定保留待验，详见[实施记录](npatch-stage7-wechat-share.md)。
-- **QQ 独立结论**：`hz3.a.M()` 检查 QQ/TIM 包和版本，失败或启动抛 `ActivityNotFoundException` 时提示“尚未安装QQ/TIM或当前QQ/TIM版本不支持分享~”（`-234`）。`QQShare`/`BaseApi` 的已追踪分享路径继续检查参数和 Intent 解析，没有同类 QQ 客户端证书比较。SDK 的其它签名方法不等于参与该路径；旧 `AppUtil.getSignatureFromApk` 引用撤回，不据此新增 QQ 绕过。
+- **QQ 独立结论**：`hz3.a.M()` 检查 QQ/TIM 包和版本，失败或启动抛 `ActivityNotFoundException` 时提示“尚未安装QQ/TIM或当前QQ/TIM版本不支持分享~”（`-234`）。`QQShare`/`BaseApi` 的已追踪分享路径继续检查参数和 Intent 解析，没有同类 QQ 客户端证书比较。SDK 的其它签名方法不等于参与该路径；旧 `AppUtil.getSignatureFromApk` 引用撤回，不据此新增 QQ 绕过。限定实机结果与该路径一致；包缺失时 QQ / 空间入口正确隐藏。
 - **实现边界**：既有 `SharePurifyFeatureInstaller` 继续独立处理内容净化/小程序转链接；本项由 `WeChatShareCompatFeatureInstaller` 和 `WeChatShareCompatAccess` 处理分享 SDK 实例。旧提案的 `ShareDegradePolicy` 未采用；本轮普通视频触发传统包装，备用 `kntr` 入口及其他业务类型没有外推为实机已验证。
-- **实施后验收**：将 B 站与接收方各自的原签名/修补维度分开，使用确切重签名客户端对照；包缺失仍正确失败。朋友/朋友圈及消息类型、两套宿主包装、取消/返回与无关登录/支付路径分别验证。QQ 的具体研究和验收另行展开。
+- **实施后验收**：将 B 站与接收方各自的原签名/修补维度分开，使用确切重签名客户端对照；包缺失仍正确失败。普通视频微信好友/朋友圈与 QQ 好友/空间已有双模式交接证据；其它消息类型、备用包装真实入口、账号内预览和取消/投递仍按两份阶段记录保留待验。
 - **降级地位**：复制链接/系统分享只作为另外确认的客观限制下的可选兜底，不是微信重签名证书检查的实现目标或必经路径，不自动替换原生渠道。
 - **验收边界**：安装检测、拉起、接收方预览、发送完成分别记录。真实外部发送须获得用户明确授权；未发送时不宣称投递成功，未测试的客户端/类型保持未知。既有 `SHARE_HANDOFF` 仅证明本地面板、系统交接与取消。
 - **可复核输入**：原版 APK SHA-256 `804ab5d719da42f257aac6237dda408151b93ecff71a0da99c5f32c71161a2e5`，已核对为 8.90.2 / 8902100，并与修补记录一致；源码、资源 ID、寄存器分支及基线日志索引见调查文档。结构化反编译的微信证书匹配成功分支曾失真，已用 fallback 模式核对，不能把该 Java 输出解释为 SDK 恒失败。

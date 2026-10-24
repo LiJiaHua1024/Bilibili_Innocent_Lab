@@ -114,7 +114,7 @@ ZIP 包含原格式 7 报告、独立 schema 1 的补丁/进程档案、最近�
 | 评论与复制 | [FREE_COPY_REPLIES](npatch-embed-acceptance.md#free_copy_replies)、COMMENT_SEARCH_LINKS | 折叠正文、表情与触摸选区/复制组合；未发送评论或消息 |
 | 播放器 | [PLAYER_SPEED](npatch-embed-acceptance.md#player_speed)、PLAYER_QUALITY、PLAYER_STORY_QUALITY_ABI、STORY_ACTION_ICONS、PLAYER_PORTRAIT_CONTROL | 普通/Story 的真实 ABI、设置与控件；不外推所有视频类型/会员组合 |
 | 外观 | [APPEARANCE_REPRESENTATIVE](npatch-embed-acceptance.md#appearance_representative) | 默认→海盐→恢复跟随，页面与当前回调一起核对 |
-| 账号、下载与分享 | [ACCOUNT_GATE](npatch-embed-acceptance.md#account_gate)、LOGIN、DOWNLOAD、CACHED_PLAYBACK、SHARE_HANDOFF | 本地授权/撤销、原有登录、普通缓存播放、系统分享选择页及取消；不等于外部发送/长期风控验证 |
+| 账号、下载与分享 | [ACCOUNT_GATE](npatch-embed-acceptance.md#account_gate)、LOGIN、DOWNLOAD、CACHED_PLAYBACK、SHARE_HANDOFF、[WECHAT_RESIGNED_SHARE](npatch-embed-acceptance.md#wechat_resigned_share)、[QQ_RESIGNED_SHARE](npatch-embed-acceptance.md#qq_resigned_share) | 本地授权/撤销、原有登录、普通缓存播放、系统分享选择页及取消；微信 / QQ 另有限定无账号原生交接，不等于账号内预览、实际投递或长期风控验证 |
 | native 与适配来源 | [EMBED_DEX_SOURCE](npatch-embed-acceptance.md#embed_dex_source) | Java/native 共用原版 38 DEX 快照、真实 DexKit 查询及缓存失效；插帧推理另验 |
 | 安装、升级与恢复 | [EMBED_BUILD_IDENTITY](npatch-embed-acceptance.md#embed_build_identity)、EMBED_SETTINGS_LIFECYCLE、MODE_ROUNDTRIP、PATCH_R8_ENTRY | 同版本不同内容、设置 App 生命周期、新身份重新授权、模式往返、R8 真实混淆入口 |
 
@@ -122,6 +122,10 @@ ZIP 包含原格式 7 报告、独立 schema 1 的补丁/进程档案、最近�
 
 测试账号的已有登录、普通下载与本地账号授权/撤销均有观测；没有主动制造风控、令牌失效、支付或长期封禁实验。外部分享应分别核查 B 站端安装检测、SDK 检查、请求构造/拉起、接收方处理和回调；本地 OpenSDK 的微信证书检查运行在 B 站进程，不能据此断言失败一定来自微信端。第三方若独立向系统核验宿主证书，仅改变 B 站进程内的签名返回值无法影响该查询，但当前尚未证明微信/QQ 分享均受此阻断。F19 先调查与修复原生链路，降级仅作已确认限制下的可选兜底；系统选择页与取消不代表实际外部投递，未知组合不能描述为永久不支持。
 
-另一个独立场景是微信/QQ 接收方自身被修补重签名：B 站 8.90.2 内置微信 SDK 会检查微信证书，失败可能误报未安装。F19.1 已增加默认关闭的「兼容重签名微信分享」选项，限定于两套已审计的 B 站分享 SDK 包装，保留原生分享。8.90.2/固定修复版 833/Android 16/arm64 的 Manager/embed 均已观察到 NPatch 重签名微信 8.0.64 的好友及朋友圈交接；关闭恢复和未安装状态另有对照。用户决定将账号内预览、取消回调和投递保留待验，当前不能据此宣称消息已送达。其他宿主/接收方版本、LSPatch 和标准框架组合继续未验证；QQ 仍待独立研究。详见 [F19 实施与验收边界](npatch-stage7-wechat-share.md)。
+另一个独立场景是微信/QQ 接收方自身被修补重签名：B 站 8.90.2 内置微信 SDK 会检查微信证书，失败可能误报未安装。F19.1 已增加默认关闭的「兼容重签名微信分享」选项，限定于两套已审计的 B 站分享 SDK 包装，保留原生分享。8.90.2/固定修复版 833/Android 16/arm64 的 Manager/embed 均已观察到 NPatch 重签名微信 8.0.64 的好友及朋友圈交接；关闭恢复和未安装状态另有对照，详见 [F19.1](npatch-stage7-wechat-share.md)。
 
-上述上游约束的版本证据及固定源码输入见[调研档案](npatch-compatibility-plan.md)、[实施记录](npatch-implementation-roadmap.md)和[可复现 loader 配方](../scripts/npatch/README.md)。阶段 3–6 已完成声明范围；阶段 7 的 F19.1 已实现并完成限定无账号交接验证，QQ 及其余探索项按当前路线图分别研究，矩阵外组合仍需验证。
+F19.2 另行对照设备原有 QQ 9.2.20 / 11650 与同原包 NPatch 重签名副本：embed 原签名基线和包缺失状态、Manager/embed 重签名 QQ 的好友与 QQ 空间交接均有实际观察，目标为 QQ `JumpActivity` 后的登录页，未复现未安装误报；该组合无需额外 QQ 开关或 Hook。接收方自身仅测了固定 833 / 等级 2 的 Manager 修补方式，完整输入与边界见 [QQ 独立验收](npatch-stage7-qq-share.md)。
+
+用户决定将微信 / QQ 账号内预览、取消回调和投递保留待验，当前不能据此宣称消息已送达。其它宿主/接收方版本、消息类型、TIM、独立 QQ 空间 App、LSPatch 和标准框架组合继续未验证。
+
+上述上游约束的版本证据及固定源码输入见[调研档案](npatch-compatibility-plan.md)、[实施记录](npatch-implementation-roadmap.md)和[可复现 loader 配方](../scripts/npatch/README.md)。阶段 3–6 已完成声明范围；阶段 7 的 F19.1 微信兼容及 F19.2 QQ 对照已完成限定无账号交接验证，其余探索项按当前路线图研究，矩阵外组合仍需验证。
