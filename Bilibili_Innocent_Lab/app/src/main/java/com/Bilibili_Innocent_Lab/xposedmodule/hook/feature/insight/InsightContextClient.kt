@@ -5,33 +5,56 @@ import org.json.JSONObject
 import java.io.ByteArrayOutputStream
 import java.net.HttpURLConnection
 import java.net.URL
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
 
 internal data class InsightSubtitleSource(val cid: Long, val url: String, val language: String)
 internal data class InsightMetadata(val video: InsightVideo, val aid: Long, val title: String, val duration: Int)
 
 /** 只保存不可变媒体数据；不保存 Activity、Cookie、宿主对象或模型凭据。 */
 internal class InsightHostSnapshot {
+    private var sequence = 0L
+    @Synchronized fun revision(): Long = sequence
     private val subtitles = LinkedHashMap<Long, List<InsightSubtitleSource>>()
     private val official = LinkedHashMap<Long, Boolean>()
     private val metadata = LinkedHashMap<InsightVideo, InsightMetadata>()
     private val comments = LinkedHashMap<Long, List<String>>()
+    private val subtitleArrivals = HashMap<Long, CountDownLatch>()
+    /** 在后台等待原生字幕响应；等待时不持有快照锁，空弹幕响应不能抢先判定无字幕。 */
+    fun awaitSubtitles(cid: Long, timeoutMs: Long): List<InsightSubtitleSource> {
+        if (timeoutMs <= 0) return subtitles(cid)
+        val arrival = synchronized(this) {
+            if (subtitles[cid]?.isNotEmpty() == true) return subtitles(cid)
+            subtitleArrivals.getOrPut(cid) { CountDownLatch(1) }
+        }
+        try { arrival.await(timeoutMs.coerceAtMost(2500), TimeUnit.MILLISECONDS) }
+        finally { synchronized(this) { if (subtitleArrivals[cid] === arrival) subtitleArrivals.remove(cid) } }
+        return subtitles(cid)
+    }
     @Synchronized fun comments(aid: Long, values: List<String>) {
-        comments[aid] = values.filter { it.isNotBlank() }.distinct().take(40).map { it.take(1000) }
+        val next = values.filter { it.isNotBlank() }.distinct().take(40).map { it.take(1000) }
+        if (comments[aid] != next) sequence++
+        comments[aid] = next
         while (comments.size > 16) comments.remove(comments.keys.first())
     }
     @Synchronized fun comments(aid: Long): List<String> = comments[aid].orEmpty()
     @Synchronized fun metadata(value: InsightMetadata) {
+        if (metadata[value.video] != value) sequence++
         metadata[value.video] = value
         while (metadata.size > 16) metadata.remove(metadata.keys.first())
     }
     @Synchronized fun metadata(video: InsightVideo): InsightMetadata? = metadata[video]
     @Synchronized fun official(cid: Long, present: Boolean) {
+        if (official[cid] != present) sequence++
         official[cid] = present
         while (official.size > 32) official.remove(official.keys.first())
     }
     @Synchronized fun official(cid: Long): Boolean = official[cid] == true
     @Synchronized fun subtitles(cid: Long, values: List<InsightSubtitleSource>) {
+        if (values.isEmpty() && subtitles[cid]?.isNotEmpty() == true) return
+        if (subtitles[cid] != values.take(16)) sequence++
         subtitles[cid] = values.take(16)
+        if (values.isNotEmpty()) subtitleArrivals.remove(cid)?.countDown()
         while (subtitles.size > 16) subtitles.remove(subtitles.keys.first())
     }
     @Synchronized fun subtitles(cid: Long): List<InsightSubtitleSource> = subtitles[cid].orEmpty()
@@ -39,6 +62,8 @@ internal class InsightHostSnapshot {
 
 /** 独立的只读 B 站连接；绝不把模型的 Bearer 发往字幕 CDN，也不读取宿主登录态。 */
 internal class InsightContextClient(private val snapshot: InsightHostSnapshot,
+    private val subtitleWaitMs: Long = 2500,
+    private val trace: (String) -> Unit = {},
     private val request: (String) -> String = ::getPublic) {
     fun load(video: InsightVideo): InsightContext {
         val missing = mutableListOf<String>()
@@ -62,12 +87,22 @@ internal class InsightContextClient(private val snapshot: InsightHostSnapshot,
                 InsightSubtitleSource(video.cid, it.optString("subtitle_url"), it.optString("lan")) }
         }
         fun preferred(values: List<InsightSubtitleSource>) = values.sortedBy { if (it.language.contains("zh")) 0 else 1 }
-        val captured = preferred(snapshot.subtitles(video.cid))
+        val captured = preferred(snapshot.awaitSubtitles(video.cid, if (publicSources.isEmpty()) subtitleWaitMs else 0))
+        trace("subtitle-selection captured=${captured.size} public=${publicSources.size} cid=${video.cid}")
         val sources = (captured.take(1) + preferred(publicSources).take(2) + captured.drop(1)).distinctBy { it.url }
         var cues = emptyList<InsightCue>()
         for (source in sources.take(3)) {
-            val url = subtitleUrl(source.url) ?: continue
-            cues = runCatching { parseSubtitle(request(url), duration) }.getOrDefault(emptyList())
+            val url = subtitleUrl(source.url)
+            if (url == null) {
+                val host = runCatching { URL(if (source.url.startsWith("//")) "https:${source.url}" else source.url).host }
+                    .getOrDefault("").take(100).filter { it.isLetterOrDigit() || it == '.' || it == '-' }
+                trace("subtitle-url rejected host=$host")
+                continue
+            }
+            cues = runCatching { parseSubtitle(request(url), duration) }.getOrElse { error ->
+                trace("subtitle-load failure reason=${(error as? InsightContextHttpException)?.let { "http-${it.status}" } ?: error.javaClass.simpleName}")
+                emptyList()
+            }
             if (cues.isNotEmpty()) break
         }
         if (cues.isEmpty()) missing += "subtitle"
@@ -92,8 +127,14 @@ internal class InsightContextClient(private val snapshot: InsightHostSnapshot,
         fun subtitleUrl(raw: String): String? {
             val value = if (raw.startsWith("//")) "https:$raw" else raw
             val url = runCatching { URL(value) }.getOrNull() ?: return null
-            return value.takeIf { url.protocol == "https" && url.userInfo == null && url.ref == null &&
-                (url.port == -1 || url.port == 443) && (url.host == "hdslb.com" || url.host.endsWith(".hdslb.com")) }
+            if (url.userInfo != null || url.ref != null ||
+                (url.host != "hdslb.com" && !url.host.endsWith(".hdslb.com"))) return null
+            // 原生字幕响应仍可能给出 HTTP CDN 地址；只升级已验证 CDN，实际连接始终走 HTTPS。
+            return when {
+                url.protocol == "https" && url.port in setOf(-1, 443) -> value
+                url.protocol == "http" && url.port in setOf(-1, 80) -> URL("https", url.host, -1, url.file).toExternalForm()
+                else -> null
+            }
         }
         fun parseSubtitle(raw: String, duration: Int): List<InsightCue> {
             require(raw.length <= 2_000_000)
@@ -117,7 +158,7 @@ internal class InsightContextClient(private val snapshot: InsightHostSnapshot,
                 connection.connectTimeout = 5_000; connection.readTimeout = 5_000; connection.useCaches = false
                 connection.setRequestProperty("User-Agent", "Mozilla/5.0 BIL-AI-Insight")
                 connection.setRequestProperty("Referer", "https://www.bilibili.com/")
-                require(connection.responseCode == 200) { "bili-context-unavailable" }
+                if (connection.responseCode != 200) throw InsightContextHttpException(connection.responseCode)
                 val deadline = System.nanoTime() + 8_000_000_000L
                 val bytes = ByteArrayOutputStream()
                 connection.inputStream.use { stream ->
@@ -134,3 +175,5 @@ internal class InsightContextClient(private val snapshot: InsightHostSnapshot,
         }
     }
 }
+
+private class InsightContextHttpException(val status: Int) : Exception()

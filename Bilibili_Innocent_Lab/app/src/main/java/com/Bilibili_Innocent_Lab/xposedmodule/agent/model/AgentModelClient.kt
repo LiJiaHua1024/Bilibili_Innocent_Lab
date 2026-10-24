@@ -133,7 +133,7 @@ internal class AgentModelClient(
     /** 复用现有已验证厂商写法；未知中转不试探 reasoning_effort=none。 */
     private fun knownReasoningParams(source: AgentModelSource): JSONObject? {
         val host = URI(source.resolvedEndpoint).host.lowercase(Locale.ROOT)
-        val known = host in setOf("openrouter.ai", "api.deepseek.com", "open.bigmodel.cn", "api.z.ai",
+        val known = host in setOf("openrouter.ai", "api.deepseek.com", "api.river.ai", "open.bigmodel.cn", "api.z.ai",
             "api.siliconflow.cn", "api.siliconflow.com") || host.endsWith(".volces.com") || host.endsWith(".aliyuncs.com")
         return if (known) AiChatCompat.reasoningParams(source.resolvedEndpoint, ReasoningLevel.OFF) else null
     }

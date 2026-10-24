@@ -49,7 +49,14 @@ internal class AiInsightFeatureInstaller(private val enabled: Boolean, private v
         val snapshot = InsightHostSnapshot()
         val cache = InsightCache(cacheRoot)
         val source = InsightSources.resolve(sources)
-        val repository = source?.let { InsightRepository(it, cache, InsightContextClient(snapshot)::load) }
+        val trace: (String) -> Unit = { event ->
+            val mode = event.substringAfter("mode=", "").substringBefore(' ')
+            val stage = event.substringAfter("stage=", "").substringBefore(' ')
+            environment.logInfo("insight.${event.substringBefore(' ')}.$mode.$stage", "AI Insight $event")
+        }
+        val repository = source?.let { InsightRepository(it, cache, InsightContextClient(snapshot, trace = trace)::load,
+            trace = trace,
+            contextRevision = snapshot::revision) }
         val generated = object : LinkedHashMap<InsightVideo, InsightCache.Entry>() {
             override fun removeEldestEntry(eldest: MutableMap.MutableEntry<InsightVideo, InsightCache.Entry>?) = size > 32
         }
@@ -80,9 +87,11 @@ internal class AiInsightFeatureInstaller(private val enabled: Boolean, private v
             }
         }
         count += chapterRoutes
-        count += installSubtitles(environment, snapshot)
-        count += installMetadata(environment, snapshot)
-        count += installComments(environment, snapshot)
+        val subtitleRoutes = installSubtitles(environment, snapshot)
+        val metadataRoutes = installMetadata(environment, snapshot)
+        val commentRoutes = installComments(environment, snapshot)
+        count += subtitleRoutes + metadataRoutes + commentRoutes
+        environment.logInfo("insight.routes", "AI Insight routes subtitles=$subtitleRoutes metadata=$metadataRoutes comments=$commentRoutes chapters=$chapterRoutes")
         environment.registrar.exact("insight.intro.create", fragment, create.name, *create.parameterTypes) { after {
             if (hasThrowable) return@after
             val original = result as? View ?: return@after
@@ -115,23 +124,30 @@ internal class AiInsightFeatureInstaller(private val enabled: Boolean, private v
         return FeatureInstallResult.Installed(count + 3, complete = chapterRoutes > 0)
     }
 
-    private fun installSubtitles(environment: HookEnvironment, snapshot: InsightHostSnapshot): Int {
+    private fun installSubtitles(environment: HookEnvironment, snapshot: InsightHostSnapshot): Int =
+        installSubtitleRoute(environment, snapshot, DM, "DmViewReq", "DmViewReply", "DMMoss", "dmView", true) +
+            installSubtitleRoute(environment, snapshot, "com.bapis.bilibili.subtitle",
+                "SubtitleViewReq", "SubtitleViewReply", "SubtitleMoss", "subtitleView", false)
+
+    private fun installSubtitleRoute(environment: HookEnvironment, snapshot: InsightHostSnapshot, family: String,
+        requestName: String, replyName: String, moss: String, rpc: String, enableSubtitle: Boolean): Int {
         val loader = environment.classLoader ?: return 0
-        val request = Lookup.classOrNull(loader, "$DM.DmViewReq") ?: return 0
-        val reply = Lookup.classOrNull(loader, "$DM.DmViewReply") ?: return 0
+        val request = Lookup.classOrNull(loader, "$family.$requestName") ?: return 0
+        val reply = Lookup.classOrNull(loader, "$family.$replyName") ?: return 0
         val cid = Lookup.methodOrNull(request, "getOid")?.takeIf { it.returnType == Long::class.javaPrimitiveType } ?: return 0
         val read = Lookup.methodOrNull(reply, "getSubtitle") ?: return 0
         val list = Lookup.methodOrNull(read.returnType, "getSubtitlesList") ?: return 0
-        val item = Lookup.classOrNull(loader, "$DM.SubtitleItem") ?: return 0
+        val item = Lookup.classOrNull(loader, "$family.SubtitleItem") ?: return 0
         val url = Lookup.methodOrNull(item, "getSubtitleUrl")?.takeIf { it.returnType == String::class.java } ?: return 0
         val language = Lookup.methodOrNull(item, "getLan")?.takeIf { it.returnType == String::class.java } ?: return 0
-        val plan = ProtobufBuilderPlan.resolve(request)
+        val plan = if (enableSubtitle) ProtobufBuilderPlan.resolve(request) else null
         val setWithout = plan?.method("setWithoutSubtitle", Boolean::class.javaPrimitiveType!!)
-        return InsightRpc.install(environment, "$DM.DMMoss", "dmView", request, reply, transformRequest = { original ->
+        return InsightRpc.install(environment, "$family.$moss", rpc, request, reply, transformRequest = { original ->
             if (setWithout == null) original else plan.edit(original) { setWithout.invoke(it, false) }
         }) { req, response ->
             val part = cid.invoke(req) as Long
             val subtitles = list.invoke(read.invoke(response)) as? List<*> ?: return@install response
+            environment.logInfo("insight.subtitle.$rpc.${subtitles.isNotEmpty()}", "AI Insight subtitle rpc=$rpc sources=${subtitles.size} cid=$part")
             if (part > 0) snapshot.subtitles(part, subtitles.take(16).filterNotNull().filter(item::isInstance).map {
                 InsightSubtitleSource(part, url.invoke(it) as String, language.invoke(it) as String) })
             response
@@ -180,6 +196,7 @@ internal class AiInsightFeatureInstaller(private val enabled: Boolean, private v
                         read.invoke(value)?.let { message.invoke(it) as? String }
                     }
                 if (sampled.isNotEmpty()) snapshot.comments(avid, sampled)
+                environment.logInfo("insight.comments.sample", "AI Insight comments sampled=${sampled.size}")
             }
             reply
         }

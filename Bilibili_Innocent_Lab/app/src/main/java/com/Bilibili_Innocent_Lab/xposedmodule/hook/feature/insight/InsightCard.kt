@@ -3,6 +3,7 @@ package com.Bilibili_Innocent_Lab.xposedmodule.hook.feature.insight
 import android.app.Dialog
 import android.content.Context
 import android.graphics.Color
+import android.graphics.Rect
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
 import android.text.SpannableStringBuilder
@@ -12,6 +13,7 @@ import android.text.method.LinkMovementMethod
 import android.text.style.ClickableSpan
 import android.view.View
 import android.view.ViewGroup
+import android.view.ViewTreeObserver
 import android.widget.Button
 import android.widget.EditText
 import android.widget.LinearLayout
@@ -19,6 +21,9 @@ import android.widget.ScrollView
 import android.widget.TextView
 import com.Bilibili_Innocent_Lab.xposedmodule.runtime.HostThreadGuard
 import com.Bilibili_Innocent_Lab.xposedmodule.runtime.InjectedUiLocale
+import com.Bilibili_Innocent_Lab.xposedmodule.hook.hostui.common.HostChromeTheme
+import com.Bilibili_Innocent_Lab.xposedmodule.hook.hostui.common.HostViewVisibility
+import androidx.core.graphics.drawable.toDrawable
 import com.highcapable.betterandroid.ui.extension.component.base.toPx
 import com.highcapable.betterandroid.ui.extension.view.textToString
 import java.lang.ref.WeakReference
@@ -38,6 +43,7 @@ internal class InsightCard(context: Context, private val repository: InsightRepo
     private var session: InsightPlayerSession? = null
     private var summary: InsightCache.Entry? = null
     private val history = ArrayDeque<Pair<String, String>>()
+    private var askContext: Pair<Int, Boolean>? = null
     private var dialog: Dialog? = null
     private var busy = false
     private val title = TextView(context)
@@ -46,6 +52,18 @@ internal class InsightCard(context: Context, private val repository: InsightRepo
     private val comments = Button(context)
     private val chapters = Button(context)
     private val ink = body.currentTextColor
+    private val viewportBounds = Rect()
+    private var viewportHeight = 0
+    private var viewportObserver: ViewTreeObserver? = null
+    private val viewportLayout = ViewTreeObserver.OnGlobalLayoutListener {
+        HostThreadGuard.run("insight.viewport") {
+            val container = parent as? View ?: return@run
+            if (HostViewVisibility.visible(container, viewportBounds) && viewportBounds.height() != viewportHeight) {
+                viewportHeight = viewportBounds.height()
+                requestLayout()
+            }
+        }
+    }
     init {
         orientation = VERTICAL
         setPadding(12.toPx(context), 8.toPx(context), 12.toPx(context), 8.toPx(context))
@@ -56,7 +74,8 @@ internal class InsightCard(context: Context, private val repository: InsightRepo
         title.setTextColor(ink)
         title.setPadding(0, 4.toPx(context), 0, 4.toPx(context))
         addView(title, LayoutParams(-1, -2))
-        body.textSize = 13f; body.maxLines = 4
+        body.textSize = 13f; body.maxLines = 7
+        body.ellipsize = android.text.TextUtils.TruncateAt.END
         body.movementMethod = LinkMovementMethod.getInstance()
         body.text = insightText(context, "等待当前视频…", "Waiting for video…", "等待目前影片…")
         addView(body, LayoutParams(-1, -2))
@@ -82,12 +101,37 @@ internal class InsightCard(context: Context, private val repository: InsightRepo
         session = value
         if (previous?.video != value?.video || value == null) {
             revision.incrementAndGet(); busy = false; pending = null; dialog?.dismiss(); dialog = null
-            if (previous?.video != value?.video) { summary = null; history.clear() }
+            if (previous?.video != value?.video) { summary = null; history.clear(); askContext = null }
         }
         updateActions()
         if (value != null && summary == null && !busy) loadSummary()
     }
     fun dispose() { bind(null); pending = null }
+
+    override fun onAttachedToWindow() {
+        super.onAttachedToWindow()
+        val observer = viewTreeObserver
+        if (observer.isAlive) { observer.addOnGlobalLayoutListener(viewportLayout); viewportObserver = observer }
+    }
+    override fun onDetachedFromWindow() {
+        viewportObserver?.takeIf { it.isAlive }?.removeOnGlobalLayoutListener(viewportLayout)
+        viewportObserver = null
+        super.onDetachedFromWindow()
+    }
+
+    override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
+        super.onMeasure(widthMeasureSpec, heightMeasureSpec)
+        val available = viewportHeight.takeIf { it > 0 } ?: MeasureSpec.getSize(heightMeasureSpec)
+        // 宿主 ViewPager 的测量范围会延伸出窗口；以布局后的可见区域保留原简介空间。
+        if (available > 0) {
+            val overhead = measuredHeight - body.measuredHeight
+            val lines = ((available * .65f - overhead) / body.lineHeight.coerceAtLeast(1)).toInt().coerceIn(2, 7)
+            if (lines != body.maxLines) {
+                body.maxLines = lines
+                super.onMeasure(widthMeasureSpec, heightMeasureSpec)
+            }
+        }
+    }
 
     private fun updateActions() {
         val available = repository != null && session != null && !busy
@@ -120,12 +164,15 @@ internal class InsightCard(context: Context, private val repository: InsightRepo
         if (!current.valid()) return
         dialog?.dismiss()
         val window = Dialog(context)
+        val palette = HostChromeTheme(context).read().palette()
         val column = LinearLayout(context).apply {
             orientation = VERTICAL; setPadding(16.toPx(context), 12.toPx(context), 16.toPx(context), 12.toPx(context))
+            background = GradientDrawable().apply { setColor(palette.surface); cornerRadius = 16.toPx(context).toFloat() }
         }
         val heading = TextView(context).apply {
             text = when (mode) { InsightMode.ASK -> "Ask · AI Insight"; InsightMode.COMMENTS -> insightText(context, "评论区在聊什么", "Comment topics", "評論區在聊甚麼"); else -> title.text }
             textSize = 17f; setTypeface(null, Typeface.BOLD)
+            setTextColor(palette.textPrimary)
         }
         column.addView(heading, LayoutParams(-1, -2))
         val transcript = LinearLayout(context).apply { orientation = VERTICAL }
@@ -133,6 +180,7 @@ internal class InsightCard(context: Context, private val repository: InsightRepo
         column.addView(scroll, LayoutParams(-1, 0, 1f))
         fun line(text: CharSequence): TextView = TextView(context).apply {
             this.text = text; textSize = 14f; movementMethod = LinkMovementMethod.getInstance()
+            setTextColor(palette.textPrimary); setLinkTextColor(palette.primary)
             setPadding(0, 10.toPx(context), 0, 10.toPx(context))
         }.also { transcript.addView(it, LayoutParams(-1, -2)) }
         if (mode == InsightMode.SUMMARY) summary?.let { line(render(it)) }
@@ -141,11 +189,13 @@ internal class InsightCard(context: Context, private val repository: InsightRepo
             request(mode, current, failure = output) { output.text = render(it) }
         }
         if (mode == InsightMode.ASK) {
-            for ((q, a) in history) { line(q); line(render(InsightCache.Entry(InsightOutput(a), summary?.duration ?: 0, summary?.timed == true))) }
+            for ((q, a) in history) { line(q); line(render(InsightCache.Entry(InsightOutput(a),
+                askContext?.first ?: summary?.duration ?: 0, askContext?.second ?: (summary?.timed == true)))) }
             val row = LinearLayout(context)
             val field = EditText(context).apply {
                 hint = insightText(context, "针对视频提问…", "Ask about this video…", "針對影片提問…")
                 filters = arrayOf(InputFilter.LengthFilter(2000)); maxLines = 3
+                setTextColor(palette.textPrimary); setHintTextColor(palette.textSecondary)
             }
             val send = Button(context).apply { text = insightText(context, "发送", "Send", "傳送"); isAllCaps = false }
             row.addView(field, LayoutParams(0, -2, 1f)); row.addView(send, LayoutParams(-2, -2)); column.addView(row)
@@ -156,6 +206,7 @@ internal class InsightCard(context: Context, private val repository: InsightRepo
                     val answer = line(insightText(context, "正在回答…", "Thinking…", "正在回答…"))
                     request(InsightMode.ASK, current, query, answer) { entry ->
                         answer.text = render(entry); history.addLast(query to entry.output.text)
+                        askContext = entry.duration to entry.timed
                         while (history.size > 6) history.removeFirst()
                     }
                 }
@@ -165,6 +216,8 @@ internal class InsightCard(context: Context, private val repository: InsightRepo
         window.setOnDismissListener { if (dialog === window) dialog = null }
         dialog = window
         window.show()
+        // 宿主个性主题可能把 Dialog 背景设为半透明；内容面板使用宿主配色的实色表面。
+        window.window?.setBackgroundDrawable(Color.TRANSPARENT.toDrawable())
         window.window?.setLayout((context.resources.displayMetrics.widthPixels * .94).toInt(),
             (context.resources.displayMetrics.heightPixels * .60).toInt())
     }
@@ -184,11 +237,19 @@ internal class InsightCard(context: Context, private val repository: InsightRepo
                 if (card.revision.get() != token || card.session?.video != current.video) return@runnable
                 card.busy = false; card.updateActions()
                 val callback = card.pending; card.pending = null
-                outcome.onSuccess { callback?.invoke(it) }.onFailure {
-                    failedView.get()?.text = insightText(card.context,
+                outcome.onSuccess { callback?.invoke(it) }.onFailure { error ->
+                    failedView.get()?.text = when {
+                        error.message == "no-comments" -> insightText(card.context,
+                            "尚未读取到评论。请先打开宿主评论区，返回后重试。", "No comments loaded. Open the native comments tab, then try again.",
+                            "尚未讀取到評論。請先開啟宿主評論區，返回後重試。")
+                        error.message == "chapters-unavailable" -> insightText(card.context,
+                            "AI 章节需要可用字幕、10 分钟以上时长，且当前视频没有官方章节。", "AI chapters require subtitles, at least 10 minutes, and no official chapters.",
+                            "AI 章節需要可用字幕、10 分鐘以上時長，且目前影片沒有官方章節。")
+                        else -> insightText(card.context,
                         "暂时无法生成：字幕、评论或接口不可用，或回答格式无效。点标题重试；自动章节仅适用于无官方章节的 10 分钟以上字幕视频。",
                         "Could not generate. Context or model unavailable, or invalid response. Tap the title to retry. Chapters require subtitles, at least 10 minutes, and no official chapters.",
                         "暫時無法生成：字幕、評論或介面不可用，或回答格式無效。點標題重試。自動章節僅適用於無官方章節的 10 分鐘以上字幕影片。")
+                    }
                 }
             })
         }

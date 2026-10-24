@@ -2,11 +2,15 @@ package com.Bilibili_Innocent_Lab.xposedmodule.hook.feature.insight
 
 import org.junit.Assert.*
 import org.junit.Test
+import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
 
 class InsightContextClientTest {
     @Test fun `subtitle URL cannot redirect data access to an arbitrary host`() {
         assertEquals("https://aisubtitle.hdslb.com/file.json?sign=abc", InsightContextClient.subtitleUrl("//aisubtitle.hdslb.com/file.json?sign=abc"))
-        for (url in listOf("http://aisubtitle.hdslb.com/a", "https://hdslb.com.evil.test/a", "https://localhost/a",
+        assertEquals("https://aisubtitle.hdslb.com/a?sign=a%2Fb", InsightContextClient.subtitleUrl("http://aisubtitle.hdslb.com/a?sign=a%2Fb"))
+        assertEquals("https://aisubtitle.hdslb.com/a", InsightContextClient.subtitleUrl("http://aisubtitle.hdslb.com:80/a"))
+        for (url in listOf("http://aisubtitle.hdslb.com:8080/a", "https://hdslb.com.evil.test/a", "https://localhost/a",
             "https://evil.test/a", "https://key@aisubtitle.hdslb.com/a", "https://aisubtitle.hdslb.com:8443/a")) {
             assertNull(InsightContextClient.subtitleUrl(url))
         }
@@ -18,7 +22,7 @@ class InsightContextClientTest {
     }
     @Test fun `context fallback is explicit and current CID selects the correct video part`() {
         val video = InsightVideo("BV1xx411c7mD", 2)
-        val client = InsightContextClient(InsightHostSnapshot()) { url -> when {
+        val client = InsightContextClient(InsightHostSnapshot(), subtitleWaitMs = 0) { url -> when {
             "web-interface/view" in url -> """{"code":0,"data":{"bvid":"BV1xx411c7mD","aid":1,"title":"title","desc":"desc","pages":[{"cid":1,"duration":60},{"cid":2,"duration":1200}]}}"""
             "x/player/v2" in url -> """{"code":0,"data":{}}"""
             "x/v2/reply" in url -> """{"code":0,"data":{"replies":[{"content":{"message":"观点"}}]}}"""
@@ -46,11 +50,26 @@ class InsightContextClientTest {
         val snapshot = InsightHostSnapshot()
         snapshot.metadata(InsightMetadata(video, 123, "宿主标题", 1200))
         snapshot.comments(123, listOf("宿主评论"))
-        val client = InsightContextClient(snapshot) { error("public endpoint unavailable") }
+        val client = InsightContextClient(snapshot, subtitleWaitMs = 0) { error("public endpoint unavailable") }
         val context = client.load(video)
         assertEquals("宿主标题", context.title)
         assertEquals(listOf("宿主评论"), context.comments)
         assertTrue(context.missing.contains("public-metadata-and-description"))
         assertTrue(runCatching { client.load(video.copy(cid = 3)) }.isFailure)
+    }
+    @Test fun `late subtitles wake the bounded waiter without blocking the host writer`() {
+        val snapshot = InsightHostSnapshot()
+        val expected = listOf(InsightSubtitleSource(2, "https://aisubtitle.hdslb.com/sub.json", "zh-CN"))
+        val pool = Executors.newSingleThreadExecutor()
+        try {
+            val waiting = pool.submit<List<InsightSubtitleSource>> { snapshot.awaitSubtitles(2, 2000) }
+            snapshot.subtitles(9, expected.map { it.copy(cid = 9) })
+            snapshot.subtitles(2, emptyList())
+            snapshot.subtitles(2, expected)
+            assertEquals(expected, waiting.get(1, TimeUnit.SECONDS))
+            snapshot.subtitles(2, emptyList())
+            assertEquals(expected, snapshot.awaitSubtitles(2, 0))
+            assertTrue(snapshot.awaitSubtitles(3, 0).isEmpty())
+        } finally { pool.shutdownNow() }
     }
 }

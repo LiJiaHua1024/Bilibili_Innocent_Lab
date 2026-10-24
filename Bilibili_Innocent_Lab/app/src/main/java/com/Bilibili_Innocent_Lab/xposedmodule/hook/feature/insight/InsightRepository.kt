@@ -2,6 +2,7 @@ package com.Bilibili_Innocent_Lab.xposedmodule.hook.feature.insight
 
 import com.Bilibili_Innocent_Lab.xposedmodule.agent.model.AgentModelClient
 import com.Bilibili_Innocent_Lab.xposedmodule.agent.model.AgentModelSource
+import com.Bilibili_Innocent_Lab.xposedmodule.agent.model.AgentModelException
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
@@ -75,30 +76,67 @@ internal class InsightCache(private val directory: File, private val clock: () -
 internal class InsightRepository(
     private val source: AgentModelSource, private val cache: InsightCache,
     private val context: (InsightVideo) -> InsightContext,
-    private val client: AgentModelClient = AgentModelClient(outputTokenBudget = 4096)
+    private val client: AgentModelClient = AgentModelClient(outputTokenBudget = 8192),
+    private val trace: (String) -> Unit = {},
+    private val contextRevision: () -> Long = { 0L }
 ) {
     private var loaded: InsightContext? = null
     private var loadedAt = 0L
+    private var loadedRevision = -1L
     // 缓存读取不拿生成锁；慢模型请求不能阻挡另一个视频的缓存命中。
     fun cached(video: InsightVideo, mode: InsightMode): InsightCache.Entry? =
         if (mode == InsightMode.ASK) null else cache.read(InsightCache.key(video, source, mode), mode)
+            ?.also { trace("cache mode=$mode timed=${it.timed}") }
     @Synchronized fun generate(video: InsightVideo, mode: InsightMode, question: String = "",
         history: List<Pair<String, String>> = emptyList(), cancelled: () -> Boolean = { false }): InsightCache.Entry {
-        check(!cancelled())
-        val key = InsightCache.key(video, source, mode)
-        if (mode != InsightMode.ASK) cache.read(key, mode)?.let { return it }
-        val now = System.currentTimeMillis()
-        val input = loaded?.takeIf { it.video == video && now - loadedAt in 0..300_000L }
-            ?: context(video).also { loaded = it; loadedAt = now }
-        check(!cancelled())
-        if (mode == InsightMode.COMMENTS) require(input.comments.isNotEmpty()) { "no-comments" }
-        if (mode == InsightMode.CHAPTERS) require(input.timed && !input.officialChapters && input.duration >= 600) { "chapters-unavailable" }
-        val messages = JSONArray().put(JSONObject().put("role", "system").put("content", InsightProtocol.system(mode, input)))
-            .put(JSONObject().put("role", "user").put("content", InsightProtocol.prompt(mode, input, question, history)))
-        val turn = client.generateStructured(source, messages, InsightProtocol.schema(mode, input), 60_000, cancelled)
-        check(!cancelled())
-        val result = InsightCache.Entry(InsightProtocol.decode(mode, turn.text, input), input.duration, input.timed)
-        if (mode != InsightMode.ASK) cache.write(key, result)
-        return result
+        var stage = "context"
+        try {
+            check(!cancelled())
+            val key = InsightCache.key(video, source, mode)
+            if (mode != InsightMode.ASK) cache.read(key, mode)?.let { return it }
+            val now = System.currentTimeMillis()
+            val revision = contextRevision()
+            val input = loaded?.takeIf { it.video == video && loadedRevision == revision && now - loadedAt in 0..300_000L }
+                ?: context(video).also { loaded = it; loadedAt = now; loadedRevision = revision }
+            trace("context mode=$mode cues=${input.cues.size} comments=${input.comments.size} danmaku=${input.danmaku.size} official=${input.officialChapters}")
+            check(!cancelled())
+            if (mode == InsightMode.COMMENTS) require(input.comments.isNotEmpty()) { "no-comments" }
+            if (mode == InsightMode.CHAPTERS) require(input.timed && !input.officialChapters && input.duration >= 600) { "chapters-unavailable" }
+            val original = JSONArray().put(JSONObject().put("role", "system").put("content", InsightProtocol.system(mode, input)))
+                .put(JSONObject().put("role", "user").put("content", InsightProtocol.prompt(mode, input, question, history)))
+            var messages = original
+            val deadline = System.nanoTime() + 90_000_000_000L
+            var decoded: InsightOutput? = null
+            for (attempt in 0..1) {
+                stage = "model"
+                val remaining = ((deadline - System.nanoTime()) / 1_000_000L).coerceAtMost(90_000).toInt()
+                if (remaining <= 0) throw AgentModelException(AgentModelException.Reason.TIMEOUT)
+                val turn = client.generateStructured(source, messages, InsightProtocol.schema(mode, input), remaining, cancelled)
+                check(!cancelled())
+                stage = "decode"
+                try {
+                    decoded = InsightProtocol.decode(mode, turn.text, input)
+                    break
+                } catch (invalid: InsightValidationException) {
+                    if (attempt != 0 || cancelled()) throw invalid
+                    trace("repair mode=$mode rule=${invalid.rule}")
+                    // 只反馈本地固定约束；不保留错误回答，避免把它锚定进材料或问答历史。
+                    messages = JSONArray(original.toString()).put(JSONObject().put("role", "user")
+                        .put("content", "本地校验拒绝上次输出：${invalid.hint} 请据原材料修正输出。"))
+                }
+            }
+            val result = InsightCache.Entry(checkNotNull(decoded), input.duration, input.timed)
+            if (mode != InsightMode.ASK) cache.write(key, result)
+            trace("success mode=$mode timed=${result.timed}")
+            return result
+        } catch (error: Exception) {
+            // 只记固定阶段、异常类型与枚举；不把字幕、问题、模型正文或凭据写入日志。
+            val reason = (error as? AgentModelException)?.let { "${it.reason}:${it.status}" }
+                ?: (error as? InsightValidationException)?.rule
+                ?: error.message?.takeIf { it in setOf("insight-shape", "insight-tags", "insight-reference", "insight-bare-time", "insight-point-content", "no-comments", "chapters-unavailable") }
+                ?: error.javaClass.simpleName
+            trace("failure mode=$mode stage=$stage reason=$reason")
+            throw error
+        }
     }
 }

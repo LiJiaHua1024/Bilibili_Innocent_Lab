@@ -76,6 +76,43 @@ class InsightRepositoryTest {
         assertTrue(retry.generate(video, InsightMode.SUMMARY).output.text.contains("overview"))
         assertEquals(2, posts.get())
     }
+    @Test fun `one precise validation repair excludes the invalid answer and caches only success`() {
+        val root = temporary.newFolder(); val requests = mutableListOf<JSONObject>()
+        val marker = "INVALID_ANSWER_MARKER".repeat(12)
+        val model = AgentModelClient(AgentHttpTransport { _, body, _, _ ->
+            requests += JSONObject(body.toString(Charsets.UTF_8))
+            val content = if (requests.size == 1) JSONObject().put("overview", marker)
+                .put("points", JSONArray().put("[[t:10]] point")).toString() else summary
+            JSONObject().put("choices", JSONArray().put(JSONObject().put("finish_reason", "stop")
+                .put("message", JSONObject().put("role", "assistant").put("content", content)))).toString()
+        })
+        val repo = InsightRepository(source, InsightCache(root), { input }, model)
+        assertTrue(repo.generate(video, InsightMode.SUMMARY).output.text.contains("overview"))
+        assertEquals(2, requests.size)
+        val correction = requests.last().getJSONArray("messages").getJSONObject(2).getString("content")
+        assertTrue(correction.contains("overview")); assertTrue(correction.contains("180"))
+        assertFalse(requests.last().toString().contains("INVALID_ANSWER_MARKER"))
+        assertFalse(root.listFiles()!!.single().readText().contains("INVALID_ANSWER_MARKER"))
+        repo.generate(video, InsightMode.SUMMARY)
+        assertEquals(2, requests.size)
+    }
+    @Test fun `validation repair is bounded and HTTP failures are never repeated`() {
+        val root = temporary.newFolder(); val posts = AtomicInteger()
+        val invalid = """{"overview":"ok","points":["missing clickable time"]}"""
+        val repo = InsightRepository(source, InsightCache(root), { input }, client(posts, invalid))
+        assertTrue(runCatching { repo.generate(video, InsightMode.SUMMARY) }.isFailure)
+        assertEquals(2, posts.get()); assertTrue(root.listFiles().orEmpty().isEmpty())
+        val denied = AtomicInteger()
+        val model = AgentModelClient(AgentHttpTransport { _, _, _, _ ->
+            denied.incrementAndGet()
+            throw com.Bilibili_Innocent_Lab.xposedmodule.agent.model.AgentModelException(
+                com.Bilibili_Innocent_Lab.xposedmodule.agent.model.AgentModelException.Reason.HTTP, 401)
+        })
+        assertTrue(runCatching {
+            InsightRepository(source, InsightCache(temporary.newFolder()), { input }, model).generate(video, InsightMode.SUMMARY)
+        }.isFailure)
+        assertEquals(1, denied.get())
+    }
     @Test fun `missing comments and subtitles cause no billable chapter or comment requests`() {
         val posts = AtomicInteger()
         val repo = InsightRepository(source, InsightCache(temporary.newFolder()), { input.copy(cues = emptyList()) }, client(posts))
@@ -88,6 +125,22 @@ class InsightRepositoryTest {
         val repo = InsightRepository(source, InsightCache(root), { input }, client(posts, """{"answer":"[[t:10]] explanation"}"""))
         repo.generate(video, InsightMode.ASK, "question", listOf("old question" to "old answer"))
         assertEquals(1, posts.get()); assertTrue(root.listFiles().orEmpty().isEmpty())
+    }
+    @Test fun `late host comments invalidate the previously loaded empty context`() {
+        val snapshot = InsightHostSnapshot()
+        val posts = AtomicInteger(); val loads = AtomicInteger()
+        val repo = InsightRepository(source, InsightCache(temporary.newFolder()), {
+            loads.incrementAndGet(); input.copy(comments = snapshot.comments(42))
+        }, client(posts, """{"topics":[{"title":"discussion","summary":"sample"}]}"""),
+            contextRevision = snapshot::revision)
+        assertTrue(runCatching { repo.generate(video, InsightMode.COMMENTS) }.isFailure)
+        assertEquals(0, posts.get())
+        snapshot.comments(42, listOf("late comment"))
+        assertTrue(repo.generate(video, InsightMode.COMMENTS).output.text.contains("discussion"))
+        assertEquals(2, loads.get()); assertEquals(1, posts.get())
+        val revision = snapshot.revision()
+        snapshot.comments(42, listOf("late comment"))
+        assertEquals(revision, snapshot.revision())
     }
     @Test fun `decision sources are excluded and existing chat configuration is reused`() {
         val decision = SemanticSource.from(1, "key", "", "jev", "")!!
