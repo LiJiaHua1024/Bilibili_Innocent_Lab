@@ -5,7 +5,6 @@ import android.os.Bundle
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
-import android.widget.LinearLayout
 import com.Bilibili_Innocent_Lab.xposedmodule.agent.model.AgentModelSource
 import com.Bilibili_Innocent_Lab.xposedmodule.hook.adapter.SponsorPlayerClasses
 import com.Bilibili_Innocent_Lab.xposedmodule.hook.adapter.SponsorPlayerLocator
@@ -46,6 +45,7 @@ internal class AiInsightFeatureInstaller(private val enabled: Boolean, private v
         val created = Lookup.methodOrNull(fragment, "onViewCreated", View::class.java, Bundle::class.java)
             ?: return FeatureInstallResult.Skipped("missing-intro-lifecycle")
         val destroy = Lookup.methodOrNull(fragment, "onDestroyView") ?: return FeatureInstallResult.Skipped("missing-intro-destroy")
+        val headers = InsightIntroHeaders.resolve(environment) ?: return FeatureInstallResult.Skipped("missing-intro-components")
         val snapshot = InsightHostSnapshot()
         val cache = InsightCache(cacheRoot)
         val source = InsightSources.resolve(sources)
@@ -65,10 +65,13 @@ internal class AiInsightFeatureInstaller(private val enabled: Boolean, private v
         if (source != null) Thread(HostThreadGuard.runnable("insight.cache.restore") {
             cache.restoreChapters(source, ::remember)
         }, "BIL-InsightCache").apply { isDaemon = true }.start()
+        var collapsed = false
         val cards = WeakHashMap<Any, WeakReference<InsightCard>>()
+        val mounts = WeakHashMap<Any, WeakReference<InsightScrollMount>>()
         val activityCards = WeakHashMap<Activity, WeakReference<InsightCard>>()
         val bridge = InsightPlayerBridge(environment, player) { activity, session -> activityCards[activity]?.get()?.bind(session) }
         var count = bridge.install()
+        count += headers.install()
         val nativeClass = Lookup.classOrNull(loader, InsightNativeChapters.REPLY)
         val native = nativeClass?.let(InsightNativeChapters::resolve)
         var chapterRoutes = 0
@@ -98,21 +101,18 @@ internal class AiInsightFeatureInstaller(private val enabled: Boolean, private v
         environment.logInfo("insight.routes", "AI Insight routes subtitles=$subtitleRoutes metadata=$metadataRoutes comments=$commentRoutes chapters=$chapterRoutes")
         environment.registrar.exact("insight.intro.create", fragment, create.name, *create.parameterTypes) { after {
             if (hasThrowable) return@after
-            val original = result as? View ?: return@after
+            val original = result as? ViewGroup ?: return@after
             if (original.parent != null) return@after
             val owner = instance ?: return@after
             val activity = original.context.hostActivity ?: return@after
             if (activity.javaClass.name != InsightPlayerBridge.DETAIL) return@after
-            val card = InsightCard(original.context, repository, automaticChapters, chapterRoutes > 0) { video, entry ->
+            val card = InsightCard(original.context, repository, automaticChapters, chapterRoutes > 0,
+                collapsed, { collapsed = it }) { video, entry ->
                 remember(video, entry); covers.schedule(video, entry)
             }
-            val container = LinearLayout(original.context).apply {
-                orientation = LinearLayout.VERTICAL
-                addView(card, LinearLayout.LayoutParams(-1, -2))
-                addView(original, LinearLayout.LayoutParams(-1, 0, 1f))
-            }
+            val mounted = headers.attach(original, card) ?: return@after
             cards[owner] = WeakReference(card); activityCards[activity] = WeakReference(card)
-            result = container
+            mounts[owner] = WeakReference(mounted)
         } }
         environment.registrar.exact("insight.intro.ready", fragment, created.name, *created.parameterTypes) { after {
             if (hasThrowable) return@after
@@ -121,6 +121,7 @@ internal class AiInsightFeatureInstaller(private val enabled: Boolean, private v
             card.bind(bridge.current(activity))
         } }
         environment.registrar.exact("insight.intro.destroy", fragment, destroy.name, *destroy.parameterTypes) { before {
+            mounts.remove(instance)?.get()?.close()
             cards.remove(instance)?.get()?.let { card ->
                 card.dispose()
                 card.context.hostActivity?.let { activity -> if (activityCards[activity]?.get() === card) activityCards.remove(activity) }

@@ -3,27 +3,22 @@ package com.Bilibili_Innocent_Lab.xposedmodule.hook.feature.insight
 import android.app.Dialog
 import android.content.Context
 import android.graphics.Color
-import android.graphics.Rect
 import android.graphics.Typeface
-import android.graphics.drawable.GradientDrawable
+import android.text.InputFilter
 import android.text.SpannableStringBuilder
 import android.text.Spanned
-import android.text.InputFilter
 import android.text.method.LinkMovementMethod
 import android.text.style.ClickableSpan
 import android.view.View
-import android.view.ViewGroup
-import android.view.ViewTreeObserver
 import android.widget.Button
 import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
+import androidx.core.graphics.drawable.toDrawable
+import androidx.core.view.ViewCompat
 import com.Bilibili_Innocent_Lab.xposedmodule.runtime.HostThreadGuard
 import com.Bilibili_Innocent_Lab.xposedmodule.runtime.InjectedUiLocale
-import com.Bilibili_Innocent_Lab.xposedmodule.hook.hostui.common.HostChromeTheme
-import com.Bilibili_Innocent_Lab.xposedmodule.hook.hostui.common.HostViewVisibility
-import androidx.core.graphics.drawable.toDrawable
 import com.highcapable.betterandroid.ui.extension.component.base.toPx
 import com.highcapable.betterandroid.ui.extension.view.textToString
 import java.lang.ref.WeakReference
@@ -35,202 +30,226 @@ import java.util.concurrent.atomic.AtomicLong
 internal fun insightText(context: Context, chinese: String, english: String, traditional: String = chinese): String =
     when (InjectedUiLocale.resolveEffectiveTag(context)) { "en" -> english; "zh-Hant" -> traditional; else -> chinese }
 
-/** 只属于简介 Fragment 的卡片；播放器区不加浮层，章节列表交给宿主原生 UI。 */
+/** 简介中的按需入口；四项结果在独立面板呈现，挂载或绑定视频不会生成内容。 */
 internal class InsightCard(context: Context, private val repository: InsightRepository?,
     private val automaticChapters: Boolean, private val nativeChaptersAvailable: Boolean,
+    initiallyCollapsed: Boolean = false, private val collapseChanged: (Boolean) -> Unit = {},
     private val chaptersReady: (InsightVideo, InsightCache.Entry) -> Unit) : LinearLayout(context) {
     private val revision = AtomicLong()
     private var session: InsightPlayerSession? = null
+    private var video: InsightVideo? = null
     private var summary: InsightCache.Entry? = null
     private val history = ArrayDeque<Pair<String, String>>()
     private var askContext: Pair<Int, Boolean>? = null
     private var dialog: Dialog? = null
+    private var askSend: WeakReference<Button>? = null
     private var busy = false
     private val title = TextView(context)
-    private val body = TextView(context)
-    private val question = Button(context)
-    private val comments = Button(context)
-    private val chapters = Button(context)
-    private val ink = body.currentTextColor
-    private val viewportBounds = Rect()
-    private var viewportHeight = 0
-    private var viewportObserver: ViewTreeObserver? = null
-    private val viewportLayout = ViewTreeObserver.OnGlobalLayoutListener {
-        HostThreadGuard.run("insight.viewport") {
-            val container = parent as? View ?: return@run
-            if (HostViewVisibility.visible(container, viewportBounds) && viewportBounds.height() != viewportHeight) {
-                viewportHeight = viewportBounds.height()
-                requestLayout()
-            }
-        }
-    }
+    private val collapse = Button(context)
+    private val actions = LinearLayout(context)
+    private val buttons = linkedMapOf<InsightMode, Button>()
+    private val hint = TextView(context)
+    private var surfaces: InsightSurfaces? = null
+    private var collapsed = initiallyCollapsed
     init {
         orientation = VERTICAL
-        setPadding(12.toPx(context), 8.toPx(context), 12.toPx(context), 8.toPx(context))
-        background = GradientDrawable().apply { setColor(Color.argb(16, 0, 150, 160)); cornerRadius = 12.toPx(context).toFloat() }
-        title.text = insightText(context, "AI Insight · 视频总结", "AI Insight · Summary", "AI Insight · 影片總結")
-        title.textSize = 15f; title.setTypeface(null, Typeface.BOLD)
-        title.isFocusable = true
-        title.setTextColor(ink)
-        title.setPadding(0, 4.toPx(context), 0, 4.toPx(context))
-        addView(title, LayoutParams(-1, -2))
-        body.textSize = 13f; body.maxLines = 7
-        body.ellipsize = android.text.TextUtils.TruncateAt.END
-        body.movementMethod = LinkMovementMethod.getInstance()
-        body.text = insightText(context, "等待当前视频…", "Waiting for video…", "等待目前影片…")
-        addView(body, LayoutParams(-1, -2))
-        val actions = LinearLayout(context)
-        fun action(button: Button, label: String, run: () -> Unit) {
-            button.text = label; button.textSize = 12f; button.isAllCaps = false
-            button.minWidth = 0; button.minimumWidth = 0
-            button.setOnClickListener { HostThreadGuard.run("insight.action", run) }
-            actions.addView(button, LayoutParams(0, -2, 1f))
+        setPadding(12.toPx(context), 6.toPx(context), 12.toPx(context), 10.toPx(context))
+        val heading = LinearLayout(context).apply { gravity = android.view.Gravity.CENTER_VERTICAL }
+        title.text = "AI Insight"; title.textSize = 15f; title.setTypeface(null, Typeface.BOLD)
+        ViewCompat.setAccessibilityHeading(title, true)
+        heading.addView(title, LayoutParams(0, -2, 1f))
+        styleButton(collapse); collapse.textSize = 12f
+        heading.addView(collapse, LayoutParams(-2, 44.toPx(context)))
+        addView(heading, LayoutParams(-1, -2))
+        for (mode in InsightMode.entries) {
+            val button = Button(context).apply {
+                styleButton(this); text = label(mode); textSize = 12f
+                setOnClickListener { HostThreadGuard.run("insight.open.$mode") { open(mode) } }
+            }
+            buttons[mode] = button
+            actions.addView(button, LayoutParams(0, 44.toPx(context), 1f).apply {
+                if (mode != InsightMode.SUMMARY) marginStart = 6.toPx(context)
+            })
         }
-        action(question, "Ask") { open(InsightMode.ASK) }
-        action(comments, insightText(context, "评论话题", "Topics", "評論話題")) { open(InsightMode.COMMENTS) }
-        action(chapters, insightText(context, "AI 章节", "Chapters", "AI 章節")) { requestChapters() }
         addView(actions, LayoutParams(-1, -2))
-        title.setOnClickListener { HostThreadGuard.run("insight.summary.expand") {
-            if (summary != null) open(InsightMode.SUMMARY) else loadSummary()
+        hint.textSize = 12f
+        hint.text = insightText(context, "请先在模块 AI 配置中设置文本生成模型。", "Set up a text generation model in module settings.", "請先在模組 AI 設定中設定文字生成模型。")
+        addView(hint, LayoutParams(-1, -2))
+        collapse.setOnClickListener { HostThreadGuard.run("insight.collapse") {
+            collapsed = !collapsed; collapseChanged(collapsed); updateActions()
         } }
         updateActions()
     }
-
-    fun bind(value: InsightPlayerSession?) {
-        val previous = session
-        session = value
-        if (previous?.video != value?.video || value == null) {
-            revision.incrementAndGet(); busy = false; pending = null; dialog?.dismiss(); dialog = null
-            if (previous?.video != value?.video) { summary = null; history.clear(); askContext = null }
-        }
-        updateActions()
-        if (value != null && summary == null && !busy) loadSummary()
+    private fun styleButton(button: Button) {
+        // 原生 Button 动画会覆写 Lumen 的 elevation，轮廓与按压状态统一交给凝光。
+        button.stateListAnimator = null; button.elevation = 0f; button.translationZ = 0f
+        button.isAllCaps = false; button.minWidth = 0; button.minimumWidth = 0
+        button.minHeight = 44.toPx(context); button.minimumHeight = 44.toPx(context)
+        button.setPadding(6.toPx(context), 0, 6.toPx(context), 0)
+        button.includeFontPadding = false
     }
-    fun dispose() { bind(null); pending = null }
-
+    private fun label(mode: InsightMode): String = when (mode) {
+        InsightMode.SUMMARY -> insightText(context, "视频总结", "Summary", "影片總結")
+        InsightMode.ASK -> "Ask"
+        InsightMode.COMMENTS -> insightText(context, "评论话题", "Topics", "評論話題")
+        InsightMode.CHAPTERS -> insightText(context, "AI 章节", "Chapters", "AI 章節")
+    }
+    fun bind(value: InsightPlayerSession?) {
+        if (value?.video != null && value.video != video) {
+            video = value.video; summary = null; history.clear(); askContext = null
+            cancelPanel()
+        } else if (value == null) cancelPanel()
+        session = value; updateActions()
+    }
+    fun dispose() { session = null; cancelPanel(); surfaces?.close(); surfaces = null }
+    private fun cancelPanel() {
+        revision.incrementAndGet(); busy = false; pending = null
+        dialog?.dismiss(); dialog = null; askSend = null
+    }
     override fun onAttachedToWindow() {
         super.onAttachedToWindow()
-        val observer = viewTreeObserver
-        if (observer.isAlive) { observer.addOnGlobalLayoutListener(viewportLayout); viewportObserver = observer }
+        surfaces?.close()
+        surfaces = InsightSurfaces(this).also { material ->
+            material.label(title); material.label(hint); material.control(collapse, quiet = true)
+            buttons.values.forEach { material.control(it) }
+        }
     }
     override fun onDetachedFromWindow() {
-        viewportObserver?.takeIf { it.isAlive }?.removeOnGlobalLayoutListener(viewportLayout)
-        viewportObserver = null
+        surfaces?.close(); surfaces = null
         super.onDetachedFromWindow()
     }
-
-    override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
-        super.onMeasure(widthMeasureSpec, heightMeasureSpec)
-        val available = viewportHeight.takeIf { it > 0 } ?: MeasureSpec.getSize(heightMeasureSpec)
-        // 宿主 ViewPager 的测量范围会延伸出窗口；以布局后的可见区域保留原简介空间。
-        if (available > 0) {
-            val overhead = measuredHeight - body.measuredHeight
-            val lines = ((available * .65f - overhead) / body.lineHeight.coerceAtLeast(1)).toInt().coerceIn(2, 7)
-            if (lines != body.maxLines) {
-                body.maxLines = lines
-                super.onMeasure(widthMeasureSpec, heightMeasureSpec)
-            }
-        }
-    }
-
     private fun updateActions() {
         val available = repository != null && session != null && !busy
-        question.isEnabled = available; comments.isEnabled = available; chapters.isEnabled = available && nativeChaptersAvailable
-        if (repository == null) body.text = insightText(context,
-            "请先在下方 AI 配置中设置可生成文本的对话模型。", "Set up a text generation model in AI settings below.",
-            "請先在下方 AI 設定中設定可生成文字的對話模型。")
-    }
-    private fun loadSummary() {
-        val current = session ?: return
-        if (repository == null || busy) return
-        body.text = insightText(context, "正在读取字幕并总结…", "Reading subtitles and summarizing…", "正在讀取字幕並總結…")
-        request(InsightMode.SUMMARY, current) { result ->
-            summary = result
-            body.text = render(result)
-            if (nativeChaptersAvailable && automaticChapters && result.timed &&
-                result.duration >= InsightProtocol.MIN_CHAPTER_VIDEO_SECONDS) requestChapters(silent = true)
+        buttons.forEach { (mode, button) ->
+            button.isEnabled = available && (mode != InsightMode.CHAPTERS || nativeChaptersAvailable)
+            button.alpha = if (button.isEnabled) 1f else .5f
         }
-    }
-    private fun requestChapters(silent: Boolean = false) {
-        val current = session ?: return
-        request(InsightMode.CHAPTERS, current, failure = if (silent) null else body) { result ->
-            chaptersReady(current.video, result)
-            if (!silent) body.text = insightText(context,
-                "AI 章节已缓存，将随宿主下次进度信息刷新或重新打开此分 P 时显示于原生章节中。", "Chapters saved for the next native progress refresh or reopening.",
-                "AI 章節已快取，將隨宿主下次進度資訊重新整理或重新開啟此分 P 時顯示於原生章節中。")
-        }
+        askSend?.get()?.isEnabled = available
+        actions.visibility = if (collapsed) GONE else VISIBLE
+        hint.visibility = if (!collapsed && repository == null) VISIBLE else GONE
+        collapse.text = if (collapsed) insightText(context, "展开 ▾", "Expand ▾", "展開 ▾")
+            else insightText(context, "收起 ▴", "Collapse ▴", "收起 ▴")
     }
     private fun open(mode: InsightMode) {
         val current = session ?: return
-        if (!current.valid()) return
+        if (!current.valid() || busy || repository == null) return
         dialog?.dismiss()
         val window = Dialog(context)
-        val palette = HostChromeTheme(context).read().palette()
         val column = LinearLayout(context).apply {
-            orientation = VERTICAL; setPadding(16.toPx(context), 12.toPx(context), 16.toPx(context), 12.toPx(context))
-            background = GradientDrawable().apply { setColor(palette.surface); cornerRadius = 16.toPx(context).toFloat() }
+            orientation = VERTICAL
+            setPadding(16.toPx(context), 10.toPx(context), 16.toPx(context), 14.toPx(context))
         }
-        val heading = TextView(context).apply {
-            text = when (mode) { InsightMode.ASK -> "Ask · AI Insight"; InsightMode.COMMENTS -> insightText(context, "评论区在聊什么", "Comment topics", "評論區在聊甚麼"); else -> title.text }
-            textSize = 17f; setTypeface(null, Typeface.BOLD)
-            setTextColor(palette.textPrimary)
+        val heading = LinearLayout(context).apply { gravity = android.view.Gravity.CENTER_VERTICAL }
+        val name = TextView(context).apply { text = label(mode); textSize = 18f; setTypeface(null, Typeface.BOLD) }
+        ViewCompat.setAccessibilityHeading(name, true)
+        heading.addView(name, LayoutParams(0, -2, 1f))
+        val close = Button(context).apply {
+            styleButton(this); text = "×"; textSize = 24f
+            contentDescription = insightText(context, "关闭", "Close", "關閉")
+            setOnClickListener { window.dismiss() }
         }
+        heading.addView(close, LayoutParams(44.toPx(context), 44.toPx(context)))
         column.addView(heading, LayoutParams(-1, -2))
         val transcript = LinearLayout(context).apply { orientation = VERTICAL }
-        val scroll = ScrollView(context).apply { addView(transcript) }
+        val scroll = ScrollView(context).apply {
+            isFillViewport = true
+            scrollBarStyle = SCROLLBARS_INSIDE_INSET
+            setPadding(0, 0, 6.toPx(context), 0)
+            addView(transcript)
+        }
         column.addView(scroll, LayoutParams(-1, 0, 1f))
+        window.setContentView(column)
+        var material: InsightSurfaces? = null
+        window.setOnDismissListener {
+            material?.close(); material = null
+            if (dialog === window) {
+                dialog = null; askSend = null; revision.incrementAndGet(); busy = false; pending = null; updateActions()
+            }
+        }
+        dialog = window; window.show()
+        window.window?.setBackgroundDrawable(Color.TRANSPARENT.toDrawable())
+        window.window?.setLayout((resources.displayMetrics.widthPixels * .94).toInt(),
+            (resources.displayMetrics.heightPixels * .64).toInt())
+        val skin = InsightSurfaces(column).also { material = it; it.label(name); it.control(close, quiet = true) }
         fun line(text: CharSequence): TextView = TextView(context).apply {
             this.text = text; textSize = 14f; movementMethod = LinkMovementMethod.getInstance()
-            setTextColor(palette.textPrimary); setLinkTextColor(palette.primary)
             setPadding(0, 10.toPx(context), 0, 10.toPx(context))
-        }.also { transcript.addView(it, LayoutParams(-1, -2)) }
-        if (mode == InsightMode.SUMMARY) summary?.let { line(render(it)) }
-        if (mode == InsightMode.COMMENTS) {
-            val output = line(insightText(context, "正在概括热评讨论…", "Summarizing sampled comments…", "正在概括熱門評論…"))
-            request(mode, current, failure = output) { output.text = render(it) }
-        }
-        if (mode == InsightMode.ASK) {
-            for ((q, a) in history) { line(q); line(render(InsightCache.Entry(InsightOutput(a),
-                askContext?.first ?: summary?.duration ?: 0, askContext?.second ?: (summary?.timed == true)))) }
-            val row = LinearLayout(context)
+        }.also { transcript.addView(it, LayoutParams(-1, -2)); skin.label(it) }
+        fun retryButton(run: () -> Unit) = Button(context).apply {
+            styleButton(this); text = insightText(context, "重试", "Retry", "重試"); visibility = GONE
+            setOnClickListener { HostThreadGuard.run("insight.retry", run) }
+        }.also { transcript.addView(it, LayoutParams(-2, 44.toPx(context))); skin.control(it) }
+        if (mode != InsightMode.ASK) {
+            val output = line("")
+            lateinit var retry: Button
+            fun load() {
+                output.text = insightText(context, "正在生成…", "Generating…", "正在生成…")
+                retry.visibility = GONE
+                if (mode == InsightMode.SUMMARY && summary != null) { output.text = render(checkNotNull(summary), true, summaryMode = true); return }
+                request(mode, current, output, retry) { entry ->
+                    if (mode == InsightMode.CHAPTERS) {
+                        chaptersReady(current.video, entry)
+                        if (entry.output.text.isNotBlank()) summary = entry
+                        output.text = insightText(context,
+                            "已准备好 ${entry.output.chapters.size} 个章节。宿主下次刷新进度或重新打开当前分 P 后，可在播放器原生章节中查看与跳转。",
+                            "${entry.output.chapters.size} chapters are ready. View them in the native player after the next progress refresh or reopening this part.",
+                            "已準備好 ${entry.output.chapters.size} 個章節。宿主下次重新整理進度或重新開啟目前分 P 後，可在播放器原生章節中查看與跳轉。")
+                    } else {
+                        if (mode == InsightMode.SUMMARY) summary = entry
+                        output.text = render(entry, mode == InsightMode.SUMMARY, summaryMode = mode == InsightMode.SUMMARY)
+                        if (mode == InsightMode.SUMMARY && automaticChapters && nativeChaptersAvailable && entry.output.chapters.isNotEmpty())
+                            request(InsightMode.CHAPTERS, current, null, null) { chaptersReady(current.video, it) }
+                    }
+                }
+            }
+            retry = retryButton(::load); load()
+        } else {
+            for ((q, a) in history) {
+                line(q); line(render(InsightCache.Entry(InsightOutput(a), askContext?.first ?: 0, askContext?.second == true), true))
+            }
+            val row = LinearLayout(context).apply { gravity = android.view.Gravity.BOTTOM }
             val field = EditText(context).apply {
                 hint = insightText(context, "针对视频提问…", "Ask about this video…", "針對影片提問…")
                 filters = arrayOf(InputFilter.LengthFilter(2000)); maxLines = 3
-                setTextColor(palette.textPrimary); setHintTextColor(palette.textSecondary)
             }
-            val send = Button(context).apply { text = insightText(context, "发送", "Send", "傳送"); isAllCaps = false }
-            row.addView(field, LayoutParams(0, -2, 1f)); row.addView(send, LayoutParams(-2, -2)); column.addView(row)
+            skin.label(field)
+            val send = Button(context).apply { styleButton(this); text = insightText(context, "发送", "Send", "傳送") }
+            skin.control(send); askSend = WeakReference(send)
+            row.addView(field, LayoutParams(0, -2, 1f)); row.addView(send, LayoutParams(-2, 44.toPx(context)))
+            column.addView(row, LayoutParams(-1, -2))
             send.setOnClickListener { HostThreadGuard.run("insight.ask") {
                 val query = field.textToString().trim()
                 if (query.isNotEmpty() && !busy) {
                     line(query); field.setText("")
-                    val answer = line(insightText(context, "正在回答…", "Thinking…", "正在回答…"))
-                    request(InsightMode.ASK, current, query, answer) { entry ->
-                        answer.text = render(entry); history.addLast(query to entry.output.text)
-                        askContext = entry.duration to entry.timed
-                        while (history.size > 6) history.removeFirst()
+                    val answer = line("")
+                    lateinit var retry: Button
+                    fun ask() {
+                        answer.text = insightText(context, "正在回答…", "Answering…", "正在回答…"); retry.visibility = GONE
+                        request(InsightMode.ASK, current, answer, retry, query) { entry ->
+                            answer.text = render(entry, true); history.addLast(query to entry.output.text)
+                            askContext = entry.duration to entry.timed
+                            while (history.size > 6) history.removeFirst()
+                        }
                     }
+                    retry = retryButton(::ask); ask()
+                    scroll.post { scroll.fullScroll(FOCUS_DOWN) }
                 }
             } }
         }
-        window.setContentView(column)
-        window.setOnDismissListener { if (dialog === window) dialog = null }
-        dialog = window
-        window.show()
-        // 宿主个性主题可能把 Dialog 背景设为半透明；内容面板使用宿主配色的实色表面。
-        window.window?.setBackgroundDrawable(Color.TRANSPARENT.toDrawable())
-        window.window?.setLayout((context.resources.displayMetrics.widthPixels * .94).toInt(),
-            (context.resources.displayMetrics.heightPixels * .60).toInt())
     }
-
-    private fun request(mode: InsightMode, current: InsightPlayerSession, query: String = "", failure: TextView? = body,
+    private fun errorText(error: Throwable): String = when (error.message) {
+        "subtitle-context-too-large" -> insightText(context, "完整字幕超出请求容量，已停止生成，未抽样或截断。", "The complete transcript exceeds request capacity. Nothing was sampled or truncated.", "完整字幕超出請求容量，已停止生成，未抽樣或截斷。")
+        "no-comments" -> insightText(context, "尚未读取到评论。请先打开评论区，再返回重试。", "No comments loaded. Open the comments tab, then retry.", "尚未讀取到評論。請先開啟評論區，再返回重試。")
+        "chapters-unavailable" -> insightText(context, "当前视频暂不支持生成章节。需要可用字幕、至少 3 分钟时长，且没有官方章节。", "Chapters need subtitles, at least 3 minutes, and no official chapters.", "目前影片暫不支援生成章節。需要可用字幕、至少 3 分鐘時長，且沒有官方章節。")
+        else -> insightText(context, "暂时无法生成，请重试。", "Could not generate. Please retry.", "暫時無法生成，請重試。")
+    }
+    private fun request(mode: InsightMode, current: InsightPlayerSession, failure: TextView?, retry: View?, query: String = "",
         completed: (InsightCache.Entry) -> Unit) {
         val repo = repository ?: return
         if (busy || !current.valid()) return
         busy = true; updateActions()
         val token = revision.get(); val weak = WeakReference(this); val past = history.toList()
-        val failedView = WeakReference(failure)
-        // completed 只短暂由主线程回调持有；后台只持有卡片弱引用及纯数据。
+        val failedView = WeakReference(failure); val retryView = WeakReference(retry)
         pending = completed
         fun deliver(outcome: Result<InsightCache.Entry>) {
             val card = weak.get() ?: return
@@ -239,39 +258,26 @@ internal class InsightCard(context: Context, private val repository: InsightRepo
                 card.busy = false; card.updateActions()
                 val callback = card.pending; card.pending = null
                 outcome.onSuccess { callback?.invoke(it) }.onFailure { error ->
-                    failedView.get()?.text = when {
-                        error.message == "subtitle-context-too-large" -> insightText(card.context,
-                            "完整字幕超出本次请求容量，已停止生成，未抽取或截断字幕。", "The complete transcript exceeds the request capacity. Generation stopped without sampling or truncation.",
-                            "完整字幕超出本次請求容量，已停止生成，未抽取或截斷字幕。")
-                        error.message == "no-comments" -> insightText(card.context,
-                            "尚未读取到评论。请先打开宿主评论区，返回后重试。", "No comments loaded. Open the native comments tab, then try again.",
-                            "尚未讀取到評論。請先開啟宿主評論區，返回後重試。")
-                        error.message == "chapters-unavailable" -> insightText(card.context,
-                            "AI 章节需要可用字幕、至少 3 分钟时长，且当前视频没有官方章节。", "AI chapters require subtitles, at least 3 minutes, and no official chapters.",
-                            "AI 章節需要可用字幕、至少 3 分鐘時長，且目前影片沒有官方章節。")
-                        else -> insightText(card.context,
-                        "暂时无法生成：字幕、评论或接口不可用，或回答格式无效。点标题重试；自动章节仅适用于无官方章节、至少 3 分钟的字幕视频。",
-                        "Could not generate. Context or model unavailable, or invalid response. Tap the title to retry. Chapters require subtitles, at least 3 minutes, and no official chapters.",
-                        "暫時無法生成：字幕、評論或介面不可用，或回答格式無效。點標題重試。自動章節僅適用於無官方章節、至少 3 分鐘的字幕影片。")
-                    }
+                    failedView.get()?.text = card.errorText(error); retryView.get()?.visibility = VISIBLE
                 }
             })
         }
-        // 独立的短任务队列只读缓存；另一个视频的慢网络请求不会挡住已缓存总结。
         val submitted = runCatching { cacheWorker.execute {
             if (weak.get()?.revision?.get() != token) return@execute
             val cached = runCatching { repo.cached(current.video, mode) }.getOrNull()
             if (cached != null) deliver(Result.success(cached)) else runCatching { worker.execute {
-                deliver(runCatching { repo.generate(current.video, mode, query, past) {
-                    weak.get()?.revision?.get() != token
-                } })
+                deliver(runCatching { repo.generate(current.video, mode, query, past) { weak.get()?.revision?.get() != token } })
             } }.onFailure { deliver(Result.failure(it)) }
         } }.isSuccess
-        if (!submitted) { busy = false; pending = null; updateActions(); failure?.text = insightText(context, "请求队列已满，请稍后重试。", "Queue full. Try again shortly.", "請求佇列已滿，請稍後重試。") }
+        if (!submitted) {
+            busy = false; pending = null; updateActions()
+            failure?.text = insightText(context, "请求队列已满，请稍后重试。", "Queue full. Try again shortly.", "請求佇列已滿，請稍後重試。")
+            retry?.visibility = VISIBLE
+        }
     }
     private var pending: ((InsightCache.Entry) -> Unit)? = null
-    private fun render(entry: InsightCache.Entry): CharSequence {
-        val text = entry.output.text
+    private fun render(entry: InsightCache.Entry, subtitlesNotice: Boolean, summaryMode: Boolean = false): CharSequence {
+        val text = if (summaryMode) InsightSummaryText.leadingTimes(entry.output.text) else entry.output.text
         val builder = SpannableStringBuilder()
         var offset = 0
         for (link in InsightTimestamp.links(text, entry.duration, entry.timed)) {
@@ -281,15 +287,13 @@ internal class InsightCard(context: Context, private val repository: InsightRepo
             builder.setSpan(object : ClickableSpan() { override fun onClick(widget: View) {
                 HostThreadGuard.run("insight.timestamp") {
                     val current = session
-                    if (current != null && current.video == targetVideo && current.valid()) {
-                        if (current.seek(link.second)) dialog?.dismiss()
-                    }
+                    if (current != null && current.video == targetVideo && current.valid() && current.seek(link.second)) dialog?.dismiss()
                 }
             } }, start, builder.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
             offset = link.end
         }
         builder.append(text.substring(offset))
-        if (!entry.timed) builder.insert(0, insightText(context,
+        if (subtitlesNotice && !entry.timed) builder.insert(0, insightText(context,
             "无可用字幕：仅依据标题、简介及讨论内容，不提供情节定位。\n\n",
             "No subtitles: based on metadata and discussion only. Scene timestamps are unavailable.\n\n",
             "無可用字幕：僅依據標題、簡介及討論內容，不提供情節定位。\n\n"))

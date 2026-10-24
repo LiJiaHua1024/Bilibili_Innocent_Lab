@@ -17,16 +17,20 @@ class InsightProtocolTest {
         assertTrue(InsightTimestamp.links(raw, 0, true).isEmpty())
         assertEquals("1:01:02", InsightTimestamp.label(3662))
     }
-    @Test fun `summary preserves overview before timestamped key points`() {
-        val result = InsightProtocol.decode(InsightMode.SUMMARY,
-            """{"overview":"先说结论","points":["[[t:12]] 核心要点","[[t:90]] 第二点"]}""", input.copy(officialChapters = true))
-        assertTrue(result.text.startsWith("先说结论\n\n•"))
-        assertEquals(listOf(12, 90), InsightTimestamp.links(result.text, 1200, true).map { it.second })
+    @Test fun `timed summaries put one cue derived reference before every point including short and official videos`() {
+        val raw = """{"overview":"先说结论","sections":[{"start_cue":1,"title":"核心要点","summary":"解释第一点"},{"start_cue":9,"title":"第二点","summary":"解释第二点"}]}"""
+        for (context in listOf(input.copy(officialChapters = true), input.copy(duration = 120))) {
+            val result = InsightProtocol.decode(InsightMode.SUMMARY, raw, context)
+            assertTrue(result.text.startsWith("先说结论\n\n• [[t:10]] 核心要点"))
+            assertEquals(listOf(10, 90), InsightTimestamp.links(result.text, context.duration, true).map { it.second })
+            assertTrue(result.chapters.isEmpty())
+        }
     }
-    @Test fun `timed summary points require both meaningful content and a clickable reference`() {
-        for (point in listOf(":[6,12],", "核心要点缺少定位", "[[t:12]] :[6,12],")) {
-            rejects { InsightProtocol.decode(InsightMode.SUMMARY,
-                JSONObject().put("overview", "概述").put("points", JSONArray().put(point)).toString(), input.copy(officialChapters = true)) }
+    @Test fun `summary prose cannot carry additional times and untimed points stay textual`() {
+        for (point in listOf(":[6,12],", "[[t:12]] 实际内容", "内容 1:30")) {
+            val raw = JSONObject().put("overview", "概述").put("sections", JSONArray().put(JSONObject()
+                .put("start_cue", 1).put("title", "主题").put("summary", point))).toString()
+            rejects { InsightProtocol.decode(InsightMode.SUMMARY, raw, input.copy(officialChapters = true)) }
         }
         val plain = InsightProtocol.decode(InsightMode.SUMMARY,
             """{"overview":"仅元信息","points":["简介说明了主题"]}""", input.copy(cues = emptyList()))
@@ -41,7 +45,7 @@ class InsightProtocolTest {
             val prompt = InsightProtocol.prompt(mode, untimed, "发生了什么")
             assertFalse(prompt.contains("duration_seconds"))
             assertFalse(prompt.contains("附时间引用"))
-            assertTrue(prompt.contains("缺少字幕"))
+            assertTrue(InsightProtocol.system(mode, untimed).contains("无字幕"))
         }
     }
     @Test fun `malformed or out of range output is rejected rather than cached`() {
@@ -144,6 +148,9 @@ class InsightProtocolTest {
     @Test fun `prompts omit role ceremony and place the task after material`() {
         val prompt = InsightProtocol.prompt(InsightMode.SUMMARY, input)
         assertFalse(InsightProtocol.system(InsightMode.SUMMARY, input).contains("你是"))
+        assertFalse(InsightProtocol.system(InsightMode.SUMMARY, input).contains("JSON"))
+        assertFalse(InsightProtocol.system(InsightMode.SUMMARY, input).contains("schema"))
+        assertFalse(InsightProtocol.system(InsightMode.SUMMARY, input).contains("[[t:"))
         assertFalse(prompt.contains("返回 {"))
         assertTrue(prompt.lastIndexOf("任务：") > prompt.indexOf("subtitle"))
         assertFalse(prompt.contains(video.bvid))
