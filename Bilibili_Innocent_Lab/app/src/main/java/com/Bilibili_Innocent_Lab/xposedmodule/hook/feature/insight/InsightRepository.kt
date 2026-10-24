@@ -28,7 +28,8 @@ internal class InsightCache(private val directory: File, private val clock: () -
             require(root.getString("key") == key && root.getInt("version") == InsightProtocol.VERSION)
             val chapters = root.getJSONArray("chapters")
             require(chapters.length() <= 12)
-            Entry(InsightOutput(root.getString("text").also { require(it.length <= InsightProtocol.MAX_OUTPUT) },
+            Entry(InsightOutput(root.getString("text").also { require(it.length <= InsightProtocol.MAX_OUTPUT) }
+                .let { if (mode == InsightMode.COMMENTS) InsightCommentText.cleanLegacy(it) else it },
                 (0 until chapters.length()).map { i -> chapters.getJSONObject(i).let {
                     InsightChapter(it.getInt("start"), it.getString("title")) } }),
                 root.getInt("duration"), root.getBoolean("timed")).also { memory[key] = it }
@@ -96,7 +97,8 @@ internal class InsightRepository(
             if (mode != InsightMode.ASK) cache.read(key, mode)?.let { return it }
             val now = System.currentTimeMillis()
             val revision = contextRevision()
-            val input = loaded?.takeIf { it.video == video && loadedRevision == revision && now - loadedAt in 0..300_000L }
+            val input = loaded?.takeIf { it.video == video && loadedRevision == revision && now - loadedAt in 0..300_000L &&
+                (mode != InsightMode.COMMENTS || it.comments.isNotEmpty()) }
                 ?: context(video).also { loaded = it; loadedAt = now; loadedRevision = revision }
             trace("context mode=$mode cues=${input.cues.size} comments=${input.comments.size} danmaku=${input.danmaku.size} official=${input.officialChapters}")
             check(!cancelled())

@@ -1,5 +1,8 @@
 package com.Bilibili_Innocent_Lab.xposedmodule.hook.feature.insight
 
+import android.animation.Animator
+import android.animation.AnimatorListenerAdapter
+import android.animation.ValueAnimator
 import android.app.Dialog
 import android.content.Context
 import android.graphics.Color
@@ -12,16 +15,24 @@ import android.text.style.ClickableSpan
 import android.view.View
 import android.widget.Button
 import android.widget.EditText
+import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
+import androidx.core.content.ContextCompat
 import androidx.core.graphics.drawable.toDrawable
 import androidx.core.view.ViewCompat
+import androidx.core.view.updateLayoutParams
+import com.Bilibili_Innocent_Lab.xposedmodule.BuildConfig
+import com.Bilibili_Innocent_Lab.xposedmodule.R
 import com.Bilibili_Innocent_Lab.xposedmodule.runtime.HostThreadGuard
 import com.Bilibili_Innocent_Lab.xposedmodule.runtime.InjectedUiLocale
 import com.highcapable.betterandroid.ui.extension.component.base.toPx
 import com.highcapable.betterandroid.ui.extension.view.textToString
+import com.lumen.coacervation.engine.motion.LumenAnimator
+import com.lumen.coacervation.engine.motion.LumenEasing
 import java.lang.ref.WeakReference
+import kotlin.math.roundToInt
 import java.util.concurrent.ArrayBlockingQueue
 import java.util.concurrent.ThreadPoolExecutor
 import java.util.concurrent.TimeUnit
@@ -45,7 +56,11 @@ internal class InsightCard(context: Context, private val repository: InsightRepo
     private var askSend: WeakReference<Button>? = null
     private var busy = false
     private val title = TextView(context)
-    private val collapse = Button(context)
+    private val heading = LinearLayout(context)
+    private val collapse = TextView(context)
+    private val chevron = ImageView(context)
+    private val body = LinearLayout(context)
+    private var expansion: ValueAnimator? = null
     private val actions = LinearLayout(context)
     private val buttons = linkedMapOf<InsightMode, Button>()
     private val hint = TextView(context)
@@ -54,13 +69,24 @@ internal class InsightCard(context: Context, private val repository: InsightRepo
     init {
         orientation = VERTICAL
         setPadding(12.toPx(context), 6.toPx(context), 12.toPx(context), 10.toPx(context))
-        val heading = LinearLayout(context).apply { gravity = android.view.Gravity.CENTER_VERTICAL }
+        heading.gravity = android.view.Gravity.CENTER_VERTICAL
+        heading.isFocusable = true
+        ViewCompat.setAccessibilityHeading(heading, true)
         title.text = "AI Insight"; title.textSize = 15f; title.setTypeface(null, Typeface.BOLD)
-        ViewCompat.setAccessibilityHeading(title, true)
+        title.importantForAccessibility = IMPORTANT_FOR_ACCESSIBILITY_NO
         heading.addView(title, LayoutParams(0, -2, 1f))
-        styleButton(collapse); collapse.textSize = 12f
-        heading.addView(collapse, LayoutParams(-2, 44.toPx(context)))
-        addView(heading, LayoutParams(-1, -2))
+        collapse.textSize = 12f; collapse.gravity = android.view.Gravity.CENTER_VERTICAL
+        collapse.importantForAccessibility = IMPORTANT_FOR_ACCESSIBILITY_NO
+        chevron.importantForAccessibility = IMPORTANT_FOR_ACCESSIBILITY_NO
+        // 复用模块既有矢量图标，独立资源 Context 避免把模块 R.id 当作宿主资源。
+        chevron.setImageDrawable(runCatching {
+            ContextCompat.getDrawable(context.createPackageContext(BuildConfig.APPLICATION_ID, 0), R.drawable.ic_chevron_down)?.mutate()
+        }.getOrElse { ContextCompat.getDrawable(context, android.R.drawable.arrow_down_float) })
+        heading.addView(collapse, LayoutParams(-2, -1))
+        heading.addView(chevron, LayoutParams(20.toPx(context), 20.toPx(context)).apply { marginStart = 4.toPx(context) })
+        addView(heading, LayoutParams(-1, 44.toPx(context)))
+        body.orientation = VERTICAL
+        body.setPadding(0, 4.toPx(context), 0, 0)
         for (mode in InsightMode.entries) {
             val button = Button(context).apply {
                 styleButton(this); text = label(mode); textSize = 12f
@@ -71,14 +97,15 @@ internal class InsightCard(context: Context, private val repository: InsightRepo
                 if (mode != InsightMode.SUMMARY) marginStart = 6.toPx(context)
             })
         }
-        addView(actions, LayoutParams(-1, -2))
+        body.addView(actions, LayoutParams(-1, -2))
         hint.textSize = 12f
         hint.text = insightText(context, "请先在模块 AI 配置中设置文本生成模型。", "Set up a text generation model in module settings.", "請先在模組 AI 設定中設定文字生成模型。")
-        addView(hint, LayoutParams(-1, -2))
-        collapse.setOnClickListener { HostThreadGuard.run("insight.collapse") {
-            collapsed = !collapsed; collapseChanged(collapsed); updateActions()
-        } }
-        updateActions()
+        body.addView(hint, LayoutParams(-1, -2))
+        addView(body, LayoutParams(-1, -2))
+        heading.setOnClickListener { toggleExpanded() }
+        setOnClickListener { if (collapsed) toggleExpanded() }
+        importantForAccessibility = IMPORTANT_FOR_ACCESSIBILITY_NO
+        updateActions(); settleExpansion()
     }
     private fun styleButton(button: Button) {
         // 原生 Button 动画会覆写 Lumen 的 elevation，轮廓与按压状态统一交给凝光。
@@ -90,7 +117,7 @@ internal class InsightCard(context: Context, private val repository: InsightRepo
     }
     private fun label(mode: InsightMode): String = when (mode) {
         InsightMode.SUMMARY -> insightText(context, "视频总结", "Summary", "影片總結")
-        InsightMode.ASK -> "Ask"
+        InsightMode.ASK -> insightText(context, "提问", "Ask", "提問")
         InsightMode.COMMENTS -> insightText(context, "评论话题", "Topics", "評論話題")
         InsightMode.CHAPTERS -> insightText(context, "AI 章节", "Chapters", "AI 章節")
     }
@@ -101,20 +128,23 @@ internal class InsightCard(context: Context, private val repository: InsightRepo
         } else if (value == null) cancelPanel()
         session = value; updateActions()
     }
-    fun dispose() { session = null; cancelPanel(); surfaces?.close(); surfaces = null }
+    fun dispose() { session = null; cancelPanel(); stopExpansion(); surfaces?.close(); surfaces = null }
     private fun cancelPanel() {
         revision.incrementAndGet(); busy = false; pending = null
         dialog?.dismiss(); dialog = null; askSend = null
     }
     override fun onAttachedToWindow() {
         super.onAttachedToWindow()
+        settleExpansion()
         surfaces?.close()
         surfaces = InsightSurfaces(this).also { material ->
-            material.label(title); material.label(hint); material.control(collapse, quiet = true)
+            material.label(title); material.label(hint); material.label(collapse)
+            material.control(heading, quiet = true); material.icon(chevron)
             buttons.values.forEach { material.control(it) }
         }
     }
     override fun onDetachedFromWindow() {
+        stopExpansion(); settleExpansion()
         surfaces?.close(); surfaces = null
         super.onDetachedFromWindow()
     }
@@ -125,17 +155,66 @@ internal class InsightCard(context: Context, private val repository: InsightRepo
             button.alpha = if (button.isEnabled) 1f else .5f
         }
         askSend?.get()?.isEnabled = available
-        actions.visibility = if (collapsed) GONE else VISIBLE
-        hint.visibility = if (!collapsed && repository == null) VISIBLE else GONE
-        collapse.text = if (collapsed) insightText(context, "展开 ▾", "Expand ▾", "展開 ▾")
-            else insightText(context, "收起 ▴", "Collapse ▴", "收起 ▴")
+        hint.visibility = if (repository == null) VISIBLE else GONE
+        collapse.text = if (collapsed) insightText(context, "展开", "Expand", "展開")
+            else insightText(context, "收起", "Collapse", "收起")
+        heading.contentDescription = "AI Insight，${collapse.text}"
+        ViewCompat.setStateDescription(heading, if (collapsed) insightText(context, "已收起", "Collapsed", "已收起")
+            else insightText(context, "已展开", "Expanded", "已展開"))
+        isClickable = collapsed
+    }
+    private fun stopExpansion() {
+        expansion?.let { it.removeAllListeners(); it.removeAllUpdateListeners(); it.cancel() }
+        expansion = null
+    }
+    private fun settleExpansion() {
+        body.visibility = if (collapsed) GONE else VISIBLE
+        body.updateLayoutParams<LayoutParams> { height = if (collapsed) 0 else LayoutParams.WRAP_CONTENT }
+        body.alpha = if (collapsed) 0f else 1f
+        chevron.rotation = if (collapsed) 0f else 180f
+    }
+    private fun toggleExpanded() = HostThreadGuard.run("insight.collapse") {
+        collapsed = !collapsed; collapseChanged(collapsed); updateActions()
+        val startHeight = if (body.visibility == VISIBLE) body.height else 0
+        val startAlpha = if (body.visibility == VISIBLE) body.alpha else 0f
+        val startAngle = chevron.rotation
+        stopExpansion()
+        if (!isLaidOut || !ValueAnimator.areAnimatorsEnabled()) { settleExpansion(); return@run }
+        body.measure(MeasureSpec.makeMeasureSpec((width - paddingLeft - paddingRight).coerceAtLeast(0), MeasureSpec.EXACTLY),
+            MeasureSpec.makeMeasureSpec(0, MeasureSpec.UNSPECIFIED))
+        val targetHeight = if (collapsed) 0 else body.measuredHeight
+        val targetAlpha = if (collapsed) 0f else 1f
+        val targetAngle = if (collapsed) 0f else 180f
+        body.updateLayoutParams<LayoutParams> { height = startHeight }; body.visibility = VISIBLE
+        // RecyclerView 项须逐帧改变测量高度；冻结布局的分节裁剪会让宿主后续项在收尾跳动。
+        val animator = LumenAnimator.ofFloat(0f, 1f).apply {
+            duration = 240; interpolator = LumenEasing.standard()
+            addUpdateListener {
+                val p = it.animatedFraction
+                body.updateLayoutParams<LayoutParams> { height = (startHeight + (targetHeight - startHeight) * p).roundToInt() }
+                body.alpha = startAlpha + (targetAlpha - startAlpha) * p
+                chevron.rotation = startAngle + (targetAngle - startAngle) * p
+                    }
+            addListener(object : AnimatorListenerAdapter() {
+                override fun onAnimationEnd(animation: Animator) { expansion = null; settleExpansion() }
+            })
+        }
+        expansion = animator; animator.start()
     }
     private fun open(mode: InsightMode) {
         val current = session ?: return
         if (!current.valid() || busy || repository == null) return
         dialog?.dismiss()
         val window = Dialog(context)
-        val column = LinearLayout(context).apply {
+        val column = object : LinearLayout(context) {
+            override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
+                // 上限约束整张面板，给固定标题/输入行预留空间；同时尊重键盘缩小后的父约束。
+                val maximum = (resources.displayMetrics.heightPixels * .64).toInt()
+                val parentLimit = if (MeasureSpec.getMode(heightMeasureSpec) == MeasureSpec.UNSPECIFIED) maximum
+                    else MeasureSpec.getSize(heightMeasureSpec)
+                super.onMeasure(widthMeasureSpec, MeasureSpec.makeMeasureSpec(minOf(maximum, parentLimit), MeasureSpec.AT_MOST))
+            }
+        }.apply {
             orientation = VERTICAL
             setPadding(16.toPx(context), 10.toPx(context), 16.toPx(context), 14.toPx(context))
         }
@@ -152,7 +231,7 @@ internal class InsightCard(context: Context, private val repository: InsightRepo
         column.addView(heading, LayoutParams(-1, -2))
         val transcript = LinearLayout(context).apply { orientation = VERTICAL }
         val scroll = ScrollView(context).apply {
-            isFillViewport = true
+            isFillViewport = false
             scrollBarStyle = SCROLLBARS_INSIDE_INSET
             setPadding(0, 0, 6.toPx(context), 0)
             addView(transcript)
@@ -169,7 +248,7 @@ internal class InsightCard(context: Context, private val repository: InsightRepo
         dialog = window; window.show()
         window.window?.setBackgroundDrawable(Color.TRANSPARENT.toDrawable())
         window.window?.setLayout((resources.displayMetrics.widthPixels * .94).toInt(),
-            (resources.displayMetrics.heightPixels * .64).toInt())
+            LayoutParams.WRAP_CONTENT)
         val skin = InsightSurfaces(column).also { material = it; it.label(name); it.control(close, quiet = true) }
         fun line(text: CharSequence): TextView = TextView(context).apply {
             this.text = text; textSize = 14f; movementMethod = LinkMovementMethod.getInstance()
@@ -183,7 +262,9 @@ internal class InsightCard(context: Context, private val repository: InsightRepo
             val output = line("")
             lateinit var retry: Button
             fun load() {
-                output.text = insightText(context, "正在生成…", "Generating…", "正在生成…")
+                output.text = if (mode == InsightMode.COMMENTS)
+                    insightText(context, "正在读取评论并整理话题…", "Loading comments and topics…", "正在讀取評論並整理話題…")
+                    else insightText(context, "正在生成…", "Generating…", "正在生成…")
                 retry.visibility = GONE
                 if (mode == InsightMode.SUMMARY && summary != null) { output.text = render(checkNotNull(summary), true, summaryMode = true); return }
                 request(mode, current, output, retry) { entry ->
@@ -239,7 +320,7 @@ internal class InsightCard(context: Context, private val repository: InsightRepo
     }
     private fun errorText(error: Throwable): String = when (error.message) {
         "subtitle-context-too-large" -> insightText(context, "完整字幕超出请求容量，已停止生成，未抽样或截断。", "The complete transcript exceeds request capacity. Nothing was sampled or truncated.", "完整字幕超出請求容量，已停止生成，未抽樣或截斷。")
-        "no-comments" -> insightText(context, "尚未读取到评论。请先打开评论区，再返回重试。", "No comments loaded. Open the comments tab, then retry.", "尚未讀取到評論。請先開啟評論區，再返回重試。")
+        "no-comments" -> insightText(context, "暂未读取到可用评论，请稍后重试。", "No comments could be loaded. Please retry later.", "暫未讀取到可用評論，請稍後重試。")
         "chapters-unavailable" -> insightText(context, "当前视频暂不支持生成章节。需要可用字幕、至少 3 分钟时长，且没有官方章节。", "Chapters need subtitles, at least 3 minutes, and no official chapters.", "目前影片暫不支援生成章節。需要可用字幕、至少 3 分鐘時長，且沒有官方章節。")
         else -> insightText(context, "暂时无法生成，请重试。", "Could not generate. Please retry.", "暫時無法生成，請重試。")
     }

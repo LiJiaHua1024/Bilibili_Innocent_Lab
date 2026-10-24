@@ -10,6 +10,17 @@ class InsightProtocolTest {
     private val input = InsightContext(video, 1200, "标题", "简介", (0 until 1200 step 10).map { InsightCue(it.toDouble(), it + 10.0, "内容 $it") })
     private fun rejects(action: () -> Unit) { assertTrue(runCatching(action).isFailure) }
 
+    @Test fun `comment fields cannot carry trailing serialized object separators`() {
+        for (field in listOf("title", "summary")) {
+            val topic = JSONObject().put("title", "观点").put("summary", "主要讨论方法。")
+            topic.put(field, topic.getString(field) + "},{")
+            val raw = JSONObject().put("topics", JSONArray().put(topic)).toString()
+            try { InsightProtocol.decode(InsightMode.COMMENTS, raw, input); fail("Expected topic prose rejection") }
+            catch (invalid: InsightValidationException) { assertEquals("topic-prose", invalid.rule) }
+        }
+        val raw = """{"topics":[{"title":"代码","summary":"讨论 {a:1},{b:2} 的写法。"}]}"""
+        assertTrue(InsightProtocol.decode(InsightMode.COMMENTS, raw, input).text.contains("{a:1},{b:2}"))
+    }
     @Test fun `only validated second markers become links`() {
         val raw = "A [[t:0]] B [[t:1199]] C [[t:1200]] D [[t:-1]] E [[t:1.5]] F [[t:999999999999]]"
         assertEquals(listOf(0, 1199), InsightTimestamp.links(raw, 1200, true).map { it.second })

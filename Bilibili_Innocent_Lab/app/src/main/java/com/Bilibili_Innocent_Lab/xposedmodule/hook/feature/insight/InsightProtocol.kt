@@ -173,7 +173,10 @@ internal object InsightProtocol {
                 val topics = json.getJSONArray("topics"); require(topics.length() in 1..8)
                 InsightOutput((0 until topics.length()).joinToString("\n\n") { i ->
                     val topic = topics.getJSONObject(i)
-                    "${topic.getString("title")}\n${topic.getString("summary")}" })
+                    val title = topic.getString("title"); val summary = topic.getString("summary")
+                    if (InsightCommentText.hasTrailingSeparator(title) || InsightCommentText.hasTrailingSeparator(summary))
+                        throw InsightValidationException("topic-prose", "topics 的 title、summary 只写正文，省略段末对象分隔符 } , {。")
+                    "$title\n$summary" })
             }
             InsightMode.CHAPTERS -> {
                 require(context.timed && !context.officialChapters && context.duration >= MIN_CHAPTER_VIDEO_SECONDS)

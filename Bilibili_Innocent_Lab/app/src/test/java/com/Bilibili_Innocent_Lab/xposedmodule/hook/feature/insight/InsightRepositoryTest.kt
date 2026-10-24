@@ -29,6 +29,41 @@ class InsightRepositoryTest {
             JSONObject().put("role", "assistant").put("content", content)))).toString()
     })
 
+    @Test fun `old comment cache is cleaned in memory without rewriting the file or requesting a model`() {
+        val directory = temporary.newFolder(); val cache = InsightCache(directory)
+        val key = InsightCache.key(video, source, InsightMode.COMMENTS)
+        cache.write(key, InsightCache.Entry(InsightOutput("资源\n第一段。},{\n\n方法\n第二段。},{"), 900, true))
+        val file = directory.listFiles()!!.single(); val before = file.readBytes(); val modified = file.lastModified()
+        val posts = AtomicInteger()
+        val reopened = InsightRepository(source, InsightCache(directory), { error("must not load context") }, client(posts))
+        assertEquals("资源\n第一段。\n\n方法\n第二段。", reopened.cached(video, InsightMode.COMMENTS)!!.output.text)
+        assertArrayEquals(before, file.readBytes()); assertEquals(modified, file.lastModified()); assertEquals(0, posts.get())
+    }
+    @Test fun `comment retry refreshes an empty context even without a host snapshot revision`() {
+        val posts = AtomicInteger(); val loads = AtomicInteger()
+        val repo = InsightRepository(source, InsightCache(temporary.newFolder()), {
+            input.copy(comments = if (loads.incrementAndGet() == 1) emptyList() else listOf("自动读取的评论"))
+        }, client(posts, """{"topics":[{"title":"观点","summary":"具体讨论"}]}"""))
+        assertTrue(runCatching { repo.generate(video, InsightMode.COMMENTS) }.isFailure)
+        assertEquals(0, posts.get())
+        assertTrue(repo.generate(video, InsightMode.COMMENTS).output.text.contains("具体讨论"))
+        assertEquals(2, loads.get()); assertEquals(1, posts.get())
+    }
+    @Test fun `comment formatting repair is bounded and only a clean response is cached`() {
+        val requests = mutableListOf<JSONObject>(); val root = temporary.newFolder()
+        val model = AgentModelClient(AgentHttpTransport { _, body, _, _ ->
+            requests += JSONObject(body.toString(Charsets.UTF_8))
+            val prose = if (requests.size == 1) "ARTIFACT_MARKER},{" else "具体讨论"
+            val content = JSONObject().put("topics", JSONArray().put(JSONObject().put("title", "观点").put("summary", prose)))
+            JSONObject().put("choices", JSONArray().put(JSONObject().put("finish_reason", "stop").put("message",
+                JSONObject().put("role", "assistant").put("content", content.toString())))).toString()
+        })
+        val repo = InsightRepository(source, InsightCache(root), { input.copy(comments = listOf("评论")) }, model)
+        assertEquals("观点\n具体讨论", repo.generate(video, InsightMode.COMMENTS).output.text)
+        assertEquals(2, requests.size)
+        assertFalse(requests.last().toString().contains("ARTIFACT_MARKER"))
+        assertFalse(root.listFiles()!!.single().readText().contains("ARTIFACT_MARKER"))
+    }
     @Test fun `second opening loads summary from disk without context or model requests`() {
         val root = temporary.newFolder(); val posts = AtomicInteger(); val contexts = AtomicInteger()
         val first = InsightRepository(source, InsightCache(root), { contexts.incrementAndGet(); input }, client(posts))

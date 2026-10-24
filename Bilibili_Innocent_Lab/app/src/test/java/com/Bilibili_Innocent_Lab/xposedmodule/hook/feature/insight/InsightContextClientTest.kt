@@ -6,6 +6,38 @@ import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 
 class InsightContextClientTest {
+    @Test fun `native comments load without a previously opened comment page or public reply request`() {
+        val calls = mutableListOf<String>(); var nativeAid = 0L
+        val client = InsightContextClient(InsightHostSnapshot(), subtitleWaitMs = 0, hostComments = { aid ->
+            nativeAid = aid; listOf("新读取的评论", "新读取的评论", "另一条评论")
+        }) { url ->
+            calls += url
+            when {
+                "web-interface/view" in url -> """{"code":0,"data":{"bvid":"BV1xx411c7mD","aid":99,"title":"title","pages":[{"cid":2,"duration":120}]}}"""
+                "x/player/v2" in url -> """{"code":0,"data":{}}"""
+                "comment.bilibili.com" in url -> "<i/>"
+                else -> error("The public reply endpoint must not run")
+            }
+        }
+        assertEquals(listOf("新读取的评论", "另一条评论"), client.load(InsightVideo("BV1xx411c7mD", 2)).comments)
+        assertEquals(99L, nativeAid); assertFalse(calls.any { "x/v2/reply" in it })
+    }
+    @Test fun `native comment failure preserves public fallback and loaded comments skip both fetches`() {
+        val video = InsightVideo("BV1xx411c7mD", 2); val snapshot = InsightHostSnapshot()
+        var nativeCalls = 0; var publicCalls = 0
+        val client = InsightContextClient(snapshot, subtitleWaitMs = 0, hostComments = {
+            nativeCalls++; error("Unavailable native reader")
+        }) { url -> when {
+            "web-interface/view" in url -> """{"code":0,"data":{"bvid":"BV1xx411c7mD","aid":99,"title":"title","pages":[{"cid":2,"duration":120}]}}"""
+            "x/v2/reply" in url -> { publicCalls++; """{"code":0,"data":{"replies":[{"content":{"message":"公开评论"}}]}}""" }
+            "x/player/v2" in url -> """{"code":0,"data":{}}"""
+            else -> "<i/>"
+        } }
+        assertEquals(listOf("公开评论"), client.load(video).comments)
+        snapshot.comments(99, listOf("已加载评论"))
+        assertEquals(listOf("已加载评论"), client.load(video).comments)
+        assertEquals(1, nativeCalls); assertEquals(1, publicCalls)
+    }
     @Test fun `subtitle URL cannot redirect data access to an arbitrary host`() {
         assertEquals("https://aisubtitle.hdslb.com/file.json?sign=abc", InsightContextClient.subtitleUrl("//aisubtitle.hdslb.com/file.json?sign=abc"))
         assertEquals("https://aisubtitle.hdslb.com/a?sign=a%2Fb", InsightContextClient.subtitleUrl("http://aisubtitle.hdslb.com/a?sign=a%2Fb"))

@@ -1,7 +1,9 @@
 package com.Bilibili_Innocent_Lab.xposedmodule.hook.feature.insight
 
+import android.content.res.ColorStateList
 import android.view.View
 import android.view.ViewTreeObserver
+import android.widget.ImageView
 import android.widget.TextView
 import com.Bilibili_Innocent_Lab.xposedmodule.hook.hostui.common.HostChromeColors
 import com.Bilibili_Innocent_Lab.xposedmodule.hook.hostui.common.HostChromeTheme
@@ -16,6 +18,7 @@ internal class InsightSurfaces(private val root: View, private val panel: Boolea
     private val theme = HostChromeTheme(root.context)
     private var colors: HostChromeColors = theme.read()
     private val controls = mutableListOf<Pair<LumenFluentControl, Boolean>>()
+    private val icons = mutableListOf<ImageView>()
     private val labels = mutableListOf<Pair<TextView, Boolean>>()
     private val observer = ViewTreeObserver.OnPreDrawListener {
         val next = theme.read()
@@ -27,9 +30,12 @@ internal class InsightSurfaces(private val root: View, private val panel: Boolea
         if (panel) controls += LumenFluentControl(root, colors.palette(), options(false, true)) to false
         tree = root.viewTreeObserver.takeIf { it.isAlive }?.also { it.addOnPreDrawListener(observer) }
     }
-    fun control(view: TextView, quiet: Boolean = false) {
+    fun control(view: View, quiet: Boolean = false) {
         controls += LumenFluentControl(view, colors.palette(), options(!quiet, false)) to !quiet
-        label(view, accent = !quiet)
+        if (view is TextView) label(view, accent = !quiet)
+    }
+    fun icon(view: ImageView) {
+        icons += view; view.imageTintList = ColorStateList.valueOf(colors.palette().textPrimary)
     }
     fun label(view: TextView, accent: Boolean = false) {
         labels += view to accent
@@ -47,6 +53,7 @@ internal class InsightSurfaces(private val root: View, private val panel: Boolea
         controls.forEachIndexed { index, (control, button) ->
             control.updatePalette(colors.palette()); control.update(options(button, panel && index == 0))
         }
+        icons.forEach { it.imageTintList = ColorStateList.valueOf(colors.palette().textPrimary) }
         labels.forEach { (view, accent) ->
             view.setTextColor(if (accent) colors.palette().primary else colors.palette().textPrimary)
             view.setLinkTextColor(colors.palette().primary)
@@ -54,6 +61,6 @@ internal class InsightSurfaces(private val root: View, private val panel: Boolea
     }
     override fun close() {
         tree?.takeIf { it.isAlive }?.removeOnPreDrawListener(observer); tree = null
-        controls.forEach { it.first.close() }; controls.clear(); labels.clear()
+        controls.forEach { it.first.close() }; controls.clear(); labels.clear(); icons.clear()
     }
 }

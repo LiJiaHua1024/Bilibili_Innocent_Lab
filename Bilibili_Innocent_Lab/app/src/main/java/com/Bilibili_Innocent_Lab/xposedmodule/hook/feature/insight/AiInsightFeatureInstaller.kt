@@ -5,6 +5,7 @@ import android.os.Bundle
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import com.Bilibili_Innocent_Lab.xposedmodule.agent.host.HostAgentContentRpc
 import com.Bilibili_Innocent_Lab.xposedmodule.agent.model.AgentModelSource
 import com.Bilibili_Innocent_Lab.xposedmodule.hook.adapter.SponsorPlayerClasses
 import com.Bilibili_Innocent_Lab.xposedmodule.hook.adapter.SponsorPlayerLocator
@@ -55,7 +56,14 @@ internal class AiInsightFeatureInstaller(private val enabled: Boolean, private v
             environment.logInfo("insight.${event.substringBefore(' ')}.$mode.$stage", "AI Insight $event")
         }
         val covers = InsightChapterCovers(File(cacheRoot.parentFile, "bil_insight_covers"), trace)
-        val repository = source?.let { InsightRepository(it, cache, InsightContextClient(snapshot, trace = trace)::load,
+        // 复用已有只读评论 RPC 和有界超时；不切换页面、不复制宿主 Cookie，不触发 Agent 任务。
+        val comments = HostAgentContentRpc(loader)
+        val repository = source?.let { InsightRepository(it, cache, InsightContextClient(snapshot, trace = trace,
+            hostComments = { aid ->
+                val rows = comments.comments("av$aid", null, 4000).data.getJSONArray("comments")
+                (0 until rows.length()).mapNotNull { index -> rows.optJSONObject(index)?.optString("message") }
+                    .filter { it.isNotBlank() }.distinct().take(40)
+            })::load,
             trace = trace,
             contextRevision = snapshot::revision) }
         val generated = object : LinkedHashMap<InsightVideo, InsightCache.Entry>() {

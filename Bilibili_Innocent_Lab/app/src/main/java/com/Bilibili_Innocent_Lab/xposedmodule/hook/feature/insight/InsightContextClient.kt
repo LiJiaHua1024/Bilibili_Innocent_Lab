@@ -64,6 +64,7 @@ internal class InsightHostSnapshot {
 internal class InsightContextClient(private val snapshot: InsightHostSnapshot,
     private val subtitleWaitMs: Long = 2500,
     private val trace: (String) -> Unit = {},
+    private val hostComments: (Long) -> List<String> = { emptyList() },
     private val request: (String) -> String = ::getPublic) {
     fun load(video: InsightVideo): InsightContext {
         val missing = mutableListOf<String>()
@@ -108,7 +109,11 @@ internal class InsightContextClient(private val snapshot: InsightHostSnapshot,
             if (cues.isNotEmpty()) break
         }
         if (cues.isEmpty()) missing += "subtitle"
-        val comments = snapshot.comments(aid).ifEmpty { runCatching {
+        val comments = snapshot.comments(aid).ifEmpty {
+            runCatching { hostComments(aid).filter { it.isNotBlank() }.distinct().take(40) }
+                .onSuccess { trace("comments-load source=host count=${it.size}") }
+                .getOrElse { trace("comments-load source=host failure=${it.javaClass.simpleName}"); emptyList() }
+        }.ifEmpty { runCatching {
             val reply = data(request("https://api.bilibili.com/x/v2/reply?type=1&oid=$aid&sort=2&pn=1&ps=30"))
             val array = reply.optJSONArray("replies") ?: JSONArray()
             (0 until array.length()).mapNotNull { array.optJSONObject(it)?.optJSONObject("content")?.optString("message") }
