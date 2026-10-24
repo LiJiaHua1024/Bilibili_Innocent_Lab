@@ -38,6 +38,23 @@ class AgentModelClientTest {
         assertFalse(requests.last().has("reasoning_effort"))
     }
 
+    @Test fun `explicit large input budget transmits complete text without relaxing output or default clients`() {
+        val text = "完整字幕".repeat(20_000)
+        var received = ""
+        val transport = AgentHttpTransport { _, bytes, _, _ ->
+            received = JSONObject(bytes.toString(Charsets.UTF_8)).getJSONArray("messages").getJSONObject(0).getString("content")
+            response()
+        }
+        val messages = JSONArray().put(JSONObject().put("role", "user").put("content", text))
+        val client = AgentModelClient(transport, inputTextLimit = 500_000)
+        client.generate(source, messages, JSONArray(), false, 5000) { false }
+        assertEquals(text, received)
+        failure(AgentModelException.Reason.INVALID_REQUEST) {
+            AgentModelClient(transport).generate(source, messages, JSONArray(), false, 5000) { false }
+        }
+        failure(AgentModelException.Reason.INVALID_RESPONSE) { client.decode(response("x".repeat(65_537)), emptySet()) }
+    }
+
     @Test fun `plain text JSON never becomes an executable call`() {
         val client = AgentModelClient()
         val turn = client.decode(response("{\"name\":\"search_videos\",\"arguments\":{}}"), setOf("search_videos"))

@@ -54,6 +54,7 @@ internal class AiInsightFeatureInstaller(private val enabled: Boolean, private v
             val stage = event.substringAfter("stage=", "").substringBefore(' ')
             environment.logInfo("insight.${event.substringBefore(' ')}.$mode.$stage", "AI Insight $event")
         }
+        val covers = InsightChapterCovers(File(cacheRoot.parentFile, "bil_insight_covers"), trace)
         val repository = source?.let { InsightRepository(it, cache, InsightContextClient(snapshot, trace = trace)::load,
             trace = trace,
             contextRevision = snapshot::revision) }
@@ -82,7 +83,10 @@ internal class AiInsightFeatureInstaller(private val enabled: Boolean, private v
                 if (bvid == null || part <= 0) reply else {
                     snapshot.official(part, native.hasChapters(reply))
                     val value = synchronized(generated) { generated[InsightVideo(bvid, part)] }
-                    if (value == null) reply else native.apply(reply, value)
+                    if (value == null) reply else {
+                        covers.schedule(InsightVideo(bvid, part), value)
+                        native.apply(reply, value) { second -> covers.uri(InsightVideo(bvid, part), second) }
+                    }
                 }
             }
         }
@@ -99,7 +103,9 @@ internal class AiInsightFeatureInstaller(private val enabled: Boolean, private v
             val owner = instance ?: return@after
             val activity = original.context.hostActivity ?: return@after
             if (activity.javaClass.name != InsightPlayerBridge.DETAIL) return@after
-            val card = InsightCard(original.context, repository, automaticChapters, chapterRoutes > 0, ::remember)
+            val card = InsightCard(original.context, repository, automaticChapters, chapterRoutes > 0) { video, entry ->
+                remember(video, entry); covers.schedule(video, entry)
+            }
             val container = LinearLayout(original.context).apply {
                 orientation = LinearLayout.VERTICAL
                 addView(card, LinearLayout.LayoutParams(-1, -2))

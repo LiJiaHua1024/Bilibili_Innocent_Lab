@@ -13,7 +13,7 @@ class InsightNativeChaptersTest {
         InsightChapter(300, "展开"), InsightChapter(700, "结束"))), 900, true)
     @Test fun `native chapters use independent builders and preserve unrelated fields`() {
         val original = ProgressReply()
-        val updated = adapter.apply(original, generated) as ProgressReply
+        val updated = adapter.apply(original, generated) { "file:///private/chapter-$it.jpg" } as ProgressReply
         assertNotSame(original, updated)
         assertEquals("preserved", updated.unrelated)
         assertEquals(77, updated.videoGuide.unrelated)
@@ -23,6 +23,7 @@ class InsightNativeChaptersTest {
         assertEquals(listOf(0L, 300L, 700L), points.map { it.from })
         assertEquals(listOf(300L, 700L, 900L), points.map { it.to })
         assertTrue(points.all { it.type == InsightNativeChapters.CHAPTER_TYPE })
+        assertEquals(listOf("file:///private/chapter-0.jpg", "file:///private/chapter-300.jpg", "file:///private/chapter-700.jpg"), points.map { it.cover })
         assertEquals(generated.output.chapters.map { it.title }, points.map { it.content })
         assertTrue(original.videoGuide.videoPoint.pointsList.isEmpty())
         assertEquals(Point(), Point.getDefaultInstance())

@@ -12,12 +12,12 @@ internal class InsightNativeChapters private constructor(
     private val listPlan: ProtobufBuilderPlan, private val itemPlan: ProtobufBuilderPlan,
     private val itemDefault: Any, private val setGuide: Method, private val setViewPoint: Method,
     private val addAll: Method, private val from: Method, private val to: Method, private val content: Method,
-    private val type: Method, private val permanent: Method
+    private val type: Method, private val permanent: Method, private val cover: Method?
 ) {
     fun hasChapters(reply: Any): Boolean = runCatching {
         (points.invoke(viewPoint.invoke(guide.invoke(reply))) as? List<*>)?.isNotEmpty() == true
     }.getOrDefault(false)
-    fun apply(reply: Any, entry: InsightCache.Entry): Any = runCatching {
+    fun apply(reply: Any, entry: InsightCache.Entry, thumbnail: (Int) -> String? = { null }): Any = runCatching {
         if (reply === replyDefault || entry.output.chapters.size !in 3..12 || !entry.timed ||
             entry.duration < InsightProtocol.MIN_CHAPTER_VIDEO_SECONDS) return reply
         val oldGuide = guide.invoke(reply) ?: return reply
@@ -31,6 +31,7 @@ internal class InsightNativeChapters private constructor(
             from.invoke(builder, chapter.start.toLong())
             to.invoke(builder, (chapters.getOrNull(index + 1)?.start ?: entry.duration).toLong())
             content.invoke(builder, chapter.title)
+            thumbnail(chapter.start)?.let { cover?.invoke(builder, it) }
             type.invoke(builder, CHAPTER_TYPE)
         } }
         val newList = listPlan.edit(oldList) { addAll.invoke(it, generated); permanent.invoke(it, true) }
@@ -68,7 +69,8 @@ internal class InsightNativeChapters private constructor(
                 itemPlan.method("setTo", Long::class.javaPrimitiveType!!) ?: return null,
                 itemPlan.method("setContent", String::class.java) ?: return null,
                 itemPlan.method("setType", Int::class.javaPrimitiveType!!) ?: return null,
-                listPlan.method("setPointPermanent", Boolean::class.javaPrimitiveType!!) ?: return null)
+                listPlan.method("setPointPermanent", Boolean::class.javaPrimitiveType!!) ?: return null,
+                itemPlan.method("setCover", String::class.java))
         }.getOrNull()
     }
 }

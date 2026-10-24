@@ -20,6 +20,12 @@ class InsightContextClientTest {
         assertEquals(listOf(0.0, 12.5), cues.map { it.start })
         assertEquals("开头", cues.first().text)
     }
+    @Test fun `subtitle parser retains the whole text of long valid cues`() {
+        val text = "完整字幕".repeat(1000)
+        val raw = org.json.JSONObject().put("body", org.json.JSONArray().put(org.json.JSONObject()
+            .put("from", 0).put("to", 10).put("content", text))).toString()
+        assertEquals(text, InsightContextClient.parseSubtitle(raw, 30).single().text)
+    }
     @Test fun `context fallback is explicit and current CID selects the correct video part`() {
         val video = InsightVideo("BV1xx411c7mD", 2)
         val client = InsightContextClient(InsightHostSnapshot(), subtitleWaitMs = 0) { url -> when {

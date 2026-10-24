@@ -137,8 +137,8 @@ internal class InsightCard(context: Context, private val repository: InsightRepo
         val available = repository != null && session != null && !busy
         question.isEnabled = available; comments.isEnabled = available; chapters.isEnabled = available && nativeChaptersAvailable
         if (repository == null) body.text = insightText(context,
-            "请先在模块 AI 配置中填写 HTTPS 对话来源（OpenAI 兼容或 Cloudflare；JEV 不支持生成）。", "Configure an HTTPS chat source in AI settings (OpenAI compatible or Cloudflare; JEV cannot generate text).",
-            "請先在模組 AI 設定中填寫 HTTPS 對話來源（OpenAI 相容或 Cloudflare；JEV 不支援生成）。")
+            "请先在下方 AI 配置中设置可生成文本的对话模型。", "Set up a text generation model in AI settings below.",
+            "請先在下方 AI 設定中設定可生成文字的對話模型。")
     }
     private fun loadSummary() {
         val current = session ?: return
@@ -240,6 +240,9 @@ internal class InsightCard(context: Context, private val repository: InsightRepo
                 val callback = card.pending; card.pending = null
                 outcome.onSuccess { callback?.invoke(it) }.onFailure { error ->
                     failedView.get()?.text = when {
+                        error.message == "subtitle-context-too-large" -> insightText(card.context,
+                            "完整字幕超出本次请求容量，已停止生成，未抽取或截断字幕。", "The complete transcript exceeds the request capacity. Generation stopped without sampling or truncation.",
+                            "完整字幕超出本次請求容量，已停止生成，未抽取或截斷字幕。")
                         error.message == "no-comments" -> insightText(card.context,
                             "尚未读取到评论。请先打开宿主评论区，返回后重试。", "No comments loaded. Open the native comments tab, then try again.",
                             "尚未讀取到評論。請先開啟宿主評論區，返回後重試。")

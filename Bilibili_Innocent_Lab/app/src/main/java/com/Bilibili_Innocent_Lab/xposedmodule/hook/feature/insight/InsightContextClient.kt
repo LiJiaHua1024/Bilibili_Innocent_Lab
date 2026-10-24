@@ -100,6 +100,8 @@ internal class InsightContextClient(private val snapshot: InsightHostSnapshot,
                 continue
             }
             cues = runCatching { parseSubtitle(request(url), duration) }.getOrElse { error ->
+                if (error.message == "subtitle-context-too-large" || error.message == "public-response-too-large")
+                    throw IllegalArgumentException("subtitle-context-too-large")
                 trace("subtitle-load failure reason=${(error as? InsightContextHttpException)?.let { "http-${it.status}" } ?: error.javaClass.simpleName}")
                 emptyList()
             }
@@ -137,12 +139,12 @@ internal class InsightContextClient(private val snapshot: InsightHostSnapshot,
             }
         }
         fun parseSubtitle(raw: String, duration: Int): List<InsightCue> {
-            require(raw.length <= 2_000_000)
-            val body = JSONObject(raw).getJSONArray("body"); require(body.length() <= 30_000)
+            require(raw.length <= 2_000_000) { "subtitle-context-too-large" }
+            val body = JSONObject(raw).getJSONArray("body"); require(body.length() <= 30_000) { "subtitle-context-too-large" }
             return (0 until body.length()).mapNotNull { i ->
                 val item = body.optJSONObject(i) ?: return@mapNotNull null
                 val start = item.optDouble("from", Double.NaN); val end = item.optDouble("to", Double.NaN)
-                val text = item.optString("content").trim().take(1000)
+                val text = item.optString("content").trim()
                 if (start.isFinite() && end.isFinite() && start >= 0 && start < duration && end > start && text.isNotEmpty())
                     InsightCue(start, end.coerceAtMost(duration.toDouble()), text) else null
             }.distinct().sortedBy { it.start }
@@ -151,7 +153,8 @@ internal class InsightContextClient(private val snapshot: InsightHostSnapshot,
             val root = JSONObject(raw); require(root.getInt("code") == 0)
             return root.getJSONObject("data")
         }
-        private fun getPublic(address: String): String {
+        private fun getPublic(address: String): String = getPublicBytes(address).toString(Charsets.UTF_8)
+        internal fun getPublicBytes(address: String, maximum: Int = 2_000_000): ByteArray {
             val connection = URL(address).openConnection() as HttpURLConnection
             try {
                 connection.instanceFollowRedirects = false
@@ -166,11 +169,11 @@ internal class InsightContextClient(private val snapshot: InsightHostSnapshot,
                     while (true) {
                         check(System.nanoTime() < deadline)
                         val count = stream.read(buffer); if (count < 0) break
-                        require(bytes.size() + count <= 2_000_000)
+                        require(bytes.size() + count <= maximum) { "public-response-too-large" }
                         bytes.write(buffer, 0, count)
                     }
                 }
-                return bytes.toString("UTF-8")
+                return bytes.toByteArray()
             } finally { connection.disconnect() }
         }
     }

@@ -76,7 +76,7 @@ internal class InsightCache(private val directory: File, private val clock: () -
 internal class InsightRepository(
     private val source: AgentModelSource, private val cache: InsightCache,
     private val context: (InsightVideo) -> InsightContext,
-    private val client: AgentModelClient = AgentModelClient(outputTokenBudget = 8192),
+    private val client: AgentModelClient = AgentModelClient(outputTokenBudget = 8192, inputTextLimit = InsightProtocol.MAX_CONTEXT),
     private val trace: (String) -> Unit = {},
     private val contextRevision: () -> Long = { 0L }
 ) {
@@ -103,8 +103,18 @@ internal class InsightRepository(
             if (mode == InsightMode.COMMENTS) require(input.comments.isNotEmpty()) { "no-comments" }
             if (mode == InsightMode.CHAPTERS) require(input.timed && !input.officialChapters &&
                 input.duration >= InsightProtocol.MIN_CHAPTER_VIDEO_SECONDS) { "chapters-unavailable" }
+            if (mode == InsightMode.CHAPTERS) {
+                // 总结分段就是章节唯一来源；先点章节也复用同一次生成与缓存。
+                val summary = generate(video, InsightMode.SUMMARY, cancelled = cancelled)
+                require(summary.output.chapters.size in 3..8) { "chapters-unavailable" }
+                cache.write(key, summary)
+                return summary
+            }
+            stage = "prompt"
+            val prompt = InsightProtocol.prompt(mode, input, question, history)
+            trace("request mode=$mode cues=${if (mode == InsightMode.COMMENTS) 0 else InsightProtocol.validCues(input).size} chars=${prompt.length} bytes=${prompt.toByteArray(Charsets.UTF_8).size}")
             val original = JSONArray().put(JSONObject().put("role", "system").put("content", InsightProtocol.system(mode, input)))
-                .put(JSONObject().put("role", "user").put("content", InsightProtocol.prompt(mode, input, question, history)))
+                .put(JSONObject().put("role", "user").put("content", prompt))
             var messages = original
             val deadline = System.nanoTime() + 90_000_000_000L
             var decoded: InsightOutput? = null
@@ -134,7 +144,7 @@ internal class InsightRepository(
             // 只记固定阶段、异常类型与枚举；不把字幕、问题、模型正文或凭据写入日志。
             val reason = (error as? AgentModelException)?.let { "${it.reason}:${it.status}" }
                 ?: (error as? InsightValidationException)?.rule
-                ?: error.message?.takeIf { it in setOf("insight-shape", "insight-tags", "insight-reference", "insight-bare-time", "insight-point-content", "no-comments", "chapters-unavailable") }
+                ?: error.message?.takeIf { it in setOf("insight-shape", "insight-tags", "insight-reference", "insight-bare-time", "insight-point-content", "no-comments", "chapters-unavailable", "subtitle-context-too-large") }
                 ?: error.javaClass.simpleName
             trace("failure mode=$mode stage=$stage reason=$reason")
             throw error

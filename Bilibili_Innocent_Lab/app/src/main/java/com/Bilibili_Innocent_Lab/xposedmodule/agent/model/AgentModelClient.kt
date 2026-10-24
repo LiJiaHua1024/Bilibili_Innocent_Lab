@@ -11,14 +11,15 @@ import java.util.Locale
 internal class AgentModelClient(
     private val transport: AgentHttpTransport = AgentHttpsTransport,
     private val outputTokenBudget: Int = 2048,
-    private val clock: () -> Long = System::currentTimeMillis
+    private val clock: () -> Long = System::currentTimeMillis,
+    private val inputTextLimit: Int = 65_536
 ) {
     private val capabilities = AgentBoundedCache<String, AgentModelCapabilities>(clock = clock)
     private val tokenParameters = AgentBoundedCache<String, String>(clock = clock)
     private val rejectedReasoning = AgentBoundedCache<String, Boolean>(clock = clock)
     private val jsonObjectOnly = AgentBoundedCache<String, Boolean>(clock = clock)
 
-    init { require(outputTokenBudget in 256..8192) }
+    init { require(outputTokenBudget in 256..8192 && inputTextLimit in 65_536..500_000) }
 
     fun setCapabilities(source: AgentModelSource, value: AgentModelCapabilities) {
         capabilities[source.fingerprint] = value
@@ -170,13 +171,13 @@ internal class AgentModelClient(
                 requireRequest(!message.has("tool_call_id"))
             }
             when (val content = message.opt("content")) {
-                is String -> requireRequest(content.length <= MAX_TEXT_CHARS)
+                is String -> requireRequest(content.length <= inputTextLimit)
                 is JSONArray -> {
                     requireRequest(role == "user" && content.length() in 1..8)
                     for (partIndex in 0 until content.length()) {
                         val part = content.optJSONObject(partIndex) ?: invalidRequest()
                         when (part.optString("type")) {
-                            "text" -> requireRequest(part.opt("text") is String && part.getString("text").length <= MAX_TEXT_CHARS)
+                            "text" -> requireRequest(part.opt("text") is String && part.getString("text").length <= inputTextLimit)
                             "image_url" -> {
                                 requireRequest(withVision)
                                 val image = part.optJSONObject("image_url") ?: invalidRequest()

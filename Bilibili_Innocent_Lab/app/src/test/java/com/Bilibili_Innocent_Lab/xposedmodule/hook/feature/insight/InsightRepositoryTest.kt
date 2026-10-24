@@ -19,8 +19,8 @@ class InsightRepositoryTest {
     @get:Rule val temporary = TemporaryFolder()
     private val source = AgentModelSource(1, "https://example.test/v1", "secret", "model")
     private val video = InsightVideo("BV1xx411c7mD", 123)
-    private val input = InsightContext(video, 900, "title", "desc", listOf(InsightCue(0.0, 900.0, "content")))
-    private val summary = """{"overview":"overview","points":["[[t:10]] point"]}"""
+    private val input = InsightContext(video, 900, "title", "desc", listOf(InsightCue(0.0, 300.0, "opening"), InsightCue(300.0, 600.0, "method"), InsightCue(600.0, 900.0, "ending")))
+    private val summary = """{"overview":"overview","sections":[{"start_cue":0,"title":"开始","summary":"提出问题"},{"start_cue":1,"title":"方法","summary":"介绍方法"},{"start_cue":2,"title":"结论","summary":"分析结果"}]}"""
     private fun client(count: AtomicInteger, content: String = summary) = AgentModelClient(AgentHttpTransport { _, body, _, _ ->
         count.incrementAndGet()
         val request = JSONObject(body.toString(Charsets.UTF_8))
@@ -81,8 +81,7 @@ class InsightRepositoryTest {
         val marker = "INVALID_ANSWER_MARKER".repeat(12)
         val model = AgentModelClient(AgentHttpTransport { _, body, _, _ ->
             requests += JSONObject(body.toString(Charsets.UTF_8))
-            val content = if (requests.size == 1) JSONObject().put("overview", marker)
-                .put("points", JSONArray().put("[[t:10]] point")).toString() else summary
+            val content = if (requests.size == 1) JSONObject(summary).put("overview", marker).toString() else summary
             JSONObject().put("choices", JSONArray().put(JSONObject().put("finish_reason", "stop")
                 .put("message", JSONObject().put("role", "assistant").put("content", content)))).toString()
         })
@@ -98,7 +97,7 @@ class InsightRepositoryTest {
     }
     @Test fun `validation repair is bounded and HTTP failures are never repeated`() {
         val root = temporary.newFolder(); val posts = AtomicInteger()
-        val invalid = """{"overview":"ok","points":["missing clickable time"]}"""
+        val invalid = summary.replace("\"start_cue\":1", "\"start_cue\":0")
         val repo = InsightRepository(source, InsightCache(root), { input }, client(posts, invalid))
         assertTrue(runCatching { repo.generate(video, InsightMode.SUMMARY) }.isFailure)
         assertEquals(2, posts.get()); assertTrue(root.listFiles().orEmpty().isEmpty())
@@ -122,10 +121,10 @@ class InsightRepositoryTest {
     }
     @Test fun `chapter requests accept three to five minutes and reject shorter videos before billing`() {
         val posts = AtomicInteger()
-        val chapters = """{"chapters":[{"start":0,"title":"开始"},{"start":60,"title":"展开"},{"start":120,"title":"结束"}]}"""
+        val chapters = summary
         for (duration in listOf(179, 180, 240, 300)) {
             val repo = InsightRepository(source, InsightCache(temporary.newFolder()), {
-                input.copy(duration = duration, cues = listOf(InsightCue(0.0, duration.toDouble(), "内容")))
+                input.copy(duration = duration, cues = listOf(InsightCue(0.0, 60.0, "开场"), InsightCue(60.0, 120.0, "展开"), InsightCue(120.0, duration.toDouble(), "结束")))
             }, client(posts, chapters))
             if (duration < 180) {
                 assertTrue(runCatching { repo.generate(video, InsightMode.CHAPTERS) }.isFailure)
@@ -133,6 +132,27 @@ class InsightRepositoryTest {
             } else assertEquals(3, repo.generate(video, InsightMode.CHAPTERS).output.chapters.size)
         }
         assertEquals(3, posts.get())
+    }
+    @Test fun `summary and chapter requests reuse one model response in either order and after reopening`() {
+        for (first in listOf(InsightMode.SUMMARY, InsightMode.CHAPTERS)) {
+            val root = temporary.newFolder(); val posts = AtomicInteger()
+            val repo = InsightRepository(source, InsightCache(root), { input }, client(posts))
+            repo.generate(video, first)
+            val summary = repo.generate(video, InsightMode.SUMMARY)
+            val chapters = repo.generate(video, InsightMode.CHAPTERS)
+            assertEquals(summary.output.chapters, chapters.output.chapters)
+            assertEquals(chapters.output.chapters.map { it.start }, InsightTimestamp.links(summary.output.text, 900, true).map { it.second })
+            val cold = InsightRepository(source, InsightCache(root), { error("No context request") }, client(posts))
+            assertEquals(chapters, cold.generate(video, InsightMode.CHAPTERS))
+            assertEquals(1, posts.get())
+        }
+    }
+    @Test fun `oversize subtitles fail before any model request and are never cached`() {
+        val posts = AtomicInteger(); val root = temporary.newFolder()
+        val repo = InsightRepository(source, InsightCache(root), { input.copy(cues = input.cues.map { it.copy(text = "x".repeat(200_000)) }) }, client(posts))
+        val error = runCatching { repo.generate(video, InsightMode.SUMMARY) }.exceptionOrNull()
+        assertEquals("subtitle-context-too-large", error?.message)
+        assertEquals(0, posts.get()); assertTrue(root.listFiles().orEmpty().isEmpty())
     }
     @Test fun `ask uses dialogue context and is not persisted`() {
         val posts = AtomicInteger(); val root = temporary.newFolder()

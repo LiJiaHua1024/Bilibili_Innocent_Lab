@@ -31,12 +31,13 @@ class Points(val pointsList: List<Point> = emptyList(), val unrelated: Int = 88,
     }
     companion object { @JvmStatic fun newBuilder(value: Points) = Builder(value) }
 }
-data class Point(val from: Long = 0, val to: Long = 0, val content: String = "", val type: Int = 0) {
+data class Point(val from: Long = 0, val to: Long = 0, val content: String = "", val type: Int = 0, val cover: String = "") {
     class Builder(value: Point) {
         private var value = value
         fun setFrom(from: Long) = apply { value = value.copy(from = from) }
         fun setTo(to: Long) = apply { value = value.copy(to = to) }
         fun setContent(content: String) = apply { value = value.copy(content = content) }
+        fun setCover(cover: String) = apply { value = value.copy(cover = cover) }
         fun setType(type: Int) = apply { value = value.copy(type = type) }
         fun build() = value
     }
