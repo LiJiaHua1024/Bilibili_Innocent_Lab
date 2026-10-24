@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="lan_continuity_title">區域網路投放與安全接力（實驗）</string>
+    <string name="lan_continuity_tip">重新啟動嗶哩嗶哩後，點擊播放器原有的投屏按鈕進入，不新增常駐懸浮入口。首次配對後，後續開啟宿主會自動連線至信任裝置；面板內可停止本次工作階段與解除綁定。原畫合軌或彈幕合成需要等待，倍速以電視實際支援為準。</string>
+</resources>

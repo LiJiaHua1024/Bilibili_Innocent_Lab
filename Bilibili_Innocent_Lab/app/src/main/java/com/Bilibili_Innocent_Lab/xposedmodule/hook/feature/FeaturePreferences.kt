@@ -229,6 +229,7 @@ internal object FeaturePreferences {
     const val PLAYER_DEFAULT_SPEED_PERCENT = "player_default_speed_percent"
     const val PLAYER_SPEED_MENU_PERCENTS = "player_speed_menu_percents"
     const val SPONSORBLOCK_ENABLED = "sponsorblock_enabled"
+    const val LAN_CONTINUITY_ENABLED = "lan_continuity_enabled"
     const val SPONSORBLOCK_AUTOMATIC = "sponsorblock_automatic"
     const val BLOCK_TEENAGERS_MODE_PROMPT = "block_teenagers_mode_prompt"
     const val REMOVE_COMMENT_SEARCH_LINKS = "remove_comment_search_links"

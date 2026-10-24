@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="lan_continuity_title">局域网投屏与安全接力（实验）</string>
+    <string name="lan_continuity_tip">重启哔哩哔哩后，点击播放器原有的投屏按钮进入，不添加常驻悬浮入口。首次配对后，后续打开宿主会自动连接信任设备；面板内可停止本次会话与解绑。原画合轨或弹幕合成需要等待，倍速以电视实际支持为准。</string>
+</resources>

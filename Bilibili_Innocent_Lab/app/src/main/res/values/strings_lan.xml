@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="lan_continuity_title">LAN casting and secure continuity (experimental)</string>
+    <string name="lan_continuity_tip">Restart Bilibili, then tap the player’s existing cast button. Pair once; trusted devices reconnect automatically on future launches. Stop the current session from the panel. Remuxing and danmaku composition take time; playback speeds depend on the TV.</string>
+</resources>

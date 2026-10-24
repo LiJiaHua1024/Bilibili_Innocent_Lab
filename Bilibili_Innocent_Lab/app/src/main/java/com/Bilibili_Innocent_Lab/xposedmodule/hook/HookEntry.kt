@@ -2652,6 +2652,11 @@ class HookEntry : XposedModule() {
             )
             val featureInstallCoordinator = FeatureInstallCoordinator(hookEnvironment)
             val sponsorClassesRef = java.util.concurrent.atomic.AtomicReference(hostAdaptResult?.sponsorPlayer)
+            val lanInstaller = com.Bilibili_Innocent_Lab.xposedmodule.hook.feature.LanContinuityFeatureInstaller(
+                hookConfig.getBoolean(FeaturePreferences.LAN_CONTINUITY_ENABLED, false),
+                { sponsorClassesRef.get() }
+            )
+            featureInstallCoordinator.installAll(listOf(lanInstaller))
             val classicPointsRef = java.util.concurrent.atomic.AtomicReference(hostAdaptResult?.commentClassicStyle)
             val pagePointsRef = java.util.concurrent.atomic.AtomicReference(hostAdaptResult?.pageBoundaries)
             val searchHomeInstaller = SearchHomeRecommendFeatureInstaller(
@@ -4860,12 +4865,15 @@ class HookEntry : XposedModule() {
                                             }
                                         }
                                     }
-                                    if (sponsorInstaller.requiresAdaptationRetry) {
+                                    if (sponsorInstaller.requiresAdaptationRetry || lanInstaller.requiresAdaptationRetry) {
                                         sponsorClassesRef.set(VersionAdapter.loadCached(attachedContext,
                                             versionAdapterResetTimestamp)?.sponsorPlayer)
                                         hookEnvironment.postToMain?.invoke {
                                             if (sponsorInstaller.requiresAdaptationRetry) {
                                                 featureInstallCoordinator.installAll(listOf(sponsorInstaller))
+                                            }
+                                            if (lanInstaller.requiresAdaptationRetry) {
+                                                featureInstallCoordinator.installAll(listOf(lanInstaller))
                                             }
                                         }
                                     }
@@ -4908,7 +4916,9 @@ class HookEntry : XposedModule() {
                         },
                         startupCache = startupCache,
                         kotlinDefaultWordsEnabled = prefs.getBoolean(FeaturePreferences.HIDE_HOME_SEARCH_DEFAULT_WORD, false),
-                        sponsorBlockEnabled = prefs.getBoolean(FeaturePreferences.SPONSORBLOCK_ENABLED, false),
+                        // Both features share the verified player locator, independently of each other's switches.
+                        sponsorBlockEnabled = prefs.getBoolean(FeaturePreferences.SPONSORBLOCK_ENABLED, false) ||
+                            prefs.getBoolean(FeaturePreferences.LAN_CONTINUITY_ENABLED, false),
                         commentClassicStyleEnabled = prefs.getBoolean(FeaturePreferences.COMMENT_CLASSIC_STYLE, false),
                         playerPopupPromotionEnabled = prefs.getBoolean(FeaturePreferences.HIDE_PLAYER_POPUP_PROMOTION, false),
                         brandSplashCustomEnabled = prefs.getBoolean(FeaturePreferences.BRAND_SPLASH_CUSTOM, false) &&
