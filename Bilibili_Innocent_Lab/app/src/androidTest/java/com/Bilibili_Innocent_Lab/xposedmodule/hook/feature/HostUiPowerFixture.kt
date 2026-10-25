@@ -18,7 +18,8 @@ import com.Bilibili_Innocent_Lab.xposedmodule.ui.activity.MainActivity
 import kotlin.math.abs
 
 /** Identical effects, resolution, window and animation inputs; no preference writes. */
-internal class HostUiPowerFixture(private val activity: MainActivity, reuseGpuFrames: Boolean) : AutoCloseable {
+internal class HostUiPowerFixture(private val activity: MainActivity, reuseGpuFrames: Boolean,
+    optimizeCardRendering: Boolean = true) : AutoCloseable {
     val window = activity.window
     private val brightness = window.attributes.screenBrightness
     private val mode = window.attributes.preferredDisplayModeId
@@ -66,7 +67,7 @@ internal class HostUiPowerFixture(private val activity: MainActivity, reuseGpuFr
             })
             cardViews += card
         }
-        cards = HostCardMaterialScope(content, true, reuseGpuFrames = reuseGpuFrames)
+        cards = HostCardMaterialScope(content, true, reuseGpuFrames = reuseGpuFrames, optimizeCardRendering = optimizeCardRendering)
         for (view in cardViews) cards.apply(view, 46f)
         root.addView(top, FrameLayout.LayoutParams(-1, 140).apply { leftMargin = 50; rightMargin = 50; topMargin = 140 })
         root.addView(bottom, FrameLayout.LayoutParams(-1, 140).apply {

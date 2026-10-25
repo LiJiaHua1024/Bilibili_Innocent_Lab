@@ -39,7 +39,8 @@ internal open class HostCardMaterialScope(private val owner: ViewGroup, night: B
     private val context: Context = owner.context,
     internal val materialKind: HostCardMaterial = HostCardMaterial.ACRYLIC,
     private val gpuScale: Float = .5f,
-    private val reuseGpuFrames: Boolean = true) : AutoCloseable,
+    private val reuseGpuFrames: Boolean = true,
+    private val optimizeCardRendering: Boolean = true) : AutoCloseable,
     View.OnAttachStateChangeListener, ViewTreeObserver.OnPreDrawListener {
     private var palette = HostVideoCardSurface.palette(night, context)
     private val frameStrokeDp = if (materialKind == HostCardMaterial.ACRYLIC) .5f else 1f
@@ -83,6 +84,12 @@ internal open class HostCardMaterialScope(private val owner: ViewGroup, night: B
     }.apply { alpha = 0f; importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO }
     private val field = object : View(context) {
         override fun isShown(): Boolean = owner.isShown
+        override fun draw(canvas: Canvas) {
+            // This View supplies geometry, policy and invalidation only. The shared
+            // scene records its background explicitly; an empty clip still records
+            // that background into the Window display list and adds a second parent.
+            if (!optimizeCardRendering) super.draw(canvas)
+        }
         override fun invalidate() { super.invalidate(); changed() }
         override fun invalidateDrawable(drawable: Drawable) { super.invalidateDrawable(drawable); changed() }
     }.apply {
@@ -316,7 +323,15 @@ internal open class HostCardMaterialScope(private val owner: ViewGroup, night: B
                 if (closed || inner.isEmpty) return
                 val scene = record(canvas.isHardwareAccelerated)
                 val view = host.get() ?: return
-                if (native) { if (!mapping.sourceToTarget(owner, view, matrix)) return }
+                if (native) {
+                    if (optimizeCardRendering && view.parent === owner && view.matrix.isIdentity) {
+                        // The common ancestor transform cancels for a direct child.
+                        // Use its exact local translation, without walking to the Window
+                        // twice and inverting that same ancestor matrix for every card.
+                        matrix.setTranslate((owner.scrollX.toLong() - view.left).toFloat(),
+                            (owner.scrollY.toLong() - view.top).toFloat())
+                    } else if (!mapping.sourceToTarget(owner, view, matrix)) return
+                }
                 else { owner.getLocationInWindow(location); matrix.setTranslate(location[0] - windowX, location[1] - windowY) }
                 canvas.clipPath(clip); canvas.concat(matrix); scene?.draw(canvas)
             } finally { canvas.restoreToCount(layer) }

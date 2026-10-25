@@ -42,11 +42,13 @@ class HostUiPowerBenchmarkInstrumentedTest {
         assumeTrue("Opt-in power benchmark", args.getString("innocentLab.runPowerBenchmark") == "true")
         val seconds = args.getString("innocentLab.seconds")?.toInt() ?: 20
         val order = args.getString("innocentLab.order") ?: "AB"
+        val cardRenderOnly = args.getString("innocentLab.cardRenderOnly") == "true"
         require(seconds in 10..120 && order.isNotEmpty() && order.all { it == 'A' || it == 'B' })
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         val output = File(instrumentation.targetContext.getExternalFilesDir(null), "host-ui-power").apply { mkdirs() }
         val phases = JSONArray()
         val campaign = JSONObject().put("order", order).put("seconds", seconds).put("phases", phases).put("complete", false)
+            .put("comparison", if (cardRenderOnly) "card proxy draw and direct-child mapping; A=bf1d4f5c" else "retained GPU content")
         fun persist() = File(output, "campaign.json").writeText(campaign.toString(2))
         persist()
         val thread = HandlerThread("HostUiPowerMetrics").apply { start() }
@@ -54,7 +56,9 @@ class HostUiPowerBenchmarkInstrumentedTest {
             ActivityScenario.launch(MainActivity::class.java).use { scenario ->
                 for ((index, variant) in order.withIndex()) {
                     lateinit var fixture: HostUiPowerFixture
-                    scenario.onActivity { fixture = HostUiPowerFixture(it, variant == 'B') }
+                    scenario.onActivity { fixture = HostUiPowerFixture(it,
+                        reuseGpuFrames = cardRenderOnly || variant == 'B',
+                        optimizeCardRendering = !cardRenderOnly || variant == 'B') }
                     val gpu = Collections.synchronizedMap(LinkedHashMap<Long, Long>())
                     val draw = Collections.synchronizedMap(LinkedHashMap<Long, Long>())
                     val total = Collections.synchronizedMap(LinkedHashMap<Long, Long>())
