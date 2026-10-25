@@ -292,6 +292,9 @@ android {
         "lib/arm64-v8a/libinnocent_frame_interpolation.so",
         "lib/armeabi-v7a/libinnocent_frame_interpolation.so"
     )
+    // Audio runtime verification pins upstream bytes; do not re-strip these already stripped
+    // Maven payloads, or the build would invalidate their content hashes.
+    packaging.jniLibs.keepDebugSymbols += setOf("**/libonnxruntime.so", "**/libonnxruntime4j_jni.so")
 
     sourceSets {
         getByName("test") {
@@ -542,6 +545,7 @@ if (
 }
 
 dependencies {
+    implementation(libs.onnxruntime.android)
     compileOnly(libs.libxposed.api)
     implementation(libs.libxposed.service)
 

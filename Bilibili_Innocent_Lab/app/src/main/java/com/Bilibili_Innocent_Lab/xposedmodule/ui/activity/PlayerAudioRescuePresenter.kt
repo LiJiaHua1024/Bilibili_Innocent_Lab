@@ -76,7 +76,12 @@ private fun MainActivity.showAudioRescueDialog(anchor: View, onSaved: () -> Unit
         setLineSpacing(4 * density, 1f)
     }
     container.addView(label(R.string.player_audio_rescue, 17f), NativeLinearLayout.LayoutParams(-1, -2))
-    val body = NativeLinearLayout(this).apply { orientation = NativeLinearLayout.VERTICAL }
+    val body = NativeLinearLayout(this).apply {
+        orientation = NativeLinearLayout.VERTICAL
+        // The prepared Lumen stretch viewport clips its rounded top and bottom corners.
+        // Keep the first/last text glyphs inside that contour at both scroll endpoints.
+        updatePadding(horizontal = (12 * density).toInt(), vertical = (14 * density).toInt())
+    }
     body.addView(label(R.string.player_audio_scope))
     fun check(key: String, title: Int, tip: Int): CheckBox {
         val control = CheckBox(this).apply {

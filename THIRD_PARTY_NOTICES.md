@@ -1,5 +1,22 @@
 # Third-party notices
 
+## GTCRN speech enhancement
+
+The optional audio rescue speech model is GTCRN, trained on DNS3, from
+[Xiaobin-Rong/gtcrn](https://github.com/Xiaobin-Rong/gtcrn), pinned to commit
+`502ebfab64da7c4a9af78dcb9c6ceef1ebb01c73`, file
+`stream/onnx_models/gtcrn_simple.onnx` (SHA-256
+`b4718df6228e7bdf1a8a435cf98f838636eb2fd331acabf86ba87c5192ebcb87`).
+Copyright (c) 2024 Rong Xiaobin. MIT license; see
+`third_party/GTCRN-LICENSE.txt`. The streaming spectral contract is adapted with
+a shared complex speech mask applied to the original stereo spectra, causal
+rate conversion and transactional rollback of each track's state.
+ONNX Runtime Android 1.31.0 is provided by Microsoft under the MIT license;
+the versioned upstream texts are preserved as
+`third_party/ONNXRuntime-LICENSE.txt` and
+`third_party/ONNXRuntime-ThirdPartyNotices.txt` from
+https://github.com/microsoft/onnxruntime/tree/v1.31.0.
+
 ## Material Design Icons
 
 The enhancement, appearance and compatibility section icons use Google's

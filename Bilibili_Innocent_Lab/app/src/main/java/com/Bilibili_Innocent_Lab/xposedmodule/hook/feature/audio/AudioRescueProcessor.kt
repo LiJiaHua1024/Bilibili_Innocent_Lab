@@ -2,13 +2,15 @@ package com.Bilibili_Innocent_Lab.xposedmodule.hook.feature.audio
 
 import kotlin.math.*
 
-/** Causal PCM DSP: no buffering, frame removal, playback clock changes or platform audio effects.
+/** Causal PCM DSP: no frame insertion/removal, playback clock changes or platform audio effects.
+ * Optional speech inference uses a bounded analysis window and fixed ~33 ms delay.
  * One instance per track. The write adapter serializes access and commits only accepted frames.
  */
 internal class AudioRescueProcessor(
     val sampleRate: Int,
     val channelCount: Int,
-    private val config: AudioRescueConfig
+    private val config: AudioRescueConfig,
+    private val speech: AudioSpeechEnhancer? = null
 ) {
     init {
         require(sampleRate in 8000..192000)
@@ -28,8 +30,12 @@ internal class AudioRescueProcessor(
         Biquad.highPass(sampleRate, 180.0), Biquad.lowPass(sampleRate, min(3800.0, sampleRate * .4))
     )
 
-    fun checkpoint(): DoubleArray = state.copyOf()
-    fun restore(checkpoint: DoubleArray) { checkpoint.copyInto(state) }
+    fun checkpoint(): DoubleArray = DoubleArray(state.size + (speech?.stateSize ?: 0)).also {
+        state.copyInto(it); speech?.save(it, state.size)
+    }
+    fun restore(checkpoint: DoubleArray) {
+        checkpoint.copyInto(state, 0, 0, state.size); speech?.restore(checkpoint, state.size)
+    }
 
     /** Interleaved normalized floats. Calls may be split at any complete PCM frame. */
     fun process(samples: FloatArray, frames: Int = samples.size / channelCount) {
@@ -50,8 +56,16 @@ internal class AudioRescueProcessor(
                     // is applied to the quiet channel (which would amplify its microphone noise).
                     val missingLeft = re > .0001 && le < re * .004
                     val missingRight = le > .0001 && re < le * .004
-                    state[LEFT_WAIT] = if (missingLeft) state[LEFT_WAIT] + 1 else 0.0
-                    state[RIGHT_WAIT] = if (missingRight) state[RIGHT_WAIT] + 1 else 0.0
+                    val wait = sampleRate * .2
+                    // A confirmed missing ear stays repaired through speech pauses. Resetting
+                    // on silence made each new sentence lose its first 200 ms in the corpus.
+                    if (max(le, re) > .0001) {
+                        state[LEFT_WAIT] = if (missingLeft) min(wait, state[LEFT_WAIT] + 1) else 0.0
+                        state[RIGHT_WAIT] = if (missingRight) min(wait, state[RIGHT_WAIT] + 1) else 0.0
+                    } else {
+                        if (state[LEFT_WAIT] < wait) state[LEFT_WAIT] = 0.0
+                        if (state[RIGHT_WAIT] < wait) state[RIGHT_WAIT] = 0.0
+                    }
                     state[LEFT_MIX] += mixRate * ((if (state[LEFT_WAIT] >= sampleRate * .2) 1.0 else 0.0) - state[LEFT_MIX])
                     state[RIGHT_MIX] += mixRate * ((if (state[RIGHT_WAIT] >= sampleRate * .2) 1.0 else 0.0) - state[RIGHT_MIX])
                     val originalLeft = left
@@ -60,7 +74,12 @@ internal class AudioRescueProcessor(
                 }
             }
 
-            if (config.noiseReduction) {
+            if (speech != null && (config.noiseReduction || config.voiceFocus)) {
+                speech.process(left, right)
+                left = speech.left; right = speech.right
+            }
+
+            if (config.noiseReduction && speech == null) {
                 for (index in 0..4) {
                     left = filter(index, 0, left)
                     right = filter(index, 1, right)
@@ -73,22 +92,16 @@ internal class AudioRescueProcessor(
                 left *= state[NOISE_GAIN]; right *= state[NOISE_GAIN]
             }
 
-            if (config.voiceFocus) {
-                val speechLeft = filter(6, 0, filter(5, 0, left))
-                val speechRight = filter(6, 1, filter(5, 1, right))
-                // Preserve centered speech, attenuate side content and bass/treble. A centered
-                // BGM or off-center speaker remains inseparable; UI states this limitation.
-                val mid = (speechLeft + speechRight) * .5
-                val side = (speechLeft - speechRight) * .5 * .4
-                left = left * .3 + (mid + side) * .7
-                right = right * .3 + (mid - side) * .7
-            }
+            // If the model is unavailable, voice focus preserves the original signal instead
+            // of the old centre/band filter, which damaged centred-BGM and panned-speech fixtures.
 
             if (config.peakGuard) {
                 val peak = max(abs(left), abs(right))
                 // A fixed -6 dBFS sample ceiling plus a relative rise threshold. Attack is
                 // immediate (including the first offending sample); release is smoothed.
-                val ceiling = min(.5, max(.12, state[BASELINE] * 3.5))
+                // Speech naturally has high crest factors. The old 3.5x mean-absolute rule
+                // clamped ordinary syllables; reserve the relative guard for larger jumps.
+                val ceiling = min(.5, max(.25, state[BASELINE] * 8.0))
                 val target = if (peak > ceiling) ceiling / peak else 1.0
                 if (target < state[GAIN]) {
                     state[GAIN] = target
