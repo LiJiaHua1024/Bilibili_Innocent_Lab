@@ -8,7 +8,7 @@ from pathlib import Path
 from urllib.parse import urlencode
 
 from prepare_canary_delivery import REPOSITORY, api_json, parse_run_url, select_artifact
-from telegram_delivery_state import MAX_PAGES, channel_key, previous_delivery
+from telegram_delivery_state import MAX_PAGES, channel_key, previous_delivery, previous_attempt_delivery
 
 BEIJING = timezone(timedelta(hours=8))
 WORKFLOW = ".github/workflows/canary-telegram.yml"
@@ -56,6 +56,16 @@ def select_delivery(event: str, run_url: str, delivery_run_id: int, now: datetim
                     channel: str, expected_digest: str = "") -> dict[str, str]:
     if event == "workflow_dispatch":
         _, url = parse_run_url(run_url)
+        current = api_json(f"repos/{REPOSITORY}/actions/runs/{delivery_run_id}")
+        if (current.get("id") != delivery_run_id or current.get("path") != WORKFLOW
+                or current.get("head_branch") != "main" or current.get("event") != event):
+            raise ValueError("Manual publication must originate from the main Telegram workflow")
+        attempt = current.get("run_attempt", 1)
+        if type(attempt) is not int or not 1 <= attempt <= 100:
+            raise ValueError("Invalid Telegram delivery attempt")
+        if attempt > 1 and previous_attempt_delivery(channel, current):
+            return {"should_publish": "false", "run_url": "", "artifact_digest": "",
+                    "reason": "本次运行先前 attempt 已完整投递，跳过重试以避免重复发送。"}
         return {"should_publish": "true", "run_url": url, "artifact_digest": "",
                 "reason": "手动发布：不受每日次数和重复构建限制。"}
     if event != "schedule":

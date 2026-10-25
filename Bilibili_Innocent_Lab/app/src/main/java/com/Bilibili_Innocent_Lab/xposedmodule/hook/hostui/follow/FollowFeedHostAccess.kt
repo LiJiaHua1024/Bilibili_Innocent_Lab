@@ -102,6 +102,15 @@ internal class FollowFeedHostAccess private constructor(
         return FollowFeedRow(id, isFirst, isLast, position, reference)
     }
 
+    /** 背景颜色入口也使用本地归属判断；M() 返回顶层，不能拿它判断引用。 */
+    internal fun isQuotedModule(value: Any): Boolean? {
+        if (!module.isInstance(value)) return null
+        return runCatching {
+            if (current != null) current.localOwner.get(value)?.let { current.quoted.invoke(it) as? Boolean }
+            else quoted?.invoke(value) as? Boolean
+        }.getOrNull()
+    }
+
     private fun unavailable(reason: String): FollowFeedRow? { unavailableReason = reason; return null }
 
     companion object {
@@ -137,7 +146,7 @@ internal class FollowFeedHostAccess private constructor(
             FollowFeedHostAccess(module, owner, identity, first, last, localOwner, quoted, modules, kind, video)
         }.getOrNull()
 
-        /** 双9.15.0：G.a 是本地H；M返回顶层；H.b返回扁平列表，引用局部列表只能读H.n。 */
+        /** 9.15 G.a / 9.16 G.b 是本地 H；M 返回顶层，引用局部列表仍读 H.n。 */
         internal fun current(module: Class<*>, item: Class<*>): FollowFeedHostAccess? = runCatching {
             fun method(owner: Class<*>, name: String, result: Class<*>) =
                 KavaMemberLookup.declaredMethods(owner, true) {
@@ -148,7 +157,7 @@ internal class FollowFeedHostAccess private constructor(
             val identity = method(item, "a", Long::class.javaPrimitiveType!!) ?: return null
             val localOwner = KavaMemberLookup.declaredFields(module, true) {
                 !Modifier.isStatic(it.modifiers) && it.type == item
-            }.singleOrNull()?.takeIf { it.name == "a" } ?: return null
+            }.singleOrNull()?.takeIf { it.name in setOf("a", "b") } ?: return null
             val localModules = KavaMemberLookup.fieldOrNull(item, "n")?.takeIf {
                 !Modifier.isStatic(it.modifiers) && List::class.java.isAssignableFrom(it.type)
             } ?: return null

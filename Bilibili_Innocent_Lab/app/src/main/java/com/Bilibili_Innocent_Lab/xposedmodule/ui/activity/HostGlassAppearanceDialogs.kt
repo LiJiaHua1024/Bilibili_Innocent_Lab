@@ -39,7 +39,10 @@ internal fun MainActivity.hostGlassConfigurationRows(performer: Hikage.Performer
         val enabled = if (bottom) hostBottomBarLiquidGlass else hostTopBarLiquidGlass
         material.text = getString(R.string.host_glass_material_current, getString(materialLabel(appearance.material)))
         renderer.text = getString(R.string.host_glass_renderer_current, getString(rendererLabel(appearance.compatible(Build.VERSION.SDK_INT).effectiveRenderer)))
-        listOf(material, renderer).forEach { it.isEnabled = enabled; it.alpha = if (enabled) 1f else .45f }
+        material.isEnabled = enabled
+        material.alpha = if (enabled) 1f else .45f
+        renderer.isEnabled = enabled && appearance.compatible(Build.VERSION.SDK_INT).material == HostGlassMaterial.SOFT
+        renderer.alpha = if (renderer.isEnabled) 1f else .45f
     }
     with(performer) {
         TextView(lparams = LayoutParams(widthMatchParent = true) { topMargin = 6.dp }) {
@@ -50,7 +53,7 @@ internal fun MainActivity.hostGlassConfigurationRows(performer: Hikage.Performer
             setPadding(0, 12.dp, 0, 12.dp)
             background = selfRippleBackground(10f)
             isClickable = true; isFocusable = true
-            setOnClickListener { showHostGlassChoiceDialog(this, bottom, rendering = false, onSaved = ::refresh) }
+            setOnClickListener { if (isEnabled) showHostGlassChoiceDialog(this, bottom, rendering = false, onSaved = ::refresh) }
         }
         TextView(lparams = LayoutParams(widthMatchParent = true)) {
             renderer = this
@@ -60,7 +63,7 @@ internal fun MainActivity.hostGlassConfigurationRows(performer: Hikage.Performer
             setPadding(0, 10.dp, 0, 10.dp)
             background = selfRippleBackground(10f)
             isClickable = true; isFocusable = true
-            setOnClickListener { showHostGlassChoiceDialog(this, bottom, rendering = true, onSaved = ::refresh) }
+            setOnClickListener { if (isEnabled) showHostGlassChoiceDialog(this, bottom, rendering = true, onSaved = ::refresh) }
         }
     }
     refresh()

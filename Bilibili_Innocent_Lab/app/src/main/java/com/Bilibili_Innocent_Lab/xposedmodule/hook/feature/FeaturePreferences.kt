@@ -2,7 +2,10 @@ package com.Bilibili_Innocent_Lab.xposedmodule.hook.feature
 
 /** 新增功能的稳定配置键；旧功能键在完成迁移前仍保留在 HookEntry。 */
 internal object FeaturePreferences {
+    const val PLAYER_SUBTITLE_STYLE = "player_subtitle_style"
+    const val PLAYER_AI_SUBTITLE = "player_ai_subtitle"
     const val HIDE_VIDEO_DETAIL_APP_PROMOTION = "hide_video_detail_app_promotion"
+    const val HIDE_LIVE_HOME_PROMOTION = "hide_live_home_promotion"
     const val HIDE_HOME_GAME_MENU = "hide_home_game_menu"
     const val HIDE_HOME_SEARCH_DEFAULT_WORD = "hide_home_search_default_word"
     const val HOME_VERTICAL_OPEN_DETAIL = "home_vertical_open_detail"
@@ -184,6 +187,7 @@ internal object FeaturePreferences {
     const val HOST_BOTTOM_BAR_GLASS_RENDERER = "host_bottom_bar_glass_renderer"
     const val HOST_BOTTOM_BAR_COMPACT = "host_bottom_bar_compact"
     const val HOST_BOTTOM_BAR_ICON_ONLY = "host_bottom_bar_icon_only"
+    const val HOST_MINE_GARB_DIM = "host_mine_garb_dim"
     const val HOST_BOTTOM_BAR_TOUCH_GLOW = "host_bottom_bar_touch_glow"
     const val HOST_VIDEO_CARDS = "host_video_cards"
     // 仅供已发布的布尔设置迁移；新界面与运行时只使用 HOST_CARD_MATERIAL。
@@ -205,6 +209,14 @@ internal object FeaturePreferences {
     const val HOME_COMPONENT_HIDDEN_SELECTORS = "home_component_hidden_selectors"
     const val PLAYER_DEFAULT_QUALITY_QN = "player_default_quality_qn"
     const val PLAYER_CODEC_PREFERENCE = "player_codec_preference"
+    /** 主播放器插帧（≤720p）；仅当 FrameInterpolationEntryGate 放行时才生效与显示。 */
+    const val PLAYER_FRAME_INTERPOLATION = "player_frame_interpolation"
+    /** 补帧帧率上限（60/90/120/144/165/185）；实际目标还受系统实际刷新与本机能力约束。 */
+    const val PLAYER_FRAME_INTERPOLATION_MAX_FPS = "player_frame_interpolation_max_fps"
+    /** 每次播放视频时提示插帧是否生效与补帧目标帧率（默认关）。 */
+    const val PLAYER_FRAME_INTERPOLATION_STATUS_TOAST = "player_frame_interpolation_status_toast"
+    /** 经用户二次确认后跳过插帧自身的温度暂停；默认关。 */
+    const val PLAYER_FRAME_INTERPOLATION_DISABLE_THERMAL_CONTROL = "player_frame_interpolation_disable_thermal_control"
     const val PLAYER_DECODE_MODE = "player_decode_mode"
     const val PLAYER_BUFFER_MODE = "player_buffer_mode"
     const val PLAYER_BUFFER_SECONDS = "player_buffer_seconds"
@@ -218,6 +230,7 @@ internal object FeaturePreferences {
     const val PLAYER_DISABLE_LONG_PRESS = "player_disable_long_press"
     const val PLAYER_LONG_PRESS_SPEED_PERCENT = "player_long_press_speed_percent"
     const val PLAYER_DEFAULT_SPEED_PERCENT = "player_default_speed_percent"
+    const val PLAYER_SPEED_MENU_PERCENTS = "player_speed_menu_percents"
     const val SPONSORBLOCK_ENABLED = "sponsorblock_enabled"
     const val SPONSORBLOCK_AUTOMATIC = "sponsorblock_automatic"
     const val BLOCK_TEENAGERS_MODE_PROMPT = "block_teenagers_mode_prompt"

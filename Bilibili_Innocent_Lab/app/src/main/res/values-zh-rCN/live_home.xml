@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="hide_live_home_promotion">隐藏直播分栏顶部推广大卡</string>
+    <string name="hide_live_home_promotion_tip">移除首页「直播」分栏顶部的推广大卡轮播，并收起占位；保留「我的关注」和普通直播列表。修改后需重启哔哩哔哩。</string>
+    <string name="highlights_live_home_promotion">可隐藏直播分栏顶部推广大卡，移除后不留空白。</string>
+</resources>

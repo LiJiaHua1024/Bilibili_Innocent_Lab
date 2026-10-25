@@ -1,53 +1,52 @@
 package com.Bilibili_Innocent_Lab.xposedmodule.runtime
 
-/**
- * 把启动授权端点的 status 分成「权威拒绝」和「本路不可用」。
- *
- * 四路通道、两秒窗口、nonce/UID/租约、以及「明确拒绝则禁止 Remote Preferences
- * 回退」全部保持原样。这里只纠正一种误判：包可见性导致的 `identity_rejected`、
- * 协议/存储未就绪、租约过期等，都是**这一路没走通**，不是用户/管理器否定授权。
- * 把它们记成 `admission_denied` 会置位 `sawDenied`，连已经完整校验过的 Remote
- * Preferences 回退也被禁掉，冷启动首页就会在钩子装上之前画完。
- */
+/** 条款拒绝、配置待同步与运输失败分别处理；只有通过响应绑定的结果才有权阻止旧配置回退。 */
 internal object HostAdmissionRouteClassifier {
-    enum class StatusClass { PREPARED, GRANTED, AUTHORITY_DENIED, UNAVAILABLE }
+    enum class StatusClass { PREPARED, GRANTED, AUTHORITY_DENIED, SYNC_REQUIRED, CONSENT_PENDING, UNAVAILABLE }
 
-    enum class Outcome { CONTINUE, AUTHORITY_DENIED, UNAVAILABLE }
+    enum class Outcome { CONTINUE, AUTHORITY_DENIED, SYNC_REQUIRED, CONSENT_PENDING, UNAVAILABLE }
 
     const val REASON_DENIED = "admission_denied"
     const val REASON_UNAVAILABLE = "admission_unavailable"
-
-    private val AUTHORITY_DENIED_STATUSES = setOf(
-        "denied",
-        "consent_commit_failed",
-        "manager_sync_required",
-        "embedded_mode_unsupported",
-    )
+    const val REASON_SYNC_REQUIRED = "admission_sync_required"
+    const val REASON_CONSENT_PENDING = "admission_consent_pending"
+    const val REASON_RESPONSE_INVALID = "admission_response_invalid"
+    const val REASON_CONFIG_INVALID = "admission_config_invalid"
+    const val REASON_TIMEOUT = "admission_timeout"
 
     fun classify(status: String?): StatusClass = when (status) {
         "prepared" -> StatusClass.PREPARED
         "granted" -> StatusClass.GRANTED
-        in AUTHORITY_DENIED_STATUSES -> StatusClass.AUTHORITY_DENIED
+        "denied", "embedded_mode_unsupported" -> StatusClass.AUTHORITY_DENIED
+        "manager_sync_required" -> StatusClass.SYNC_REQUIRED
+        "consent_commit_failed" -> StatusClass.CONSENT_PENDING
         else -> StatusClass.UNAVAILABLE
     }
 
-    /** PREPARE：信封残缺只算本路没走通，换别路或 Remote Preferences 保底；条款拒绝仍是否定。 */
-    fun prepare(status: String?, envelopeValid: Boolean): Outcome = when (classify(status)) {
-        StatusClass.PREPARED -> if (envelopeValid) Outcome.CONTINUE else Outcome.UNAVAILABLE
-        StatusClass.AUTHORITY_DENIED -> Outcome.AUTHORITY_DENIED
-        StatusClass.GRANTED, StatusClass.UNAVAILABLE -> Outcome.UNAVAILABLE
-    }
+    fun prepare(status: String?, envelopeValid: Boolean): Outcome =
+        response(status, envelopeValid, StatusClass.PREPARED)
 
-    /** CONFIRM：granted 但绑定对不上只丢掉这一路，不闩整次启动。 */
-    fun confirm(status: String?, successBinding: Boolean): Outcome = when (classify(status)) {
-        StatusClass.GRANTED -> if (successBinding) Outcome.CONTINUE else Outcome.UNAVAILABLE
-        StatusClass.AUTHORITY_DENIED -> Outcome.AUTHORITY_DENIED
-        StatusClass.PREPARED, StatusClass.UNAVAILABLE -> Outcome.UNAVAILABLE
+    fun confirm(status: String?, envelopeValid: Boolean, successBinding: Boolean): Outcome =
+        response(status, envelopeValid, StatusClass.GRANTED).let {
+            if (it == Outcome.CONTINUE && !successBinding) Outcome.UNAVAILABLE else it
+        }
+
+    private fun response(status: String?, envelopeValid: Boolean, success: StatusClass): Outcome {
+        if (!envelopeValid) return Outcome.UNAVAILABLE
+        return when (classify(status)) {
+            success -> Outcome.CONTINUE
+            StatusClass.AUTHORITY_DENIED -> Outcome.AUTHORITY_DENIED
+            StatusClass.SYNC_REQUIRED -> Outcome.SYNC_REQUIRED
+            StatusClass.CONSENT_PENDING -> Outcome.CONSENT_PENDING
+            else -> Outcome.UNAVAILABLE
+        }
     }
 
     fun reason(outcome: Outcome): String? = when (outcome) {
         Outcome.CONTINUE -> null
         Outcome.AUTHORITY_DENIED -> REASON_DENIED
+        Outcome.SYNC_REQUIRED -> REASON_SYNC_REQUIRED
+        Outcome.CONSENT_PENDING -> REASON_CONSENT_PENDING
         Outcome.UNAVAILABLE -> REASON_UNAVAILABLE
     }
 
@@ -56,14 +55,24 @@ internal object HostAdmissionRouteClassifier {
     fun disabledRevision(status: String?, envelopeValid: Boolean, revision: Long): Long =
         if (status == "manager_sync_required" && envelopeValid && revision > 0L) revision else 0L
 
+    fun blocksFallback(reason: String): Boolean = reason in setOf(
+        REASON_DENIED, REASON_SYNC_REQUIRED, REASON_CONSENT_PENDING, REASON_CONFIG_INVALID
+    )
+
+    fun retryable(reason: String): Boolean = reason in setOf(
+        REASON_UNAVAILABLE, REASON_SYNC_REQUIRED, REASON_CONSENT_PENDING,
+        REASON_RESPONSE_INVALID, REASON_CONFIG_INVALID, REASON_TIMEOUT
+    )
+
     fun allowRemoteConfigFallback(
         sawDenied: Boolean,
         normalFailure: String?,
         authorized: Boolean,
         moduleVersionMatches: Boolean,
         generation: Long,
+        fallbackBlocked: Boolean = false,
         nPatchRuntime: Boolean = false,
-    ): Boolean = !sawDenied &&
+    ): Boolean = !sawDenied && !fallbackBlocked &&
         normalFailure == null &&
         authorized &&
         moduleVersionMatches &&

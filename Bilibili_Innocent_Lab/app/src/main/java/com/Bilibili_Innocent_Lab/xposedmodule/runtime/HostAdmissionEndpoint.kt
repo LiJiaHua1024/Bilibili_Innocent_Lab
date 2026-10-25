@@ -50,7 +50,7 @@ internal object HostAdmissionEndpoint {
             context.packageManager.getApplicationInfo(HostRuntimeDiagnosticsQueryContract.TARGET_PACKAGE, 0).uid == uid
         }.getOrDefault(false)
         if (!trusted || pid <= 0 || uid <= 0) return status("identity_rejected")
-        return runCatching {
+        val result = runCatching {
             if (extras == null || extras.getInt("version") != HostAdmissionContract.VERSION) return@runCatching status("protocol_rejected")
             val nonce = extras.getString("nonce").orEmpty()
             if (!HostRuntimeDiagnosticsQueryContract.isValidNonce(nonce)) return@runCatching status("protocol_rejected")
@@ -134,6 +134,12 @@ internal object HostAdmissionEndpoint {
                 }
             }
         }.getOrElse { status("protocol_rejected") }
+        if (result.getString("status") == "manager_sync_required") {
+            runCatching {
+                com.Bilibili_Innocent_Lab.xposedmodule.settings.remote.RemoteHookConfigStore.requestAuthorityRefresh(context)
+            }
+        }
+        return result
     }
 
     private fun status(status: String, nonce: String = "") = Bundle().apply {

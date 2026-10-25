@@ -64,11 +64,23 @@ class ValidateNotesTest(unittest.TestCase):
         payload = valid_payload()
         payload["summary"] = ["只有一句。"]
         _, errors, _ = notes_module.validate_notes(payload, make_context(), CONFIG)
-        self.assertTrue(any("2～4 句" in error for error in errors))
+        self.assertTrue(any("2～5 句" in error for error in errors))
         # Alpha 允许没有概述
         payload["summary"] = []
         _, errors, _ = notes_module.validate_notes(payload, make_context("alpha"), CONFIG)
         self.assertEqual([], errors)
+
+    def test_all_channels_allow_five_summary_sentences_but_reject_six(self) -> None:
+        for channel in ("stable", "alpha", "canary"):
+            with self.subTest(channel=channel):
+                payload = valid_payload()
+                payload["summary"] = [f"第{index}项调整已完成。" for index in range(5)]
+                _, errors, _ = notes_module.validate_notes(payload, make_context(channel), CONFIG)
+                self.assertEqual([], errors)
+                payload["summary"].append("另有一项调整。")
+                _, errors, _ = notes_module.validate_notes(payload, make_context(channel), CONFIG)
+                self.assertTrue(any("句" in error for error in errors))
+                self.assertIn("5", notes_module.summary_rule(channel))
 
     def test_rejects_internal_terms_markdown_and_duplicates(self) -> None:
         payload = valid_payload()
@@ -259,13 +271,78 @@ class ProviderChainTest(unittest.TestCase):
             outcome = notes_module.generate_with_llm(context, CONFIG, slots, log, [])
         self.assertIsNotNone(outcome)
         self.assertIn("槽位 2", outcome[1])
-        self.assertEqual(3, len(requests))
+        self.assertEqual(4, len(requests))
         retry_messages = requests[1]["body"]["messages"]
         self.assertEqual("assistant", retry_messages[1]["role"])
         self.assertIn("ccccccc", retry_messages[2]["content"])
         # 代理地址不附加官方专属的服务端回退参数
         self.assertNotIn("fallbacks", requests[0]["body"])
-        self.assertEqual("json_schema", requests[2]["body"]["response_format"]["type"])
+        self.assertEqual("json_schema", requests[3]["body"]["response_format"]["type"])
+        self.assertEqual(json.dumps(bad, ensure_ascii=False), requests[3]["body"]["messages"][-2]["content"])
+        self.assertIn("最小修改", requests[3]["body"]["messages"][-1]["content"])
+
+    def test_repairs_latest_draft_twice_without_losing_body(self) -> None:
+        first = valid_payload()
+        first["summary"] = [f"第{index}项调整。" for index in range(6)]
+        second = valid_payload()
+        second["summary"] = ["概述" * 45 + "。", "第二句。"]
+        final = valid_payload()
+        final["items"] = []
+        final["maintenance"] = []
+        slot = llm_providers.ProviderSlot(1, "openai", "https://api.example/v1", "m", "k")
+        drafts = [json.dumps(value, ensure_ascii=False) for value in (first, second, final)]
+        requests = []
+
+        def complete(_slot, _system, messages, _schema, **_kwargs):
+            requests.append(list(messages))
+            return drafts[len(requests) - 1]
+
+        with mock.patch.object(llm_providers, "complete", side_effect=complete):
+            outcome = notes_module.generate_with_llm(make_context(), CONFIG, [slot], [], [])
+        self.assertIsNotNone(outcome)
+        self.assertEqual(3, len(requests))
+        self.assertEqual(drafts[1], requests[2][1]["content"])
+        self.assertIn("只修改 summary", requests[2][2]["content"])
+        self.assertIn("80", requests[2][2]["content"])
+        self.assertEqual([SHA_A], outcome[0].items[0].commits)
+        self.assertEqual([SHA_C], outcome[0].maintenance)
+
+    def test_overview_repairs_invalid_json_and_continues_draft_on_next_slot(self) -> None:
+        slots = [llm_providers.ProviderSlot(n, "openai", "https://api.example/v1", "m", "k") for n in (1, 2)]
+        bad = json.dumps({"summary": ["概述" * 45 + "。"], "items": [], "maintenance": []})
+        good = json.dumps({"summary": ["调整近期功能。修复使用问题。"], "items": [], "maintenance": []})
+        replies = iter(["invalid JSON", bad, bad, good])
+        requests = []
+
+        def complete(_slot, _system, messages, _schema, **_kwargs):
+            requests.append(list(messages))
+            return next(replies)
+
+        with mock.patch.object(llm_providers, "complete", side_effect=complete):
+            summary = notes_module._generate_overview(notes_module.ReleaseNotes([], [], []), make_context(),
+                CONFIG, slots, llm_providers.ProviderSession(), [])
+        self.assertEqual(["调整近期功能。修复使用问题。"], summary)
+        self.assertEqual("invalid JSON", requests[1][1]["content"])
+        self.assertEqual(bad, requests[3][1]["content"])
+
+    def test_consolidation_repairs_invalid_json_before_fallback(self) -> None:
+        original = notes_module.ReleaseNotes([], [notes_module.NoteItem("new", "外观", "新增夜间模式。", [SHA_A])], [])
+        fixed = json.dumps({"summary": [], "items": [{"category": "new", "group": "外观",
+            "text": "新增夜间模式。", "commits": ["u0001"]}], "maintenance": []})
+        slot = llm_providers.ProviderSlot(1, "openai", "https://api.example/v1", "m", "k")
+        with mock.patch.object(llm_providers, "complete", side_effect=["invalid JSON", fixed]) as call:
+            result = notes_module._consolidate_notes(original, make_context("alpha", 1), CONFIG,
+                [slot], llm_providers.ProviderSession(), [], summarize=False)
+        self.assertIsNotNone(result)
+        self.assertEqual([SHA_A], result.items[0].commits)
+        self.assertEqual("invalid JSON", call.call_args.args[2][1]["content"])
+
+    def test_invalid_drafts_exhaust_bounded_repairs(self) -> None:
+        slot = llm_providers.ProviderSlot(1, "openai", "https://api.example/v1", "m", "k")
+        with mock.patch.object(llm_providers, "complete", return_value="invalid JSON") as call:
+            outcome = notes_module.generate_with_llm(make_context(), CONFIG, [slot], [], [])
+        self.assertIsNone(outcome)
+        self.assertEqual(3, call.call_count)
 
     def test_structured_output_rejection_degrades_format(self) -> None:
         import urllib.error

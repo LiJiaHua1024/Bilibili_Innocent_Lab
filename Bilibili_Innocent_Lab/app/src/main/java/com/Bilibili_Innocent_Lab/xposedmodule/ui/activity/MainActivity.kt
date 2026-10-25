@@ -339,6 +339,7 @@ class MainActivity : SkinnedActivity() {
     internal var hideVideoDetailAppPromotion = false
     internal var bannerAdEnabled = true
     internal var merchAdEnabled = true
+    internal var hideLiveHomePromotion = false
     internal var hideHomeGameMenu = false
     internal var hideHomeSearchDefaultWord = false
     internal var homeVerticalOpenDetail = false
@@ -445,6 +446,7 @@ class MainActivity : SkinnedActivity() {
     internal var playerDisableLongPress = false
     internal var playerLongPressSpeedPercent = 0
     internal var playerDefaultSpeedPercent = 0
+    internal var playerSpeedMenuPercents: List<Int> = emptyList()
     internal var blockTeenagersModePrompt = false
     internal var removeCommentSearchLinks = false
     internal var removeCommentEmptyGuide = false
@@ -503,6 +505,7 @@ class MainActivity : SkinnedActivity() {
     internal var freeCopyDescEnabled = true
     internal var freeCopyLightMode = false
     internal var freeCopyAutoLight = false
+    internal var refreshCopyAppearanceOptions: () -> Unit = {}
     internal var hostBottomBarLiquidGlass = false
     internal var hostBottomBarGlassAppearance = com.Bilibili_Innocent_Lab.xposedmodule.settings.appearance.HostChromeAppearance()
     internal var hostBottomBarTouchGlow = false
@@ -513,6 +516,7 @@ class MainActivity : SkinnedActivity() {
     internal var hostHomeCardVerticalDp = -1
     internal var hostBottomBarCompact = false
     internal var hostBottomBarIconOnly = false
+    internal var hostMineGarbDim = true
     internal var hostTopBarLiquidGlass = false
     internal var hostTopBarGlassAppearance = com.Bilibili_Innocent_Lab.xposedmodule.settings.appearance.HostChromeAppearance()
     internal var hostTopBarTouchGlow = false
@@ -537,6 +541,7 @@ class MainActivity : SkinnedActivity() {
     internal var playerBufferSummaryView: NativeTextView? = null
     internal var playerLongPressSpeedSummary: NativeTextView? = null
     internal var playerDefaultSpeedSummary: NativeTextView? = null
+    internal var playerSpeedMenuSummary: NativeTextView? = null
     internal var homeTabRulesSummaryView: NativeTextView? = null
     internal var homeRecommendTitleSummaryView: NativeTextView? = null
     internal var homeRecommendBlockedTidsSummaryView: NativeTextView? = null
@@ -797,6 +802,7 @@ class MainActivity : SkinnedActivity() {
 
     /** 当前活动的确认弹窗：Activity 销毁时主动 dismiss，避免 WindowLeaked */
     internal var activeConfirmDialog: Dialog? = null
+    private val settingDependencies = SettingsDependencyBindings()
     internal val settingsDestinations = SettingsDestinationRegistry<View>()
     internal var pendingHighlightsFrom: Int? = null
     private var pendingHighlightsAutomatic = true
@@ -2229,11 +2235,18 @@ class MainActivity : SkinnedActivity() {
         getString(R.string.player_speed_multiplier, PlayerSpeedConfig.formatMultiplier(percent))
     }
 
+    private fun playerSpeedMenuLabel(percents: List<Int>): String = if (percents.isEmpty()) {
+        getString(R.string.player_speed_follow_host)
+    } else {
+        PlayerSpeedConfig.formatMenuSummary(percents)
+    }
+
     internal fun updatePlayerSpeedSummaries() {
         playerLongPressSpeedSummary?.text = if (playerDisableLongPress) {
             getString(R.string.player_long_press_speed_paused, playerSpeedLabel(playerLongPressSpeedPercent))
         } else playerSpeedLabel(playerLongPressSpeedPercent)
         playerDefaultSpeedSummary?.text = playerSpeedLabel(playerDefaultSpeedPercent)
+        playerSpeedMenuSummary?.text = playerSpeedMenuLabel(playerSpeedMenuPercents)
     }
 
     /** 手动入口只展示已保存规则；宿主点选统一在管理面板确认。 */
@@ -4417,6 +4430,7 @@ class MainActivity : SkinnedActivity() {
     }
 
     override fun onDestroy() {
+        settingDependencies.dispose()
         settingsHome?.dispose()
         settingsHome = null
         cancelSettingsReveal()
@@ -4446,7 +4460,7 @@ class MainActivity : SkinnedActivity() {
         // Activity 销毁时主动关闭弹窗，避免 WindowLeaked（Activity has leaked window）
         activeConfirmDialog?.dismiss()
         activeConfirmDialog = null
-        hostBackgroundEditor?.close()
+        hostBackgroundEditor?.close(animate = false)
         hostBackgroundEditor = null
         liquidBackgroundDialog?.dismiss()
         liquidBackgroundDialog = null
@@ -4484,6 +4498,7 @@ class MainActivity : SkinnedActivity() {
         purificationSettingsRoot = null
         enhancementSettingsRoot = null
         beautificationSettingsRoot = null
+        refreshCopyAppearanceOptions = {}
         purificationAdvancedContent = null
         purificationAdvancedChevron = null
         enhancementAdvancedContent = null
@@ -4513,6 +4528,7 @@ class MainActivity : SkinnedActivity() {
         playerBufferSummaryView = null
         playerLongPressSpeedSummary = null
         playerDefaultSpeedSummary = null
+        playerSpeedMenuSummary = null
         homeTabRulesSummaryView = null
         homeRecommendTitleSummaryView = null
         homeRecommendBlockedTidsSummaryView = null
@@ -4629,6 +4645,7 @@ class MainActivity : SkinnedActivity() {
         gamecardAdEnabled = uiSettings.bool(HookEntry.PREF_GAMECARD_ENABLED)
         hideVideoDetailAppPromotion = uiSettings.bool(FeaturePreferences.HIDE_VIDEO_DETAIL_APP_PROMOTION)
         bannerAdEnabled = uiSettings.bool(HookEntry.PREF_BANNER_ENABLED)
+        hideLiveHomePromotion = uiSettings.bool(FeaturePreferences.HIDE_LIVE_HOME_PROMOTION)
         hideHomeGameMenu = uiSettings.bool(FeaturePreferences.HIDE_HOME_GAME_MENU)
         hideHomeSearchDefaultWord = uiSettings.bool(FeaturePreferences.HIDE_HOME_SEARCH_DEFAULT_WORD)
         homeVerticalOpenDetail = uiSettings.bool(FeaturePreferences.HOME_VERTICAL_OPEN_DETAIL)
@@ -4734,6 +4751,10 @@ class MainActivity : SkinnedActivity() {
         playerDefaultSpeedPercent = PlayerSpeedConfig.normalize(
             uiSettings.int(FeaturePreferences.PLAYER_DEFAULT_SPEED_PERCENT)
         )
+        playerSpeedMenuPercents = PlayerSpeedConfig.effectiveMenuPercents(
+            playerDefaultSpeedPercent,
+            uiSettings.string(FeaturePreferences.PLAYER_SPEED_MENU_PERCENTS)
+        )
         removeCommentSearchLinks = uiSettings.bool(FeaturePreferences.REMOVE_COMMENT_SEARCH_LINKS)
         removeCommentEmptyGuide = uiSettings.bool(FeaturePreferences.REMOVE_COMMENT_EMPTY_GUIDE)
         removeCommentVoteWidgets = uiSettings.bool(FeaturePreferences.REMOVE_COMMENT_VOTE_WIDGETS)
@@ -4799,6 +4820,7 @@ class MainActivity : SkinnedActivity() {
         loadHostCardSettings(uiSettings)
         hostBottomBarCompact = uiSettings.bool(FeaturePreferences.HOST_BOTTOM_BAR_COMPACT)
         hostBottomBarIconOnly = uiSettings.bool(FeaturePreferences.HOST_BOTTOM_BAR_ICON_ONLY)
+        hostMineGarbDim = uiSettings.bool(FeaturePreferences.HOST_MINE_GARB_DIM)
         hostTopBarLiquidGlass = uiSettings.bool(FeaturePreferences.HOST_TOP_BAR_LIQUID_GLASS)
         hostTopBarGlassAppearance = com.Bilibili_Innocent_Lab.xposedmodule.settings.appearance.HostChromeAppearance.read(
             uiSettings.string(FeaturePreferences.HOST_TOP_BAR_GLASS_MATERIAL),
@@ -5232,6 +5254,8 @@ class MainActivity : SkinnedActivity() {
         )
         // 两个进阶菜单已在各自大类末尾；首帧前只整理区域分组，不移动顶层卡片。
         installAdvancedCategorySections()
+        settingsDestinations.forEachTarget { id, view -> settingDependencies.bind(view, id) }
+        settingDependencies.start(modulePrefs)
         renderNoRootUi()
         // 首次连续前台停留十秒后，每进程至多一次自动检查；不在布局重建时重复启动。
         scheduleColdStartUpdate()
@@ -5279,12 +5303,15 @@ class MainActivity : SkinnedActivity() {
     ) {
         val id = SettingsCatalog.byStorageKey[storageKey]?.id ?: return
         view.settingId = id
+        settingDependencies.bind(view, id)
         view.supportsFavoriteToggle = directToggle
     }
 
     internal fun bindSettingDestination(view: View, storageKey: String) {
         SettingsCatalog.byStorageKey[storageKey]?.id?.let { settingsDestinations.bind(it, view) }
     }
+
+    internal fun bindSettingDependency(view: View, id: String) = settingDependencies.bind(view, id)
 
     /**
      * 高级材质开关：液态玻璃材质已并入柔光美学，开关只决定是否加装这层材质。

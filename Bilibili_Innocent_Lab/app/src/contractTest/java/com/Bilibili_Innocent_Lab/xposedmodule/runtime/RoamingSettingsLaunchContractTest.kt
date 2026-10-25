@@ -73,4 +73,31 @@ class RoamingSettingsLaunchContractTest {
         val applicationCreate = entry.after("\"callApplicationOnCreate\",")
         assertTrue(applicationCreate.contains(".initializeHost(application)"))
     }
+
+    @Test
+    fun `admission recovery runs IPC off lifecycle callbacks and releases result ownership`() {
+        val recovery = SourceContract.read("runtime/HostAdmissionRecovery.kt")
+        val resume = recovery.after("override fun onActivityResumed(").before("override fun onActivityPaused(")
+        assertFalse(resume.contains("admit()"))
+        assertTrue(recovery.after("worker.submit").before("val receivedAt").contains("admit()"))
+        val pause = recovery.after("override fun onActivityPaused(").before("override fun onActivityCreated(")
+        assertTrue(pause.contains("releaseActivity(value)"))
+        val release = recovery.after("private fun releaseActivity(").before("fun start()")
+        assertTrue(release.contains("policy.invalidate()"))
+        assertTrue(recovery.after("override fun onActivityStopped(").before("private fun releaseActivity(").contains("releaseActivity(value)"))
+        val close = recovery.after("private fun close(").before("private fun report(")
+        assertTrue(close.contains("unregisterActivityLifecycleCallbacks"))
+        assertTrue(close.contains("main.removeCallbacks(expire)"))
+        assertTrue(close.contains("inFlight?.cancel(false)"))
+        assertTrue(recovery.contains("policy.takeDelivery(token, now, delivery)"))
+        assertTrue(recovery.contains("policy.postDelivery(token,"))
+        assertTrue(recovery.contains("WeakReference(value)"))
+    }
+
+    @Test
+    fun `fast admission drains already arrived refusals before installing a grant`() {
+        val client = SourceContract.read("runtime/HostAdmissionClient.kt")
+        val fast = client.after("if (collect.grant != null) {").before("if (collect.sawDenied)")
+        assertTrue(fast.contains("drainRouted(collect, responses, acceptGrant = false"))
+    }
 }

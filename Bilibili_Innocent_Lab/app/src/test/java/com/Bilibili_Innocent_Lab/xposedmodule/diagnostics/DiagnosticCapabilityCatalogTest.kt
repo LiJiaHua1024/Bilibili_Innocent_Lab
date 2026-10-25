@@ -15,6 +15,25 @@ import org.junit.Test
 import java.io.File
 
 class DiagnosticCapabilityCatalogTest {
+    @Test fun `frame temperature choice has an independent catalog leaf without invented runtime evidence`() {
+        val leaf = DiagnosticCapabilityCatalog.byId.getValue("player_frame_interpolation_thermal_control")
+        assertEquals(setOf("player.frame_interpolation.disable_thermal_control"), leaf.settingIds)
+        assertEquals(32, leaf.introducedCatalogVersion)
+        assertEquals(DiagnosticCapabilityCatalog.runtimeSupport("player_frame_interpolation_status_toast"),
+            DiagnosticCapabilityCatalog.runtimeSupport(leaf.id))
+    }
+
+    @Test fun playerSpeedMenuHasItsOwnRuntimeCapabilityUnderPlayerSpeed() {
+        val capability = DiagnosticCapabilityCatalog.byId.getValue("player_speed_menu_percents")
+        assertEquals("player_speed", capability.parentId)
+        assertEquals(setOf("player.speed_menu.percents"), capability.settingIds)
+        assertEquals(28, capability.introducedCatalogVersion)
+        assertEquals(2, DiagnosticCapabilityCatalog.runtimeSupport(capability.id))
+        val descriptor = DiagnosticFeatureRegistry.descriptorOrNull(capability.id)!!
+        assertEquals(DiagnosticFeatureCategory.PLAYER_AND_DETAIL, descriptor.category)
+        assertTrue(descriptor.runtimeEvidenceExpected)
+    }
+
     @Test fun commentReplyButtonHasItsOwnRuntimeCapabilityAndSetting() {
         val capability = DiagnosticCapabilityCatalog.byId.getValue("comments_reply_button_removed")
         assertEquals("comment_reply_button", capability.parentId)

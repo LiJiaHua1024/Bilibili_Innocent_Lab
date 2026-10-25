@@ -148,6 +148,7 @@ class SettingsBackupActivity : SkinnedActivity(),
             titleColor = getColor(R.color.colorTextGray),
             sourceTitle = getString(R.string.settings_backup_title)
         )
+        motionHost.followScreenCorners = true
         motionHost.setMotionSurfaceBackground(skinMotionSurfaceBackground(monetColors.surfaceVariant, 15f))
         motionController = ContainerMorphController(
             activity = this,
@@ -983,6 +984,11 @@ class SettingsBackupActivity : SkinnedActivity(),
             } else {
                 getString(R.string.player_speed_multiplier, PlayerSpeedConfig.formatMultiplier(value.value))
             }
+        spec?.id == SettingsCatalog.ID_PLAYER_SPEED_MENU && value is SettingValue.Text -> {
+            val percents = PlayerSpeedConfig.parseStoredMenuPercents(value.value)
+            if (percents.isEmpty()) getString(R.string.player_speed_follow_host)
+            else PlayerSpeedConfig.formatMenuSummary(percents)
+        }
         spec?.id == ID_PLAYER_DEFAULT_QUALITY && value is SettingValue.IntValue ->
             playerQualityLabel(value.value)
         spec?.id == ID_LOG_LEVEL && value is SettingValue.Text -> when (value.value) {

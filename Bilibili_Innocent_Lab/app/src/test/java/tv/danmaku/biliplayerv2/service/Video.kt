@@ -17,5 +17,11 @@ class Video {
     }
 }
 
+// 与真实宿主一样，公开类型只声明抽象契约，实际播放条目提供其实现。
+class FixturePlayableParams(private val display: Video.DisplayParams, kind: VideoBizType = VideoBizType.UGC) :
+    Video.PlayableParams(display.getFrom(), kind) {
+    override fun getDisplayParams() = display
+}
+
 open class FixtureResolveParams(private val origin: String) { fun getFrom() = origin }
 class CurrentVideoPointer(var index: Int = 0)

@@ -26,6 +26,9 @@ internal class BrandSplashKntrRenderer(
     private var painterBitmap: Bitmap? = null
     private var painter: Any? = null
     private val painterFactories = HashMap<Class<*>, Constructor<*>>()
+    private val nativeDrawPhotos = WeakHashMap<Any, WeakReference<BrandSplashImageCache.Photo>>()
+    private var wrappedBitmap: Bitmap? = null
+    private var wrappedImage: Any? = null
 
     fun install(): Boolean {
         val composer = KavaMemberLookup.classOrNull(loader, "androidx.compose.runtime.Composer") ?: return false
@@ -38,19 +41,19 @@ internal class BrandSplashKntrRenderer(
             .mapNotNull { KavaMemberLookup.classOrNull(loader, it) }
         val page = owners.flatMap(KavaMemberLookup::declaredMethods).singleOrNull { method ->
             Modifier.isStatic(method.modifiers) && method.returnType == Void.TYPE &&
-                method.parameterCount in 6..7 && method.parameterTypes[1] == function0 &&
-                method.parameterTypes[2] == modifier && method.parameterTypes[3] == classOf<String>() &&
-                method.parameterTypes[4] == composer && method.parameterTypes[5] == Int::class.javaPrimitiveType &&
-                (method.parameterCount == 6 || method.parameterTypes[6] == Int::class.javaPrimitiveType) &&
+                brandSplashPageAbi(method.parameterTypes.map { it.name })?.let { abi ->
+                    method.parameterTypes[1] == function0 && method.parameterTypes[2] == modifier &&
+                        method.parameterTypes[abi.composerIndex] == composer
+                } == true &&
                 brandSplashKntrModelConstructor(method.parameterTypes[0]) != null
         } ?: return false
-        val composerIndex = 4
-        val flagsIndex = 5
+        val abi = requireNotNull(brandSplashPageAbi(page.parameterTypes.map { it.name }))
+        val composerIndex = abi.composerIndex
+        val flagsIndex = abi.flagsIndex
         val constructor = brandSplashKntrModelConstructor(page.parameterTypes[0]) ?: return false
-        val exitOwner = KavaMemberLookup.classOrNull(loader, BrandSplashSkipFeatureInstaller.KNTR_EXIT) ?: return false
-        val exitMethod = KavaMemberLookup.methodOrNull(exitOwner, "invokeSuspend", classOf<Any>()) ?: return false
-        val unitClass = KavaMemberLookup.classOrNull(loader, "kotlin.Unit") ?: return false
-        val unit = KavaMemberLookup.fieldOrNull(unitClass, "INSTANCE")?.get(null) ?: return false
+        val exitPoint = BrandSplashKntrAccess.exit(loader) ?: return false
+        val exitOwner = exitPoint.owner
+        val exitMethod = exitPoint.resume
         val draw = owners.singleOrNull { owner ->
             KavaMemberLookup.declaredFields(owner).count { it.type == page.parameterTypes[0] } == 1 &&
                 KavaMemberLookup.declaredMethods(owner).count { it.name == "invoke" && it.parameterCount == 3 } == 1
@@ -64,6 +67,41 @@ internal class BrandSplashKntrRenderer(
         val nativeImages = KavaMemberLookup.classOrNull(loader, "androidx.compose.ui.graphics.AndroidImageBitmap_androidKt") ?: return false
         val wrapImage = KavaMemberLookup.methodOrNull(nativeImages, "asImageBitmap", classOf<Bitmap>()) ?: return false
         val imageBitmap = wrapImage.returnType
+        val bitmapFields = KavaMemberLookup.declaredFields(draw, makeAccessible = true).filter { it.type == imageBitmap }
+        if (bitmapFields.size > 1) return false
+        val bitmapField = bitmapFields.singleOrNull()
+        val bitmapConstructor = if (bitmapField != null) KavaMemberLookup.declaredConstructors(draw, true).singleOrNull {
+            it.parameterTypes.map { type -> type.name } == listOf(imageBitmap.name, page.parameterTypes[0].name,
+                "androidx.compose.ui.unit.Density", resourceClass.name, "androidx.compose.runtime.MutableState",
+                "androidx.compose.runtime.MutableState", "androidx.compose.runtime.MutableState")
+        } ?: return false else null
+        if (bitmapConstructor != null) {
+            // This page owns the constructor; pass a bitmap without changing its immutable
+            // captures after construction or intercepting app-wide image rendering functions.
+            environment.registrar.constructor("brand.custom.kntr.bitmap", bitmapConstructor) {
+                before {
+                    if (!active.get()) return@before
+                    val model = argOrNull(1) ?: return@before
+                    val photo = modelBindings.firstOrNull { it.model.get() === model }?.photo?.get()
+                        ?.takeIf { runtime.isSelectionCurrent(it.signature) } ?: return@before
+                    val value = if (wrappedBitmap === photo.bitmap && wrappedImage != null) requireNotNull(wrappedImage)
+                        else requireNotNull(wrapImage.invoke(null, photo.bitmap)).also {
+                            wrappedBitmap = photo.bitmap; wrappedImage = it
+                        }
+                    args[0] = value
+                    setObjectExtra("brand.custom.bitmap.photo", photo)
+                    setObjectExtra("brand.custom.bitmap.value", value)
+                }
+                after {
+                    if (hasThrowable) return@after
+                    val photo = getObjectExtra("brand.custom.bitmap.photo") as? BrandSplashImageCache.Photo ?: return@after
+                    val target = instance ?: return@after
+                    if (bitmapField?.get(target) !== getObjectExtra("brand.custom.bitmap.value")) return@after
+                    if (nativeDrawPhotos.size >= 16) nativeDrawPhotos.keys.firstOrNull()?.let(nativeDrawPhotos::remove)
+                    nativeDrawPhotos[target] = WeakReference(photo)
+                }
+            }
+        }
         environment.registrar.exact("brand.custom.kntr.painter", resources, resource.name, *resource.parameterTypes) {
             after {
                 if (!active.get() || hasThrowable) return@after
@@ -94,9 +132,23 @@ internal class BrandSplashKntrRenderer(
                     composition?.let(scopeGetter::invoke)?.let { runtime.observeScope(it, invalidate) }
                     stored?.takeIf { runtime.isSelectionCurrent(it.signature) } ?: runtime.photo()
                 }.getOrNull() else null
-                paints.enter(PaintFrame(photo))
+                // The modern page draws its background bitmap first and its Logo later.
+                // Resource painters in that branch must always stay native.
+                paints.enter(PaintFrame(photo, mainConsumed = bitmapConstructor != null))
+                val owned = instance?.let { nativeDrawPhotos[it]?.get() }
+                if (owned != null && photo === owned && runtime.isSelectionCurrent(owned.signature)) {
+                    setObjectExtra("brand.custom.draw.photo", owned)
+                }
             }
-            after { paints.leave() }
+            after {
+                try {
+                    val photo = getObjectExtra("brand.custom.draw.photo") as? BrandSplashImageCache.Photo
+                    if (!hasThrowable && photo != null && runtime.isSelectionCurrent(photo.signature)) {
+                        runtime.shown(photo)
+                        environment.reportRuntimeEvidence(BrandSplashCustomFeatureInstaller.ID, FeatureRuntimeStage.APPLIED)
+                    }
+                } finally { paints.leave() }
+            }
         }
         environment.registrar.exact("brand.custom.kntr.page", page.declaringClass, page.name, *page.parameterTypes) {
             before {
@@ -117,7 +169,7 @@ internal class BrandSplashKntrRenderer(
         }
         environment.registrar.exact("brand.custom.kntr.completed", exitOwner, exitMethod.name, classOf<Any>()) {
             after {
-                if (!active.get() || hasThrowable || result !== unit) return@after
+                if (!active.get() || hasThrowable || !exitPoint.exited(instance, result)) return@after
                 runtime.photo()?.let(runtime::exited)
             }
         }

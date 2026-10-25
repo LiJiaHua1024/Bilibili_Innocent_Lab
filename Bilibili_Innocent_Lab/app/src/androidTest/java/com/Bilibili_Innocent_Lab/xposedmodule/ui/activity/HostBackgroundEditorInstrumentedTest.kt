@@ -27,6 +27,56 @@ import java.io.File
 
 @RunWith(AndroidJUnit4::class)
 class HostBackgroundEditorInstrumentedTest {
+    @Test fun standardSelectionAndAnimatedDismissalPreserveTheDraft() {
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        val context = instrumentation.targetContext
+        val prefs = context.modulePreferences()
+        val original = prefs.getString(FeaturePreferences.HOST_BACKGROUND_PRESET, null)
+        ActivityScenario.launch(MainActivity::class.java).use { scenario ->
+            lateinit var dialog: android.app.Dialog
+            lateinit var selection: com.lumen.coacervation.engine.widget.LumenSlidingSelection
+            var moved = false
+            scenario.onActivity { activity ->
+                val editor = HostBackgroundEditor(activity, activity.window.decorView) {}
+                activity.hostBackgroundEditor = editor
+                editor.show()
+                dialog = requireNotNull(activity.activeConfirmDialog)
+            }
+            instrumentation.waitForIdleSync()
+            fun descendants(view: View): Sequence<View> = sequence {
+                yield(view)
+                if (view is android.view.ViewGroup) for (index in 0 until view.childCount) yieldAll(descendants(view.getChildAt(index)))
+            }
+            scenario.onActivity {
+                selection = descendants(dialog.window!!.decorView)
+                    .filterIsInstance<com.lumen.coacervation.engine.widget.LumenSlidingSelection>().single()
+                selection.setOnGeometryListener { _, _, _, _, _, _, _, _, moving -> if (moving) moved = true }
+                val target = if (selection.selectedIndex == 1) 2 else 1
+                selection.options.getChildAt(target).performClick()
+                assertEquals(target, selection.selectedIndex)
+                assertTrue(selection.options.getChildAt(target).isSelected)
+            }
+            instrumentation.waitForIdleSync()
+            scenario.onActivity { activity ->
+                assertTrue("The standard indicator must animate between options", moved)
+                val cancel = descendants(dialog.window!!.decorView).filterIsInstance<android.widget.TextView>()
+                    .single { it.text.toString() == context.getString(R.string.dialog_cancel) }
+                cancel.performClick()
+                assertTrue("Dismissal must keep the dialog alive for its exit frames", dialog.isShowing)
+                assertNotNull("Preview resources must survive until dismissal", activity.hostBackgroundEditor)
+            }
+            val deadline = android.os.SystemClock.uptimeMillis() + 5000
+            var finished = false
+            while (!finished && android.os.SystemClock.uptimeMillis() < deadline) {
+                instrumentation.waitForIdleSync()
+                scenario.onActivity { finished = it.hostBackgroundEditor == null && !dialog.isShowing }
+                if (!finished) android.os.SystemClock.sleep(20)
+            }
+            assertTrue("Animated dismissal must finish and release the editor", finished)
+            assertEquals("Cancel must not save the draft", original, prefs.getString(FeaturePreferences.HOST_BACKGROUND_PRESET, null))
+        }
+    }
+
     /** 本机宿主切页验证，只有显式 verifyHost=true 才执行设备坐标操作。 */
     @Test fun backgroundContinuesAcrossHostScrollAndTabChanges() {
         org.junit.Assume.assumeTrue(InstrumentationRegistry.getArguments().getString("verifyHost") == "true")

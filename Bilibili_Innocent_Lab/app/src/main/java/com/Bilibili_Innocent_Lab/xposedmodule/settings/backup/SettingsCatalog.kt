@@ -34,9 +34,10 @@ import com.Bilibili_Innocent_Lab.xposedmodule.settings.appearance.HostCardMateri
 internal object SettingsCatalog {
     const val PRODUCT_ID = "bilibili-innocent-lab.settings"
     const val SCOPE_ID = "core-user-settings"
-    const val CATALOG_VERSION = 58
+    const val CATALOG_VERSION = 66
     const val ID_PLAYER_DEFAULT_SPEED = "player.default_speed.percent"
     const val ID_PLAYER_LONG_PRESS_SPEED = "player.long_press_speed.percent"
+    const val ID_PLAYER_SPEED_MENU = "player.speed_menu.percents"
     const val ID_FREE_COPY_COMMENT = "free_copy.comment.enabled"
     const val ID_FREE_COPY_DESCRIPTION = "free_copy.description.enabled"
     const val ID_RECOMMEND_VIDEO_MIN_DURATION =
@@ -276,6 +277,7 @@ internal object SettingsCatalog {
         bool("ads.home_banner.hidden", HookEntry.PREF_BANNER_ENABLED, R.string.banner_ad_enable, default = true),
         bool("ads.merchandise.hidden", HookEntry.PREF_MERCH_ENABLED, R.string.merch_ad_enable, default = true),
 
+        bool("home.live.promotion.hidden", FeaturePreferences.HIDE_LIVE_HOME_PROMOTION, R.string.hide_live_home_promotion, introducedCatalogVersion = 63),
         bool("home.top_bar.game_menu.hidden", FeaturePreferences.HIDE_HOME_GAME_MENU, R.string.hide_home_game_menu),
         bool("home.top_bar.search_word.hidden", FeaturePreferences.HIDE_HOME_SEARCH_DEFAULT_WORD, R.string.hide_home_search_default_word),
         bool("home.vertical.open_detail", FeaturePreferences.HOME_VERTICAL_OPEN_DETAIL, R.string.home_vertical_open_detail),
@@ -694,6 +696,8 @@ internal object SettingsCatalog {
             default = false,
             introducedCatalogVersion = 41
         ),
+        bool("host.mine.garb_dim.enabled", FeaturePreferences.HOST_MINE_GARB_DIM,
+            R.string.host_mine_garb_dim, default = true, introducedCatalogVersion = 65),
         bool(
             "host.bottom_bar.touch_glow.enabled",
             FeaturePreferences.HOST_BOTTOM_BAR_TOUCH_GLOW,
@@ -834,6 +838,18 @@ internal object SettingsCatalog {
             R.string.player_unlock_small_window, introducedCatalogVersion = 13),
         bool("player.capability.cast", FeaturePreferences.PLAYER_UNLOCK_CAST,
             R.string.player_unlock_cast, introducedCatalogVersion = 13),
+        bool("player.subtitle.style.enabled", FeaturePreferences.PLAYER_SUBTITLE_STYLE,
+            R.string.player_subtitle_style, introducedCatalogVersion = 62),
+        bool("player.subtitle.ai.enabled", FeaturePreferences.PLAYER_AI_SUBTITLE,
+            R.string.player_ai_subtitle, introducedCatalogVersion = 62),
+        bool("player.frame_interpolation.enabled", FeaturePreferences.PLAYER_FRAME_INTERPOLATION,
+            R.string.player_frame_interpolation, introducedCatalogVersion = 58),
+        integer("player.frame_interpolation.max_fps", FeaturePreferences.PLAYER_FRAME_INTERPOLATION_MAX_FPS,
+            R.string.player_frame_max_fps, default = 60, allowed = setOf(60, 90, 120, 144, 165, 185), introducedCatalogVersion = 59),
+        bool("player.frame_interpolation.status_toast", FeaturePreferences.PLAYER_FRAME_INTERPOLATION_STATUS_TOAST,
+            R.string.player_frame_status_toast, introducedCatalogVersion = 61),
+        bool("player.frame_interpolation.disable_thermal_control", FeaturePreferences.PLAYER_FRAME_INTERPOLATION_DISABLE_THERMAL_CONTROL,
+            R.string.player_frame_disable_thermal_control, introducedCatalogVersion = 64),
         bool("player.long_press.disabled", FeaturePreferences.PLAYER_DISABLE_LONG_PRESS,
             R.string.player_disable_long_press, introducedCatalogVersion = 13),
         integer(ID_PLAYER_LONG_PRESS_SPEED, FeaturePreferences.PLAYER_LONG_PRESS_SPEED_PERCENT,
@@ -842,6 +858,9 @@ internal object SettingsCatalog {
         integer(ID_PLAYER_DEFAULT_SPEED, FeaturePreferences.PLAYER_DEFAULT_SPEED_PERCENT,
             R.string.player_default_speed, default = PlayerSpeedConfig.FOLLOW_HOST,
             allowed = PlayerSpeedConfig.supportedPercents, introducedCatalogVersion = 13),
+        text(ID_PLAYER_SPEED_MENU, FeaturePreferences.PLAYER_SPEED_MENU_PERCENTS,
+            R.string.player_speed_menu, default = "",
+            maxStringLength = PlayerSpeedConfig.MAX_MENU_SPEC_LENGTH, introducedCatalogVersion = 60),
         bool("player.sponsorblock.enabled", FeaturePreferences.SPONSORBLOCK_ENABLED,
             R.string.sponsorblock_enabled, introducedCatalogVersion = 44),
         bool("player.sponsorblock.automatic", FeaturePreferences.SPONSORBLOCK_AUTOMATIC,
@@ -914,7 +933,7 @@ internal object SettingsCatalog {
             "share.wechat.resigned_compat",
             FeaturePreferences.WECHAT_SHARE_COMPAT,
             R.string.wechat_share_compat,
-            introducedCatalogVersion = 58
+            introducedCatalogVersion = 66
         ),
         bool(
             "links.external_browser.enabled",
@@ -1019,7 +1038,7 @@ internal object SettingsCatalog {
     val byStorageKey: Map<String, SettingSpec> = specs.associateBy(SettingSpec::storageKey)
 
     init {
-        check(specs.size == 237) { "Expected 237 catalog settings, found ${specs.size}" }
+        check(specs.size == 246) { "Expected 246 catalog settings, found ${specs.size}" }
         check(byId.size == specs.size) { "Duplicate logical setting id" }
         check(specs.map(SettingSpec::storageKey).distinct().size == specs.size) {
             "Duplicate settings storage key"

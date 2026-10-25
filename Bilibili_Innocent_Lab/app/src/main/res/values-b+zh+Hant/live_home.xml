@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="hide_live_home_promotion">隱藏直播分欄頂部推廣大卡</string>
+    <string name="hide_live_home_promotion_tip">移除首頁「直播」分欄頂部的推廣大卡輪播，並收起佔位；保留「我的關注」和一般直播清單。修改後需重新啟動嗶哩嗶哩。</string>
+    <string name="highlights_live_home_promotion">可隱藏直播分欄頂部推廣大卡，移除後不留空白。</string>
+</resources>

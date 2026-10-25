@@ -106,6 +106,26 @@ class VersionAdapterTest {
         assertNull(VersionAdapter.rebindRepackedCache(previous.copy(commentLow = VersionAdapter.HookPoint("", "")), identity, 0, repackDex))
     }
 
+    @Test fun `speed menu optional cache and failure history are bound to host and reset`() {
+        val point = com.Bilibili_Innocent_Lab.xposedmodule.hook.adapter.PlayerSpeedMenuPoints(
+            adapter = VersionAdapter.HookPoint("com.bilibili.playerbizcommonv2.widget.speed.RenamedAdapter", "populate", listOf("float")))
+        val id = com.Bilibili_Innocent_Lab.xposedmodule.hook.adapter.PlayerSpeedMenuAdapter.DIAGNOSTIC
+        val failed = VersionAdapter.AdaptDiagnostic(id, VersionAdapter.AdaptState.MISSING, "no_match")
+        val stored = result().copy(playerSpeedMenu = point, diagnostics = listOf(failed))
+        assertEquals(point, VersionAdapter.AdaptResult.fromJson(stored.toJson())?.playerSpeedMenu)
+        assertNull(VersionAdapter.AdaptResult.fromJson(result().toJson())?.playerSpeedMenu)
+        assertNull(VersionAdapter.AdaptResult.fromJson(stored.toJson().put("player_speed_menu",
+            point.copy(adapter = point.adapter!!.copy(paramClassNames = null)).toJson())))
+        val live = result().copy(diagnostics = listOf(failed.copy(state = VersionAdapter.AdaptState.NOT_APPLICABLE, detail = "quick-locate")))
+        val merged = VersionAdapter.mergeRuntimeWithCached(live, stored)!!
+        assertEquals(point, merged.playerSpeedMenu)
+        assertEquals(failed, merged.diagnostics.single { it.id == id })
+        val snapshot = VersionAdapter.StartupCacheSnapshot(VersionAdapter.HostIdentity(stored.biliVersionCode, stored.hostFingerprint), stored.ts, stored)
+        assertEquals(point, snapshot.usableCache(false)?.playerSpeedMenu)
+        assertNull(snapshot.copy(identity = snapshot.identity.copy(fingerprint = "different-host")).usableCache(false))
+        assertNull(snapshot.copy(resetTimestamp = stored.ts + 1).usableCache(false))
+    }
+
     @Test fun `follow optional descriptor and failure history remain within the same host snapshot`() {
         val point = com.Bilibili_Innocent_Lab.xposedmodule.hook.adapter.FollowFeedPoints("iU.d", "f", "tS.G", "tS.H",
             "com.bilibili.bplus.followinglist.home.Q", "current")

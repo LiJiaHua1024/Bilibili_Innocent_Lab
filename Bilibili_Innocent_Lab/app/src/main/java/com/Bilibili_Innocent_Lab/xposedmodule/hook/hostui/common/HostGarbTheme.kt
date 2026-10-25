@@ -19,8 +19,9 @@ internal object HostGarbTheme {
         private val selected = method("getTailSelectedColor")
         private val secondary = method("getSecondaryPageColor")
         private val artwork = method("getHeadBgPath")
-        private var requestedPath: String? = null
+        @Volatile private var requestedPath: String? = null
         @Volatile private var sampled: Pair<String, Int?>? = null
+        private val samples = HostLatestWorkQueue(worker::execute)
 
         fun read(context: Context): Int? = runCatching {
             // 夜间/夜空背景下 getCurGarb 是纯黑皮肤，实际装备仍由带 Context 的入口提供。
@@ -35,7 +36,10 @@ internal object HostGarbTheme {
             if (!path.isNullOrEmpty() && requestedPath != path) {
                 requestedPath = path
                 val directory = File(context.applicationContext.filesDir, "garb")
-                worker.execute { sampled = path to sample(path, directory) }
+                samples.submit {
+                    val color = sample(path, directory)
+                    if (requestedPath == path) sampled = path to color
+                }
             }
             sampled?.takeIf { it.first == path }?.second
                 ?: accent?.takeIf { it ushr 24 >= 128 }

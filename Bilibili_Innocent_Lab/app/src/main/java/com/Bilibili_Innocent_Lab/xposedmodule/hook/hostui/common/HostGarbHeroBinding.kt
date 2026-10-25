@@ -8,7 +8,7 @@ import java.lang.ref.WeakReference
 import com.Bilibili_Innocent_Lab.xposedmodule.hook.modern.ModernHookLog
 
 /** 保留个人中心立绘，在原主视觉容器上加可读性渐变和底部圆角；不创建页面叠层。 */
-internal class HostGarbHeroBinding(anchor: View) {
+internal class HostGarbHeroBinding(anchor: View, dimEnabled: Boolean = true) {
     private val anchor = WeakReference(anchor)
     private val id = anchor.resources.getIdentifier("main_top_bg_imageview", "id", "tv.danmaku.bili")
     private var reported = false
@@ -19,7 +19,7 @@ internal class HostGarbHeroBinding(anchor: View) {
     private var originalClip = false
     private var originalLayerType = View.LAYER_TYPE_NONE
     private var applied = false
-    private val scrim = HostGarbHeroForeground(24f * anchor.resources.displayMetrics.density)
+    private val scrim = HostGarbHeroForeground(24f * anchor.resources.displayMetrics.density, dimEnabled)
     private val outline = object : ViewOutlineProvider() {
         override fun getOutline(view: View, outline: Outline) {
             val radius = 24f * view.resources.displayMetrics.density

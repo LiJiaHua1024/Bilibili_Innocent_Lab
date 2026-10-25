@@ -5,9 +5,21 @@ from telegram_delivery_state import previous_commit, previous_delivery, legacy_p
 
 
 class TelegramDeliveryStateTest(unittest.TestCase):
+    def setUp(self):
+        # These are legacy log/checkpoint tests; archive validation has its own suite.
+        recovery = patch("telegram_delivery_state.recover_receipt", return_value={})
+        recovery.start()
+        self.addCleanup(recovery.stop)
+        existing = patch("telegram_delivery_state.existing_checkpoint", return_value=None)
+        existing.start()
+        self.addCleanup(existing.stop)
+        sleep = patch("telegram_delivery_state.time.sleep")
+        sleep.start()
+        self.addCleanup(sleep.stop)
+
     def completed_jobs(self, completed="2026-10-16T15:59:59Z", attempt=1):
         return {"jobs": [{"id": 7, "name": "Verify selected Canary and send its APK", "run_id": 9,
-                          "run_attempt": attempt, "steps": [{"name": SEND_STEP, "conclusion": "success",
+                          "run_attempt": attempt, "steps": [{"name": SEND_STEP, "conclusion": "success", "started_at": completed,
                                                                "completed_at": completed}]}]}
 
     def step_log(self, output, step=SEND_STEP):
@@ -244,7 +256,7 @@ class TelegramDeliveryStateTest(unittest.TestCase):
     def test_record_without_unique_actual_send_completion_does_not_create_checkpoint(self):
         with patch("telegram_delivery_state.github", return_value={"jobs": []}) as api, self.assertRaisesRegex(ValueError, "completion time"):
             record_delivery(self.receipt(), f"https://github.com/{REPOSITORY}/actions/runs/9")
-        self.assertEqual(1, api.call_count)
+        self.assertEqual(5, api.call_count)
 
     def test_legacy_checkpoint_without_actual_time_still_supports_manual_notes_but_not_daily_date(self):
         checkpoint = self.checkpoint()

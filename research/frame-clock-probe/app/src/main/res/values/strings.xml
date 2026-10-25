@@ -1,5 +1,0 @@
-<?xml version="1.0" encoding="utf-8"?>
-<resources>
-    <string name="app_name">ShadowHook Clock Research 0.9</string>
-    <string name="module_description">仅精确8.90.2 ARM64的主进程和ijkservice原时钟关联研究，采集最多12秒；不生成时钟快照，不处理画面或音频，不改Surface。</string>
-</resources>

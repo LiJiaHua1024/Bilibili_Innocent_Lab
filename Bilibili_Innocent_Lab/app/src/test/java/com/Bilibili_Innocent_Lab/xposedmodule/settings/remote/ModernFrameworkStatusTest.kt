@@ -21,6 +21,17 @@ class ModernFrameworkStatusTest {
         assertFalse(isNpatchAdmissionChannel(unavailable, false))
     }
 
+    @Test fun `framework routing identity precedes optional version metadata`() {
+        val core = readModernFrameworkCapabilities({ 102 }, { XposedService.PROP_CAP_REMOTE })
+        val named = core.withModernFrameworkIdentity { "LSPatch" }
+        assertTrue(named.capable)
+        assertTrue(named.isLspatch)
+        val versionUnavailable = named.withModernFrameworkVersions({ error("slow or unavailable") }, { 487 })
+        assertTrue(versionUnavailable.capable)
+        assertTrue(versionUnavailable.isLspatch)
+        assertFalse(core.withModernFrameworkIdentity { error("identity unknown") }.capable)
+        assertFalse(core.withModernFrameworkIdentity { "" }.capable)
+    }
     @Test
     fun `LSPatch identity is exact presentation metadata and never a capability grant`() {
         assertTrue(isLspatchFrameworkName("LSPatch"))

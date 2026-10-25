@@ -63,7 +63,35 @@ internal enum class DexAssistQuery {
     BRAND_SPLASH_DECODER,
 
     /** 关注流专用背景装饰器：offsets 日志及源码常量，owner/model/home 关系二次验真。 */
-    FOLLOW_FEED_STYLE
+    FOLLOW_FEED_STYLE,
+
+    /** 倍速列表填充（clear + abs）、选项工厂 ABI 与专用打开事件；运行时复核全部模型结构。 */
+    PLAYER_SPEED_MENU,
+
+    /** Page callback with history read plus typed square-list delivery; full owner graph revalidated. */
+    SEARCH_HOME_DELIVERY,
+    /** Typed search landing-page List constructor, never global observable publication. */
+    SEARCH_HOME_STATE,
+    /** Unique two-List merger strictly inside the UGC end-page package. */
+    PLAYER_END_PAGE_MERGER,
+    OGV_TRENDING_CARD,
+    OGV_DOUBLE_CARD,
+    OGV_UPCOMING_CARD,
+    PEGASUS_DIVIDER,
+    /** khome local chrome trace markers; the full Compose ABI is revalidated before installation. */
+    HOME_CHROME_TOP,
+    /** The tab layout has its own restart boundary, independently of HomeTopTabRow. */
+    HOME_CHROME_TOP_LAYOUT,
+    /** Phone second-row decorations live outside the tab Surface. */
+    HOME_CHROME_TOP_BACKDROP,
+    HOME_CHROME_TOP_CONTENT,
+    HOME_CHROME_TOP_RIGHT_ACTIONS,
+    HOME_CHROME_BOTTOM,
+    HOME_CHROME_BOTTOM_ITEM,
+    /** Native bottom content scope, before the full-size row and its tabs are composed. */
+    HOME_CHROME_BOTTOM_CONTENT,
+    /** Canonical Compose semantics keys: initializer constants plus runtime key-name verification. */
+    HOME_CHROME_SEMANTICS
 }
 
 internal sealed interface DexAssistResult {

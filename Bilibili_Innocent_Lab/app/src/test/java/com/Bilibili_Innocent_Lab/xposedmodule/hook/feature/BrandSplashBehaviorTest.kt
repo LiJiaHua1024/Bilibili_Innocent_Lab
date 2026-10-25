@@ -102,6 +102,39 @@ class BrandSplashBehaviorTest {
         assertSame(original, registrar.invoke("brand.custom.refresh", null) { original })
     }
 
+    @Test fun nullServerListCannotClearAPersistedVipSelectionDuringHostReconciliation() {
+        BrandSplashStorage.mode = true
+        val vip = BrandSplash(1, "vip")
+        BrandSplashStorage.selected = arrayListOf(vip)
+        BrandSplashCustomFeatureInstaller(true, context(), false).install(environment)
+        registrar.invoke("brand.custom.storage.read", null, arrayOf(false)) { BrandSplashStorage.selected }
+
+        // The host treats a null response list as empty, intersects it with the stored choices,
+        // and disables custom mode when the intersection is empty (9.15 / 9.16 refresh worker).
+        val available = registrar.invoke("brand.custom.refresh", null) { null } as? List<*> ?: emptyList<Any>()
+        val storedIds = BrandSplashStorage.selected.map { it.id }.toSet()
+        val retained = available.filterIsInstance<BrandSplash>().filter { it.id in storedIds }
+        if (retained.isEmpty()) {
+            registrar.invoke("brand.custom.storage.mode", null, arrayOf(false)) { BrandSplashStorage.l(false); null }
+        } else {
+            registrar.invoke("brand.custom.storage.write", null, arrayOf(retained)) { BrandSplashStorage.k(retained); null }
+        }
+        assertTrue(BrandSplashStorage.mode)
+        assertEquals(listOf(vip), BrandSplashStorage.selected)
+    }
+
+    @Test fun nullServerListStaysNullWithoutAnActivePersistedVipChoice() {
+        BrandSplashStorage.mode = true
+        BrandSplashStorage.selected = arrayListOf(BrandSplash(2, "dlc"), BrandSplash(3, "brand"))
+        BrandSplashCustomFeatureInstaller(true, context(), false).install(environment)
+        registrar.invoke("brand.custom.storage.read", null, arrayOf(false)) { BrandSplashStorage.selected }
+        assertNull(registrar.invoke("brand.custom.refresh", null) { null })
+
+        registrar.invoke("brand.custom.storage.write", null, arrayOf(listOf(BrandSplash(1, "vip")))) { null }
+        registrar.invoke("brand.custom.storage.mode", null, arrayOf(false)) { null }
+        assertNull(registrar.invoke("brand.custom.refresh", null) { null })
+    }
+
     @Test fun freshServerMetadataWinsOverTheOldPersistedInstance() {
         val old = BrandSplash(1, "vip", "old"); val fresh = BrandSplash(1, "vip", "new")
         val server = listOf(fresh)

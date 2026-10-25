@@ -186,6 +186,7 @@ The sections below describe capabilities by feature topic. Developer-facing cate
 
 | Feature | Description |
 | --- | --- |
+| Hide promoted live cards on the Live tab | Removes the top promoted live carousel without leaving a gap; preserves followed streamers and the normal live list. Off by default; restart Bilibili after changing it |
 | Hide the home large-card carousel | Handles the carousel cards that take up a lot of space at the top of the home page or in the recommendation area, completing the carousel cleanup in environments where it previously failed |
 | Filter recommended ads | Filters recognised ads before the home recommendation data reaches the UI; ordinary video recommendations are unaffected |
 | Filter recommended image-text posts | Filters image-text cards in the home recommendation feed by adapted data type |
@@ -289,6 +290,7 @@ The sections below describe capabilities by feature topic. Developer-facing cate
 | Block automatic activity half-sheets on the film and TV page | Blocks the Premium promotion and similar activity half-sheets that expand automatically below the player on movie, TV series and anime playback pages; deliberate activity links, purchase entries and normal playback permission checks are kept. Off by default, takes effect after restarting Bilibili |
 | Transparent player status bar | Applies the transparent status bar style only on the ordinary video detail page; no other Activity or window is modified globally |
 | Default playback quality | Follow Bilibili, or prefer 360P / 480P / 720P / 720P60 / 1080P / 1080P high bitrate / 1080P60 / 4K / 8K; it only changes the initial quality request when playback starts and does not unlock Premium or paid quality — the client still adjusts automatically when the source, account, network or server does not support the requested quality |
+| Playback speed menu options | In Advanced settings → Player, enter 1–12 speeds from 0.1× to 8× with up to two decimal places, separated by commas or spaces. Options are deduplicated and sorted highest first. Switching between this feature and Default playback speed shows a conflict prompt; long-press speed remains independent. Follow Bilibili restores the original menu. Restart Bilibili after changes |
 
 #### Danmaku cleanup
 
@@ -574,7 +576,7 @@ Use the fast check during local iteration:
 .\gradlew.bat :app:lintFast --console=plain --no-daemon
 ```
 
-The fast check skips only an explicit list of 32 BetterAndroid / KavaRef API replacement suggestions. Test-source analysis and Android correctness, permission, API compatibility, and Hikage checks remain enabled. It does not replace the full gate. Before committing and in CI, run:
+The fast check skips only an explicit list of 32 BetterAndroid / KavaRef API replacement suggestions. Android correctness, permission, API compatibility, and Hikage checks remain enabled for production sources. Test sources are verified by compilation and tests, and are excluded from Lint. It does not replace the full gate. Before committing and in CI, run:
 
 ```powershell
 .\gradlew.bat :app:lintDebug --console=plain --no-daemon
@@ -592,7 +594,7 @@ The debug APK is written to:
 Bilibili_Innocent_Lab/app/build/outputs/apk/debug/app-debug.apk
 ```
 
-After a build, make sure the APK's modification time is later than the source modification time. After installing it on a device, comparing the checksum of the local APK with the installed `base.apk` on the device is recommended, so that a Gradle cache or a stale artifact does not distort your testing.
+Confirm that Gradle completed successfully and use the APK from that build. `UP-TO-DATE` and `FROM-CACHE` are valid incremental results; APK modification time alone does not prove whether an artifact includes the current inputs. After installation, compare the SHA-256 of the local APK with the installed `base.apk` to confirm that the intended artifact was installed.
 
 **Further documentation**
 

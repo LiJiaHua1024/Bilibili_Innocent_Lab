@@ -19,8 +19,8 @@ env:
   # compileSdk 与本地 gradle.properties 对齐到 37，消除"本地能过、CI 过不了"的分叉；
   # androidx.core 1.19.0 起 aar-metadata 要求 minCompileSdk=37。
   CI_COMPILE_SDK: '37'
-  # sdkmanager 的包 id 带小版本号（platforms;android-37.0），与上面的 Gradle 属性不同名。
-  CI_COMPILE_SDK_PACKAGE: 'platforms;android-37.0'
+  # sdkmanager 的包 id 带小版本号（platforms;android-37.2），与上面的 Gradle 属性不同名。
+  CI_COMPILE_SDK_PACKAGE: 'platforms;android-37.2'
   CI_BUILD_TOOLS: '37.0.0'
   CI_GRADLE_JVMARGS: '-Xmx6144m -Dfile.encoding=UTF-8'
   JDK_JAVA_OPTIONS: '-XX:MaxMetaspaceSize=1024m -XX:ReservedCodeCacheSize=512m -XX:+UseCodeCacheFlushing'
@@ -95,10 +95,10 @@ jobs:
             --github-output "$GITHUB_OUTPUT"
 
       - name: Set up Java
-        uses: actions/setup-java@v6.0.1
+        uses: actions/setup-java@v6.1.0
         with:
           distribution: temurin
-          java-version: '17'
+          java-version: '27'
 
       - name: Set up Gradle and restore build cache
         id: gradle-cache
@@ -123,6 +123,7 @@ jobs:
           # 2026-09-14 把废弃多年的 tools 包从 SDK 仓库下架，该调用直接 exit 1（Failed to
           # find package 'tools'），把整个 job 卡死在 setup 阶段。上游 v4.0.1 还没改这个
           # 默认值，只能在调用处覆盖。其余 SDK 包由下一步显式声明。
+          cmdline-tools-version: '16111833'
           packages: platform-tools
 
       - name: Install Android SDK packages
@@ -216,10 +217,10 @@ jobs:
           fi
 
       - name: Set up Java
-        uses: actions/setup-java@v6.0.1
+        uses: actions/setup-java@v6.1.0
         with:
           distribution: temurin
-          java-version: '17'
+          java-version: '27'
 
       - name: Set up Gradle and restore build cache
         id: gradle-cache
@@ -244,6 +245,7 @@ jobs:
           # 2026-09-14 把废弃多年的 tools 包从 SDK 仓库下架，该调用直接 exit 1（Failed to
           # find package 'tools'），把整个 job 卡死在 setup 阶段。上游 v4.0.1 还没改这个
           # 默认值，只能在调用处覆盖。其余 SDK 包由下一步显式声明。
+          cmdline-tools-version: '16111833'
           packages: platform-tools
 
       - name: Install Android SDK packages

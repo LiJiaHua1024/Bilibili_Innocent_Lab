@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="player_subtitle_title">字幕</string>
+    <string name="player_subtitle_style">增強字幕樣式設定</string>
+    <string name="player_subtitle_style_tip">重新啟動 Bilibili 後，在播放器的字幕設定中調整字體、字級、文字、遮罩與描邊。樣式儲存在 Bilibili 本機。</string>
+    <string name="player_ai_subtitle">嘗試強制啟用 AI 多語言字幕</string>
+    <string name="player_ai_subtitle_tip">開啟用戶端 AI 字幕灰度開關並請求影片字幕。可選語言仍取決於官方伺服器提供的軌道，無法讓所有影片生成翻譯。重新啟動嗶哩嗶哩後生效。</string>
+</resources>

@@ -55,7 +55,7 @@ internal class HostBottomBarDockLayer(
     private val slop = ViewConfiguration.get(context).scaledTouchSlop.toFloat()
     private val publishViewId = resources.getIdentifier("home_publish_icon", "id", context.packageName)
     private val artworkId = resources.getIdentifier("tab_background", "id", context.packageName)
-    private val hero = HostGarbHeroBinding(tabHost)
+    private val hero = HostGarbHeroBinding(tabHost, dimEnabled = config.mineGarbDim)
     private val heroLayoutListener = ViewTreeObserver.OnGlobalLayoutListener { hero.invalidate() }
     private var materialColors = HostChromeColors(isDark, palette.primary)
     private val shadow = if (config.liquidGlass && config.appearance.material != HostGlassMaterial.PRISM)

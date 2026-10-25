@@ -9,14 +9,108 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class SettingsCatalogTest {
-    @Test fun `catalog v58 adds explicit default off WeChat compatibility requiring restart`() {
-        val added = SettingsCatalog.specs.single { it.introducedCatalogVersion == 58 }
+    @Test fun `catalog v66 adds explicit default off WeChat compatibility requiring restart`() {
+        val added = SettingsCatalog.specs.single { it.introducedCatalogVersion == 66 }
         assertEquals("share.wechat.resigned_compat", added.id)
         assertEquals(FeaturePreferences.WECHAT_SHARE_COMPAT, added.storageKey)
         assertEquals(SettingValue.Bool(false), added.defaultValue)
         assertEquals(RestorePolicy.AUTOMATIC, added.restorePolicy)
         assertTrue(ImportEffect.RESTART_BILIBILI in added.effects)
         assertFalse(added.accepts(SettingValue.Text("true")))
+    }
+
+    @Test fun `mine garb dimming preserves the existing default and joins catalog v65`() {
+        val expected = requireNotNull(javaClass.classLoader?.getResourceAsStream("settings-backup/catalog-v65.txt"))
+            .bufferedReader().useLines { it.filter(String::isNotBlank).toList() }
+        assertEquals(expected, SettingsCatalog.specs.filter { it.introducedCatalogVersion <= 65 }.map { it.id }.sorted())
+        val spec = SettingsCatalog.byId.getValue("host.mine.garb_dim.enabled")
+        assertEquals(65, spec.introducedCatalogVersion)
+        assertEquals(FeaturePreferences.HOST_MINE_GARB_DIM, spec.storageKey)
+        assertEquals(SettingValue.Bool(true), spec.defaultValue)
+        assertEquals(RestorePolicy.AUTOMATIC, spec.restorePolicy)
+        assertTrue(ImportEffect.RESTART_BILIBILI in spec.effects)
+    }
+
+    @Test fun `thermal bypass is default off restorable and requires host restart`() {
+        val expected = requireNotNull(javaClass.classLoader?.getResourceAsStream("settings-backup/catalog-v64.txt"))
+            .bufferedReader().useLines { it.filter(String::isNotBlank).toList() }
+        assertEquals(expected, SettingsCatalog.specs.filter { it.introducedCatalogVersion <= 64 }.map { it.id }.sorted())
+        val added = SettingsCatalog.specs.single { it.introducedCatalogVersion == 64 }
+        assertEquals("player.frame_interpolation.disable_thermal_control", added.id)
+        assertEquals(FeaturePreferences.PLAYER_FRAME_INTERPOLATION_DISABLE_THERMAL_CONTROL, added.storageKey)
+        assertEquals(SettingValue.Bool(false), added.defaultValue)
+        assertEquals(RestorePolicy.AUTOMATIC, added.restorePolicy)
+        assertTrue(ImportEffect.RESTART_BILIBILI in added.effects)
+    }
+
+    @Test fun `live home promotion is opt in and participates in backup and host restart`() {
+        val added = SettingsCatalog.specs.single { it.introducedCatalogVersion == 63 }
+        assertEquals("home.live.promotion.hidden", added.id)
+        assertEquals(FeaturePreferences.HIDE_LIVE_HOME_PROMOTION, added.storageKey)
+        assertEquals(SettingValue.Bool(false), added.defaultValue)
+        assertEquals(RestorePolicy.AUTOMATIC, added.restorePolicy)
+        assertTrue(ImportEffect.RESTART_BILIBILI in added.effects)
+    }
+
+
+    @Test
+    fun `subtitle controls are independent default off settings and preserve older catalogs`() {
+        val added = SettingsCatalog.specs.filter { it.introducedCatalogVersion == 62 }
+        assertEquals(setOf("player.subtitle.style.enabled", "player.subtitle.ai.enabled"), added.map { it.id }.toSet())
+        assertTrue(added.all { it.defaultValue == SettingValue.Bool(false) && it.restorePolicy == RestorePolicy.AUTOMATIC })
+        assertTrue(added.all { ImportEffect.RESTART_BILIBILI in it.effects })
+    }
+
+    @Test fun `catalog v61 adds a default off frame interpolation status toast switch`() {
+        val expected = requireNotNull(javaClass.classLoader?.getResourceAsStream("settings-backup/catalog-v61.txt"))
+            .bufferedReader().useLines { it.filter(String::isNotBlank).toList() }
+        assertEquals(expected, SettingsCatalog.specs.filter { it.introducedCatalogVersion <= 61 }.map { it.id }.sorted())
+        val added = SettingsCatalog.specs.single { it.introducedCatalogVersion == 61 }
+        assertEquals("player.frame_interpolation.status_toast", added.id)
+        assertEquals(FeaturePreferences.PLAYER_FRAME_INTERPOLATION_STATUS_TOAST, added.storageKey)
+        assertEquals(SettingValue.Bool(false), added.defaultValue)
+        assertEquals(RestorePolicy.AUTOMATIC, added.restorePolicy)
+        assertTrue(ImportEffect.RESTART_BILIBILI in added.effects)
+    }
+
+    @Test fun `catalog v59 adds a 60 fps default frame interpolation ceiling`() {
+        val expected = requireNotNull(javaClass.classLoader?.getResourceAsStream("settings-backup/catalog-v59.txt"))
+            .bufferedReader().useLines { it.filter(String::isNotBlank).toList() }
+        assertEquals(expected, SettingsCatalog.specs.filter { it.introducedCatalogVersion <= 59 }.map { it.id }.sorted())
+        val added = SettingsCatalog.specs.single { it.introducedCatalogVersion == 59 }
+        assertEquals("player.frame_interpolation.max_fps", added.id)
+        assertEquals(FeaturePreferences.PLAYER_FRAME_INTERPOLATION_MAX_FPS, added.storageKey)
+        assertEquals(SettingValue.IntValue(60), added.defaultValue)
+        assertTrue(added.accepts(SettingValue.IntValue(185)))
+        assertFalse(added.accepts(SettingValue.IntValue(240)))
+        assertFalse(added.accepts(SettingValue.IntValue(100)))
+        assertTrue(ImportEffect.RESTART_BILIBILI in added.effects)
+    }
+
+    @Test fun `catalog v58 adds a default off frame interpolation switch`() {
+        val expected = requireNotNull(javaClass.classLoader?.getResourceAsStream("settings-backup/catalog-v58.txt"))
+            .bufferedReader().useLines { it.filter(String::isNotBlank).toList() }
+        assertEquals(expected, SettingsCatalog.specs.filter { it.introducedCatalogVersion <= 58 }.map { it.id }.sorted())
+        val added = SettingsCatalog.specs.single { it.introducedCatalogVersion == 58 }
+        assertEquals("player.frame_interpolation.enabled", added.id)
+        assertEquals(FeaturePreferences.PLAYER_FRAME_INTERPOLATION, added.storageKey)
+        assertEquals(SettingValue.Bool(false), added.defaultValue)
+        assertEquals(RestorePolicy.AUTOMATIC, added.restorePolicy)
+        assertTrue(ImportEffect.RESTART_BILIBILI in added.effects)
+    }
+
+    @Test fun `catalog v60 adds a default empty player speed menu percents setting`() {
+        val expected = requireNotNull(javaClass.classLoader?.getResourceAsStream("settings-backup/catalog-v60.txt"))
+            .bufferedReader().useLines { it.filter(String::isNotBlank).toList() }
+        assertEquals(expected, SettingsCatalog.specs.filter { it.introducedCatalogVersion <= 60 }.map { it.id }.sorted())
+        val added = SettingsCatalog.specs.single { it.introducedCatalogVersion == 60 }
+        assertEquals(SettingsCatalog.ID_PLAYER_SPEED_MENU, added.id)
+        assertEquals(FeaturePreferences.PLAYER_SPEED_MENU_PERCENTS, added.storageKey)
+        assertEquals(SettingValue.Text(""), added.defaultValue)
+        assertTrue(added.accepts(SettingValue.Text("300,200,150,125,100,75,50")))
+        assertFalse(added.accepts(SettingValue.IntValue(200)))
+        assertEquals(RestorePolicy.AUTOMATIC, added.restorePolicy)
+        assertTrue(ImportEffect.RESTART_BILIBILI in added.effects)
     }
 
     @Test fun `catalog v57 adds an empty by default publish time rule`() {
@@ -272,11 +366,11 @@ class SettingsCatalogTest {
     }
 
     @Test
-    fun `catalog is a unique allowlist with 237 settings`() {
-        assertEquals(237, SettingsCatalog.specs.size)
-        assertEquals(237, SettingsCatalog.specs.map { it.id }.distinct().size)
-        assertEquals(237, SettingsCatalog.specs.map { it.storageKey }.distinct().size)
-        assertEquals(232, SettingsCatalog.specs.count { it.restorePolicy == RestorePolicy.AUTOMATIC })
+    fun `catalog is a unique allowlist with 246 settings`() {
+        assertEquals(246, SettingsCatalog.specs.size)
+        assertEquals(246, SettingsCatalog.specs.map { it.id }.distinct().size)
+        assertEquals(246, SettingsCatalog.specs.map { it.storageKey }.distinct().size)
+        assertEquals(241, SettingsCatalog.specs.count { it.restorePolicy == RestorePolicy.AUTOMATIC })
         assertEquals(5, SettingsCatalog.specs.count { it.restorePolicy == RestorePolicy.MANUAL })
         assertTrue(SettingsCatalog.specs.all { it.accepts(it.defaultValue) })
         assertTrue(SettingsCatalog.specs.all { it.id.matches(Regex("[a-z0-9][a-z0-9._-]{0,127}")) })
@@ -507,7 +601,7 @@ class SettingsCatalogTest {
         val expected = requireNotNull(javaClass.classLoader?.getResourceAsStream("settings-backup/catalog-v13.txt"))
             .bufferedReader().useLines { it.filter(String::isNotBlank).toList() }
         assertEquals(expected, SettingsCatalog.specs.filter { it.introducedCatalogVersion <= 13 }.map { it.id }.sorted())
-        assertEquals(58, SettingsCatalog.CATALOG_VERSION)
+        assertEquals(66, SettingsCatalog.CATALOG_VERSION)
         val added = SettingsCatalog.specs.filter { it.introducedCatalogVersion == 13 }
         assertEquals(6, added.size)
         assertTrue(added.all { it.restorePolicy == RestorePolicy.AUTOMATIC && ImportEffect.RESTART_BILIBILI in it.effects })
@@ -806,9 +900,9 @@ class SettingsCatalogTest {
 
     @Test
     fun `catalog types and manual roaming boundary are explicit`() {
-        assertEquals(143, SettingsCatalog.specs.count { it.type == SettingValueType.BOOLEAN })
-        assertEquals(23, SettingsCatalog.specs.count { it.type == SettingValueType.INTEGER })
-        assertEquals(71, SettingsCatalog.specs.count { it.type == SettingValueType.STRING })
+        assertEquals(150, SettingsCatalog.specs.count { it.type == SettingValueType.BOOLEAN })
+        assertEquals(24, SettingsCatalog.specs.count { it.type == SettingValueType.INTEGER })
+        assertEquals(72, SettingsCatalog.specs.count { it.type == SettingValueType.STRING })
 
         val roaming = requireNotNull(SettingsCatalog.byId["compat.roaming.enabled"])
         assertEquals(RestorePolicy.MANUAL, roaming.restorePolicy)

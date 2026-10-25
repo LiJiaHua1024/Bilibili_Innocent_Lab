@@ -1,6 +1,7 @@
 from pathlib import Path
 import tempfile
 import hashlib
+import json
 import unittest
 import io
 from contextlib import redirect_stdout
@@ -74,7 +75,7 @@ class TelegramDeliveryTest(unittest.TestCase):
         def call(method,fields,file=None):
             calls.append((method,fields,file))
             return {"getMe":{"id":1},"getChat":{"id":-100123,"type":"channel","username":"Bilibili_Innocent_LabRelease"},
-                "getChatMember":{"status":"administrator","can_post_messages":True},"sendDocument":{"message_id":7}}[method]
+                "getChatMember":{"status":"administrator","can_post_messages":True},"sendDocument":{"message_id":7,"date":1700000000}}[method]
         api=type("Fake",(),{})();api.call=call
         self.assertEqual(7,deliver(api,"@Bilibili_Innocent_LabRelease",apk,"caption")["message_id"])
         self.assertEqual("-100123",calls[-1][1]["chat_id"])
@@ -106,15 +107,18 @@ class TelegramDeliveryTest(unittest.TestCase):
         self.assertEqual(text,"".join(parts))
         self.assertTrue(all(len(part.encode("utf-16-le"))//2<=17 for part in parts))
 
-    def announcement_api(self, fail=False):
-        calls=[]
+    def announcement_api(self, fail=False, *, document_date=1700000000, announcement_dates=None, fail_at=1):
+        calls=[];sent_count=0
         def call(method,fields,file=None):
+            nonlocal sent_count
             calls.append((method,fields,file))
             if method=="sendMessage":
-                if fail:raise DeliveryError("announcement interrupted")
-                return {"message_id":len(calls)+7}
+                sent_count+=1
+                if fail and sent_count==fail_at:raise DeliveryError("announcement interrupted")
+                date=announcement_dates[sent_count-1] if announcement_dates is not None else 1700000000+sent_count
+                return {"message_id":len(calls)+7,"date":date}
             return {"getMe":{"id":1},"getChat":{"id":-100123,"type":"channel","username":"Bilibili_Innocent_LabRelease"},
-                "getChatMember":{"status":"administrator","can_post_messages":True},"sendDocument":{"message_id":7}}[method]
+                "getChatMember":{"status":"administrator","can_post_messages":True},"sendDocument":{"message_id":7,"date":document_date}}[method]
         api=type("Fake",(),{})();api.call=call
         return api,calls
 
@@ -127,30 +131,155 @@ class TelegramDeliveryTest(unittest.TestCase):
         self.assertEqual(len(sent),len(result["announcement_message_ids"]))
         self.assertTrue(all(fields["reply_parameters"]["message_id"]==7 for fields in sent))
 
+    def test_completion_time_comes_from_the_last_confirmed_announcement(self):
+        apk,_,_=self.fixture();api,calls=self.announcement_api(announcement_dates=[1700000001,1700000002,1700000010])
+        with patch("publish_telegram.time.sleep"):
+            result=deliver(api,"@Bilibili_Innocent_LabRelease",apk,"caption","x"*8000)
+        self.assertEqual(3,len(result["announcement_message_ids"]))
+        self.assertEqual("2023-11-14T22:13:30Z",result["delivered_at"])
+        self.assertEqual(3,sum(method=="sendMessage" for method,_,_ in calls))
+
+    def test_invalid_apk_message_time_stops_before_sending_the_announcement(self):
+        for date in [None,True,False,0,-1,"1700000000",1700000000.0]:
+            apk,_,_=self.fixture();api,calls=self.announcement_api(document_date=date)
+            with self.subTest(date=date),patch("publish_telegram.time.sleep"),self.assertRaisesRegex(DeliveryError,"APK message time"):
+                deliver(api,"@Bilibili_Innocent_LabRelease",apk,"caption","- change")
+            self.assertEqual(1,sum(method=="sendDocument" for method,_,_ in calls))
+            self.assertFalse(any(method=="sendMessage" for method,_,_ in calls))
+
+    def test_invalid_or_reversed_announcement_time_never_confirms_delivery(self):
+        for date in [None,True,False,0,-1,"1700000001",1700000001.0,1699999999]:
+            apk,_,_=self.fixture();api,calls=self.announcement_api(announcement_dates=[date])
+            with self.subTest(date=date),patch("publish_telegram.time.sleep"),self.assertRaisesRegex(DeliveryError,"announcement message time"):
+                deliver(api,"@Bilibili_Innocent_LabRelease",apk,"caption","x"*8000)
+            self.assertEqual(1,sum(method=="sendMessage" for method,_,_ in calls))
+
+    def test_equal_message_times_are_valid_with_second_resolution(self):
+        apk,_,_=self.fixture();api,_=self.announcement_api(announcement_dates=[1700000000])
+        with patch("publish_telegram.time.sleep"):
+            result=deliver(api,"@Bilibili_Innocent_LabRelease",apk,"caption","- change")
+        self.assertEqual("2023-11-14T22:13:20Z",result["delivered_at"])
+
     def test_oversized_announcement_fails_before_posting_anything(self):
         apk,_,_=self.fixture();api,calls=self.announcement_api()
         with self.assertRaises(DeliveryError):
             deliver(api,"@Bilibili_Innocent_LabRelease",apk,"caption","x"*(256*1024+1))
         self.assertEqual([],calls)
 
-    def invoke_main(self, apk,info,notes,receipt,*,dry_run=False,api=None):
+    def invoke_main(self, apk,info,notes,receipt,*,dry_run=False,api=None,environment=None):
         arguments=["publish_telegram.py","--tag","v1.2.1-canary.3","--commit","a"*40,
             "--source-url","https://github.com/jichuo1/Bilibili_Innocent_Lab/actions/runs/123",
             "--apk",str(apk),"--build-info",str(info),"--notes",str(notes),"--receipt",str(receipt)]
         if dry_run:arguments.append("--dry-run")
-        with patch("sys.argv",arguments),patch.dict("os.environ",{"TELEGRAM_BOT_TOKEN":"1:test"}),\
+        context={"TELEGRAM_BOT_TOKEN":"1:test","GITHUB_REPOSITORY":"jichuo1/Bilibili_Innocent_Lab",
+                 "GITHUB_RUN_ID":"9","GITHUB_RUN_ATTEMPT":"2","SOURCE_ARTIFACT_DIGEST":"sha256:"+"c"*64}
+        context.update(environment or {})
+        with patch("sys.argv",arguments),patch.dict("os.environ",context,clear=True),\
              patch("publish_telegram.Telegram",return_value=api),patch("publish_telegram.time.sleep"):
             return main()
 
     def test_success_writes_receipt_only_after_complete_notes(self):
-        import json
-        apk,info,_=self.fixture();notes=apk.parent/"notes.txt";receipt=apk.parent/"receipt.json"
+        apk,info,digest=self.fixture();notes=apk.parent/"notes.txt";receipt=apk.parent/"receipt.json"
         notes.write_text("- change\n",encoding="utf-8");api,_=self.announcement_api()
         self.assertEqual(0,self.invoke_main(apk,info,notes,receipt,api=api))
         result=json.loads(receipt.read_text(encoding="utf-8"))
         self.assertTrue(result["delivery_complete"])
         self.assertEqual("a"*40,result["source_commit"])
         self.assertEqual(1,len(result["announcement_message_ids"]))
+        self.assertEqual(2,result["receipt_schema"])
+        self.assertEqual("https://github.com/jichuo1/Bilibili_Innocent_Lab/actions/runs/9",result["delivery_run_url"])
+        self.assertEqual(2,result["delivery_run_attempt"])
+        self.assertEqual("sha256:"+"c"*64,result["source_artifact_digest"])
+        self.assertEqual(digest,result["apk_sha256"])
+        self.assertEqual("2023-11-14T22:13:21Z",result["delivered_at"])
+        self.assertEqual("https://github.com/jichuo1/Bilibili_Innocent_Lab/actions/runs/123",result["source_run_url"])
+        self.assertEqual("v1.2.1-canary.3",result["release_tag"])
+
+    def complete_receipt(self, digest):
+        return {"receipt_schema":2,"delivery_complete":True,"channel":"@Bilibili_Innocent_LabRelease",
+                "source_commit":"a"*40,"release_tag":"v1.2.1-canary.3",
+                "source_run_url":"https://github.com/jichuo1/Bilibili_Innocent_Lab/actions/runs/123",
+                "delivery_run_url":"https://github.com/jichuo1/Bilibili_Innocent_Lab/actions/runs/9",
+                "delivery_run_attempt":2,"source_artifact_digest":"sha256:"+"c"*64,"apk_sha256":digest,
+                "chat_id":"-100123","document_message_id":7,"announcement_message_ids":[8],
+                "delivered_at":"2023-11-14T22:13:21Z"}
+
+    def test_repeating_a_complete_delivery_reuses_the_receipt_without_api_calls(self):
+        apk,info,_=self.fixture();notes=apk.parent/"notes.txt";receipt=apk.parent/"receipt.json"
+        notes.write_text("- change",encoding="utf-8");api,calls=self.announcement_api()
+        self.assertEqual(0,self.invoke_main(apk,info,notes,receipt,api=api))
+        self.assertEqual(1,sum(method=="sendDocument" for method,_,_ in calls))
+        saved=receipt.read_bytes();retry_api,retry_calls=self.announcement_api()
+        self.assertEqual(0,self.invoke_main(apk,info,notes,receipt,api=retry_api))
+        self.assertEqual([],retry_calls)
+        self.assertEqual(saved,receipt.read_bytes())
+
+    def test_existing_receipt_rejects_another_valid_apk_before_any_api_call(self):
+        apk,info,digest=self.fixture();notes=apk.parent/"notes.txt";receipt=apk.parent/"receipt.json"
+        notes.write_text("- change",encoding="utf-8")
+        receipt.write_text(json.dumps(self.complete_receipt(digest)),encoding="utf-8")
+        saved=receipt.read_bytes();apk.write_bytes(b"another verified APK")
+        replacement=hashlib.sha256(apk.read_bytes()).hexdigest()
+        info.write_text(info.read_text(encoding="utf-8").replace(digest,replacement),encoding="utf-8")
+        api,calls=self.announcement_api()
+        self.assertEqual(1,self.invoke_main(apk,info,notes,receipt,api=api))
+        self.assertEqual([],calls)
+        self.assertEqual(saved,receipt.read_bytes())
+
+    def test_existing_receipt_rejects_another_context_before_any_api_call(self):
+        for environment in [{"GITHUB_RUN_ID":"10"},{"GITHUB_RUN_ATTEMPT":"3"},
+                            {"SOURCE_ARTIFACT_DIGEST":"sha256:"+"d"*64},{"TELEGRAM_CHAT_ID":"@other_channel"}]:
+            apk,info,digest=self.fixture();notes=apk.parent/"notes.txt";receipt=apk.parent/"receipt.json"
+            notes.write_text("- change",encoding="utf-8")
+            receipt.write_text(json.dumps(self.complete_receipt(digest)),encoding="utf-8")
+            saved=receipt.read_bytes();api,calls=self.announcement_api()
+            with self.subTest(environment=environment):
+                self.assertEqual(1,self.invoke_main(apk,info,notes,receipt,api=api,environment=environment))
+            self.assertEqual([],calls)
+            self.assertEqual(saved,receipt.read_bytes())
+
+    def test_existing_receipt_rejects_another_selected_source_before_any_api_call(self):
+        for key,value in [("source_commit","b"*40),("release_tag","v1.2.1-canary.4"),
+                          ("source_run_url","https://github.com/jichuo1/Bilibili_Innocent_Lab/actions/runs/124")]:
+            apk,info,digest=self.fixture();notes=apk.parent/"notes.txt";receipt=apk.parent/"receipt.json"
+            notes.write_text("- change",encoding="utf-8")
+            stored=self.complete_receipt(digest);stored[key]=value
+            receipt.write_text(json.dumps(stored),encoding="utf-8")
+            saved=receipt.read_bytes();api,calls=self.announcement_api()
+            with self.subTest(key=key):
+                self.assertEqual(1,self.invoke_main(apk,info,notes,receipt,api=api))
+            self.assertEqual([],calls)
+            self.assertEqual(saved,receipt.read_bytes())
+
+    def test_malformed_or_incomplete_existing_receipt_is_never_replaced_by_a_new_send(self):
+        for mutation in ["malformed","list","null","incomplete","no_announcements","duplicate_announcements",
+                         "apk_is_announcement","no_time","naive_time","old_schema","float_schema","boolean_attempt"]:
+            apk,info,digest=self.fixture();notes=apk.parent/"notes.txt";receipt=apk.parent/"receipt.json"
+            notes.write_text("- change",encoding="utf-8");stored=self.complete_receipt(digest)
+            if mutation=="incomplete":stored["delivery_complete"]=False
+            if mutation=="no_announcements":stored["announcement_message_ids"]=[]
+            if mutation=="duplicate_announcements":stored["announcement_message_ids"]=[8,8]
+            if mutation=="apk_is_announcement":stored["announcement_message_ids"]=[7]
+            if mutation=="no_time":stored.pop("delivered_at")
+            if mutation=="naive_time":stored["delivered_at"]="2023-11-14T22:13:21"
+            if mutation=="old_schema":stored.pop("receipt_schema")
+            if mutation=="float_schema":stored["receipt_schema"]=2.0
+            if mutation=="boolean_attempt":stored["delivery_run_attempt"]=True
+            content={"malformed":"{","list":"[]","null":"null"}.get(mutation,json.dumps(stored))
+            receipt.write_text(content,encoding="utf-8");api,calls=self.announcement_api()
+            with self.subTest(mutation=mutation):
+                self.assertEqual(1,self.invoke_main(apk,info,notes,receipt,api=api))
+            self.assertEqual([],calls)
+            self.assertEqual(content,receipt.read_text(encoding="utf-8"))
+
+    def test_empty_announcement_is_rejected_before_any_api_call(self):
+        for text in [""," \n\t"]:
+            apk,info,_=self.fixture();notes=apk.parent/"notes.txt";receipt=apk.parent/"receipt.json"
+            notes.write_text(text,encoding="utf-8");api,calls=self.announcement_api()
+            with self.subTest(text=text):
+                self.assertEqual(1,self.invoke_main(apk,info,notes,receipt,api=api))
+            self.assertEqual([],calls)
+            self.assertFalse(receipt.exists())
 
     def test_dry_run_and_partial_announcement_failure_do_not_write_receipts(self):
         for dry_run in [True,False]:
@@ -159,3 +288,38 @@ class TelegramDeliveryTest(unittest.TestCase):
             self.assertEqual(0 if dry_run else 1,self.invoke_main(apk,info,notes,receipt,dry_run=dry_run,api=api))
             self.assertFalse(receipt.exists())
             if dry_run:self.assertEqual([],calls)
+
+    def test_partial_multi_part_announcement_does_not_write_a_complete_receipt(self):
+        apk,info,_=self.fixture();notes=apk.parent/"notes.txt";receipt=apk.parent/"receipt.json"
+        notes.write_text("x"*8000,encoding="utf-8");api,calls=self.announcement_api(fail=True,fail_at=2)
+        self.assertEqual(1,self.invoke_main(apk,info,notes,receipt,api=api))
+        self.assertFalse(receipt.exists())
+        self.assertEqual(1,sum(method=="sendDocument" for method,_,_ in calls))
+        self.assertEqual(2,sum(method=="sendMessage" for method,_,_ in calls))
+
+    def test_bad_receipt_context_fails_before_any_telegram_api_call(self):
+        for key,value in [("GITHUB_REPOSITORY","other/repository"),("GITHUB_RUN_ID",""),("GITHUB_RUN_ID","9/10"),
+                          ("GITHUB_RUN_ATTEMPT","0"),("GITHUB_RUN_ATTEMPT","101"),("GITHUB_RUN_ATTEMPT","invalid"),
+                          ("SOURCE_ARTIFACT_DIGEST",""),("SOURCE_ARTIFACT_DIGEST","sha256:"+"x"*64)]:
+            apk,info,_=self.fixture();notes=apk.parent/"notes.txt";receipt=apk.parent/"receipt.json"
+            notes.write_text("- change",encoding="utf-8");api,calls=self.announcement_api()
+            with self.subTest(key=key,value=value):
+                self.assertEqual(1,self.invoke_main(apk,info,notes,receipt,api=api,environment={key:value}))
+            self.assertEqual([],calls)
+            self.assertFalse(receipt.exists())
+
+    def test_dry_run_needs_no_delivery_context_or_token_and_never_calls_telegram(self):
+        apk,info,_=self.fixture();notes=apk.parent/"notes.txt";receipt=apk.parent/"receipt.json"
+        notes.write_text("- change",encoding="utf-8");api,calls=self.announcement_api()
+        environment={key:"" for key in ["TELEGRAM_BOT_TOKEN","GITHUB_REPOSITORY","GITHUB_RUN_ID",
+                                        "GITHUB_RUN_ATTEMPT","SOURCE_ARTIFACT_DIGEST"]}
+        self.assertEqual(0,self.invoke_main(apk,info,notes,receipt,dry_run=True,api=api,environment=environment))
+        self.assertEqual([],calls)
+        self.assertFalse(receipt.exists())
+
+    def test_unconfirmed_announcement_time_does_not_write_a_receipt(self):
+        apk,info,_=self.fixture();notes=apk.parent/"notes.txt";receipt=apk.parent/"receipt.json"
+        notes.write_text("- change",encoding="utf-8");api,calls=self.announcement_api(announcement_dates=[None])
+        self.assertEqual(1,self.invoke_main(apk,info,notes,receipt,api=api))
+        self.assertFalse(receipt.exists())
+        self.assertEqual(1,sum(method=="sendMessage" for method,_,_ in calls))

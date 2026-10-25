@@ -56,11 +56,11 @@ class DailyCanaryDeliveryTest(unittest.TestCase):
                     **changes)
 
     def test_manual_deliveries_bypass_daily_and_unchanged_checks(self):
-        with patch("select_canary_delivery.api_json") as api, patch("select_canary_delivery.previous_delivery") as history:
+        with patch("select_canary_delivery.api_json", return_value=dict(self.current, event="workflow_dispatch")) as api, patch("select_canary_delivery.previous_delivery") as history:
             for _ in range(3):
                 result = select_delivery("workflow_dispatch", self.run["html_url"], 90, self.now, "@test_channel")
                 self.assertEqual("true", result["should_publish"])
-        api.assert_not_called()
+        self.assertEqual(3, api.call_count)
         history.assert_not_called()
 
     def test_manual_link_validation_is_preserved(self):
@@ -170,7 +170,8 @@ class DailyCanaryDeliveryTest(unittest.TestCase):
         with patch("select_canary_delivery.api_json", side_effect=self.api), \
              patch("telegram_delivery_state.github", side_effect=[[], {"workflow_runs": [failed]},
                    {"jobs": [{"id": 5, "name": "Verify selected Canary and send its APK"}]},
-                   "\n".join(prefix + line for line in lines)]):
+                   "\n".join(prefix + line for line in lines)]), \
+             patch("telegram_delivery_state.recover_receipt", return_value={}):
             with self.assertRaisesRegex(ValueError, "Unconfirmed Telegram"):
                 select_delivery("schedule", "", 90, self.now, "@Bilibili_Innocent_LabRelease")
 

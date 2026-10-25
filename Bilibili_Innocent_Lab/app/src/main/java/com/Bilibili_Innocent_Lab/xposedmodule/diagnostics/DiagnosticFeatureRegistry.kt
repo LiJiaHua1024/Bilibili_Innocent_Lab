@@ -36,6 +36,7 @@ internal object DiagnosticFeatureRegistry {
             DiagnosticFeatureCategory.ADVERTISING,
             runtimeEvidenceExpected = true
         ),
+        DiagnosticFeatureDescriptor("live_home_promotion", DiagnosticFeatureCategory.HOME_AND_DYNAMIC, runtimeEvidenceExpected = true),
         DiagnosticFeatureDescriptor("home_banner", DiagnosticFeatureCategory.ADVERTISING),
         DiagnosticFeatureDescriptor("merchandise", DiagnosticFeatureCategory.ADVERTISING),
         DiagnosticFeatureDescriptor(
@@ -101,6 +102,10 @@ internal object DiagnosticFeatureRegistry {
         DiagnosticFeatureDescriptor("player_capabilities", DiagnosticFeatureCategory.PLAYER_AND_DETAIL,
             runtimeEvidenceExpected = true),
         DiagnosticFeatureDescriptor("player_speed", DiagnosticFeatureCategory.PLAYER_AND_DETAIL,
+            runtimeEvidenceExpected = true),
+        DiagnosticFeatureDescriptor("player_subtitle_style", DiagnosticFeatureCategory.PLAYER_AND_DETAIL,
+            runtimeEvidenceExpected = true),
+        DiagnosticFeatureDescriptor("player_ai_subtitle", DiagnosticFeatureCategory.PLAYER_AND_DETAIL,
             runtimeEvidenceExpected = true),
         DiagnosticFeatureDescriptor("player_buffer", DiagnosticFeatureCategory.PLAYER_AND_DETAIL,
             runtimeEvidenceExpected = true),

@@ -10,8 +10,10 @@ import re
 import sys
 import time
 import uuid
+from datetime import datetime, timezone
 from pathlib import Path
 from urllib.parse import urlsplit
+from telegram_receipt import receipt_context, validate_receipt
 
 MAX_FILE_BYTES = 50_000_000
 MAX_RESPONSE_BYTES = 256 * 1024
@@ -115,6 +117,14 @@ class Telegram:
             raise DeliveryError("Telegram network/protocol failure; check delivery before retrying") from None
         finally:connection.close()
 
+def message_time(value: int, label: str) -> datetime:
+    if type(value) is not int or value<=0:
+        raise DeliveryError(f"Telegram did not confirm the {label} message time")
+    try:return datetime.fromtimestamp(value,timezone.utc)
+    except (ValueError,OverflowError,OSError):
+        raise DeliveryError(f"Telegram did not confirm the {label} message time") from None
+
+
 def deliver(api: Telegram,chat: str,apk: Path,text: str,notes: str="") -> dict:
     messages=announcement_messages(notes)
     if not re.fullmatch(r"@[A-Za-z][A-Za-z0-9_]{4,31}|-100\d+",chat):raise DeliveryError("Invalid Telegram channel ID")
@@ -127,6 +137,7 @@ def deliver(api: Telegram,chat: str,apk: Path,text: str,notes: str="") -> dict:
     result=api.call("sendDocument",{"chat_id":str(target["id"]),"caption":text},apk)
     if type(result.get("message_id")) is not int or result["message_id"]<=0:
         raise DeliveryError("Telegram did not confirm the APK message identity")
+    completed=message_time(result.get("date"),"APK")
     message_ids=[]
     for message in messages:
         time.sleep(1)
@@ -135,8 +146,13 @@ def deliver(api: Telegram,chat: str,apk: Path,text: str,notes: str="") -> dict:
             "link_preview_options":{"is_disabled":True}})
         if type(sent.get("message_id")) is not int or sent["message_id"]<=0:
             raise DeliveryError("Telegram did not confirm the announcement message identity")
+        sent_time=message_time(sent.get("date"),"announcement")
+        if sent_time<completed:
+            raise DeliveryError("Telegram did not confirm the announcement message time")
+        completed=sent_time
         message_ids.append(sent["message_id"])
-    return dict(result,chat_id=str(target["id"]),announcement_message_ids=message_ids)
+    return dict(result,chat_id=str(target["id"]),announcement_message_ids=message_ids,
+                delivered_at=completed.isoformat().replace("+00:00","Z"))
 
 def main() -> int:
     parser=argparse.ArgumentParser()
@@ -146,7 +162,7 @@ def main() -> int:
     parser.add_argument("--receipt",type=Path)
     parser.add_argument("--dry-run",action="store_true")
     args=parser.parse_args()
-    print("TELEGRAM_DELIVERY_PROTOCOL: 2",flush=True)
+    print("TELEGRAM_DELIVERY_PROTOCOL: 3",flush=True)
     try:
         digest=validate_identity(args.apk,args.build_info,args.tag,args.commit,args.source_url)
         notes=args.notes.read_text(encoding="utf-8")
@@ -156,18 +172,37 @@ def main() -> int:
         if args.dry_run:status=f"Validated Telegram payload and {len(messages)} complete announcement message(s); dry-run only"
         elif not token:raise DeliveryError("Telegram delivery not configured: add TELEGRAM_BOT_TOKEN and grant channel posting permission")
         else:
-            result=deliver(Telegram(token),chat,args.apk,text,notes)
+            context={}
             if args.receipt:
+                if not messages:
+                    raise DeliveryError("Complete announcement is empty")
+                context=receipt_context(
+                    "https://github.com/"+os.environ.get("GITHUB_REPOSITORY","")+"/actions/runs/"+os.environ.get("GITHUB_RUN_ID",""),
+                    int(os.environ.get("GITHUB_RUN_ATTEMPT","0")),os.environ.get("SOURCE_ARTIFACT_DIGEST",""))
+            expected={"channel":chat,"source_commit":args.commit,"release_tag":args.tag,
+                      "source_run_url":args.source_url,"apk_sha256":digest}
+            if args.receipt and args.receipt.exists():
+                stored=json.loads(args.receipt.read_text(encoding="utf-8"))
+                if not isinstance(stored,dict):
+                    raise DeliveryError("Invalid existing Telegram receipt")
+                validate_receipt(stored,context["delivery_run_url"],context["delivery_run_attempt"],context["source_artifact_digest"])
+                if any(stored.get(key)!=value for key,value in expected.items()):
+                    raise DeliveryError("Existing Telegram receipt does not match the selected delivery")
+                result={"message_id":stored["document_message_id"]}
+            else:
+                result=deliver(Telegram(token),chat,args.apk,text,notes)
+            if args.receipt and not args.receipt.exists():
                 receipt={"delivery_complete":True,"channel":chat,"source_commit":args.commit,
                     "release_tag":args.tag,"source_run_url":args.source_url,"chat_id":result["chat_id"],
-                    "document_message_id":result["message_id"],"announcement_message_ids":result["announcement_message_ids"]}
+                    "document_message_id":result["message_id"],"announcement_message_ids":result["announcement_message_ids"],
+                    "apk_sha256":digest,"delivered_at":result["delivered_at"],**context}
                 args.receipt.write_text(json.dumps(receipt,ensure_ascii=False),encoding="utf-8")
             status=f"Telegram delivered Canary APK, message ID {result['message_id']}"
         print(status)
         if args.summary:
             with args.summary.open("a",encoding="utf-8") as output:output.write("\n### Telegram delivery\n\n"+status+"\n")
         return 0
-    except (DeliveryError,OSError) as error:
+    except (DeliveryError,OSError,ValueError) as error:
         message=str(error).replace(os.environ.get("TELEGRAM_BOT_TOKEN") or "\0","[redacted]")
         print("Telegram delivery failed: "+message,file=sys.stderr)
         if args.summary:

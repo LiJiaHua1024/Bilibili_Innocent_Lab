@@ -14,6 +14,15 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class HomeTopBarFeatureInstallerTest {
+    private class SharedRouteItem(@JvmField val uri: String) {
+        companion object { const val GAME = "action://game_center/home/menu" }
+    }
+
+    @Test fun `shared static routes never identify a different menu instance as game center`() {
+        assertFalse(HomeTopBarFeatureInstaller.isGameMenuItem(SharedRouteItem("action://scan")))
+        assertTrue(HomeTopBarFeatureInstaller.isGameMenuItem(SharedRouteItem("action://game_center/home/menu?from=home")))
+        assertFalse(HomeTopBarFeatureInstaller.isGameMenuItem(SharedRouteItem("action://scan")))
+    }
 
     /** 模拟 Compose 顶栏的一项（真机 9110400 是 `Nm1.o`，action 在它的 `c` 字段）。 */
     private class TopRightItem(
@@ -146,7 +155,7 @@ class HomeTopBarFeatureInstallerTest {
         assertNotNull(restored.gameMenu)
     }
 
-    private class Recorder : HookRegistrar by TestHookRegistrar {
+    private class Recorder(private val failId: String? = null) : HookRegistrar by TestHookRegistrar {
         val ids = mutableListOf<String>()
         override fun adapted(
             id: String,
@@ -155,19 +164,22 @@ class HomeTopBarFeatureInstallerTest {
             block: ModernMemberHookCreator.() -> Unit
         ) {
             ids += id
+            check(id != failId) { "simulated registration failure" }
         }
     }
 
     private fun installGameLayers(
         menu: VersionAdapter.HookPoint?,
-        compose: VersionAdapter.HookPoint?
+        compose: VersionAdapter.HookPoint?,
+        failId: String? = null
     ): Triple<FeatureInstallResult, List<String>, List<Pair<String, String>>> {
-        val recorder = Recorder()
+        val recorder = Recorder(failId)
         val statuses = mutableListOf<Pair<String, String>>()
         val result = HomeTopBarFeatureInstaller(
             hideGameMenu = true,
             hideSearchDefaultWord = false,
-            points = VersionAdapter.HomeTopBarPoints(menu, compose, null, emptyList())
+            points = VersionAdapter.HomeTopBarPoints(menu, compose, null, emptyList()),
+            frameResolver = { HomeFrameTabLocator.Resolution.Absent }
         ).install(
             environment.copy(
                 registrar = recorder,
@@ -190,6 +202,12 @@ class HomeTopBarFeatureInstallerTest {
         assertEquals(listOf("home.top_bar.game_menu", "home.top_bar.game_compose"), ids)
         assertEquals(FeatureInstallResult.Installed(2, complete = true), result)
         assertTrue("home_game_menu_layers" to "menu=ok,compose=ok" in statuses)
+    }
+
+    @Test fun `an existing menu layer failure cannot be reported as complete by its sibling`() {
+        val (result, _, _) = installGameLayers(menuPoint, composePoint, "home.top_bar.game_menu")
+        assertTrue(result is FeatureInstallResult.Installed)
+        assertFalse((result as FeatureInstallResult.Installed).complete)
     }
 
     @Test

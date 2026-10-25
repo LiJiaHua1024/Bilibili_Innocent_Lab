@@ -3,7 +3,6 @@ package com.Bilibili_Innocent_Lab.xposedmodule.hook.hostui.background
 import android.app.Activity
 import android.graphics.Canvas
 import android.graphics.Color
-import android.content.res.ColorStateList
 import android.os.Build
 import android.os.Bundle
 import android.view.View
@@ -57,19 +56,15 @@ internal object HostBackgroundPageHooks {
     /** 图文正文和段落间距共用颜色入口；保留引用底色、按压态及所有 ItemOffsets。 */
     private fun installOpusBackground(environment: HookEnvironment): Int {
         val loader = environment.classLoader ?: return 0
-        val painter = KavaMemberLookup.classOrNull(loader, "gv1.c") ?: return 0
-        val opus = KavaMemberLookup.classOrNull(loader, "com.bilibili.bplus.followinglist.opus.t") ?: return 0
-        val module = KavaMemberLookup.classOrNull(loader, "com.bilibili.bplus.followinglist.model.j0") ?: return 0
-        val quoted = KavaMemberLookup.methodOrNull(module, "f0") ?: return 0
-        val color = KavaMemberLookup.methodOrNull(painter, "s", ColorStateList::class.java, module, View::class.java)
-            ?.takeIf { it.returnType == Int::class.javaPrimitiveType } ?: return 0
+        val access = HostOpusBackgroundAccess.resolve(loader) ?: return 0
+        val color = access.color
         environment.registrar.exact("host_background.opus_fill", color.declaringClass, color.name, *color.parameterTypes) {
             after {
-                if (hasThrowable || !opus.isInstance(instance)) return@after
+                if (hasThrowable) return@after
                 val view = argOrNull(2) as? View ?: return@after
                 if (HostBackgroundPages.kind(view) != HostBackgroundPagePolicy.Kind.OPUS || view.isPressed) return@after
                 val item = argOrNull(1) ?: return@after
-                if (quoted.invoke(item) != false) return@after
+                if (!access.accepts(instance, item)) return@after
                 val fill = result as? Int ?: return@after
                 if (HostBackgroundPagePolicy.neutral(fill or Color.BLACK)) result = Color.TRANSPARENT
             }

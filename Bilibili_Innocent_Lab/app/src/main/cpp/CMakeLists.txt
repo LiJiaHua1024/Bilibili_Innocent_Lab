@@ -6,16 +6,16 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 
 include(FetchContent)
-set(ncnn_archive "https://github.com/Tencent/ncnn/releases/download/20260526/ncnn-20260526-android-vulkan.zip")
+set(ncnn_archive "https://github.com/Tencent/ncnn/releases/download/20261020/ncnn-20261020-android-vulkan.zip")
 if(INNOCENT_NCNN_ARCHIVE)
     set(ncnn_archive "${INNOCENT_NCNN_ARCHIVE}")
 endif()
 FetchContent_Declare(ncnn_android
     URL "${ncnn_archive}"
-    URL_HASH SHA256=26909c92eed35afed4a966b5e9e503fcb0a529691ea3f910ec2c94a4fff52804
+    URL_HASH SHA256=6e0c5f9b397faf32b923de2ef6210af9bf375851869dceff06a8005331981086
     DOWNLOAD_EXTRACT_TIMESTAMP FALSE)
 FetchContent_MakeAvailable(ncnn_android)
-find_package(ncnn 20260526 EXACT CONFIG REQUIRED NO_DEFAULT_PATH NO_CMAKE_FIND_ROOT_PATH
+find_package(ncnn 20261020 EXACT CONFIG REQUIRED NO_DEFAULT_PATH NO_CMAKE_FIND_ROOT_PATH
     PATHS "${ncnn_android_SOURCE_DIR}/${ANDROID_ABI}/lib/cmake/ncnn")
 
 add_subdirectory(player_interpolation)

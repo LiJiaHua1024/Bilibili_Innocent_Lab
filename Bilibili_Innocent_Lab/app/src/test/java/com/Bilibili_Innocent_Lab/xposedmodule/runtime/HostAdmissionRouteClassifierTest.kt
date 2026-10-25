@@ -22,8 +22,8 @@ class HostAdmissionRouteClassifierTest {
             "prepared" to HostAdmissionRouteClassifier.StatusClass.PREPARED,
             "granted" to HostAdmissionRouteClassifier.StatusClass.GRANTED,
             "denied" to HostAdmissionRouteClassifier.StatusClass.AUTHORITY_DENIED,
-            "consent_commit_failed" to HostAdmissionRouteClassifier.StatusClass.AUTHORITY_DENIED,
-            "manager_sync_required" to HostAdmissionRouteClassifier.StatusClass.AUTHORITY_DENIED,
+            "consent_commit_failed" to HostAdmissionRouteClassifier.StatusClass.CONSENT_PENDING,
+            "manager_sync_required" to HostAdmissionRouteClassifier.StatusClass.SYNC_REQUIRED,
             "embedded_mode_unsupported" to HostAdmissionRouteClassifier.StatusClass.AUTHORITY_DENIED,
             "identity_rejected" to HostAdmissionRouteClassifier.StatusClass.UNAVAILABLE,
             "protocol_rejected" to HostAdmissionRouteClassifier.StatusClass.UNAVAILABLE,
@@ -50,21 +50,21 @@ class HostAdmissionRouteClassifierTest {
         assertFalse(HostAdmissionRouteClassifier.latchesDenial(""))
     }
 
-    @Test fun termsDeniedAndManagerSyncLatchFallback() {
+    @Test fun termsDenialIsDistinctFromRecoverableSyncAndCommitFailures() {
         assertEquals(HostAdmissionRouteClassifier.Outcome.AUTHORITY_DENIED,
             HostAdmissionRouteClassifier.prepare("embedded_mode_unsupported", envelopeValid = true))
         assertEquals(HostAdmissionRouteClassifier.Outcome.AUTHORITY_DENIED,
-            HostAdmissionRouteClassifier.confirm("embedded_mode_unsupported", successBinding = false))
+            HostAdmissionRouteClassifier.confirm("embedded_mode_unsupported", envelopeValid = true, successBinding = false))
         assertEquals(
             HostAdmissionRouteClassifier.Outcome.AUTHORITY_DENIED,
             HostAdmissionRouteClassifier.prepare("denied", envelopeValid = true)
         )
         assertEquals(
-            HostAdmissionRouteClassifier.Outcome.AUTHORITY_DENIED,
+            HostAdmissionRouteClassifier.Outcome.CONSENT_PENDING,
             HostAdmissionRouteClassifier.prepare("consent_commit_failed", envelopeValid = true)
         )
         assertEquals(
-            HostAdmissionRouteClassifier.Outcome.AUTHORITY_DENIED,
+            HostAdmissionRouteClassifier.Outcome.SYNC_REQUIRED,
             HostAdmissionRouteClassifier.prepare("manager_sync_required", envelopeValid = true)
         )
         assertTrue(HostAdmissionRouteClassifier.latchesDenial(HostAdmissionRouteClassifier.REASON_DENIED))
@@ -122,20 +122,44 @@ class HostAdmissionRouteClassifierTest {
     @Test fun confirmGrantedRequiresBindingButDoesNotLatchDenial() {
         assertEquals(
             HostAdmissionRouteClassifier.Outcome.CONTINUE,
-            HostAdmissionRouteClassifier.confirm("granted", successBinding = true)
+            HostAdmissionRouteClassifier.confirm("granted", envelopeValid = true, successBinding = true)
         )
         assertEquals(
             HostAdmissionRouteClassifier.Outcome.UNAVAILABLE,
-            HostAdmissionRouteClassifier.confirm("granted", successBinding = false)
+            HostAdmissionRouteClassifier.confirm("granted", envelopeValid = true, successBinding = false)
         )
         assertEquals(
             HostAdmissionRouteClassifier.Outcome.UNAVAILABLE,
-            HostAdmissionRouteClassifier.confirm("identity_rejected", successBinding = false)
+            HostAdmissionRouteClassifier.confirm("identity_rejected", envelopeValid = false, successBinding = false)
         )
         assertEquals(
             HostAdmissionRouteClassifier.Outcome.UNAVAILABLE,
-            HostAdmissionRouteClassifier.confirm("stale", successBinding = false)
+            HostAdmissionRouteClassifier.confirm("stale", envelopeValid = true, successBinding = false)
         )
         assertFalse(HostAdmissionRouteClassifier.latchesDenial(HostAdmissionRouteClassifier.REASON_UNAVAILABLE))
+    }
+
+    @Test fun invalidNegativeResponsesCannotLatchDenialOrSync() {
+        for (status in listOf("denied", "manager_sync_required", "consent_commit_failed")) {
+            assertEquals(HostAdmissionRouteClassifier.Outcome.UNAVAILABLE,
+                HostAdmissionRouteClassifier.prepare(status, envelopeValid = false))
+            assertEquals(HostAdmissionRouteClassifier.Outcome.UNAVAILABLE,
+                HostAdmissionRouteClassifier.confirm(status, envelopeValid = false, successBinding = false))
+        }
+        assertEquals(HostAdmissionRouteClassifier.Outcome.AUTHORITY_DENIED,
+            HostAdmissionRouteClassifier.confirm("denied", envelopeValid = true, successBinding = false))
+    }
+
+    @Test fun recoverableAuthorityFailuresStillBlockOldRemoteFallback() {
+        for (reason in listOf(HostAdmissionRouteClassifier.REASON_SYNC_REQUIRED,
+            HostAdmissionRouteClassifier.REASON_CONSENT_PENDING, HostAdmissionRouteClassifier.REASON_CONFIG_INVALID)) {
+            assertFalse(HostAdmissionRouteClassifier.latchesDenial(reason))
+            assertTrue(HostAdmissionRouteClassifier.retryable(reason))
+            assertFalse(HostAdmissionRouteClassifier.allowRemoteConfigFallback(false, null, true, true, 1L,
+                fallbackBlocked = HostAdmissionRouteClassifier.blocksFallback(reason)))
+        }
+        assertFalse(HostAdmissionRouteClassifier.retryable(HostAdmissionRouteClassifier.REASON_DENIED))
+        assertFalse(HostAdmissionRouteClassifier.allowRemoteConfigFallback(false, null, false, true, 1L))
+        assertFalse(HostAdmissionRouteClassifier.allowRemoteConfigFallback(false, null, true, true, 0L))
     }
 }

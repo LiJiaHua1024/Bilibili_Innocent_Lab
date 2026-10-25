@@ -12,4 +12,5 @@ string(REGEX REPLACE "([0-9a-f][0-9a-f])" "0x\\1," bytes "${bytes}")
 get_filename_component(name "${SOURCE}" NAME_WE)
 get_filename_component(directory "${OUTPUT}" DIRECTORY)
 file(MAKE_DIRECTORY "${directory}")
-file(WRITE "${OUTPUT}" "static const char ${name}_comp_data[] = {${bytes}};\n")
+# ncnn's failure diagnostics may print the source as a C string, even with an explicit source length.
+file(WRITE "${OUTPUT}" "static const char ${name}_comp_data[] = {${bytes}0x00};\n")

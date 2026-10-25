@@ -124,6 +124,14 @@ class HostGarbChromeInstrumentedTest {
     }
 
     @Test fun videoAndScrimShareAntialiasedCornerCoverageWithoutErasingTheBackdrop() {
+        assertVideoCornerCoverage(dimEnabled = true)
+    }
+
+    @Test fun disabledDimmingRetainsVideoBrightnessAndAntialiasedCorners() {
+        assertVideoCornerCoverage(dimEnabled = false)
+    }
+
+    private fun assertVideoCornerCoverage(dimEnabled: Boolean) {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         val frameReady = AtomicReference(CountDownLatch(1))
         lateinit var texture: TextureView
@@ -158,7 +166,7 @@ class HostGarbChromeInstrumentedTest {
                 hero.addView(texture, FrameLayout.LayoutParams(-1, -1))
                 root.addView(hero, FrameLayout.LayoutParams(width, height).apply { leftMargin = 40; topMargin = 260 })
                 activity.setContentView(root)
-                HostGarbHeroBinding(hero).refresh(true)
+                HostGarbHeroBinding(hero, dimEnabled = dimEnabled).refresh(true)
                 check(hero.foreground is HostGarbHeroForeground)
             }
             for (color in listOf(Color.WHITE, Color.YELLOW)) {
@@ -184,6 +192,10 @@ class HostGarbChromeInstrumentedTest {
                     var mixed = 0
                     for (y in height - radius until height - 1) {
                         val inside = bitmap.getPixel(8 + width / 2, 8 + y)
+                        if (!dimEnabled) for (shift in listOf(16, 8, 0)) {
+                            assertEquals("Disabled dimming must retain video brightness",
+                                (color ushr shift and 255).toFloat(), (inside ushr shift and 255).toFloat(), 2f)
+                        }
                         val red = Color.red(inside)
                         assertEquals("Hardware layer must retain the latest video frame",
                             if (color == Color.WHITE) red.toFloat() else 0f, Color.blue(inside).toFloat(), 2f)

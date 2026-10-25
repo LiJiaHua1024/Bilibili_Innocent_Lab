@@ -18,6 +18,7 @@ import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.core.graphics.ColorUtils
 import com.Bilibili_Innocent_Lab.xposedmodule.R
 import com.Bilibili_Innocent_Lab.xposedmodule.hook.feature.FeaturePreferences
 import com.Bilibili_Innocent_Lab.xposedmodule.hook.hostui.background.HostBackgroundConfig
@@ -64,7 +65,7 @@ internal fun MainActivity.hostBackgroundAppearanceRows(performer: Hikage.Perform
             isClickable = true
             isFocusable = true
             setOnClickListener {
-                hostBackgroundEditor?.close()
+                hostBackgroundEditor?.close(animate = false)
                 HostBackgroundEditor(this@hostBackgroundAppearanceRows, this) { refresh() }.also {
                     hostBackgroundEditor = it
                     it.show()
@@ -88,12 +89,15 @@ internal class HostBackgroundEditor(private val activity: MainActivity, private 
     private val preview = FrameLayout(activity)
     private val selected = TextView(activity)
     private val options = mutableMapOf<HostBackgroundPreset, TextView>()
+    private val presets = HostBackgroundPreset.entries.filter { it != HostBackgroundPreset.CUSTOM }
+    private val selection = activity.createSkinSlidingSelection(12f)
     private var useSaved: View? = null
     private val customControls = mutableListOf<View>()
     private val previewCards = mutableListOf<Pair<GradientDrawable, TextView>>()
     private var rendered: Bitmap? = null
     private var generation = 0
     private var active = true
+    private var closing = false
     private var importing = false
     private var rendering = false
     private var saved = false
@@ -137,20 +141,20 @@ internal class HostBackgroundEditor(private val activity: MainActivity, private 
         selected.textColor = activity.getColor(R.color.colorTextGray)
         selected.textSize = 12f
         content.addView(selected, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(8); bottomMargin = dp(8) })
-        val presets = HostBackgroundPreset.entries.filter { it != HostBackgroundPreset.CUSTOM }
-        presets.chunked(2).forEach { rowPresets ->
-            val row = LinearLayout(activity)
-            rowPresets.forEach { preset ->
-                val button = label(activity.backgroundLabel(preset)).apply {
-                    setPadding(dp(12), dp(16), dp(12), dp(16))
-                    isClickable = true; isFocusable = true
-                    setOnClickListener { draft = draft.copy(preset = preset); refresh() }
-                }
-                options[preset] = button
-                row.addView(button, LinearLayout.LayoutParams(0, -2, 1f).apply { setMargins(dp(3), dp(3), dp(3), dp(3)) })
+        presets.forEach { preset ->
+            val button = label(activity.backgroundLabel(preset)).apply {
+                setPadding(dp(12), dp(13), dp(12), dp(13))
+                background = activity.selfRippleBackground(12f)
+                isFocusable = true
             }
-            content.addView(row)
+            options[preset] = button
+            selection.addOption(button)
         }
+        selection.onSelect = { index ->
+            if (active && !closing) { draft = draft.copy(preset = presets[index]); refresh() }
+        }
+        bindSelectionHighlight()
+        content.addView(selection)
         content.addView(activity.createGitHubMenuRow(activity.getString(R.string.host_background_custom),
             activity.getString(R.string.host_background_choose), false) {
             if (!importing) activity.hostBackgroundPicker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
@@ -172,10 +176,9 @@ internal class HostBackgroundEditor(private val activity: MainActivity, private 
             })
         }
         container.addView(buttons)
-        dialog.setOnDismissListener { dispose() }
         refresh()
         if (draft.preset == HostBackgroundPreset.CUSTOM) renderImage()
-        activity.presentModalDialog(dialog, container, anchor)
+        activity.presentModalDialog(dialog, container, anchor, onDismissed = ::dispose)
     }
 
     private fun slider(parent: LinearLayout, title: Int, initial: Int, maxValue: Int, customOnly: Boolean, update: (Int) -> Unit) {
@@ -206,19 +209,32 @@ internal class HostBackgroundEditor(private val activity: MainActivity, private 
         }
         if (draft.preset.isCelestial) selected.append("\n" + activity.getString(R.string.host_background_night_theme_tip))
         preview.background = if (draft.enabled) HostBackgroundDrawable(draft, night, rendered) else GradientDrawable().apply { setColor(if (night) 0xff14151a.toInt() else 0xfff4f4f4.toInt()) }
-        options.forEach { (preset, view) ->
-            view.background = GradientDrawable().apply {
-                cornerRadius = dp(12).toFloat()
-                setColor(if (preset == draft.preset) activity.monetColors.surfaceVariant else Color.TRANSPARENT)
-                if (preset == draft.preset) setStroke(dp(1), activity.monetColors.primary)
-            }
-            view.isSelected = preset == draft.preset
+        val index = presets.indexOf(draft.preset)
+        val visibility = if (index >= 0) View.VISIBLE else View.INVISIBLE
+        val modeChanged = selection.indicator.visibility != visibility
+        selection.indicator.visibility = visibility
+        if (index >= 0 && (selection.selectedIndex != index || !options.getValue(draft.preset).isSelected)) {
+            selection.select(index)
+        }
+        if (modeChanged) bindSelectionHighlight()
+        if (index < 0) options.values.forEach { view ->
+            view.isSelected = false
+            view.textColor = activity.getColor(R.color.colorTextDark)
         }
         customControls.forEach { it.isEnabled = draft.preset == HostBackgroundPreset.CUSTOM; it.alpha = if (it.isEnabled) 1f else .4f }
     }
 
+    private fun bindSelectionHighlight() {
+        selection.setOnHighlightListener { index, weight ->
+            options.getValue(presets[index]).textColor = ColorUtils.blendARGB(
+                activity.getColor(R.color.colorTextDark), activity.monetColors.primary,
+                if (draft.preset == HostBackgroundPreset.CUSTOM) 0f else weight
+            )
+        }
+    }
+
     fun importImage(uri: Uri) {
-        if (!active || importing) return
+        if (!active || closing || importing) return
         importing = true
         selected.text = activity.getString(R.string.liquid_background_processing)
         val app = activity.applicationContext
@@ -227,20 +243,20 @@ internal class HostBackgroundEditor(private val activity: MainActivity, private 
             activity.runOnUiThread {
                 importing = false
                 result.onSuccess { asset ->
-                    if (!active) { HostBackgroundImages.file(app, asset).delete(); return@onSuccess }
+                    if (!active || closing) { HostBackgroundImages.file(app, asset).delete(); return@onSuccess }
                     importedAsset?.let { HostBackgroundImages.file(app, it).delete() }
                     importedAsset = asset
                     draft = draft.copy(preset = HostBackgroundPreset.CUSTOM, asset = asset)
                     refresh(); renderImage()
                 }.onFailure {
-                    if (active) { Toast.makeText(activity, R.string.host_background_import_failed, Toast.LENGTH_LONG).show(); refresh() }
+                    if (active && !closing) { Toast.makeText(activity, R.string.host_background_import_failed, Toast.LENGTH_LONG).show(); refresh() }
                 }
             }
         }
     }
 
     private fun renderImage() {
-        if (!active || draft.preset != HostBackgroundPreset.CUSTOM) return
+        if (!active || closing || draft.preset != HostBackgroundPreset.CUSTOM) return
         val ticket = ++generation
         rendering = true
         val config = draft.normalized()
@@ -249,7 +265,7 @@ internal class HostBackgroundEditor(private val activity: MainActivity, private 
         activity.liquidBackgroundWorker.execute {
             val image = HostBackgroundImages.load(app, config)
             activity.runOnUiThread {
-                if (!active || ticket != generation) { image?.recycle(); return@runOnUiThread }
+                if (!active || closing || ticket != generation) { image?.recycle(); return@runOnUiThread }
                 rendering = false
                 val previous = rendered
                 rendered = image
@@ -261,7 +277,7 @@ internal class HostBackgroundEditor(private val activity: MainActivity, private 
     }
 
     private fun save() {
-        if (importing || rendering || !active) return
+        if (importing || rendering || !active || closing) return
         val config = draft.normalized()
         if (config.preset == HostBackgroundPreset.CUSTOM && rendered == null) {
             Toast.makeText(activity, R.string.host_background_missing, Toast.LENGTH_LONG).show(); return
@@ -283,7 +299,18 @@ internal class HostBackgroundEditor(private val activity: MainActivity, private 
         }.onFailure { Toast.makeText(activity, R.string.host_background_save_failed, Toast.LENGTH_LONG).show() }
     }
 
-    fun close() { dialog.dismiss(); dispose() }
+    fun close(animate: Boolean = true) {
+        if (!active || closing) return
+        closing = true
+        generation++
+        // Keep the preview bitmap alive until the shared modal presenter finishes drawing it.
+        if (animate && dialog.isShowing && !activity.isFinishing && !activity.isDestroyed) {
+            activity.dismissWithAnimation(dialog, container) {}
+        } else {
+            dialog.dismiss()
+            dispose()
+        }
+    }
     private fun dispose() {
         if (!active) return
         active = false; generation++

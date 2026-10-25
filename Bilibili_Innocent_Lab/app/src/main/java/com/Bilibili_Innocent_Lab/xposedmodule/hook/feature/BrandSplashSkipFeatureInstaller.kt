@@ -5,6 +5,7 @@ import com.Bilibili_Innocent_Lab.xposedmodule.runtime.KavaMemberLookup
 import com.highcapable.kavaref.extension.classOf
 import java.lang.reflect.Modifier
 import java.util.concurrent.atomic.AtomicBoolean
+import java.util.WeakHashMap
 
 /** Keep the host's first-layout/exit handoff; shorten only the active brand page's dwell. */
 internal class BrandSplashSkipFeatureInstaller(
@@ -14,14 +15,17 @@ internal class BrandSplashSkipFeatureInstaller(
     override val id = ID
     private data class NativeFrame(val model: Any?)
     private val nativeFrames = BrandSplashScopes<NativeFrame>()
+    private val completedKntr = WeakHashMap<Any, Boolean>()
 
     override fun install(environment: HookEnvironment): FeatureInstallResult {
         if (!enabled) return FeatureInstallResult.Skipped("disabled")
         if (environment.processName != TARGET_PACKAGE) return FeatureInstallResult.Skipped("non-main-process")
         val loader = environment.classLoader ?: return FeatureInstallResult.Skipped("missing-class-loader")
         val native = KavaMemberLookup.classOrNull(loader, NATIVE_FRAGMENT)
-        val kntr = KavaMemberLookup.classOrNull(loader, KNTR_EXIT)
-        val expected = (if (native != null) 1 else 0) + (if (kntr != null) 1 else 0)
+        val kntr = BrandSplashKntrAccess.exit(loader)
+        val kntrPresent = kntr != null || KavaMemberLookup.hasClass(loader, KNTR_EXIT) ||
+            KavaMemberLookup.hasClass(loader, BrandSplashKntrAccess.CURRENT_EXIT)
+        val expected = (if (native != null) 1 else 0) + (if (kntrPresent) 1 else 0)
         var installed = 0
         if (native != null && runCatching { installNative(environment, native) }.getOrElse {
                 environment.logError("brand_skip_native", "[BIL] 品牌开屏原生链路未完整接入，保留原流程")
@@ -31,7 +35,7 @@ internal class BrandSplashSkipFeatureInstaller(
                 environment.logError("brand_skip_kntr", "[BIL] 品牌开屏 Compose 链路未完整接入，保留原流程")
                 false
             }) installed++
-        environment.reportStatus("brand_splash_skip_layers", "native=${native != null},kntr=${kntr != null},ready=$installed/$expected")
+        environment.reportStatus("brand_splash_skip_layers", "native=${native != null},kntr=$kntrPresent,ready=$installed/$expected")
         if (installed == 0) return FeatureInstallResult.Skipped("missing-brand-exit")
         environment.reportRuntimeEvidence(ID, FeatureRuntimeStage.ADAPTED)
         return FeatureInstallResult.Installed(installed, complete = installed == expected)
@@ -68,20 +72,23 @@ internal class BrandSplashSkipFeatureInstaller(
         return true
     }
 
-    private fun installKntr(environment: HookEnvironment, owner: Class<*>): Boolean {
-        val loader = environment.classLoader ?: return false
-        val resume = KavaMemberLookup.methodOrNull(owner, "invokeSuspend", classOf<Any>()) ?: return false
-        val label = KavaMemberLookup.fieldOrNull(owner, "label")
-            ?.takeIf { it.type == Int::class.javaPrimitiveType } ?: return false
-        val exit = KavaMemberLookup.declaredFields(owner, makeAccessible = true).singleOrNull {
-            it.type.name == "kotlin.jvm.functions.Function0"
-        } ?: return false
-        val invoke = KavaMemberLookup.methodOrNull(exit.type, "invoke") ?: return false
-        val unitClass = KavaMemberLookup.classOrNull(loader, "kotlin.Unit") ?: return false
-        val hostUnit = KavaMemberLookup.fieldOrNull(unitClass, "INSTANCE")?.get(null) ?: return false
+    private fun installKntr(environment: HookEnvironment, point: BrandSplashKntrExit): Boolean {
+        val owner = point.owner
+        val resume = point.resume
+        val label = point.label
+        val exit = point.callback
+        val invoke = point.invoke
+        val hostUnit = point.unit
         environment.registrar.exact("brand.skip.kntr.exit", owner, resume.name, classOf<Any>()) {
             before {
                 val continuation = instance ?: return@before
+                if (point.waitsForImages) {
+                    // Keep the native label for its pending timer and debug/cancellation
+                    // machinery. Only suppress a successful duplicate exit on this instance.
+                    if (synchronized(completedKntr) { continuation in completedKntr } &&
+                        point.failure?.isInstance(argOrNull(0)) != true) result = hostUnit
+                    return@before
+                }
                 if (!isMainThread()) {
                     environment.logError("brand_skip_kntr_thread", "[BIL] 品牌开屏回调线程发生变化，保留原等待")
                     return@before
@@ -95,6 +102,26 @@ internal class BrandSplashSkipFeatureInstaller(
                         environment.reportRuntimeEvidence(ID, FeatureRuntimeStage.APPLIED)
                     }
                 }.onFailure {
+                    environment.logError("brand_skip_kntr_exit", "[BIL] 品牌开屏完成回调不可用，保留原流程")
+                }
+            }
+            after {
+                if (!point.waitsForImages || hasThrowable || result !== point.waiting || !isMainThread()) return@after
+                val continuation = instance ?: return@after
+                if (label.getInt(continuation) != 1) return@after
+                val callback = runCatching { exit.get(continuation) }.getOrNull() ?: return@after
+                synchronized(completedKntr) {
+                    if (continuation in completedKntr || completedKntr.size >= 16) return@after
+                    completedKntr[continuation] = true
+                }
+                runCatching {
+                    environment.reportRuntimeEvidence(ID, FeatureRuntimeStage.OBSERVED)
+                    // Readiness, onShow and persistence ran in the native method before it
+                    // suspended. Keep COROUTINE_SUSPENDED: its timer/cancellation completes once.
+                    invoke.invoke(callback)
+                    environment.reportRuntimeEvidence(ID, FeatureRuntimeStage.APPLIED)
+                }.onFailure {
+                    synchronized(completedKntr) { completedKntr.remove(continuation) }
                     environment.logError("brand_skip_kntr_exit", "[BIL] 品牌开屏完成回调不可用，保留原流程")
                 }
             }

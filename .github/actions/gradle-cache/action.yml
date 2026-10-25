@@ -15,7 +15,7 @@ runs:
       run: |
         set -euo pipefail
         test -n "$COMPATIBILITY"
-        prefix="bil-gradle-v1-${RUNNER_OS}-${RUNNER_ARCH}-jdk17-${COMPATIBILITY}-"
+        prefix="bil-gradle-v1-${RUNNER_OS}-${RUNNER_ARCH}-jdk27-${COMPATIBILITY}-"
         echo "prefix=$prefix" >> "$GITHUB_OUTPUT"
         echo "key=${prefix}${GITHUB_SHA}-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" >> "$GITHUB_OUTPUT"
     - name: Restore compatible Gradle snapshot

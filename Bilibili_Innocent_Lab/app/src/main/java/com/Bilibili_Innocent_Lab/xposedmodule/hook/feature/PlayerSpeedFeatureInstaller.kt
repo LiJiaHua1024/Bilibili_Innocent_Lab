@@ -2,26 +2,34 @@ package com.Bilibili_Innocent_Lab.xposedmodule.hook.feature
 
 import com.Bilibili_Innocent_Lab.xposedmodule.hook.adapter.PlayerSpeedLocator
 import com.Bilibili_Innocent_Lab.xposedmodule.hook.adapter.PlayerSpeedSessionLocator
+import com.Bilibili_Innocent_Lab.xposedmodule.hook.adapter.PlayerSpeedMenuPoints
+import java.lang.reflect.Constructor
+import java.lang.reflect.Field
+import kotlin.math.abs
 
 /** 仅作用播放器业务对象；不 Hook 全局触摸，不轮询当前速度，不覆盖用户播放中的手动选择。 */
 internal class PlayerSpeedFeatureInstaller(
     private val disableLongPress: Boolean,
     longPressPercent: Int,
-    defaultPercent: Int
+    defaultPercent: Int,
+    speedMenuSpec: String = "",
+    private val cachedMenuPoints: PlayerSpeedMenuPoints? = null
 ) : FeatureInstaller {
     override val id = ID
     override val capabilityIds: List<String> get() = buildList {
         if (disableLongPress) add("player_long_press_disabled")
         if (pressSpeed != null) add("player_long_press_speed_percent")
         if (defaultSpeed != null) add("player_default_speed_percent")
+        if (menuMultipliers.isNotEmpty()) add(MENU_CAPABILITY)
     }
     private val pressSpeed = PlayerSpeedConfig.multiplier(
         PlayerSpeedConfig.effectiveLongPressPercent(disableLongPress, longPressPercent)
     )
     private val defaultSpeed = PlayerSpeedConfig.multiplier(defaultPercent)
+    private val menuMultipliers = PlayerSpeedConfig.menuMultipliers(defaultPercent, speedMenuSpec)
 
     override fun install(environment: HookEnvironment): FeatureInstallResult {
-        if (!disableLongPress && pressSpeed == null && defaultSpeed == null) {
+        if (!disableLongPress && pressSpeed == null && defaultSpeed == null && menuMultipliers.isEmpty()) {
             environment.reportStatus(CHANNEL, "disabled")
             return FeatureInstallResult.Skipped("disabled")
         }
@@ -37,6 +45,7 @@ internal class PlayerSpeedFeatureInstaller(
             val capability = when (unit) {
                 "disable-long-press" -> "player_long_press_disabled"
                 "long-press-speed" -> "player_long_press_speed_percent"
+                "speed-menu" -> MENU_CAPABILITY
                 else -> "player_default_speed_percent"
             }
             val beforeInstalled = installed
@@ -141,6 +150,12 @@ internal class PlayerSpeedFeatureInstaller(
                 true
             }
         }
+        if (menuMultipliers.isNotEmpty()) {
+            attempt("speed-menu") {
+                val menuPoint = PlayerSpeedLocator.speedMenu(loader, cachedMenuPoints) ?: return@attempt false
+                installSpeedMenu(environment, menuPoint)
+            }
+        }
         coverage.forEach { (capability, counts) ->
             // Registering a discovery anchor is not proof that the concrete prepared callback installed.
             environment.reportCapabilityCoverage(capability, true,
@@ -161,11 +176,209 @@ internal class PlayerSpeedFeatureInstaller(
 
     internal enum class DefaultSpeedResult { APPLIED, UNCHANGED, UNEXPECTED_STATE, FAILED }
 
+    internal fun installSpeedMenu(
+        environment: HookEnvironment,
+        menuPoint: PlayerSpeedLocator.SpeedMenuPoint
+    ): Boolean {
+        if (menuMultipliers.isEmpty() || menuPoint.adapter == null) return false
+        var hookedAny = false
+        menuPoint.adapter?.let { adapterPoint ->
+            val method = adapterPoint.populateMethod
+            environment.registrar.exact(
+                "player.speed.menu_adapter_populate",
+                method.declaringClass,
+                method.name,
+                *method.parameterTypes
+            ) {
+                before {
+                    val target = instance ?: return@before
+                    val currentSpeed = argOrNull(0) as? Float ?: return@before
+                    if (!currentSpeed.isFinite()) return@before
+                    environment.reportRuntimeEvidence(MENU_CAPABILITY, FeatureRuntimeStage.OBSERVED)
+                    val arrayField = adapterPoint.speedsArrayField
+                    if (arrayField != null) {
+                        val previous = runCatching { arrayField.get(target) as? FloatArray }.getOrNull() ?: return@before
+                        setObjectExtra(MENU_PREV_ARRAY, previous)
+                        if (runCatching { arrayField.set(target, menuMultipliers.toFloatArray()) }.isSuccess) {
+                            setObjectExtra(MENU_CHANGED, true)
+                        }
+                    } else {
+                        val ctor = adapterPoint.optionConstructor ?: return@before
+                        val speedField = adapterPoint.optionSpeedField ?: return@before
+                        val availField = adapterPoint.optionAvailableField ?: return@before
+                        val incoming = argOrNull(1) as? List<*> ?: return@before
+                        if (!matchesOptionModels(incoming, speedField, availField, menuMultipliers)) {
+                            val replaced = buildOptionModels(ctor, speedField, availField, menuMultipliers) ?: return@before
+                            args[1] = replaced
+                        }
+                        setObjectExtra(MENU_CHANGED, true)
+                    }
+                }
+                after {
+                    val target = instance ?: return@after
+                    val arrayField = adapterPoint.speedsArrayField
+                    if (hasThrowable) {
+                        if (arrayField != null) {
+                            (getObjectExtra(MENU_PREV_ARRAY) as? FloatArray)?.let { prev ->
+                                runCatching { arrayField.set(target, prev) }
+                            }
+                        }
+                        return@after
+                    }
+                    if (getObjectExtra(MENU_CHANGED) != true) return@after
+                    val currentSpeed = argOrNull(0) as? Float ?: return@after
+                    if (refineAdapterItems(target, adapterPoint, currentSpeed, menuMultipliers)) {
+                        environment.reportRuntimeEvidence(MENU_CAPABILITY, FeatureRuntimeStage.APPLIED)
+                    } else if (arrayField != null) {
+                        (getObjectExtra(MENU_PREV_ARRAY) as? FloatArray)?.let { prev ->
+                            runCatching { arrayField.set(target, prev) }
+                        }
+                    }
+                }
+            }
+            hookedAny = true
+        }
+        menuPoint.compactRoute?.let { route ->
+            val scope = MenuOpenScope()
+            val getter = route.windowDelegateGetter
+            environment.registrar.exact(
+                "player.speed.menu_compact_window_delegate", getter.declaringClass, getter.name
+            ) {
+                after {
+                    if (!hasThrowable && scope.contains(instance)) result = null
+                }
+            }
+            val open = route.openMethod
+            environment.registrar.exact(
+                "player.speed.menu_compact_open", open.declaringClass, open.name, *open.parameterTypes
+            ) {
+                before { setObjectExtra(MENU_OPEN_PREVIOUS, scope.enter(argOrNull(0))) }
+                after { scope.restore(getObjectExtra(MENU_OPEN_PREVIOUS)) }
+            }
+        }
+        menuPoint.factory?.let { factoryPoint ->
+            val method = factoryPoint.factoryMethod
+            environment.registrar.exact(
+                "player.speed.menu_options_factory",
+                method.declaringClass,
+                method.name,
+                *method.parameterTypes
+            ) {
+                after {
+                    if (hasThrowable || result !is List<*>) return@after
+                    environment.reportRuntimeEvidence(MENU_CAPABILITY, FeatureRuntimeStage.OBSERVED)
+                    val replaced = buildOptionModels(
+                        factoryPoint.optionConstructor,
+                        factoryPoint.optionSpeedField,
+                        factoryPoint.optionAvailableField,
+                        menuMultipliers
+                    ) ?: return@after
+                    result = replaced
+                    environment.reportRuntimeEvidence(MENU_CAPABILITY, FeatureRuntimeStage.APPLIED)
+                }
+            }
+            hookedAny = true
+        }
+        return hookedAny
+    }
+
     companion object {
         const val ID = "player_speed"
+        const val MENU_CAPABILITY = "player_speed_menu_percents"
         private const val TARGET_PACKAGE = "tv.danmaku.bili"
         private const val CHANNEL = "player_speed_status"
         private const val PRESS_CHANGED = "player_speed_changed"
+        private const val MENU_CHANGED = "player_speed_menu_changed"
+        private const val MENU_PREV_ARRAY = "player_speed_menu_prev_array"
+        private const val MENU_OPEN_PREVIOUS = "player_speed_menu_open_previous"
+        internal const val SELECTION_EPSILON = 0.005f
+
+        internal class MenuOpenScope {
+            private val current = ThreadLocal<Any?>()
+            fun enter(target: Any?): Any? = current.get().also { current.set(target) }
+            fun contains(target: Any?): Boolean = target != null && current.get() === target
+            fun restore(previous: Any?) {
+                if (previous == null) current.remove() else current.set(previous)
+            }
+        }
+
+        internal fun buildOptionModels(
+            constructor: Constructor<*>,
+            speedField: Field,
+            availableField: Field,
+            multipliers: List<Float>
+        ): ArrayList<Any>? = runCatching {
+            if (multipliers.isEmpty()) return@runCatching null
+            val list = ArrayList<Any>(multipliers.size)
+            for (speed in multipliers) {
+                if (!speed.isFinite() || speed !in PlayerSpeedConfig.MIN_MULTIPLIER..PlayerSpeedConfig.MAX_MULTIPLIER) {
+                    return@runCatching null
+                }
+                val item = constructor.newInstance(speed, true) ?: return@runCatching null
+                val actual = speedField.getFloat(item)
+                if (!actual.isFinite() || abs(actual - speed) > 0.0001f || !availableField.getBoolean(item)) {
+                    return@runCatching null
+                }
+                list.add(item)
+            }
+            list
+        }.getOrNull()
+
+        internal fun matchesOptionModels(
+            list: List<*>,
+            speedField: Field,
+            availableField: Field,
+            multipliers: List<Float>
+        ): Boolean = runCatching {
+            if (list.size != multipliers.size) return@runCatching false
+            for (i in multipliers.indices) {
+                val item = list[i] ?: return@runCatching false
+                val speed = speedField.getFloat(item)
+                if (!speed.isFinite() || abs(speed - multipliers[i]) > 0.0001f || !availableField.getBoolean(item)) {
+                    return@runCatching false
+                }
+            }
+            true
+        }.getOrDefault(false)
+
+        /**
+         * 校验并修正 Adapter 内部条目列表：
+         * 宿主原版使用 `< 0.1` 的宽松比较标记选中项，当用户配置了两位小数邻近档位（如 1.0 与 1.05）时，
+         * 会把多项同时标为选中，进而导致点击邻近档位在 `onClick` 中因 `isSelected == true` 提前返回。
+         * 这里改为仅在误差 `< SELECTION_EPSILON` 内挑选唯一最接近的档位高亮。
+         */
+        internal fun refineAdapterItems(
+            adapterInstance: Any,
+            point: PlayerSpeedLocator.SpeedMenuAdapterPoint,
+            currentSpeed: Float,
+            expectedMultipliers: List<Float>
+        ): Boolean = runCatching {
+            if (!currentSpeed.isFinite() || expectedMultipliers.isEmpty()) return@runCatching false
+            val items = point.itemsField.get(adapterInstance) as? List<*> ?: return@runCatching false
+            if (items.size != expectedMultipliers.size) return@runCatching false
+            // 旧 core 将 2.0 写成 1.99；用户没有单列 1.99 档位时沿用宿主的 2.0 高亮语义。
+            val selectionSpeed = if (abs(currentSpeed - 1.99f) < 0.0001f &&
+                expectedMultipliers.none { abs(it - 1.99f) < 0.0001f } &&
+                expectedMultipliers.any { abs(it - 2f) < 0.0001f }) 2f else currentSpeed
+            var bestIndex = -1
+            var bestDiff = SELECTION_EPSILON
+            for (index in items.indices) {
+                val item = items[index] ?: return@runCatching false
+                val speed = point.itemSpeedField.getFloat(item)
+                if (!speed.isFinite() || abs(speed - expectedMultipliers[index]) > 0.0001f) return@runCatching false
+                val diff = abs(selectionSpeed - speed)
+                if (diff < bestDiff) {
+                    bestDiff = diff
+                    bestIndex = index
+                }
+            }
+            for (index in items.indices) {
+                val item = items[index] ?: return@runCatching false
+                point.itemSelectedField.setBoolean(item, index == bestIndex)
+                point.itemAvailableField?.setBoolean(item, true)
+            }
+            true
+        }.getOrDefault(false)
 
         internal fun applyDefaultSpeed(
             target: Any,

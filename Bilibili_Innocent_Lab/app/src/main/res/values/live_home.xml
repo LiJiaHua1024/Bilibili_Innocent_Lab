@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="hide_live_home_promotion">Hide promoted live cards on the Live tab</string>
+    <string name="hide_live_home_promotion_tip">Remove the top promoted live carousel on the home Live tab and close its space. Followed streamers and the normal live list remain available. Restart Bilibili after changing this setting.</string>
+    <string name="highlights_live_home_promotion">Hide the top promoted live carousel on the Live tab without leaving an empty space.</string>
+</resources>

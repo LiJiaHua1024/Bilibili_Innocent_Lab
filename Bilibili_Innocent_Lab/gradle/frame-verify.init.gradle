@@ -1,0 +1,7 @@
+// Side-by-side instrumentation package. Match release native optimization without replacing the installed module.
+allprojects {
+    pluginManager.withPlugin("com.android.application") {
+        android.buildTypes.debug.applicationIdSuffix = ".frameverify"
+        android.buildTypes.debug.externalNativeBuild.cmake.arguments("-DCMAKE_BUILD_TYPE=Release")
+    }
+}

@@ -57,6 +57,30 @@ class HomeFrameTabLocatorTest {
         assertSame(HomeFrameTabLocator.Resolution.Absent, HomeFrameTabLocator.resolve(withoutFrame))
     }
 
+    @Test fun `game menu filters the independent top slot and permits zero menu entries`() {
+        val registrar = PlayerPortTestRegistrar()
+        HomeTopBarFeatureInstaller(true, false, null).install(environment(registrar))
+        assertEquals("a", model().slot(HomeFrameTabLocator.ELEMENT_TOP)!!.field.name)
+        assertFalse(evidence.any { it.second == FeatureRuntimeStage.APPLIED })
+        val tabs = listOf(tab("recommend", "推荐", "bilibili://pegasus/promo", defaultSelected = 1))
+        val bottom = listOf(tab("home", "首页", "bilibili://main/home", defaultSelected = 1))
+        val scan = tab("scan", "扫一扫", "bilibili://scan")
+        val game = tab("game", "游戏", "action://game_center/home/menu?from=home")
+        val data = k(listOf(game, scan), tabs, bottom, emptyList(), null)
+        registrar.construct("home.top_bar.game_frame.", data)
+        assertEquals(listOf(scan), data.a)
+        assertSame(tabs, data.b); assertSame(bottom, data.c)
+        val onlyGame = k(listOf(game), tabs, bottom, emptyList(), null)
+        registrar.construct("home.top_bar.game_frame.", onlyGame)
+        assertTrue(onlyGame.a.isEmpty())
+        assertTrue("home_game_menu_frame" to "applied" in statuses)
+        val lookalike = tab("other", "游戏攻略", "action://game_center/home/menu_extra")
+        val untouched = listOf(lookalike, scan)
+        val other = k(untouched, tabs, bottom, emptyList(), null)
+        registrar.construct("home.top_bar.game_frame.", other)
+        assertSame(untouched, other.a)
+    }
+
     @Test
     fun `field order follows dex sorting by name then type descriptor`() {
         assertEquals(listOf("a", "b", "c", "d", "e"), HomeFrameTabLocator.orderedInstanceFields(k::class.java).map { it.name })
@@ -114,6 +138,7 @@ class HomeFrameTabLocatorTest {
 
     private val statuses = mutableListOf<Pair<String, String>>()
     private val snapshots = mutableListOf<Pair<String, ScanSnapshotContent>>()
+    private val evidence = mutableListOf<Triple<String, FeatureRuntimeStage, Int>>()
 
     private fun environment(registrar: HookRegistrar) = HookEnvironment(
         processName = "tv.danmaku.bili",
@@ -123,7 +148,8 @@ class HomeFrameTabLocatorTest {
         logInfo = { _, _ -> },
         logError = { _, _ -> },
         reportStatus = { channel, value -> statuses += channel to value },
-        writeScanSnapshot = { surface, content -> snapshots += surface to content; true }
+        writeScanSnapshot = { surface, content -> snapshots += surface to content; true },
+        runtimeEvidence = { feature, stage, count -> evidence += Triple(feature, stage, count) }
     )
 
     /** 模拟宿主构造完一个 HomeTabData：对全部已登记构造器 Hook 触发一次 before/after。 */
@@ -147,12 +173,16 @@ class HomeFrameTabLocatorTest {
 
         assertEquals(FeatureInstallResult.Installed(1), result)
         assertTrue("bottom_bar_layers" to "tabhost=absent,frame=ok" in statuses)
-        assertTrue("bottom_bar_status" to "success:filter+scan" in statuses)
+        assertTrue("bottom_bar_status" to "installed:mode=filter+scan" in statuses)
         assertTrue(registrar.hooks.keys.all { it.startsWith("bottom.frame.ctor.") })
+        assertFalse(evidence.any { it.second in setOf(FeatureRuntimeStage.OBSERVED, FeatureRuntimeStage.APPLIED) })
 
         val data = k(emptyList(), emptyList(), listOf(home, mall), emptyList(), null)
         registrar.construct("bottom.frame.ctor.", data)
         assertEquals(listOf("首页"), data.c.map { it.b })
+        assertTrue("bottom_bar_status" to "observed:path=frame,count=2" in statuses)
+        assertTrue("bottom_bar_status" to "applied:path=frame,count=1" in statuses)
+        assertEquals(1, evidence.single { it.second == FeatureRuntimeStage.APPLIED }.third)
 
         val (surface, content) = snapshots.last()
         assertEquals(MineComponentSnapshotCodec.SURFACE_BOTTOM_BAR, surface)
@@ -193,11 +223,15 @@ class HomeFrameTabLocatorTest {
 
         assertEquals(FeatureInstallResult.Installed(1), result)
         assertTrue("home_tab_filter_layers" to "legacy=absent,frame=ok" in statuses)
+        assertTrue("home_tab_filter_status" to "installed:mode=filter+scan" in statuses)
+        assertFalse(evidence.any { it.second == FeatureRuntimeStage.APPLIED })
 
         val bottom = listOf(tab("b", "首页", "bilibili://main/home", defaultSelected = 1))
         val data = k(emptyList(), listOf(recommend, film), bottom, emptyList(), null)
         registrar.construct("home.tabs.frame.ctor.", data)
         assertEquals(listOf("推荐"), data.b.map { it.b })
+        assertTrue("home_tab_filter_status" to "observed:path=frame,count=2" in statuses)
+        assertTrue("home_tab_filter_status" to "applied:path=frame,count=1" in statuses)
         // 另一个元素不受影响。
         assertSame(bottom, data.c)
         assertEquals(MineComponentSnapshotCodec.SURFACE_HOME_TABS, snapshots.last().first)
@@ -218,7 +252,7 @@ class HomeFrameTabLocatorTest {
     fun `scan only mode never rewrites host data`() {
         val registrar = PlayerPortTestRegistrar()
         BottomBarFeatureInstaller(rules = "", points = null).install(environment(registrar))
-        assertTrue("bottom_bar_status" to "success:scan" in statuses)
+        assertTrue("bottom_bar_status" to "installed:mode=scan" in statuses)
         val bottom = listOf(
             tab("1", "首页", "bilibili://main/home", defaultSelected = 1),
             tab("2", "动态", "bilibili://following/home")
@@ -227,5 +261,24 @@ class HomeFrameTabLocatorTest {
         registrar.construct("bottom.frame.ctor.", data)
         assertSame(bottom, data.c)
         assertEquals(2, snapshots.last().second.entries.size)
+        assertTrue("bottom_bar_status" to "observed:path=frame,count=2" in statuses)
+        assertFalse(statuses.any { it.second.startsWith("applied:") })
+        assertTrue(evidence.any { it.second == FeatureRuntimeStage.OBSERVED })
+        assertFalse(evidence.any { it.second == FeatureRuntimeStage.APPLIED })
     }
+
+    @Test fun `frame fallback that preserves every tab never claims applied`() {
+        val registrar = PlayerPortTestRegistrar()
+        HomeTabFilterFeatureInstaller(rules = "", selectors = MineComponentSelectionCodec.encode(
+            listOf("home_tab:id:1", "home_tab:id:2")), points = null).install(environment(registrar))
+        val tabs = listOf(tab("1", "首页", "bilibili://main/home"), tab("2", "动态", "bilibili://following/home"))
+        val data = k(emptyList(), tabs, emptyList(), emptyList(), null)
+        registrar.construct("home.tabs.frame.ctor.", data)
+        registrar.construct("home.tabs.frame.ctor.", data)
+        assertSame(tabs, data.b)
+        assertEquals(1, statuses.count { it.second == "observed:path=frame,count=2" })
+        assertFalse(statuses.any { it.second.startsWith("applied:") })
+        assertFalse(evidence.any { it.second == FeatureRuntimeStage.APPLIED })
+    }
+
 }

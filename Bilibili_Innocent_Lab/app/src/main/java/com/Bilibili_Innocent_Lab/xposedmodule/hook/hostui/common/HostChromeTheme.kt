@@ -27,9 +27,8 @@ internal class HostChromeTheme(private val context: Context) {
             runCatching { hostColor?.invoke(null, context, accentId) as? Int }.getOrNull()
                 ?: runCatching { context.getColor(accentId) }.getOrNull()
         }
-        val base = HostChromeColors.resolve(hostDark, systemDark, accent)
-        val next = HostGarbTheme.accent(context)?.let { base.copy(accent = it, garbAccent = it) } ?: base
-        return previous?.takeIf { it == next } ?: next.also { previous = it }
+        return HostChromeColors.resolve(hostDark, systemDark, accent, HostGarbTheme.accent(context), previous)
+            .also { previous = it }
     }
 }
 
@@ -57,7 +56,13 @@ internal data class HostChromeColors(val dark: Boolean, val accent: Int, val gar
     }
 
     companion object {
-        fun resolve(hostDark: Boolean?, systemDark: Boolean, accent: Int?): HostChromeColors =
-            HostChromeColors(hostDark ?: systemDark, accent ?: 0xFFFF6699.toInt())
+        fun resolve(hostDark: Boolean?, systemDark: Boolean, accent: Int?, garbAccent: Int? = null,
+                    previous: HostChromeColors? = null): HostChromeColors {
+            val dark = hostDark ?: systemDark
+            val resolvedAccent = garbAccent ?: accent ?: 0xFFFF6699.toInt()
+            // Poll the host every time, but allocate colors and their lazy palette only on change.
+            return previous?.takeIf { it.dark == dark && it.accent == resolvedAccent && it.garbAccent == garbAccent }
+                ?: HostChromeColors(dark, resolvedAccent, garbAccent)
+        }
     }
 }

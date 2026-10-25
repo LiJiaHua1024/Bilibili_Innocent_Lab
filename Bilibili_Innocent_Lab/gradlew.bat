@@ -79,7 +79,13 @@ set "TMP=%BIL_GRADLE_TMP%"
 @rem Match org.gradle.jvmargs so --no-daemon can reuse this JVM instead of
 @rem forking a single-use Daemon and opening a local selector/AF_UNIX pipe.
 set "BIL_GRADLE_HEAP=4096m"
-set "BIL_JVM_TUNING=-XX:MaxMetaspaceSize=1024m -XX:ReservedCodeCacheSize=512m -XX:+UseCodeCacheFlushing"
+@rem Keep Gradle's standard JPMS openings on in-process Windows builds too.
+@rem Only portable JDK 17+ flags are used; JVM-version-specific native/Unsafe flags stay with Gradle.
+set "BIL_JVM_OPENS=--add-opens=java.base/java.lang=ALL-UNNAMED --add-opens=java.base/java.lang.invoke=ALL-UNNAMED --add-opens=java.base/java.util=ALL-UNNAMED --add-opens=java.prefs/java.util.prefs=ALL-UNNAMED"
+set "BIL_JVM_OPENS=%BIL_JVM_OPENS% --add-opens=java.base/java.nio.charset=ALL-UNNAMED --add-opens=java.base/java.net=ALL-UNNAMED --add-opens=java.base/java.util.concurrent=ALL-UNNAMED --add-opens=java.base/java.util.concurrent.atomic=ALL-UNNAMED --add-opens=java.xml/javax.xml.namespace=ALL-UNNAMED --add-opens=java.base/java.time=ALL-UNNAMED"
+set "BIL_JVM_OPENS=%BIL_JVM_OPENS% --add-exports=jdk.compiler/com.sun.tools.javac.api=ALL-UNNAMED --add-exports=jdk.compiler/com.sun.tools.javac.util=ALL-UNNAMED"
+@rem Match launcher and requested build JVM options so --no-daemon does not fork.
+set "BIL_JVM_TUNING=-XX:MaxMetaspaceSize=1024m -XX:ReservedCodeCacheSize=512m -XX:+UseCodeCacheFlushing %BIL_JVM_OPENS%"
 set "JDK_JAVA_OPTIONS=%BIL_JVM_TUNING%"
 set DEFAULT_JVM_OPTS="-Xmx%BIL_GRADLE_HEAP%" "-Dfile.encoding=UTF-8" "-Djava.io.tmpdir=%BIL_GRADLE_TMP%"
 

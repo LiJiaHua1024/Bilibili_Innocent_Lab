@@ -522,6 +522,7 @@ internal fun MainActivity.enhancementSettingsCard(
             isChecked = freeCopyEnabled
             setOnCheckedChangeListener { _, isChecked ->
                 freeCopyEnabled = isChecked
+                refreshCopyAppearanceOptions()
                 runCatching {
                     val revision = System.currentTimeMillis().coerceAtLeast(1L)
                     prefs().edit {
@@ -563,6 +564,7 @@ internal fun MainActivity.enhancementSettingsCard(
             isChecked = freeCopyDescEnabled
             setOnCheckedChangeListener { _, isChecked ->
                 freeCopyDescEnabled = isChecked
+                refreshCopyAppearanceOptions()
                 runCatching {
                     val revision = System.currentTimeMillis().coerceAtLeast(1L)
                     prefs().edit {
@@ -785,6 +787,9 @@ internal fun MainActivity.beautificationSettingsCard(scope: Hikage.Performer<Nat
             textColor = colorResource(R.color.colorTextDark)
             textSize = 12f
         }
+        // Either copy feature can display the shared bubble.
+        val copyOptions = DependentAppearanceOptions { freeCopyEnabled || freeCopyDescEnabled }
+        refreshCopyAppearanceOptions = copyOptions::refresh
         // 复制气泡外观同时控制评论与简介。
         TextView(
             lparams = LayoutParams(widthMatchParent = true) {
@@ -819,6 +824,7 @@ internal fun MainActivity.beautificationSettingsCard(scope: Hikage.Performer<Nat
                 animateLightModeTip()
             }
             autoLightSwitch = this
+            copyOptions.add(this)
         }
         TextView(
             lparams = LayoutParams(widthMatchParent = true) {
@@ -830,6 +836,7 @@ internal fun MainActivity.beautificationSettingsCard(scope: Hikage.Performer<Nat
             text = stringResource(R.string.free_copy_auto_light_tip)
             textColor = colorResource(R.color.colorTextDark)
             textSize = 12f
+            copyOptions.add(this)
         }
         MaterialSwitch(
             lparams = LayoutParams(widthMatchParent = true) {
@@ -882,6 +889,7 @@ internal fun MainActivity.beautificationSettingsCard(scope: Hikage.Performer<Nat
                 onFreeCopyLightModeChanged(isChecked)
             }
             manualLightSwitch = this
+            copyOptions.add(this)
         }
         TextView(
             lparams = LayoutParams(widthMatchParent = true) {
@@ -897,6 +905,7 @@ internal fun MainActivity.beautificationSettingsCard(scope: Hikage.Performer<Nat
             textColor = colorResource(R.color.colorTextDark)
             textSize = 12f
             lightModeTipView = this
+            copyOptions.add(this)
         }
     }
 }
@@ -1790,6 +1799,7 @@ internal fun MainActivity.logSettingsCard(scope: Hikage.Performer<NativeLinearLa
         LogSegmentScrubBar(
             lparams = LayoutParams(widthMatchParent = true),
             init = {
+                bindSettingDestination(this, HookEntry.PREF_LOG_LEVEL)
                 // 控件整体接管触摸（轻点/拖动/回弹），与全局长按弹性手势互斥，
                 // 打上排除标记（底栏 dock 同款处理）。
                 tag = com.Bilibili_Innocent_Lab.xposedmodule.ui.interaction.ElasticInteractionController.EXCLUDED_TAG

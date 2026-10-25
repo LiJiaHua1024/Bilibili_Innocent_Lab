@@ -45,6 +45,18 @@ class StoryQualityPreferenceAccessTest {
         class Selected(val qn: Int, marker: DefaultConstructorMarker?) : MarkerOnly()
     }
 
+    // 9.16 R8 将无状态 sealed 基类改成接口，两个策略仍保持原有语义。
+    sealed interface Optimized {
+        object Automatic : Optimized
+        class Selected(val qn: Int) : Optimized
+    }
+
+    interface InheritedState {
+        object Automatic : InheritedState
+        open class Parent(val hidden: Int)
+        class Selected(val qn: Int) : Parent(1), InheritedState
+    }
+
     abstract class ChangedQn {
         object Automatic : ChangedQn()
         class Selected(qn: Int) : ChangedQn() { val value = qn + 1 }
@@ -154,6 +166,13 @@ class StoryQualityPreferenceAccessTest {
             }
         }
         assertNull(resolve(MarkerOnly::class.java, hidesMarker))
+    }
+
+    @Test fun `supports R8 interface strategy with direct stateless implementations`() {
+        val access = requireNotNull(resolve(Optimized::class.java))
+        assertSame(Optimized.Automatic, access.auto)
+        assertEquals(80, access.qualityOf(access.fixed(80)))
+        assertNull(resolve(InheritedState::class.java))
     }
 
     @Test fun `rejects factories that fail the quality round trip`() {

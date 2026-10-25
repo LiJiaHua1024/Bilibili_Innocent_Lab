@@ -1,0 +1,1573 @@
+{
+  "schema": 1,
+  "matrix_id": "e650f4669e2040cb864172580a4ab527",
+  "scope": "Exact APK static facade/callee ABIs; runtime ClassLoader and rendering are separate",
+  "samples": [
+    {
+      "version_code": 8840200,
+      "apk_sha256": "166870077b7dd0214e11aaee07a651412a03d2133b27898c79f5cae712d81e15",
+      "compose_row_present": false,
+      "root": [],
+      "foreground": [],
+      "actions": []
+    },
+    {
+      "version_code": 8860400,
+      "apk_sha256": "058888128b1f9fc970bd1d5c02b8b7d7d6a6da540f6c808cfdb505e5b3dfd779",
+      "compose_row_present": false,
+      "root": [],
+      "foreground": [],
+      "actions": []
+    },
+    {
+      "version_code": 8870400,
+      "apk_sha256": "a98d4eb549845665b9b546d137066edb68a75b452dda91f7e60baa113aa78e87",
+      "compose_row_present": false,
+      "root": [],
+      "foreground": [],
+      "actions": []
+    },
+    {
+      "version_code": 8880300,
+      "apk_sha256": "1e80826c8d922657d88915fdf66675798ab6b49362133505c028c979b76c81ab",
+      "compose_row_present": false,
+      "root": [],
+      "foreground": [],
+      "actions": []
+    },
+    {
+      "version_code": 8890400,
+      "apk_sha256": "49172e26c9255b95a5a319cb219f1de686ae9f79dc7caa106c57ef03296a3a54",
+      "compose_row_present": false,
+      "root": [],
+      "foreground": [],
+      "actions": []
+    },
+    {
+      "version_code": 8902100,
+      "apk_sha256": "804ab5d719da42f257aac6237dda408151b93ecff71a0da99c5f32c71161a2e5",
+      "compose_row_present": false,
+      "root": [],
+      "foreground": [],
+      "actions": []
+    },
+    {
+      "version_code": 8910300,
+      "apk_sha256": "54393e43008e05497d2d658e9479d78b1145539bbbbf65eb986897525230d980",
+      "compose_row_present": false,
+      "root": [],
+      "foreground": [],
+      "actions": []
+    },
+    {
+      "version_code": 8921100,
+      "apk_sha256": "a954b77ad072c2da69a2f6de80e3bd219b507cc588ac9d98d3782d4d3b4e2595",
+      "compose_row_present": true,
+      "root": [
+        {
+          "owner": "tv.danmaku.bili.khome.widget.topbar.l0",
+          "name": "z",
+          "parameters": [
+            "va6.d",
+            "kotlin.jvm.functions.Function1",
+            "androidx.compose.runtime.Composer",
+            "int",
+            "int"
+          ],
+          "result": "void"
+        }
+      ],
+      "foreground": [
+        {
+          "owner": "tv.danmaku.bili.khome.widget.topbar.l0",
+          "name": "F",
+          "parameters": [
+            "va6.d",
+            "float",
+            "androidx.compose.ui.Modifier",
+            "boolean",
+            "float",
+            "kotlin.jvm.functions.Function1",
+            "androidx.compose.runtime.Composer",
+            "int",
+            "int"
+          ],
+          "result": "void"
+        }
+      ],
+      "actions": [
+        {
+          "owner": "tv.danmaku.bili.khome.widget.topbar.l0",
+          "name": "B",
+          "parameters": [
+            "va6.d",
+            "androidx.compose.ui.Modifier",
+            "kotlin.jvm.functions.Function1",
+            "androidx.compose.runtime.Composer",
+            "int",
+            "int"
+          ],
+          "result": "void"
+        }
+      ]
+    },
+    {
+      "version_code": 8930400,
+      "apk_sha256": "401ddcd0523082f3594663f2fa195d274a6be84c7bd17bec720eeabdfefe3400",
+      "compose_row_present": true,
+      "root": [
+        {
+          "owner": "tv.danmaku.bili.khome.widget.topbar.L",
+          "name": "z",
+          "parameters": [
+            "Q61.d",
+            "kotlin.jvm.functions.Function1",
+            "androidx.compose.runtime.Composer",
+            "int",
+            "int"
+          ],
+          "result": "void"
+        }
+      ],
+      "foreground": [
+        {
+          "owner": "tv.danmaku.bili.khome.widget.topbar.L",
+          "name": "F",
+          "parameters": [
+            "Q61.d",
+            "float",
+            "androidx.compose.ui.Modifier",
+            "boolean",
+            "float",
+            "kotlin.jvm.functions.Function1",
+            "androidx.compose.runtime.Composer",
+            "int",
+            "int"
+          ],
+          "result": "void"
+        }
+      ],
+      "actions": [
+        {
+          "owner": "tv.danmaku.bili.khome.widget.topbar.L",
+          "name": "B",
+          "parameters": [
+            "Q61.d",
+            "androidx.compose.ui.Modifier",
+            "kotlin.jvm.functions.Function1",
+            "androidx.compose.runtime.Composer",
+            "int",
+            "int"
+          ],
+          "result": "void"
+        }
+      ]
+    },
+    {
+      "version_code": 8940300,
+      "apk_sha256": "2d647f4a5c4a61cc415a833a5c0b5b8a752c9a68fcfa6f1104d0c90bad9c4038",
+      "compose_row_present": true,
+      "root": [
+        {
+          "owner": "tv.danmaku.bili.khome.widget.topbar.L",
+          "name": "z",
+          "parameters": [
+            "y71.d",
+            "kotlin.jvm.functions.Function1",
+            "androidx.compose.runtime.Composer",
+            "int",
+            "int"
+          ],
+          "result": "void"
+        }
+      ],
+      "foreground": [
+        {
+          "owner": "tv.danmaku.bili.khome.widget.topbar.L",
+          "name": "F",
+          "parameters": [
+            "y71.d",
+            "float",
+            "androidx.compose.ui.Modifier",
+            "boolean",
+            "float",
+            "kotlin.jvm.functions.Function1",
+            "androidx.compose.runtime.Composer",
+            "int",
+            "int"
+          ],
+          "result": "void"
+        }
+      ],
+      "actions": [
+        {
+          "owner": "tv.danmaku.bili.khome.widget.topbar.L",
+          "name": "B",
+          "parameters": [
+            "y71.d",
+            "androidx.compose.ui.Modifier",
+            "kotlin.jvm.functions.Function1",
+            "androidx.compose.runtime.Composer",
+            "int",
+            "int"
+          ],
+          "result": "void"
+        }
+      ]
+    },
+    {
+      "version_code": 8950600,
+      "apk_sha256": "7d4e8e52fe4d60851a4ef765514bc57e8146d08b0d861b8482019b32d422ae7a",
+      "compose_row_present": true,
+      "root": [
+        {
+          "owner": "tv.danmaku.bili.khome.widget.topbar.L",
+          "name": "z",
+          "parameters": [
+            "T71.d",
+            "kotlin.jvm.functions.Function1",
+            "androidx.compose.runtime.Composer",
+            "int",
+            "int"
+          ],
+          "result": "void"
+        }
+      ],
+      "foreground": [
+        {
+          "owner": "tv.danmaku.bili.khome.widget.topbar.L",
+          "name": "F",
+          "parameters": [
+            "T71.d",
+            "float",
+            "androidx.compose.ui.Modifier",
+            "boolean",
+            "float",
+            "kotlin.jvm.functions.Function1",
+            "androidx.compose.runtime.Composer",
+            "int",
+            "int"
+          ],
+          "result": "void"
+        }
+      ],
+      "actions": [
+        {
+          "owner": "tv.danmaku.bili.khome.widget.topbar.L",
+          "name": "B",
+          "parameters": [
+            "T71.d",
+            "androidx.compose.ui.Modifier",
+            "kotlin.jvm.functions.Function1",
+            "androidx.compose.runtime.Composer",
+            "int",
+            "int"
+          ],
+          "result": "void"
+        }
+      ]
+    },
+    {
+      "version_code": 8960400,
+      "apk_sha256": "7dc9ec5bc477a0bdc3cd3c5386b56256729865b09202069cb1bf187e506c7cdd",
+      "compose_row_present": true,
+      "root": [
+        {
+          "owner": "tv.danmaku.bili.khome.widget.topbar.L",
+          "name": "z",
+          "parameters": [
+            "p91.d",
+            "kotlin.jvm.functions.Function1",
+            "androidx.compose.runtime.Composer",
+            "int",
+            "int"
+          ],
+          "result": "void"
+        }
+      ],
+      "foreground": [
+        {
+          "owner": "tv.danmaku.bili.khome.widget.topbar.L",
+          "name": "F",
+          "parameters": [
+            "p91.d",
+            "float",
+            "androidx.compose.ui.Modifier",
+            "boolean",
+            "float",
+            "kotlin.jvm.functions.Function1",
+            "androidx.compose.runtime.Composer",
+            "int",
+            "int"
+          ],
+          "result": "void"
+        }
+      ],
+      "actions": [
+        {
+          "owner": "tv.danmaku.bili.khome.widget.topbar.L",
+          "name": "B",
+          "parameters": [
+            "p91.d",
+            "androidx.compose.ui.Modifier",
+            "kotlin.jvm.functions.Function1",
+            "androidx.compose.runtime.Composer",
+            "int",
+            "int"
+          ],
+          "result": "void"
+        }
+      ]
+    },
+    {
+      "version_code": 8970300,
+      "apk_sha256": "60dcff2b03f4d3271b1edcd989cba9d5a1988930e2db465146dc15e3cbe8e117",
+      "compose_row_present": true,
+      "root": [
+        {
+          "owner": "tv.danmaku.bili.khome.widget.topbar.y",
+          "name": "e",
+          "parameters": [
+            "ad1.d",
+            "kotlin.jvm.functions.Function1",
+            "androidx.compose.runtime.Composer",
+            "int"
+          ],
+          "result": "void"
+        }
+      ],
+      "foreground": [
+        {
+          "owner": "tv.danmaku.bili.khome.widget.topbar.y",
+          "name": "g",
+          "parameters": [
+            "ad1.d",
+            "float",
+            "androidx.compose.ui.Modifier",
+            "boolean",
+            "float",
+            "kotlin.jvm.functions.Function1",
+            "androidx.compose.runtime.Composer",
+            "int",
+            "int"
+          ],
+          "result": "void"
+        }
+      ],
+      "actions": [
+        {
+          "owner": "tv.danmaku.bili.khome.widget.topbar.y",
+          "name": "f",
+          "parameters": [
+            "ad1.d",
+            "androidx.compose.ui.Modifier",
+            "kotlin.jvm.functions.Function1",
+            "androidx.compose.runtime.Composer",
+            "int"
+          ],
+          "result": "void"
+        }
+      ]
+    },
+    {
+      "version_code": 8980200,
+      "apk_sha256": "46836b337459b498cc29b2be92f967a465bdc22845ec3e70dc72ca294a19e623",
+      "compose_row_present": true,
+      "root": [
+        {
+          "owner": "tv.danmaku.bili.khome.widget.topbar.y",
+          "name": "e",
+          "parameters": [
+            "bd1.d",
+            "kotlin.jvm.functions.Function1",
+            "androidx.compose.runtime.Composer",
+            "int"
+          ],
+          "result": "void"
+        }
+      ],
+      "foreground": [
+        {
+          "owner": "tv.danmaku.bili.khome.widget.topbar.y",
+          "name": "g",
+          "parameters": [
+            "bd1.d",
+            "float",
+            "androidx.compose.ui.Modifier",
+            "boolean",
+            "float",
+            "kotlin.jvm.functions.Function1",
+            "androidx.compose.runtime.Composer",
+            "int",
+            "int"
+          ],
+          "result": "void"
+        }
+      ],
+      "actions": [
+        {
+          "owner": "tv.danmaku.bili.khome.widget.topbar.y",
+          "name": "f",
+          "parameters": [
+            "bd1.d",
+            "androidx.compose.ui.Modifier",
+            "kotlin.jvm.functions.Function1",
+            "androidx.compose.runtime.Composer",
+            "int"
+          ],
+          "result": "void"
+        }
+      ]
+    },
+    {
+      "version_code": 8990400,
+      "apk_sha256": "c3f7aba395a7fd3651b446429e088d9dc776f462aefabe49543d00dbd00bb891",
+      "compose_row_present": true,
+      "root": [
+        {
+          "owner": "tv.danmaku.bili.khome.widget.topbar.B",
+          "name": "e",
+          "parameters": [
+            "od1.d",
+            "kotlin.jvm.functions.Function1",
+            "androidx.compose.runtime.Composer",
+            "int"
+          ],
+          "result": "void"
+        }
+      ],
+      "foreground": [
+        {
+          "owner": "tv.danmaku.bili.khome.widget.topbar.B",
+          "name": "g",
+          "parameters": [
+            "od1.d",
+            "float",
+            "androidx.compose.ui.Modifier",
+            "boolean",
+            "float",
+            "kotlin.jvm.functions.Function1",
+            "androidx.compose.runtime.Composer",
+            "int",
+            "int"
+          ],
+          "result": "void"
+        }
+      ],
+      "actions": [
+        {
+          "owner": "tv.danmaku.bili.khome.widget.topbar.B",
+          "name": "f",
+          "parameters": [
+            "od1.d",
+            "androidx.compose.ui.Modifier",
+            "kotlin.jvm.functions.Function1",
+            "androidx.compose.runtime.Composer",
+            "int"
+          ],
+          "result": "void"
+        }
+      ]
+    },
+    {
+      "version_code": 9010300,
+      "apk_sha256": "8cc3528d4a1cffaf4f85562555fcc06495de09d22cc639224f4e4aa6ef115a46",
+      "compose_row_present": true,
+      "root": [
+        {
+          "owner": "tv.danmaku.bili.khome.widget.topbar.z",
+          "name": "e",
+          "parameters": [
+            "zd1.d",
+            "kotlin.jvm.functions.Function1",
+            "androidx.compose.runtime.Composer",
+            "int"
+          ],
+          "result": "void"
+        }
+      ],
+      "foreground": [
+        {
+          "owner": "tv.danmaku.bili.khome.widget.topbar.z",
+          "name": "g",
+          "parameters": [
+            "zd1.d",
+            "float",
+            "androidx.compose.ui.Modifier",
+            "boolean",
+            "float",
+            "kotlin.jvm.functions.Function1",
+            "androidx.compose.runtime.Composer",
+            "int",
+            "int"
+          ],
+          "result": "void"
+        }
+      ],
+      "actions": [
+        {
+          "owner": "tv.danmaku.bili.khome.widget.topbar.z",
+          "name": "f",
+          "parameters": [
+            "zd1.d",
+            "androidx.compose.ui.Modifier",
+            "kotlin.jvm.functions.Function1",
+            "androidx.compose.runtime.Composer",
+            "int"
+          ],
+          "result": "void"
+        }
+      ]
+    },
+    {
+      "version_code": 9011100,
+      "apk_sha256": "9cd258c9b203dbab1541b5da823aef2b00ef5f0edf6009af34258345ec72ecae",
+      "compose_row_present": true,
+      "root": [
+        {
+          "owner": "tv.danmaku.bili.khome.widget.topbar.z",
+          "name": "e",
+          "parameters": [
+            "zd1.d",
+            "kotlin.jvm.functions.Function1",
+            "androidx.compose.runtime.Composer",
+            "int"
+          ],
+          "result": "void"
+        }
+      ],
+      "foreground": [
+        {
+          "owner": "tv.danmaku.bili.khome.widget.topbar.z",
+          "name": "g",
+          "parameters": [
+            "zd1.d",
+            "float",
+            "androidx.compose.ui.Modifier",
+            "boolean",
+            "float",
+            "kotlin.jvm.functions.Function1",
+            "androidx.compose.runtime.Composer",
+            "int",
+            "int"
+          ],
+          "result": "void"
+        }
+      ],
+      "actions": [
+        {
+          "owner": "tv.danmaku.bili.khome.widget.topbar.z",
+          "name": "f",
+          "parameters": [
+            "zd1.d",
+            "androidx.compose.ui.Modifier",
+            "kotlin.jvm.functions.Function1",
+            "androidx.compose.runtime.Composer",
+            "int"
+          ],
+          "result": "void"
+        }
+      ]
+    },
+    {
+      "version_code": 9020300,
+      "apk_sha256": "21b3743d06f24b80d54ef9eaebd15a7cd0aa1ec74f732d75b0647e019cf7ef86",
+      "compose_row_present": true,
+      "root": [
+        {
+          "owner": "tv.danmaku.bili.khome.widget.topbar.A",
+          "name": "e",
+          "parameters": [
+            "Bd1.d",
+            "kotlin.jvm.functions.Function1",
+            "androidx.compose.runtime.Composer",
+            "int"
+          ],
+          "result": "void"
+        }
+      ],
+      "foreground": [
+        {
+          "owner": "tv.danmaku.bili.khome.widget.topbar.A",
+          "name": "g",
+          "parameters": [
+            "Bd1.d",
+            "float",
+            "androidx.compose.ui.Modifier",
+            "boolean",
+            "float",
+            "kotlin.jvm.functions.Function1",
+            "androidx.compose.runtime.Composer",
+            "int",
+            "int"
+          ],
+          "result": "void"
+        }
+      ],
+      "actions": [
+        {
+          "owner": "tv.danmaku.bili.khome.widget.topbar.A",
+          "name": "f",
+          "parameters": [
+            "Bd1.d",
+            "androidx.compose.ui.Modifier",
+            "kotlin.jvm.functions.Function1",
+            "androidx.compose.runtime.Composer",
+            "int"
+          ],
+          "result": "void"
+        }
+      ]
+    },
+    {
+      "version_code": 9030300,
+      "apk_sha256": "436eaffabbf0d8856b2e1eba45d99ff536ddabf459a2e0af17c7b575279329b1",
+      "compose_row_present": true,
+      "root": [
+        {
+          "owner": "tv.danmaku.bili.khome.widget.topbar.B",
+          "name": "e",
+          "parameters": [
+            "Sd1.e",
+            "kotlin.jvm.functions.Function1",
+            "androidx.compose.runtime.Composer",
+            "int"
+          ],
+          "result": "void"
+        }
+      ],
+      "foreground": [
+        {
+          "owner": "tv.danmaku.bili.khome.widget.topbar.B",
+          "name": "g",
+          "parameters": [
+            "Sd1.e",
+            "float",
+            "androidx.compose.ui.Modifier",
+            "boolean",
+            "float",
+            "kotlin.jvm.functions.Function1",
+            "androidx.compose.runtime.Composer",
+            "int",
+            "int"
+          ],
+          "result": "void"
+        }
+      ],
+      "actions": [
+        {
+          "owner": "tv.danmaku.bili.khome.widget.topbar.B",
+          "name": "f",
+          "parameters": [
+            "Sd1.e",
+            "androidx.compose.ui.Modifier",
+            "kotlin.jvm.functions.Function1",
+            "androidx.compose.runtime.Composer",
+            "int"
+          ],
+          "result": "void"
+        }
+      ]
+    },
+    {
+      "version_code": 9040200,
+      "apk_sha256": "fc5ff38ff05a8841e89df7aaeeadbf249a4cee8ad1dff5245b6cd05d2a633567",
+      "compose_row_present": true,
+      "root": [
+        {
+          "owner": "tv.danmaku.bili.khome.widget.topbar.y",
+          "name": "e",
+          "parameters": [
+            "sg1.e",
+            "kotlin.jvm.functions.Function1",
+            "androidx.compose.runtime.Composer",
+            "int"
+          ],
+          "result": "void"
+        }
+      ],
+      "foreground": [
+        {
+          "owner": "tv.danmaku.bili.khome.widget.topbar.y",
+          "name": "g",
+          "parameters": [
+            "sg1.e",
+            "float",
+            "androidx.compose.ui.Modifier",
+            "boolean",
+            "float",
+            "kotlin.jvm.functions.Function1",
+            "androidx.compose.runtime.Composer",
+            "int",
+            "int"
+          ],
+          "result": "void"
+        }
+      ],
+      "actions": [
+        {
+          "owner": "tv.danmaku.bili.khome.widget.topbar.y",
+          "name": "f",
+          "parameters": [
+            "sg1.e",
+            "androidx.compose.ui.Modifier",
+            "kotlin.jvm.functions.Function1",
+            "androidx.compose.runtime.Composer",
+            "int"
+          ],
+          "result": "void"
+        }
+      ]
+    },
+    {
+      "version_code": 9050300,
+      "apk_sha256": "33b029d98c28bd0570ca7f0a65c862b2faa8039552f5ecf7935edcc38dc289c7",
+      "compose_row_present": true,
+      "root": [
+        {
+          "owner": "tv.danmaku.bili.khome.widget.topbar.y",
+          "name": "e",
+          "parameters": [
+            "Ch1.e",
+            "kotlin.jvm.functions.Function1",
+            "androidx.compose.runtime.Composer",
+            "int"
+          ],
+          "result": "void"
+        }
+      ],
+      "foreground": [
+        {
+          "owner": "tv.danmaku.bili.khome.widget.topbar.y",
+          "name": "g",
+          "parameters": [
+            "Ch1.e",
+            "float",
+            "androidx.compose.ui.Modifier",
+            "boolean",
+            "float",
+            "kotlin.jvm.functions.Function1",
+            "androidx.compose.runtime.Composer",
+            "int",
+            "int"
+          ],
+          "result": "void"
+        }
+      ],
+      "actions": [
+        {
+          "owner": "tv.danmaku.bili.khome.widget.topbar.y",
+          "name": "f",
+          "parameters": [
+            "Ch1.e",
+            "androidx.compose.ui.Modifier",
+            "kotlin.jvm.functions.Function1",
+            "androidx.compose.runtime.Composer",
+            "int"
+          ],
+          "result": "void"
+        }
+      ]
+    },
+    {
+      "version_code": 9060300,
+      "apk_sha256": "87047ef3224b989a167da699ae8f9521aa0ef74b876f87c558596d91cdb10d4a",
+      "compose_row_present": true,
+      "root": [
+        {
+          "owner": "tv.danmaku.bili.khome.widget.topbar.A",
+          "name": "e",
+          "parameters": [
+            "Vi1.e",
+            "kotlin.jvm.functions.Function1",
+            "androidx.compose.runtime.Composer",
+            "int"
+          ],
+          "result": "void"
+        }
+      ],
+      "foreground": [
+        {
+          "owner": "tv.danmaku.bili.khome.widget.topbar.A",
+          "name": "g",
+          "parameters": [
+            "Vi1.e",
+            "float",
+            "androidx.compose.ui.Modifier",
+            "boolean",
+            "float",
+            "kotlin.jvm.functions.Function1",
+            "androidx.compose.runtime.Composer",
+            "int",
+            "int"
+          ],
+          "result": "void"
+        }
+      ],
+      "actions": [
+        {
+          "owner": "tv.danmaku.bili.khome.widget.topbar.A",
+          "name": "f",
+          "parameters": [
+            "Vi1.e",
+            "androidx.compose.ui.Modifier",
+            "kotlin.jvm.functions.Function1",
+            "androidx.compose.runtime.Composer",
+            "int"
+          ],
+          "result": "void"
+        }
+      ]
+    },
+    {
+      "version_code": 9070300,
+      "apk_sha256": "c12dca0cd0b256e9c82c437e146f21b37ad94e4b8591396afb5ccbc05e28439c",
+      "compose_row_present": true,
+      "root": [
+        {
+          "owner": "tv.danmaku.bili.khome.widget.topbar.A",
+          "name": "e",
+          "parameters": [
+            "vj1.e",
+            "kotlin.jvm.functions.Function1",
+            "androidx.compose.runtime.Composer",
+            "int"
+          ],
+          "result": "void"
+        }
+      ],
+      "foreground": [
+        {
+          "owner": "tv.danmaku.bili.khome.widget.topbar.A",
+          "name": "g",
+          "parameters": [
+            "vj1.e",
+            "float",
+            "androidx.compose.ui.Modifier",
+            "boolean",
+            "float",
+            "kotlin.jvm.functions.Function1",
+            "androidx.compose.runtime.Composer",
+            "int",
+            "int"
+          ],
+          "result": "void"
+        }
+      ],
+      "actions": [
+        {
+          "owner": "tv.danmaku.bili.khome.widget.topbar.A",
+          "name": "f",
+          "parameters": [
+            "vj1.e",
+            "androidx.compose.ui.Modifier",
+            "kotlin.jvm.functions.Function1",
+            "androidx.compose.runtime.Composer",
+            "int"
+          ],
+          "result": "void"
+        }
+      ]
+    },
+    {
+      "version_code": 9080300,
+      "apk_sha256": "7218668a0092d2193d9620cbc8bdf81ace98cf047bddbce9371c5f54b4358048",
+      "compose_row_present": true,
+      "root": [
+        {
+          "owner": "tv.danmaku.bili.khome.widget.topbar.A",
+          "name": "e",
+          "parameters": [
+            "rk1.e",
+            "kotlin.jvm.functions.Function1",
+            "androidx.compose.runtime.Composer",
+            "int"
+          ],
+          "result": "void"
+        }
+      ],
+      "foreground": [
+        {
+          "owner": "tv.danmaku.bili.khome.widget.topbar.A",
+          "name": "g",
+          "parameters": [
+            "rk1.e",
+            "float",
+            "androidx.compose.ui.Modifier",
+            "boolean",
+            "float",
+            "kotlin.jvm.functions.Function1",
+            "androidx.compose.runtime.Composer",
+            "int",
+            "int"
+          ],
+          "result": "void"
+        }
+      ],
+      "actions": [
+        {
+          "owner": "tv.danmaku.bili.khome.widget.topbar.A",
+          "name": "f",
+          "parameters": [
+            "rk1.e",
+            "androidx.compose.ui.Modifier",
+            "kotlin.jvm.functions.Function1",
+            "androidx.compose.runtime.Composer",
+            "int"
+          ],
+          "result": "void"
+        }
+      ]
+    },
+    {
+      "version_code": 9090300,
+      "apk_sha256": "bff47d2c4488f585c0315198a150f1cf7b5a1a982204ae5ace6993ffaec08112",
+      "compose_row_present": true,
+      "root": [
+        {
+          "owner": "tv.danmaku.bili.khome.widget.topbar.y",
+          "name": "e",
+          "parameters": [
+            "ql1.e",
+            "kotlin.jvm.functions.Function1",
+            "androidx.compose.runtime.Composer",
+            "int"
+          ],
+          "result": "void"
+        }
+      ],
+      "foreground": [
+        {
+          "owner": "tv.danmaku.bili.khome.widget.topbar.y",
+          "name": "g",
+          "parameters": [
+            "ql1.e",
+            "float",
+            "androidx.compose.ui.Modifier",
+            "boolean",
+            "float",
+            "kotlin.jvm.functions.Function1",
+            "androidx.compose.runtime.Composer",
+            "int",
+            "int"
+          ],
+          "result": "void"
+        }
+      ],
+      "actions": [
+        {
+          "owner": "tv.danmaku.bili.khome.widget.topbar.y",
+          "name": "f",
+          "parameters": [
+            "ql1.e",
+            "androidx.compose.ui.Modifier",
+            "kotlin.jvm.functions.Function1",
+            "androidx.compose.runtime.Composer",
+            "int"
+          ],
+          "result": "void"
+        }
+      ]
+    },
+    {
+      "version_code": 9100200,
+      "apk_sha256": "756f1022595c5c2fe2b01d78baf771bf33d99fd154b9ed3e4eea191f3b58244e",
+      "compose_row_present": true,
+      "root": [
+        {
+          "owner": "tv.danmaku.bili.khome.widget.topbar.A",
+          "name": "e",
+          "parameters": [
+            "gm1.e",
+            "kotlin.jvm.functions.Function1",
+            "androidx.compose.runtime.Composer",
+            "int"
+          ],
+          "result": "void"
+        }
+      ],
+      "foreground": [
+        {
+          "owner": "tv.danmaku.bili.khome.widget.topbar.A",
+          "name": "g",
+          "parameters": [
+            "gm1.e",
+            "float",
+            "androidx.compose.ui.Modifier",
+            "boolean",
+            "float",
+            "kotlin.jvm.functions.Function1",
+            "androidx.compose.runtime.Composer",
+            "int",
+            "int"
+          ],
+          "result": "void"
+        }
+      ],
+      "actions": [
+        {
+          "owner": "tv.danmaku.bili.khome.widget.topbar.A",
+          "name": "f",
+          "parameters": [
+            "gm1.e",
+            "androidx.compose.ui.Modifier",
+            "kotlin.jvm.functions.Function1",
+            "androidx.compose.runtime.Composer",
+            "int"
+          ],
+          "result": "void"
+        }
+      ]
+    },
+    {
+      "version_code": 9110200,
+      "apk_sha256": "47cce44f0cfd0d0f25339cb86a0adb3e0d230c68fab8a43edaf0b20c48f8e5c6",
+      "compose_row_present": true,
+      "root": [
+        {
+          "owner": "tv.danmaku.bili.khome.widget.topbar.x",
+          "name": "e",
+          "parameters": [
+            "Km1.e",
+            "kotlin.jvm.functions.Function1",
+            "androidx.compose.runtime.Composer",
+            "int"
+          ],
+          "result": "void"
+        }
+      ],
+      "foreground": [
+        {
+          "owner": "tv.danmaku.bili.khome.widget.topbar.x",
+          "name": "g",
+          "parameters": [
+            "Km1.e",
+            "float",
+            "androidx.compose.ui.Modifier",
+            "boolean",
+            "float",
+            "kotlin.jvm.functions.Function1",
+            "androidx.compose.runtime.Composer",
+            "int",
+            "int"
+          ],
+          "result": "void"
+        }
+      ],
+      "actions": [
+        {
+          "owner": "tv.danmaku.bili.khome.widget.topbar.x",
+          "name": "f",
+          "parameters": [
+            "Km1.e",
+            "androidx.compose.ui.Modifier",
+            "kotlin.jvm.functions.Function1",
+            "androidx.compose.runtime.Composer",
+            "int"
+          ],
+          "result": "void"
+        }
+      ]
+    },
+    {
+      "version_code": 9110400,
+      "apk_sha256": "e6fdd8b9abf5051cce9c682bc78aa17e254e02466e583b6a2203b171c415de41",
+      "compose_row_present": true,
+      "root": [
+        {
+          "owner": "tv.danmaku.bili.khome.widget.topbar.x",
+          "name": "e",
+          "parameters": [
+            "Om1.e",
+            "kotlin.jvm.functions.Function1",
+            "androidx.compose.runtime.Composer",
+            "int"
+          ],
+          "result": "void"
+        }
+      ],
+      "foreground": [
+        {
+          "owner": "tv.danmaku.bili.khome.widget.topbar.x",
+          "name": "g",
+          "parameters": [
+            "Om1.e",
+            "float",
+            "androidx.compose.ui.Modifier",
+            "boolean",
+            "float",
+            "kotlin.jvm.functions.Function1",
+            "androidx.compose.runtime.Composer",
+            "int",
+            "int"
+          ],
+          "result": "void"
+        }
+      ],
+      "actions": [
+        {
+          "owner": "tv.danmaku.bili.khome.widget.topbar.x",
+          "name": "f",
+          "parameters": [
+            "Om1.e",
+            "androidx.compose.ui.Modifier",
+            "kotlin.jvm.functions.Function1",
+            "androidx.compose.runtime.Composer",
+            "int"
+          ],
+          "result": "void"
+        }
+      ]
+    },
+    {
+      "version_code": 9120100,
+      "apk_sha256": "2bbe6e9b51bede46fa681e846f80ccb9c9a8cbb462b6965d0155548f411ff66c",
+      "compose_row_present": true,
+      "root": [
+        {
+          "owner": "tv.danmaku.bili.khome.widget.topbar.z",
+          "name": "e",
+          "parameters": [
+            "En1.e",
+            "kotlin.jvm.functions.Function1",
+            "androidx.compose.runtime.Composer",
+            "int"
+          ],
+          "result": "void"
+        }
+      ],
+      "foreground": [
+        {
+          "owner": "tv.danmaku.bili.khome.widget.topbar.z",
+          "name": "g",
+          "parameters": [
+            "En1.e",
+            "float",
+            "androidx.compose.ui.Modifier",
+            "boolean",
+            "float",
+            "kotlin.jvm.functions.Function1",
+            "androidx.compose.runtime.Composer",
+            "int",
+            "int"
+          ],
+          "result": "void"
+        }
+      ],
+      "actions": [
+        {
+          "owner": "tv.danmaku.bili.khome.widget.topbar.z",
+          "name": "f",
+          "parameters": [
+            "En1.e",
+            "androidx.compose.ui.Modifier",
+            "kotlin.jvm.functions.Function1",
+            "androidx.compose.runtime.Composer",
+            "int"
+          ],
+          "result": "void"
+        }
+      ]
+    },
+    {
+      "version_code": 9130300,
+      "apk_sha256": "7be707b0429cea98db520c19ff0397b5b14c4f07115d3d6aed48078afe708b10",
+      "compose_row_present": true,
+      "root": [
+        {
+          "owner": "tv.danmaku.bili.khome.widget.topbar.A",
+          "name": "e",
+          "parameters": [
+            "zn1.e",
+            "kotlin.jvm.functions.Function1",
+            "androidx.compose.runtime.Composer",
+            "int"
+          ],
+          "result": "void"
+        }
+      ],
+      "foreground": [
+        {
+          "owner": "tv.danmaku.bili.khome.widget.topbar.A",
+          "name": "g",
+          "parameters": [
+            "zn1.e",
+            "float",
+            "androidx.compose.ui.Modifier",
+            "boolean",
+            "float",
+            "kotlin.jvm.functions.Function1",
+            "androidx.compose.runtime.Composer",
+            "int",
+            "int"
+          ],
+          "result": "void"
+        }
+      ],
+      "actions": [
+        {
+          "owner": "tv.danmaku.bili.khome.widget.topbar.A",
+          "name": "f",
+          "parameters": [
+            "zn1.e",
+            "androidx.compose.ui.Modifier",
+            "kotlin.jvm.functions.Function1",
+            "androidx.compose.runtime.Composer",
+            "int"
+          ],
+          "result": "void"
+        }
+      ]
+    },
+    {
+      "version_code": 9140200,
+      "apk_sha256": "ec9b1ad929f725bdc62344039b50f7a8dfa0a00f6784844e44c347c66a73439c",
+      "compose_row_present": true,
+      "root": [
+        {
+          "owner": "tv.danmaku.bili.khome.widget.topbar.x",
+          "name": "e",
+          "parameters": [
+            "co1.e",
+            "kotlin.jvm.functions.Function1",
+            "androidx.compose.runtime.Composer",
+            "int"
+          ],
+          "result": "void"
+        }
+      ],
+      "foreground": [
+        {
+          "owner": "tv.danmaku.bili.khome.widget.topbar.x",
+          "name": "g",
+          "parameters": [
+            "co1.e",
+            "float",
+            "androidx.compose.ui.Modifier",
+            "boolean",
+            "float",
+            "kotlin.jvm.functions.Function1",
+            "androidx.compose.runtime.Composer",
+            "int",
+            "int"
+          ],
+          "result": "void"
+        }
+      ],
+      "actions": [
+        {
+          "owner": "tv.danmaku.bili.khome.widget.topbar.x",
+          "name": "f",
+          "parameters": [
+            "co1.e",
+            "androidx.compose.ui.Modifier",
+            "kotlin.jvm.functions.Function1",
+            "androidx.compose.runtime.Composer",
+            "int"
+          ],
+          "result": "void"
+        }
+      ]
+    },
+    {
+      "version_code": 9140400,
+      "apk_sha256": "2b45ab0d934cbe000082caedfa360864de60ab46cd4d45488ae31f35693a927e",
+      "compose_row_present": true,
+      "root": [
+        {
+          "owner": "tv.danmaku.bili.khome.widget.topbar.w",
+          "name": "e",
+          "parameters": [
+            "co1.e",
+            "kotlin.jvm.functions.Function1",
+            "androidx.compose.runtime.Composer",
+            "int"
+          ],
+          "result": "void"
+        }
+      ],
+      "foreground": [
+        {
+          "owner": "tv.danmaku.bili.khome.widget.topbar.w",
+          "name": "g",
+          "parameters": [
+            "co1.e",
+            "float",
+            "androidx.compose.ui.Modifier",
+            "boolean",
+            "float",
+            "kotlin.jvm.functions.Function1",
+            "androidx.compose.runtime.Composer",
+            "int",
+            "int"
+          ],
+          "result": "void"
+        }
+      ],
+      "actions": [
+        {
+          "owner": "tv.danmaku.bili.khome.widget.topbar.w",
+          "name": "f",
+          "parameters": [
+            "co1.e",
+            "androidx.compose.ui.Modifier",
+            "kotlin.jvm.functions.Function1",
+            "androidx.compose.runtime.Composer",
+            "int"
+          ],
+          "result": "void"
+        }
+      ]
+    },
+    {
+      "version_code": 9150100,
+      "apk_sha256": "b710f6490f0f54322ec5e9c7ea547f67a9b9d07118a547cae738ee2f2752340c",
+      "compose_row_present": true,
+      "root": [
+        {
+          "owner": "tv.danmaku.bili.khome.widget.topbar.y",
+          "name": "e",
+          "parameters": [
+            "Ro1.e",
+            "kotlin.jvm.functions.Function1",
+            "androidx.compose.runtime.Composer",
+            "int"
+          ],
+          "result": "void"
+        }
+      ],
+      "foreground": [
+        {
+          "owner": "tv.danmaku.bili.khome.widget.topbar.y",
+          "name": "g",
+          "parameters": [
+            "Ro1.e",
+            "float",
+            "androidx.compose.ui.Modifier",
+            "boolean",
+            "float",
+            "kotlin.jvm.functions.Function1",
+            "androidx.compose.runtime.Composer",
+            "int",
+            "int"
+          ],
+          "result": "void"
+        }
+      ],
+      "actions": [
+        {
+          "owner": "tv.danmaku.bili.khome.widget.topbar.y",
+          "name": "f",
+          "parameters": [
+            "Ro1.e",
+            "androidx.compose.ui.Modifier",
+            "kotlin.jvm.functions.Function1",
+            "androidx.compose.runtime.Composer",
+            "int"
+          ],
+          "result": "void"
+        }
+      ]
+    },
+    {
+      "version_code": 9150200,
+      "apk_sha256": "a9b70a6ffb66ed3c074ce32faa53dcbfa48d6a8cb2c80ece6921f227d178a1cd",
+      "compose_row_present": true,
+      "root": [
+        {
+          "owner": "tv.danmaku.bili.khome.widget.topbar.y",
+          "name": "e",
+          "parameters": [
+            "Qo1.e",
+            "kotlin.jvm.functions.Function1",
+            "androidx.compose.runtime.Composer",
+            "int"
+          ],
+          "result": "void"
+        }
+      ],
+      "foreground": [
+        {
+          "owner": "tv.danmaku.bili.khome.widget.topbar.y",
+          "name": "g",
+          "parameters": [
+            "Qo1.e",
+            "float",
+            "androidx.compose.ui.Modifier",
+            "boolean",
+            "float",
+            "kotlin.jvm.functions.Function1",
+            "androidx.compose.runtime.Composer",
+            "int",
+            "int"
+          ],
+          "result": "void"
+        }
+      ],
+      "actions": [
+        {
+          "owner": "tv.danmaku.bili.khome.widget.topbar.y",
+          "name": "f",
+          "parameters": [
+            "Qo1.e",
+            "androidx.compose.ui.Modifier",
+            "kotlin.jvm.functions.Function1",
+            "androidx.compose.runtime.Composer",
+            "int"
+          ],
+          "result": "void"
+        }
+      ]
+    },
+    {
+      "version_code": 9150300,
+      "apk_sha256": "c07cf0a3b838ecbc926d0a11c377e7fcb45c92b8aba7ee01d32cd2729b6a6110",
+      "compose_row_present": true,
+      "root": [
+        {
+          "owner": "tv.danmaku.bili.khome.widget.topbar.y",
+          "name": "e",
+          "parameters": [
+            "Qo1.e",
+            "kotlin.jvm.functions.Function1",
+            "androidx.compose.runtime.Composer",
+            "int"
+          ],
+          "result": "void"
+        }
+      ],
+      "foreground": [
+        {
+          "owner": "tv.danmaku.bili.khome.widget.topbar.y",
+          "name": "g",
+          "parameters": [
+            "Qo1.e",
+            "float",
+            "androidx.compose.ui.Modifier",
+            "boolean",
+            "float",
+            "kotlin.jvm.functions.Function1",
+            "androidx.compose.runtime.Composer",
+            "int",
+            "int"
+          ],
+          "result": "void"
+        }
+      ],
+      "actions": [
+        {
+          "owner": "tv.danmaku.bili.khome.widget.topbar.y",
+          "name": "f",
+          "parameters": [
+            "Qo1.e",
+            "androidx.compose.ui.Modifier",
+            "kotlin.jvm.functions.Function1",
+            "androidx.compose.runtime.Composer",
+            "int"
+          ],
+          "result": "void"
+        }
+      ]
+    },
+    {
+      "version_code": 9160200,
+      "apk_sha256": "a80c4e0189458c9d58590121710f7e8a224f841b262709299f4d331f613407fa",
+      "compose_row_present": true,
+      "root": [
+        {
+          "owner": "tv.danmaku.bili.khome.widget.topbar.z",
+          "name": "e",
+          "parameters": [
+            "fp1.e",
+            "kotlin.jvm.functions.Function1",
+            "androidx.compose.runtime.Composer",
+            "int"
+          ],
+          "result": "void"
+        }
+      ],
+      "foreground": [
+        {
+          "owner": "tv.danmaku.bili.khome.widget.topbar.z",
+          "name": "g",
+          "parameters": [
+            "fp1.e",
+            "float",
+            "androidx.compose.ui.Modifier",
+            "boolean",
+            "float",
+            "kotlin.jvm.functions.Function1",
+            "androidx.compose.runtime.Composer",
+            "int",
+            "int"
+          ],
+          "result": "void"
+        }
+      ],
+      "actions": [
+        {
+          "owner": "tv.danmaku.bili.khome.widget.topbar.z",
+          "name": "f",
+          "parameters": [
+            "fp1.e",
+            "androidx.compose.ui.Modifier",
+            "kotlin.jvm.functions.Function1",
+            "androidx.compose.runtime.Composer",
+            "int"
+          ],
+          "result": "void"
+        }
+      ]
+    },
+    {
+      "version_code": 9161100,
+      "apk_sha256": "41efb1c9acb07badab5296953fb3da1def6925e2b34662120ca96df9d17bbfb2",
+      "compose_row_present": true,
+      "root": [
+        {
+          "owner": "tv.danmaku.bili.khome.widget.topbar.y",
+          "name": "e",
+          "parameters": [
+            "fp1.e",
+            "kotlin.jvm.functions.Function1",
+            "androidx.compose.runtime.Composer",
+            "int"
+          ],
+          "result": "void"
+        }
+      ],
+      "foreground": [
+        {
+          "owner": "tv.danmaku.bili.khome.widget.topbar.y",
+          "name": "g",
+          "parameters": [
+            "fp1.e",
+            "float",
+            "androidx.compose.ui.Modifier",
+            "boolean",
+            "float",
+            "kotlin.jvm.functions.Function1",
+            "androidx.compose.runtime.Composer",
+            "int",
+            "int"
+          ],
+          "result": "void"
+        }
+      ],
+      "actions": [
+        {
+          "owner": "tv.danmaku.bili.khome.widget.topbar.y",
+          "name": "f",
+          "parameters": [
+            "fp1.e",
+            "androidx.compose.ui.Modifier",
+            "kotlin.jvm.functions.Function1",
+            "androidx.compose.runtime.Composer",
+            "int"
+          ],
+          "result": "void"
+        }
+      ]
+    }
+  ]
+}

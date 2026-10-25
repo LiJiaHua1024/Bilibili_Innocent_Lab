@@ -1,5 +1,10 @@
 package com.Bilibili_Innocent_Lab.xposedmodule.hook.adapter.dex
 
+import com.Bilibili_Innocent_Lab.xposedmodule.hook.adapter.SearchHomeRecommendLocator
+import com.Bilibili_Innocent_Lab.xposedmodule.hook.feature.PlayerEndPageRecommendLocator
+import com.Bilibili_Innocent_Lab.xposedmodule.hook.adapter.HostCardSemanticAdapter
+import com.Bilibili_Innocent_Lab.xposedmodule.hook.adapter.HomeChromeAdapter
+import com.Bilibili_Innocent_Lab.xposedmodule.runtime.KavaMemberLookup
 import org.luckypray.dexkit.DexKitBridge
 import org.luckypray.dexkit.query.enums.MatchType
 import org.luckypray.dexkit.query.enums.StringMatchType
@@ -13,6 +18,8 @@ import com.Bilibili_Innocent_Lab.xposedmodule.hook.adapter.PlayerPopupPromotionA
 import com.Bilibili_Innocent_Lab.xposedmodule.hook.adapter.BrandSplashDecoderAdapter
 import com.Bilibili_Innocent_Lab.xposedmodule.hook.adapter.FollowFeedAdapter
 import com.Bilibili_Innocent_Lab.xposedmodule.hook.adapter.StoryQualityLocator
+import com.Bilibili_Innocent_Lab.xposedmodule.hook.adapter.PlayerSpeedLocator
+import com.Bilibili_Innocent_Lab.xposedmodule.hook.adapter.PlayerSpeedMenuAdapter
 
 /**
  * DexKit 后台实现：只在常规 KavaRef 定位缺失时创建桥，并在每个代码 APK 查询后立即关闭。
@@ -133,10 +140,27 @@ internal object DexKitAssistEngine : DexAssistEngine {
                                         } else if (query == DexAssistQuery.SPONSOR_CONTAINER_SCOPE) {
                                             runCatching { data.getConstructorInstance(classLoader).declaringClass }
                                                 .getOrNull()?.let { classes.getValue(query) += it }
+                                        } else if (query == DexAssistQuery.HOME_CHROME_SEMANTICS) {
+                                            // Initializers cannot become java.lang.reflect.Method. Resolve only
+                                            // their owner; the caller validates the canonical key and receiver ABI.
+                                            KavaMemberLookup.classOrNull(classLoader, data.declaredClassName)
+                                                ?.let { classes.getValue(query) += it }
+                                        } else if (query == DexAssistQuery.SEARCH_HOME_STATE) {
+                                            runCatching { data.getConstructorInstance(classLoader).declaringClass }
+                                                .getOrNull()?.let { classes.getValue(query) += it }
                                         } else {
                                             val method = runCatching { data.getMethodInstance(classLoader) }.getOrNull()
                                                 ?: return@forEach
                                             found += method
+                                            if (query == DexAssistQuery.PLAYER_SPEED_MENU && PlayerSpeedMenuAdapter.factoryAbi(method)) {
+                                                val invokes = data.invokes
+                                                if (invokes.size > 128) { failed[query] = DexAssistResult.Reason.TOO_MANY_MATCHES; return@forEach }
+                                                invokes.filter { it.name == "<init>" }.mapNotNull {
+                                                    runCatching { it.getConstructorInstance(classLoader).declaringClass }.getOrNull()
+                                                }.distinct().filter { it.name.startsWith("${PlayerSpeedLocator.SPEED_UTILS_PKG}.") &&
+                                                    PlayerSpeedLocator.verifyOptionModel(it) != null
+                                                }.forEach { related.getValue(query).getOrPut(method) { linkedSetOf() } += it }
+                                            }
                                             if (query == DexAssistQuery.STORY_QUALITY_DEFAULT && StoryQualityLocator.integerAbi(method)) {
                                                 // 旧代策略可能经 selector 间接读取整数；限定同 owner 的真实调用链。
                                                 val members = bridge.findMethod { matcher { declaredClass = data.declaredClassName } }
@@ -207,6 +231,81 @@ internal object DexKitAssistEngine : DexAssistEngine {
     }
 
     private fun find(bridge: DexKitBridge, query: DexAssistQuery) = when (query) {
+        DexAssistQuery.OGV_TRENDING_CARD, DexAssistQuery.OGV_DOUBLE_CARD, DexAssistQuery.OGV_UPCOMING_CARD -> bridge.findMethod {
+            matcher {
+                modifiers(Modifier.STATIC, MatchType.Contains); returnType = "void"; paramCount(5..6)
+                usingStrings(listOf(HostCardSemanticAdapter.marks.getValue(query)), StringMatchType.Contains)
+            }
+        }
+        DexAssistQuery.HOME_CHROME_SEMANTICS -> bridge.findMethod {
+            matcher {
+                name = "<clinit>"; modifiers = Modifier.STATIC; returnType = "void"; paramCount = 0
+                usingStrings(HomeChromeAdapter.SEMANTICS_MARKS, StringMatchType.Equals)
+            }
+        }
+        DexAssistQuery.HOME_CHROME_TOP_CONTENT, DexAssistQuery.HOME_CHROME_BOTTOM_CONTENT -> bridge.findMethod {
+            searchPackages("tv.danmaku.bili.khome.widget.${if (query == DexAssistQuery.HOME_CHROME_TOP_CONTENT) "topbar" else "bottomtab"}")
+            matcher {
+                paramCount(2..12)
+                usingStrings(listOf(HomeChromeAdapter.marks.getValue(query)), StringMatchType.Contains)
+            }
+        }
+        DexAssistQuery.HOME_CHROME_TOP, DexAssistQuery.HOME_CHROME_TOP_LAYOUT, DexAssistQuery.HOME_CHROME_TOP_BACKDROP, DexAssistQuery.HOME_CHROME_TOP_RIGHT_ACTIONS,
+        DexAssistQuery.HOME_CHROME_BOTTOM, DexAssistQuery.HOME_CHROME_BOTTOM_ITEM -> bridge.findMethod {
+            searchPackages(if (query in setOf(DexAssistQuery.HOME_CHROME_TOP, DexAssistQuery.HOME_CHROME_TOP_LAYOUT, DexAssistQuery.HOME_CHROME_TOP_BACKDROP, DexAssistQuery.HOME_CHROME_TOP_RIGHT_ACTIONS))
+                "tv.danmaku.bili.khome.widget.topbar" else "tv.danmaku.bili.khome.widget.bottomtab")
+            matcher {
+                modifiers(Modifier.STATIC, MatchType.Contains); returnType = "void"; paramCount(4..20)
+                usingStrings(listOf(HomeChromeAdapter.marks.getValue(query)), StringMatchType.Contains)
+            }
+        }
+        DexAssistQuery.PEGASUS_DIVIDER -> bridge.findMethod {
+            searchPackages("com.bilibili.pegasus.widget")
+            matcher { name = "onDrawOver"; returnType = "void"
+                paramTypes("android.graphics.Canvas", "androidx.recyclerview.widget.RecyclerView", "androidx.recyclerview.widget.RecyclerView\$State") }
+        }
+        DexAssistQuery.SEARCH_HOME_DELIVERY -> bridge.findMethod {
+            searchPackages(SearchHomeRecommendLocator.DISCOVER.removeSuffix("."))
+            matcher { name = "getHistoryList"; paramCount(0); returnType = "java.util.List" }
+        }
+        DexAssistQuery.SEARCH_HOME_STATE -> bridge.findMethod {
+            searchPackages(SearchHomeRecommendLocator.STATE.removeSuffix("."))
+            matcher { name = "<init>"; paramTypes("java.util.List") }
+        }
+        DexAssistQuery.PLAYER_END_PAGE_MERGER -> bridge.findMethod {
+            searchPackages(PlayerEndPageRecommendLocator.PACKAGE.removeSuffix("."))
+            matcher { paramTypes("java.util.List", "java.util.List"); returnType = "java.util.List" }
+        }
+        DexAssistQuery.PLAYER_SPEED_MENU -> listOf("java.util.List", "java.util.ArrayList").flatMap { clearOwner ->
+            bridge.findMethod {
+                searchPackages(PlayerSpeedLocator.SPEED_WIDGET_PKG)
+                matcher {
+                    returnType = "void"; paramTypes("float")
+                    addInvoke { declaredClass = clearOwner; name = "clear"; paramCount(0) }
+                    addInvoke { declaredClass = "java.lang.Math"; name = "abs"; paramTypes("float"); returnType = "float" }
+                }
+            } + bridge.findMethod {
+                searchPackages(PlayerSpeedLocator.SPEED_WIDGET_PKG)
+                matcher {
+                    returnType = "void"; paramTypes("float", "java.util.List")
+                    addInvoke { declaredClass = clearOwner; name = "clear"; paramCount(0) }
+                    addInvoke { declaredClass = "java.lang.Math"; name = "abs"; paramTypes("float"); returnType = "float" }
+                }
+            }
+        } + bridge.findMethod {
+            searchPackages(PlayerSpeedLocator.SPEED_UTILS_PKG)
+            matcher {
+                modifiers(Modifier.STATIC, MatchType.Contains); returnType = "java.util.List"
+                paramTypes(PlayerSpeedLocator.MEDIA_RESOURCE, "java.lang.Integer", "boolean", "int")
+                addInvoke { declaredClass = "java.util.ArrayList"; name = "add"; paramTypes("java.lang.Object") }
+            }
+        } + bridge.findMethod {
+            searchPackages(PlayerSpeedLocator.THESEUS_SPEED_PKG)
+            matcher {
+                modifiers(Modifier.STATIC, MatchType.Contains); returnType = "void"; paramCount(1)
+                usingStrings(listOf(PlayerSpeedMenuAdapter.OPEN_MARK), StringMatchType.Equals)
+            }
+        }
         // 8.84–8.93 仅 key，8.94–8.96 仅 helper，8.97+ 两者皆有；必须做并集。
         DexAssistQuery.STORY_QUALITY_DEFAULT -> bridge.findMethod {
             searchPackages(StoryQualityLocator.QUALITY_PACKAGE)

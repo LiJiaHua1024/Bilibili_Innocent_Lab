@@ -13,6 +13,7 @@ import android.view.ViewGroup
 import androidx.core.content.edit
 import androidx.core.view.setPadding
 import com.Bilibili_Innocent_Lab.xposedmodule.R
+import com.Bilibili_Innocent_Lab.xposedmodule.hook.feature.interpolation.FrameRateTarget
 import com.Bilibili_Innocent_Lab.xposedmodule.hook.feature.DanmakuPurifyPolicy
 import com.Bilibili_Innocent_Lab.xposedmodule.hook.feature.FeaturePreferences
 import com.Bilibili_Innocent_Lab.xposedmodule.hook.feature.PlayerQualityConfig
@@ -242,6 +243,49 @@ internal fun MainActivity.showPlayerDecodeModeDialog(anchor: View? = null) {
     }
 }
 
+/** 补帧帧率上限：只是上限，实际目标还受系统实际刷新与本机能力约束。 */
+internal fun MainActivity.showFrameInterpolationMaxFpsDialog(current: Int, anchor: View?, onSaved: (Int) -> Unit) {
+    val options = FrameRateTarget.CEILINGS.map { it to getString(R.string.player_frame_max_fps_value, it) }
+    showPlayerChoiceDialog(getString(R.string.player_frame_max_fps), current, options, anchor) { value ->
+        if (!savePlayerIntPreference(FeaturePreferences.PLAYER_FRAME_INTERPOLATION_MAX_FPS, value,
+                "write frame interpolation max fps failed")) {
+            toast(getString(R.string.player_codec_setting_save_failed))
+            return@showPlayerChoiceDialog false
+        }
+        onSaved(value)
+        true
+    }
+}
+
+/** 只在明确确认之后回调；返回、取消或点外部均不改变设置。 */
+internal fun MainActivity.showFrameInterpolationThermalConfirmDialog(anchor: View?, onConfirm: () -> Unit) {
+    val density = resources.displayMetrics.density
+    val dialog = Dialog(this).also { installDialogElasticInteraction(it) }
+    val container = createModalContainer()
+    container.addView(NativeTextView(this).apply {
+        text = getString(R.string.player_frame_thermal_confirm_title)
+        textColor = getColor(R.color.colorTextDark)
+        textSize = 17f
+    })
+    container.addView(NativeTextView(this).apply {
+        text = getString(R.string.player_frame_thermal_confirm_message)
+        textColor = getColor(R.color.colorTextGray)
+        textSize = 14f
+        setLineSpacing(4 * density, 1f)
+    }, NativeLinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
+        topMargin = (12 * density).toInt(); bottomMargin = (16 * density).toInt()
+    })
+    val buttons = NativeLinearLayout(this).apply { orientation = NativeLinearLayout.HORIZONTAL; gravity = Gravity.END }
+    buttons.addView(createTermsActionButton(getString(R.string.dialog_cancel), filled = false) {
+        dismissWithAnimation(dialog, container) {}
+    }, NativeLinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+    buttons.addView(createTermsActionButton(getString(R.string.player_frame_thermal_confirm_accept), filled = true) {
+        dismissWithAnimation(dialog, container) { onConfirm() }
+    }, NativeLinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply { marginStart = (8 * density).toInt() })
+    container.addView(buttons)
+    presentModalDialog(dialog, container, anchor)
+}
+
 /** apply() 不阻塞 UI；立即读回只用于发现本次写入是否被当前 bridge 拒绝。 */
 private fun MainActivity.savePlayerIntPreference(key: String, value: Int, logMessage: String): Boolean =
     runCatching {
@@ -253,7 +297,15 @@ private fun MainActivity.savePlayerIntPreference(key: String, value: Int, logMes
     }.isSuccess
 
 /** 使用百分比整数发布配置；非法输入留在弹窗内，跟随宿主是独立、明确的操作。 */
-internal fun MainActivity.showPlayerSpeedDialog(longPress: Boolean, anchor: View? = null) {
+internal fun MainActivity.showPlayerSpeedDialog(
+    longPress: Boolean,
+    anchor: View? = null,
+    bypassConflictCheck: Boolean = false
+) {
+    if (!longPress && !bypassConflictCheck && playerSpeedMenuPercents.isNotEmpty()) {
+        showPlayerSpeedConflictDialog(openingMenuOptions = false, anchor = anchor)
+        return
+    }
     val density = resources.displayMetrics.density
     val dialog = Dialog(this).also { installDialogElasticInteraction(it) }
     val container = createModalContainer()
@@ -289,8 +341,22 @@ internal fun MainActivity.showPlayerSpeedDialog(longPress: Boolean, anchor: View
     fun save(percent: Int) {
         val key = if (longPress) FeaturePreferences.PLAYER_LONG_PRESS_SPEED_PERCENT
             else FeaturePreferences.PLAYER_DEFAULT_SPEED_PERCENT
-        runCatching { prefs().edit { putInt(key, percent) } }.onSuccess {
-            if (longPress) playerLongPressSpeedPercent = percent else playerDefaultSpeedPercent = percent
+        runCatching {
+            prefs().edit {
+                putInt(key, percent)
+                if (!longPress && percent != PlayerSpeedConfig.FOLLOW_HOST) {
+                    putString(FeaturePreferences.PLAYER_SPEED_MENU_PERCENTS, "")
+                }
+            }
+        }.onSuccess {
+            if (longPress) {
+                playerLongPressSpeedPercent = percent
+            } else {
+                playerDefaultSpeedPercent = percent
+                if (percent != PlayerSpeedConfig.FOLLOW_HOST) {
+                    playerSpeedMenuPercents = emptyList()
+                }
+            }
             updatePlayerSpeedSummaries()
             dismissWithAnimation(dialog, container) {}
         }.onFailure {
@@ -331,6 +397,169 @@ internal fun MainActivity.showPlayerSpeedDialog(longPress: Boolean, anchor: View
         })
     }
     container.addView(buttons, NativeLinearLayout.LayoutParams(-1, -2).apply { topMargin = (12 * density).toInt() })
+    presentModalDialog(dialog, container, anchor)
+}
+
+/**
+ * 宿主倍速菜单档位自定义：支持 0.1～8 倍（最多两位小数）的多个档位快捷切换。
+ * 与“默认播放倍速”同属普通播放倍速控制，二者互斥；与“长按倍速自定义”互不影响。
+ */
+internal fun MainActivity.showPlayerSpeedMenuDialog(
+    anchor: View? = null,
+    bypassConflictCheck: Boolean = false
+) {
+    if (!bypassConflictCheck && playerDefaultSpeedPercent != PlayerSpeedConfig.FOLLOW_HOST) {
+        showPlayerSpeedConflictDialog(openingMenuOptions = true, anchor = anchor)
+        return
+    }
+    val density = resources.displayMetrics.density
+    val dialog = Dialog(this).also { installDialogElasticInteraction(it) }
+    val container = createModalContainer()
+    val current = playerSpeedMenuPercents
+    container.addView(NativeTextView(this).apply {
+        text = getString(R.string.player_speed_menu)
+        textColor = getColor(R.color.colorTextDark)
+        textSize = 17f
+    })
+    container.addView(NativeTextView(this).apply {
+        text = getString(R.string.player_speed_menu_input_tip)
+        textColor = getColor(R.color.colorTextGray)
+        textSize = 12f
+        setLineSpacing(4 * density, 1f)
+    }, NativeLinearLayout.LayoutParams(-1, -2).apply { topMargin = (12 * density).toInt() })
+    val editor = NativeEditText(this).apply {
+        inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS
+        isSingleLine = false
+        maxLines = 3
+        filters = arrayOf(InputFilter.LengthFilter(PlayerSpeedConfig.MAX_MENU_SPEC_LENGTH))
+        hint = getString(R.string.player_speed_menu_input_hint)
+        if (current.isNotEmpty()) setText(PlayerSpeedConfig.formatMenuInput(current))
+        setSelection(text.length)
+        textColor = getColor(R.color.colorTextDark)
+        setHintTextColor(getColor(R.color.colorTextGray))
+        textSize = 16f
+        setPadding((14 * density).toInt(), (12 * density).toInt(), (14 * density).toInt(), (12 * density).toInt())
+        background = GradientDrawable().apply {
+            cornerRadius = 14 * density
+            setColor(monetColors.surfaceVariant)
+        }
+    }
+    container.addView(editor, NativeLinearLayout.LayoutParams(-1, -2).apply { topMargin = (14 * density).toInt() })
+    fun save(percents: List<Int>) {
+        val encoded = PlayerSpeedConfig.encodeMenuPercents(percents)
+        runCatching {
+            prefs().edit {
+                putString(FeaturePreferences.PLAYER_SPEED_MENU_PERCENTS, encoded)
+                if (percents.isNotEmpty()) {
+                    putInt(FeaturePreferences.PLAYER_DEFAULT_SPEED_PERCENT, PlayerSpeedConfig.FOLLOW_HOST)
+                }
+            }
+        }.onSuccess {
+            playerSpeedMenuPercents = percents
+            if (percents.isNotEmpty()) {
+                playerDefaultSpeedPercent = PlayerSpeedConfig.FOLLOW_HOST
+            }
+            updatePlayerSpeedSummaries()
+            dismissWithAnimation(dialog, container) {}
+        }.onFailure {
+            Log.e("BilibiliInnocentLab", "write player speed menu prefs failed", it)
+            editor.error = getString(R.string.player_speed_save_failed)
+        }
+    }
+    container.addView(createGitHubMenuRow(
+        title = getString(R.string.player_speed_menu_preset_default),
+        subtitle = getString(R.string.player_speed_menu_preset_default_tip),
+        highlight = false
+    ) {
+        val template = PlayerSpeedConfig.formatMenuInput(PlayerSpeedConfig.DEFAULT_HOST_MENU_PERCENTS)
+        editor.setText(template)
+        editor.setSelection(editor.text.length)
+        editor.error = null
+    }, NativeLinearLayout.LayoutParams(-1, -2).apply { topMargin = (12 * density).toInt() })
+    container.addView(createGitHubMenuRow(
+        title = getString(R.string.player_speed_follow_host),
+        subtitle = getString(R.string.player_speed_follow_host_tip),
+        highlight = current.isEmpty()
+    ) { save(emptyList()) },
+        NativeLinearLayout.LayoutParams(-1, -2).apply { topMargin = (6 * density).toInt() })
+    val buttons = NativeLinearLayout(this).apply {
+        orientation = NativeLinearLayout.HORIZONTAL
+        gravity = Gravity.END or Gravity.CENTER_VERTICAL
+    }
+    listOf(R.string.dialog_cancel, R.string.dialog_confirm).forEach { label ->
+        buttons.addView(NativeTextView(this).apply {
+            text = getString(label)
+            textColor = if (label == R.string.dialog_confirm) monetColors.primary else getColor(R.color.colorTextGray)
+            textSize = 15f
+            gravity = Gravity.CENTER
+            setPadding((20 * density).toInt(), (14 * density).toInt(), (20 * density).toInt(), (14 * density).toInt())
+            background = selfRippleBackground(14f)
+            isClickable = true
+            isFocusable = true
+            setOnClickListener {
+                if (label == R.string.dialog_cancel) {
+                    dismissWithAnimation(dialog, container) {}
+                } else {
+                    val parsed = PlayerSpeedConfig.parseMenuMultipliers(editor.textToString())
+                    if (parsed.isNullOrEmpty()) {
+                        editor.error = getString(R.string.player_speed_menu_invalid)
+                    } else save(parsed)
+                }
+            }
+        })
+    }
+    container.addView(buttons, NativeLinearLayout.LayoutParams(-1, -2).apply { topMargin = (12 * density).toInt() })
+    presentModalDialog(dialog, container, anchor)
+}
+
+/**
+ * 默认播放倍速与倍速菜单档位互斥二级提示弹窗：
+ * 当用户已经开启其中一个、又尝试开启另一个时弹出提示，说明二者不能同时开启（不影响长按倍速）。
+ */
+private fun MainActivity.showPlayerSpeedConflictDialog(
+    openingMenuOptions: Boolean,
+    anchor: View? = null
+) {
+    val density = resources.displayMetrics.density
+    val dialog = Dialog(this).also { installDialogElasticInteraction(it) }
+    val container = createModalContainer()
+    container.addView(NativeTextView(this).apply {
+        text = getString(R.string.player_speed_conflict_title)
+        textColor = getColor(R.color.colorTextDark)
+        textSize = 17f
+    })
+    container.addView(NativeTextView(this).apply {
+        text = getString(
+            if (openingMenuOptions) R.string.player_speed_conflict_menu_vs_default_message
+            else R.string.player_speed_conflict_default_vs_menu_message
+        )
+        textColor = getColor(R.color.colorTextGray)
+        textSize = 13f
+        setLineSpacing(4 * density, 1f)
+    }, NativeLinearLayout.LayoutParams(-1, -2).apply { topMargin = (12 * density).toInt() })
+    container.addView(createGitHubMenuRow(
+        title = getString(
+            if (openingMenuOptions) R.string.player_speed_conflict_switch_to_menu
+            else R.string.player_speed_conflict_switch_to_default
+        ),
+        subtitle = getString(
+            if (openingMenuOptions) R.string.player_speed_conflict_switch_to_menu_tip
+            else R.string.player_speed_conflict_switch_to_default_tip
+        ),
+        highlight = true
+    ) {
+        // 确认切换后先编辑，最终保存时再在同一个 Editor 内清除冲突项；取消编辑不丢失旧配置。
+        dismissWithAnimation(dialog, container) {
+            if (openingMenuOptions) {
+                showPlayerSpeedMenuDialog(anchor = anchor, bypassConflictCheck = true)
+            } else {
+                showPlayerSpeedDialog(longPress = false, anchor = anchor, bypassConflictCheck = true)
+            }
+        }
+    }, NativeLinearLayout.LayoutParams(-1, -2).apply { topMargin = (14 * density).toInt() })
+    container.addView(createPanelCloseRow {
+        dismissWithAnimation(dialog, container) {}
+    }, NativeLinearLayout.LayoutParams(-1, -2).apply { topMargin = (14 * density).toInt() })
     presentModalDialog(dialog, container, anchor)
 }
 

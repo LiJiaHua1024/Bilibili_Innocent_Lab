@@ -14,7 +14,7 @@ import android.graphics.drawable.Drawable
 import android.graphics.drawable.GradientDrawable
 
 /** 在主视觉的独立硬件层内最后裁切，视频与渐变共享一次边缘覆盖率。 */
-internal class HostGarbHeroForeground(private val radius: Float) : Drawable() {
+internal class HostGarbHeroForeground(private val radius: Float, private val dimEnabled: Boolean = true) : Drawable() {
     private val scrim = GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM,
         intArrayOf(0x66000000, 0x94000000.toInt(), 0xAC000000.toInt()))
     private val corners = Path().apply { fillType = Path.FillType.EVEN_ODD }
@@ -37,7 +37,7 @@ internal class HostGarbHeroForeground(private val radius: Float) : Drawable() {
     override fun draw(canvas: Canvas) {
         val save = canvas.save()
         canvas.clipRect(bounds)
-        scrim.draw(canvas)
+        if (dimEnabled) scrim.draw(canvas)
         canvas.drawPath(corners, erase)
         canvas.restoreToCount(save)
     }

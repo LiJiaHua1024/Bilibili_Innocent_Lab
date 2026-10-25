@@ -62,8 +62,8 @@ int Warp::forward(const std::vector<ncnn::Mat>& input, std::vector<ncnn::Mat>& o
 int Warp::create_pipeline(const ncnn::Option& options) {
     if (!options.use_vulkan_compute || vkdev == nullptr) return 0;
     struct Source { const char* data; int size; };
-    const Source sources[] = {{warp_comp_data, sizeof(warp_comp_data)},
-        {warp_pack4_comp_data, sizeof(warp_pack4_comp_data)}};
+    const Source sources[] = {{warp_comp_data, sizeof(warp_comp_data)-1},
+        {warp_pack4_comp_data, sizeof(warp_pack4_comp_data)-1}};
     for (int i = 0; i < 2; ++i) {
         std::vector<std::uint32_t> spirv;
         if (ncnn::compile_spirv_module(sources[i].data, sources[i].size, options, spirv) != 0 || spirv.empty()) return -1;

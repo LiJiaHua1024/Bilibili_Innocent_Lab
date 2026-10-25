@@ -9,7 +9,8 @@ internal data class HostBottomBarFxConfig(
     val touchGlow: Boolean = true,
     val compact: Boolean = false,
     val iconOnly: Boolean = false,
-    val appearance: HostChromeAppearance = HostChromeAppearance(renderer = HostGlassRenderer.SOFTWARE)
+    val appearance: HostChromeAppearance = HostChromeAppearance(renderer = HostGlassRenderer.SOFTWARE),
+    val mineGarbDim: Boolean = true
 ) {
     val heightDp: Float
         get() = when {

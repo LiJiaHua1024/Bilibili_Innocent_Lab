@@ -1,4 +1,4 @@
-# settings=58; capabilities=26
+# settings=66; capabilities=33
 kind	id	installer_group	links	local_scope	manager	embedded	evidence
 setting	ads.game_card.hidden	detail_united_module_purify,game_mentioned_promotion	detail_united_video_mentions_removed,game_mentioned_promotion	-	pending	pending	-
 setting	ads.home_banner.hidden	home_banner	home_banner_feed,home_banner_view	-	pending	pending	-
@@ -88,6 +88,7 @@ setting	free_copy.description.enabled	free_copy	free_copy_description_enabled	-	
 setting	free_copy.light_mode.enabled	-	-	LOCAL_APPEARANCE	pending	pending	-
 setting	home.components.hidden_rules	home_component_filter	home_component_filter	-	pending	pending	-
 setting	home.components.hidden_selectors	home_component_filter	home_component_filter	-	pending	pending	-
+setting	home.live.promotion.hidden	live_home_promotion	live_home_promotion	-	pending	pending	-
 setting	home.recommend.ads.removed	home_recommend_purify	home_recommend_ads_removed	-	pending	pending	-
 setting	home.recommend.blocked_authors	home_recommend_purify	home_recommend_author_block	-	pending	pending	-
 setting	home.recommend.blocked_tids	home_recommend_purify	home_recommend_tid_block	-	pending	pending	-
@@ -124,6 +125,7 @@ setting	host.bottom_bar.touch_glow.enabled	bottom_bar	bottom_bar	-	pending	pendi
 setting	host.cards.material	host_video_cards	host_video_cards	-	pending	pending	-
 setting	host.home_cards.horizontal_dp	host_video_cards	host_video_cards	-	pending	pending	-
 setting	host.home_cards.vertical_dp	host_video_cards	host_video_cards	-	pending	pending	-
+setting	host.mine.garb_dim.enabled	bottom_bar	bottom_bar	-	pending	pending	-
 setting	host.top_bar.glass.material	home_top_bar_purify	home_top_bar_search_word_hidden	-	pending	pending	-
 setting	host.top_bar.glass.renderer	home_top_bar_purify	home_top_bar_search_word_hidden	-	pending	pending	-
 setting	host.top_bar.liquid_glass.enabled	home_top_bar_purify	home_top_bar_search_word_hidden	-	pending	pending	-
@@ -166,14 +168,21 @@ setting	player.decode.mode	player_capabilities	player_decode_mode	-	pending	pend
 setting	player.default_quality.qn	player_default_quality	player_default_quality	-	pending	observed	case:PLAYER_QUALITY,case:PLAYER_STORY_QUALITY_ABI,case:PLAYER_STORY_SHARED_QUALITY
 setting	player.default_speed.percent	player_speed	player_default_speed_percent	-	pending	observed	case:PLAYER_SPEED
 setting	player.end_page_recommend.hidden	player_end_page_recommend	player_end_page_recommend	-	pending	pending	-
+setting	player.frame_interpolation.disable_thermal_control	player_capabilities	player_frame_interpolation_thermal_control	-	pending	pending	-
+setting	player.frame_interpolation.enabled	player_capabilities	player_frame_interpolation	-	pending	pending	-
+setting	player.frame_interpolation.max_fps	player_capabilities	player_frame_interpolation_max_fps	-	pending	pending	-
+setting	player.frame_interpolation.status_toast	player_capabilities	player_frame_interpolation_status_toast	-	pending	pending	-
 setting	player.interactive_overlays.hidden	player_interactive_overlay	player_interactive_activity_banner,player_interactive_dm_commands,player_interactive_legacy_commands,player_interactive_legacy_contract,player_interactive_legacy_follow,player_interactive_legacy_operations,player_interactive_legacy_operations_new,player_interactive_legacy_secondary_cards,player_interactive_resource_cards,player_interactive_resource_commands,player_interactive_resource_follow,player_interactive_unified_contract,player_interactive_unified_material,player_interactive_unified_right_material	-	pending	pending	-
 setting	player.long_press.disabled	player_speed	player_long_press_disabled	-	pending	observed	case:PLAYER_SPEED
 setting	player.long_press_speed.percent	player_speed	player_long_press_speed_percent	-	pending	observed	case:PLAYER_SPEED
 setting	player.popup_promotion.hidden	player_popup_promotion	player_popup_promotion	-	pending	pending	-
 setting	player.portrait_control.hidden	player_portrait_control	player_portrait_control	-	pending	observed	case:PLAYER_PORTRAIT_CONTROL
+setting	player.speed_menu.percents	player_speed	player_speed_menu_percents	-	pending	pending	-
 setting	player.sponsorblock.automatic	sponsorblock	sponsorblock	-	pending	pending	-
 setting	player.sponsorblock.enabled	sponsorblock	sponsorblock	-	pending	pending	-
 setting	player.status_bar.transparent	player_status_bar	player_status_bar	-	pending	pending	-
+setting	player.subtitle.ai.enabled	player_ai_subtitle	player_ai_subtitle	-	pending	pending	-
+setting	player.subtitle.style.enabled	player_subtitle_style	player_subtitle_style	-	pending	pending	-
 setting	prompt.teenagers_mode.blocked	teenagers_mode_prompt	teenagers_mode_prompt	-	pending	pending	-
 setting	purify.detail.honor.removed	detail_module_purify,detail_united_module_purify	detail_honor_removed,detail_united_honor_removed	-	pending	pending	-
 setting	purify.detail.hot_banner.hidden	detail_united_module_purify,detail_united_presentation_purify,detail_view_purify	detail_hot_badge_hidden,detail_hot_banner_hidden,detail_united_hot_banner_removed	-	pending	pending	-
@@ -241,7 +250,7 @@ capability	ai_declared_author_block	ai_declared_video_block	video.ai_declared.st
 capability	ai_declared_detail_redirect	ai_declared_video_block	video.ai_declared.blocked	-	pending	installed	case:ACCOUNT_GATE
 capability	block_app_update	block_app_update	client.update_prompt.blocked	-	pending	pending	-
 capability	block_component_library_download	block_component_library_download	client.component_library.blocked_pools.rules,client.component_library.blocked_pools.selectors,client.component_library.download.blocked	-	pending	pending	-
-capability	bottom_bar	bottom_bar	host.bottom_bar.compact.enabled,host.bottom_bar.glass.material,host.bottom_bar.glass.renderer,host.bottom_bar.icon_only.enabled,host.bottom_bar.liquid_glass.enabled,host.bottom_bar.touch_glow.enabled,navigation.bottom_bar.hidden_rules,navigation.bottom_bar.hidden_selectors	-	pending	pending	-
+capability	bottom_bar	bottom_bar	host.bottom_bar.compact.enabled,host.bottom_bar.glass.material,host.bottom_bar.glass.renderer,host.bottom_bar.icon_only.enabled,host.bottom_bar.liquid_glass.enabled,host.bottom_bar.touch_glow.enabled,host.mine.garb_dim.enabled,navigation.bottom_bar.hidden_rules,navigation.bottom_bar.hidden_selectors	-	pending	pending	-
 capability	brand_splash_custom	brand_splash_custom	splash.custom_selection.enabled	-	pending	pending	-
 capability	brand_splash_skip	brand_splash_skip	splash.brand.skipped	-	pending	pending	-
 capability	bv_to_av	bv_to_av	numbers.bv_as_av.enabled	-	pending	pending	-
@@ -328,6 +337,7 @@ capability	home_vertical_detail	home_vertical_detail	home.vertical.open_detail	-
 capability	host_background	host_background	host.background.asset,host.background.blur,host.background.preset,host.background.saturation,host.background.veil	-	pending	observed	case:APPEARANCE_REPRESENTATIVE
 capability	host_video_cards	host_video_cards	host.cards.material,host.home_cards.horizontal_dp,host.home_cards.vertical_dp,host.video_cards.enabled,host.video_cards.radius_dp	-	pending	pending	-
 capability	live_double_tap_pause	live_room_widgets	live.double_tap.pause	-	pending	pending	-
+capability	live_home_promotion	live_home_promotion	home.live.promotion.hidden	-	pending	pending	-
 capability	live_room_switch_blocked	live_room_widgets	live.room_switch.blocked	-	pending	pending	-
 capability	merchandise	merchandise	ads.merchandise.hidden	-	pending	pending	-
 capability	mine_component_filter	mine_component_filter	mine.components.hidden_ids,mine.components.hidden_rules,mine.components.hidden_selectors	-	pending	pending	-
@@ -335,6 +345,7 @@ capability	mine_vip_hidden	mine_vip_purify	mine.vip.hidden	-	pending	pending	-
 capability	mine_vip_space_kept	mine_vip_purify	mine.vip.space_kept	-	pending	pending	-
 capability	paused_ad	paused_ad	ads.pause.hidden	-	pending	pending	-
 capability	pgc_auto_activity_popup	pgc_auto_activity_popup	pgc.auto_activity_popup.hidden	-	pending	pending	-
+capability	player_ai_subtitle	player_ai_subtitle	player.subtitle.ai.enabled	-	pending	pending	-
 capability	player_buffer_preload	player_buffer	player.buffer.disk_mb,player.buffer.mode,player.buffer.wifi_only	-	pending	pending	-
 capability	player_buffer_strategy	player_buffer	player.buffer.memory_mb,player.buffer.mode,player.buffer.seconds	-	pending	pending	-
 capability	player_capability_background	player_capabilities	player.capability.background	-	pending	pending	-
@@ -348,6 +359,10 @@ capability	player_decode_mode	player_capabilities	player.decode.mode	-	pending	p
 capability	player_default_quality	player_default_quality	player.default_quality.qn	-	pending	observed	case:PLAYER_QUALITY,case:PLAYER_STORY_QUALITY_ABI,case:PLAYER_STORY_SHARED_QUALITY
 capability	player_default_speed_percent	player_speed	player.default_speed.percent	-	pending	observed	case:PLAYER_SPEED
 capability	player_end_page_recommend	player_end_page_recommend	player.end_page_recommend.hidden	-	pending	pending	-
+capability	player_frame_interpolation	player_capabilities	player.frame_interpolation.enabled	-	pending	pending	-
+capability	player_frame_interpolation_max_fps	player_capabilities	player.frame_interpolation.max_fps	-	pending	pending	-
+capability	player_frame_interpolation_status_toast	player_capabilities	player.frame_interpolation.status_toast	-	pending	pending	-
+capability	player_frame_interpolation_thermal_control	player_capabilities	player.frame_interpolation.disable_thermal_control	-	pending	pending	-
 capability	player_interactive_activity_banner	player_interactive_overlay	player.interactive_overlays.hidden	-	pending	pending	-
 capability	player_interactive_dm_commands	player_interactive_overlay	player.interactive_overlays.hidden	-	pending	pending	-
 capability	player_interactive_legacy_commands	player_interactive_overlay	player.interactive_overlays.hidden	-	pending	pending	-
@@ -366,7 +381,9 @@ capability	player_long_press_disabled	player_speed	player.long_press.disabled	-	
 capability	player_long_press_speed_percent	player_speed	player.long_press_speed.percent	-	pending	observed	case:PLAYER_SPEED
 capability	player_popup_promotion	player_popup_promotion	player.popup_promotion.hidden	-	pending	pending	-
 capability	player_portrait_control	player_portrait_control	player.portrait_control.hidden	-	pending	observed	case:PLAYER_PORTRAIT_CONTROL
+capability	player_speed_menu_percents	player_speed	player.speed_menu.percents	-	pending	pending	-
 capability	player_status_bar	player_status_bar	player.status_bar.transparent	-	pending	pending	-
+capability	player_subtitle_style	player_subtitle_style	player.subtitle.style.enabled	-	pending	pending	-
 capability	roaming_compat	roaming_compat	compat.roaming.enabled	-	pending	pending	-
 capability	search_author_filter_enabled	search_purify	search.author_filter.enabled,search.author_filter.rules	-	pending	pending	-
 capability	search_commercial_removed	search_purify	search.commercial.removed	-	pending	pending	-

@@ -2,8 +2,9 @@ package com.Bilibili_Innocent_Lab.xposedmodule.hook.feature
 
 import android.view.View
 import com.Bilibili_Innocent_Lab.xposedmodule.hook.VersionAdapter
+import com.Bilibili_Innocent_Lab.xposedmodule.runtime.KavaMemberLookup
 
-/** “我的”页净化：隐藏会员卡片，不修改 AccountMine 数据或其它菜单项。 */
+/** “我的”页净化：原生卡片与 V2/V3 Compose 卡片分别处理。 */
 internal class MineVipFeatureInstaller(
     private val enabled: Boolean,
     private val keepSpace: Boolean = false,
@@ -24,6 +25,21 @@ internal class MineVipFeatureInstaller(
         if (environment.processName != TARGET_PACKAGE) {
             return FeatureInstallResult.Skipped("non-main-process")
         }
+        val composeExpected = environment.classLoader?.let {
+            KavaMemberLookup.hasClass(it, MineVipComposeHooks.OWNER)
+        } == true
+        val compose = composeExpected && MineVipComposeHooks.install(environment, keepSpace)
+        val legacy = installLegacy(environment)
+        val legacyReady = legacy is FeatureInstallResult.Installed
+        val installed = (if (legacyReady) 1 else 0) + (if (compose) 1 else 0)
+        val expected = 1 + if (composeExpected) 1 else 0
+        capabilityIds.forEach { environment.reportCapabilityCoverage(it, true, installed, expected) }
+        environment.reportStatus(CHANNEL_STATUS, "installed:view=$legacyReady,compose=$compose")
+        return if (installed > 0) FeatureInstallResult.Installed(installed, installed == expected)
+            else FeatureInstallResult.Skipped("missing-vip-boundaries")
+    }
+
+    private fun installLegacy(environment: HookEnvironment): FeatureInstallResult {
         val adapted = point ?: return missing(environment, "missing-adapter-point")
         val managerFieldName = adapted.onResume.viewField
             ?: return missing(environment, "missing-manager-field-name")
@@ -46,15 +62,17 @@ internal class MineVipFeatureInstaller(
             adapted.rootGetter.paramClassNames
         ) ?: return missing(environment, "missing-root-getter")
 
+        val visibility = MineVipVisibility(environment, keepSpace)
         return runCatching {
             environment.registrar.adapted("mine.vip.on_resume", adapted.onResume) {
-                before {
+                after {
+                    if (hasThrowable) return@after
                     runCatching {
                         val fragment = instance
                         val manager = managerField.get(fragment) ?: return@runCatching
                         val binding = bindingField.get(manager) ?: return@runCatching
                         val root = rootGetter.invoke(binding) as? View ?: return@runCatching
-                        root.visibility = if (keepSpace) View.INVISIBLE else View.GONE
+                        visibility.hide(root)
                     }.onFailure { throwable ->
                         environment.logError(
                             "mine_vip_hide_err",
@@ -68,8 +86,6 @@ internal class MineVipFeatureInstaller(
                 "mine_vip_ok",
                 "[BIL] “我的”页会员卡片净化已安装，keepSpace=$keepSpace"
             )
-            // Both selected visibility modes use this fully resolved root chain and the registered callback.
-            capabilityIds.forEach { environment.reportCapabilityCoverage(it, true, 1, 1) }
             FeatureInstallResult.Installed()
         }.getOrElse { throwable ->
             environment.reportStatus(CHANNEL_STATUS, "failed:${throwable.javaClass.simpleName}")

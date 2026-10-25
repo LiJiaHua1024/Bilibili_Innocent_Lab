@@ -27,6 +27,7 @@ internal object ModuleMemoryPressureHub {
 
     @MainThread
     fun releaseGraphics() {
+        com.lumen.coacervation.engine.LumenEngine.releaseGraphics()
         snapshot().forEach { listener ->
             runCatching { listener.onReleaseGraphics() }
         }

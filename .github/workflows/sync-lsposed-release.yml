@@ -105,6 +105,7 @@ jobs:
         uses: android-actions/setup-android@v4.0.4
         with:
           # Keep the supported package set explicit; build-tools are pinned below.
+          cmdline-tools-version: '16111833'
           packages: platform-tools
 
       - name: Install APK inspection tools

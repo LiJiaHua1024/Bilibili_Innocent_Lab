@@ -16,7 +16,8 @@ internal class HomeTabFilterFeatureInstaller(
     rules: String,
     selectors: String = "",
     private val points: VersionAdapter.HomeTabPoints?,
-    private val frameResolver: (ClassLoader?) -> HomeFrameTabLocator.Resolution = HomeFrameTabLocator::resolve
+    private val frameResolver: (ClassLoader?) -> HomeFrameTabLocator.Resolution = HomeFrameTabLocator::resolve,
+    private val centering: com.Bilibili_Innocent_Lab.xposedmodule.hook.hostui.top.HomeTopTabCenteringHooks? = null
 ) : FeatureInstaller {
 
     override val id: String = ID
@@ -31,6 +32,9 @@ internal class HomeTabFilterFeatureInstaller(
         if (environment.processName != TARGET_PACKAGE) {
             return FeatureInstallResult.Skipped("non-main-process")
         }
+        runCatching { centering?.install(environment) }.onFailure {
+            environment.logError("home_tabs_centering_install", "[BIL] 首页标签居中注册失败: $it")
+        }
         val publisher = ScanSnapshotPublisher(
             environment,
             MineComponentSnapshotCodec.SURFACE_HOME_TABS,
@@ -44,7 +48,7 @@ internal class HomeTabFilterFeatureInstaller(
             return missing(environment, legacy.reason ?: frame.reason ?: "missing-adapter-point")
         }
         val mode = if (hasHiddenConfiguration()) "filter+scan" else "scan"
-        environment.reportStatus(CHANNEL_STATUS, "success:$mode")
+        environment.reportStatus(CHANNEL_STATUS, "installed:mode=$mode")
         environment.logInfo(
             "home_tabs_ok",
             "[BIL] 首页 Tab 自定义隐藏已安装(legacy=${legacy.label}, frame=${frame.label})"
@@ -73,10 +77,15 @@ internal class HomeTabFilterFeatureInstaller(
             return LayerState.failed("missing-resource-fields")
         }
         val firstHit = AtomicBoolean(false)
+        val firstObserved = AtomicBoolean(false)
         return runCatching {
             environment.registrar.adapted("home.tabs.build", adapted.buildMethod) {
                 before {
                     val source = args.firstOrNull() as? List<*> ?: return@before
+                    if (firstObserved.compareAndSet(false, true)) {
+                        environment.reportRuntimeEvidence(ID, FeatureRuntimeStage.OBSERVED)
+                        environment.reportStatus(CHANNEL_STATUS, "observed:path=legacy,count=${source.size}")
+                    }
                     if (source.isEmpty()) return@before
                     // 先按未过滤的完整列表出快照，勾选面板才看得到"当前被隐藏的那几项"。
                     publisher.publish(
@@ -92,7 +101,8 @@ internal class HomeTabFilterFeatureInstaller(
                     if (filtered !== source && filtered.isNotEmpty()) {
                         args[0] = filtered
                         if (firstHit.compareAndSet(false, true)) {
-                            environment.reportRuntimeEvidence(ID, FeatureRuntimeStage.APPLIED)
+                            environment.reportRuntimeEvidence(ID, FeatureRuntimeStage.APPLIED, source.size - filtered.size)
+                            environment.reportStatus(CHANNEL_STATUS, "applied:path=legacy,count=${source.size - filtered.size}")
                             environment.logInfo(
                                 "home_tabs_legacy_hit",
                                 "[BIL] 首页 Tab 自定义隐藏已生效（旧首页框架层，${source.size} → ${filtered.size}）"
@@ -127,10 +137,15 @@ internal class HomeTabFilterFeatureInstaller(
             ?: return LayerState.failed("frame-missing-tab-slot")
         val item = model.item
         val firstHit = AtomicBoolean(false)
+        val firstObserved = AtomicBoolean(false)
         val hook = HomeFrameListHook(
             slot = slot,
             item = item,
             onScan = { source ->
+                if (firstObserved.compareAndSet(false, true)) {
+                    environment.reportRuntimeEvidence(ID, FeatureRuntimeStage.OBSERVED)
+                    environment.reportStatus(CHANNEL_STATUS, "observed:path=frame,count=${source.size}")
+                }
                 publisher.accumulateAll(
                     source.mapNotNull { candidate ->
                         if (candidate == null || !item.itemClass.isInstance(candidate)) return@mapNotNull null
@@ -143,7 +158,8 @@ internal class HomeTabFilterFeatureInstaller(
             } else null,
             onApplied = { before, after ->
                 if (firstHit.compareAndSet(false, true)) {
-                    environment.reportRuntimeEvidence(ID, FeatureRuntimeStage.APPLIED)
+                    environment.reportRuntimeEvidence(ID, FeatureRuntimeStage.APPLIED, before - after)
+                    environment.reportStatus(CHANNEL_STATUS, "applied:path=frame,count=${before - after}")
                     environment.logInfo(
                         "home_tabs_frame_hit",
                         "[BIL] 首页 Tab 自定义隐藏已生效（新首页框架层，$before → $after）"

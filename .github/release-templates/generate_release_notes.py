@@ -2,7 +2,7 @@
 """Generate user-facing release notes with an LLM chain and a deterministic fallback.
 
 流程：收集净变化证据 → 按槽位顺序请求模型输出结构化 JSON → 本地校验（提交引用、覆盖率、
-句数、术语、长度）→ 不通过则带错误重试一次 → 仍失败换下一槽位 → 全部失败回退规则版。
+句数、术语、长度）→ 不通过则基于草稿修订两轮 → 仍失败由下一槽位继续修订 → 全部失败回退规则版。
 Markdown 一律由本脚本渲染，模型不直接产出排版，因此章节、图标、链接格式由代码保证。
 """
 
@@ -29,6 +29,8 @@ CATEGORY_KEYS = {"new": "新增", "fixed": "修复", "improved": "优化"}
 MAX_ITEM_CHARS = 160
 MAX_GROUP_CHARS = 16
 MAX_SENTENCE_CHARS = 80
+MAX_SUMMARY_SENTENCES = 5
+GENERATION_ATTEMPTS = 3
 COMMIT_BATCH_SIZE = 40
 SENTENCE_SPLIT = re.compile(r"(?<=[。！？!?])")
 
@@ -91,10 +93,11 @@ class GenerationResult:
 def summary_rule(channel: str) -> str:
     if channel == "stable":
         return (
-            f"summary 写 2～4 句完整中文句子（每句以。结尾，每句不超过 {MAX_SENTENCE_CHARS} 字），"
+            f"summary 写 2～{MAX_SUMMARY_SENTENCES} 句完整中文句子（每句以。结尾，每句不超过 {MAX_SENTENCE_CHARS} 字），"
             "概括本版本带来的主要变化与价值，不堆砌实现细节。"
         )
-    return "summary 可以为空数组；如有必要写 1～2 句，提示测试者本次重点验证什么。"
+    return (f"summary 可以为空数组；如有必要写 1～{MAX_SUMMARY_SENTENCES} 句完整中文句子"
+            f"（每句以。结尾，每句不超过 {MAX_SENTENCE_CHARS} 字），提示测试者本次重点验证什么。")
 
 
 def style_section(config: dict) -> str:
@@ -262,10 +265,10 @@ def validate_notes(
 
     summary = [space_cjk_latin(s.strip()) for s in summary_raw if s.strip()]
     summary_sentences = sentences("".join(summary))
-    if context.channel == "stable" and not 2 <= len(summary_sentences) <= 4:
-        errors.append(f"Stable 的 summary 需要 2～4 句，当前 {len(summary_sentences)} 句")
-    if context.channel in {"alpha", "canary"} and len(summary_sentences) > 2:
-        errors.append(f"{context.channel.title()} 的 summary 最多 2 句，当前 {len(summary_sentences)} 句")
+    if context.channel == "stable" and not 2 <= len(summary_sentences) <= MAX_SUMMARY_SENTENCES:
+        errors.append(f"Stable 的 summary 需要 2～{MAX_SUMMARY_SENTENCES} 句，当前 {len(summary_sentences)} 句")
+    if context.channel in {"alpha", "canary"} and len(summary_sentences) > MAX_SUMMARY_SENTENCES:
+        errors.append(f"{context.channel.title()} 的 summary 最多 {MAX_SUMMARY_SENTENCES} 句，当前 {len(summary_sentences)} 句")
     for sentence in summary_sentences:
         if len(sentence) > MAX_SENTENCE_CHARS:
             errors.append(f"summary 句子超过 {MAX_SENTENCE_CHARS} 字：{sentence[:30]}…")
@@ -425,6 +428,18 @@ def fallback_changelog(channel: str, repo_root: Path, repository_url: str, relea
     return module.build_changelog(repo_root, repository_url, release_tag, commit).rstrip() + "\n"
 
 
+def _repair_messages(messages: list[dict], raw: str, errors: list[str]) -> list[dict]:
+    # 保留原始证据和最新草稿，避免多轮修订堆积旧版本；换槽位也沿用修订上下文。
+    return [messages[0], {"role": "assistant", "content": raw}, {
+        "role": "user",
+        "content": "请在上面的已有草稿上做最小修改，逐条修正以下问题，不要从头重写或改成提交记录列表。"
+        "保留已合规的内容、全部更新事实及提交引用；若问题仅涉及 summary，只修改 summary。"
+        "句数超限时合并概述，单句超长时压缩措辞，不能直接截断文本或删除更新事实。"
+        "修订后重新输出完整 JSON，不附解释，并自行检查全部规则：\n"
+        + "\n".join(f"- {error}" for error in errors),
+    }]
+
+
 def _generate_batch(
     context: ReleaseContext, config: dict, slots: list[llm_providers.ProviderSlot], log: list[str], warnings: list[str],
     session: llm_providers.ProviderSession,
@@ -440,9 +455,10 @@ def _generate_batch(
     if not summarize:
         system += "\n这是归类批次，summary 必须为空数组。版本概述在所有批次完成后统一生成，本批不写概述。"
     user_prompt = build_user_prompt(context)
+    messages: list[dict] = [{"role": "user", "content": user_prompt}]
+    preserved_body: dict | None = None
     for slot in slots:
-        messages: list[dict] = [{"role": "user", "content": user_prompt}]
-        for attempt in (1, 2):
+        for attempt in range(1, GENERATION_ATTEMPTS + 1):
             try:
                 raw = llm_providers.complete(slot, system, messages, OUTPUT_SCHEMA, session=session)
             except llm_providers.ProviderError as error:
@@ -453,6 +469,8 @@ def _generate_batch(
             except ValueError as error:
                 notes, errors, slot_warnings = None, [f"输出不是合法 JSON：{error}"], []
             else:
+                if preserved_body is not None:
+                    payload = {**payload, **preserved_body}
                 # 批次概述不参与最终输出，避免文风/长度检查反复消耗更新归类的重试机会。
                 if not summarize:
                     payload = {**payload, "summary": []}
@@ -463,15 +481,10 @@ def _generate_batch(
                 warnings.extend(slot_warnings)
                 return notes, slot.label
             log.append(f"{slot.label} 第 {attempt} 次输出未通过校验：" + "；".join(errors[:8]))
-            messages = [
-                *messages,
-                {"role": "assistant", "content": raw},
-                {
-                    "role": "user",
-                    "content": "上一次输出未通过校验，请逐条修正后重新输出完整 JSON：\n"
-                    + "\n".join(f"- {error}" for error in errors),
-                },
-            ]
+            if preserved_body is None and errors and all("summary" in error for error in errors):
+                preserved_body = {"items": payload["items"], "maintenance": payload["maintenance"]}
+                log.append("仅概述未通过校验，锁定已合规正文及提交引用，后续只采用修订后的概述。")
+            messages = _repair_messages(messages, raw, errors)
     return None
 
 
@@ -493,22 +506,25 @@ def _generate_overview(notes: ReleaseNotes, context: ReleaseContext, config: dic
     system = build_system_prompt(config, context.channel) + "\n本次只写 summary，items 和 maintenance 必须为空数组。"
     messages = [{"role": "user", "content": "以下是已完整归类的更新内容，只概括这些事实：\n" + evidence}]
     empty_context = replace(context, commits=[])
+    conversation = list(messages)
     for slot in slots:
-        conversation = list(messages)
-        for attempt in (1, 2):
+        for attempt in range(1, GENERATION_ATTEMPTS + 1):
             try:
                 raw = llm_providers.complete(slot, system, conversation, OUTPUT_SCHEMA, session=session)
+            except llm_providers.ProviderError as error:
+                log.append(f"版本概述 {slot.label} 请求失败：{error}")
+                break
+            try:
                 payload = extract_json(raw)
                 overview, errors, _ = validate_notes(payload, empty_context, config)
                 if payload.get("items") or payload.get("maintenance"):
                     errors.append("仅写 summary，items 和 maintenance 必须为空数组")
-            except (llm_providers.ProviderError, ValueError) as error:
-                log.append(f"版本概述 {slot.label} 请求失败：{error}")
-                break
+            except ValueError as error:
+                overview, errors = None, [f"输出不是合法 JSON：{error}"]
             if overview is not None and not errors:
                 return overview.summary
-            conversation.extend([{"role": "assistant", "content": raw},
-                                 {"role": "user", "content": "请修正后输出完整 JSON：" + "；".join(errors)}])
+            log.append(f"版本概述 {slot.label} 第 {attempt} 次输出未通过校验：" + "；".join(errors[:8]))
+            conversation = _repair_messages(conversation, raw, errors)
     log.append("版本概述生成失败，保留全部正文并使用中性概述。")
     return (["本版本包含近期功能与兼容性调整。具体更新内容见下方说明。"]
             if context.channel == "stable" else [])
@@ -538,19 +554,25 @@ def _consolidate_notes(notes: ReleaseNotes, context: ReleaseContext, config: dic
     prompt = "将以下全部原始更新点归并为更细且无重复的最终正文，并撰写概述：\n" + json.dumps(evidence, ensure_ascii=False)
     # 完整细分证据留在报告中，正文压缩不会丢失审计来源。
     log.append("原始细分条目（完整复核证据）：" + json.dumps(evidence, ensure_ascii=False))
+    messages = [{"role": "user", "content": prompt}]
     for slot in slots:
         # 归并需要计数和完整映射；River DeepSeek 在此阶段开启推理，分批生成仍走快速模式。
         merge_slot = slot
         if slot.base_url.rstrip("/") == "https://api.river.ai/v1" and slot.model.startswith("deepseek-ai/"):
             merge_slot = replace(slot, extra_body={**slot.extra_body, "reasoning_effort": "high", "max_tokens": 32768})
-        messages = [{"role": "user", "content": prompt}]
-        for attempt in (1, 2):
+        for attempt in range(1, GENERATION_ATTEMPTS + 1):
             try:
                 raw = llm_providers.complete(merge_slot, system, messages, OUTPUT_SCHEMA, session=session)
-                payload = extract_json(raw)
-            except (llm_providers.ProviderError, ValueError) as error:
+            except llm_providers.ProviderError as error:
                 log.append(f"最终归并 {slot.label} 请求失败：{error}")
                 break
+            try:
+                payload = extract_json(raw)
+            except ValueError as error:
+                errors = [f"输出不是合法 JSON：{error}"]
+                log.append("最终归并未通过：" + "；".join(errors))
+                messages = _repair_messages(messages, raw, errors)
+                continue
             covered = set()
             errors = []
             converted = []
@@ -588,8 +610,7 @@ def _consolidate_notes(notes: ReleaseNotes, context: ReleaseContext, config: dic
                 log.append(f"最终归并通过：{len(originals)} 个原点完整映射为 {len(result.items)} 条正文，上限 {limit}。")
                 return result
             log.append("最终归并未通过：" + "；".join(errors[:8]))
-            messages.extend([{"role": "assistant", "content": raw},
-                             {"role": "user", "content": "修正全部问题，保持完整原点覆盖：\n" + "\n".join(errors)}])
+            messages = _repair_messages(messages, raw, errors)
     return None
 
 

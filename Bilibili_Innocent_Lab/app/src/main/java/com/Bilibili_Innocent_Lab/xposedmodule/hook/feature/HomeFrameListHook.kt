@@ -21,7 +21,8 @@ internal class HomeFrameListHook(
     private val onScan: (List<*>) -> Unit,
     /** null = 只扫描不过滤（未配置任何隐藏项）。 */
     private val shouldHide: ((Any) -> Boolean)?,
-    private val onApplied: (before: Int, after: Int) -> Unit
+    private val onApplied: (before: Int, after: Int) -> Unit,
+    private val preserveNavigation: Boolean = true
 ) {
     private val depth = ThreadLocal<IntArray>()
 
@@ -43,7 +44,8 @@ internal class HomeFrameListHook(
         if (source is FilteredTabList) return
         onScan(source)
         val hide = shouldHide ?: return
-        val filtered = filterFrameTabs(source, hide, item::isDefaultSelected)
+        val filtered = if (preserveNavigation) filterFrameTabs(source, hide, item::isDefaultSelected)
+            else CopyOnFilter.list(source, hide)
         if (filtered === source) return
         slot.field.set(instance, FilteredTabList(filtered))
         onApplied(source.size, filtered.size)

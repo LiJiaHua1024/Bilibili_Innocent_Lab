@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="player_subtitle_title">Subtitles</string>
+    <string name="player_subtitle_style">Enhanced subtitle styling</string>
+    <string name="player_subtitle_style_tip">After restarting Bilibili, open subtitle settings in the player to adjust font, size, text, background and outline. Styles are saved locally by Bilibili.</string>
+    <string name="player_ai_subtitle">Try forcing AI multilingual subtitles</string>
+    <string name="player_ai_subtitle_tip">Enable the client AI subtitle flag and request video subtitles. Available languages still depend on official server tracks; this cannot generate translations for every video. Restart Bilibili to apply.</string>
+</resources>

@@ -1,6 +1,17 @@
 # 凝光稳定版接入
 
-当前使用上游 [1.5.0 Stable Release](https://github.com/jichuo1/LumenCoacervationEngine/releases/tag/1.5.0)，`lumen-engine` 与 `lumen-motion` 在 `gradle/libs.versions.toml` 中共用同一个版本。Gradle 直接从 JitPack 解析官方 Maven 产物，不再下载源码归档、对齐上游工具链或通过 `includeBuild` 替换依赖，也不提供本地开发源码覆盖。
+默认使用上游 [LumenCoacervationEngine 1.5.4](https://github.com/jichuo1/LumenCoacervationEngine/releases/tag/1.5.4)，`lumen-engine` 与 `lumen-motion` 在 `gradle/libs.versions.toml` 中共用同一个版本。普通构建直接从 JitPack 解析官方 Maven 产物，不下载源码归档，也不修改依赖缓存。
+
+1.5.4 修复展开手风琴标题向下形变受限和回弹中再次长按的续接，并优化 Effect 初始化复用、Liquid 静止刷新率归还与弹性位移的窗口范围通知。此前的输入框描边、分页手势、屏幕圆角与皮肤动画修复继续保留；契约版本为 1，最低 SDK 仍为 27，默认材质质量不变。
+
+2026-10-20 升级验证：普通 Maven 构建确认 engine/motion 均解析为 1.5.1；Debug APK、测试 APK、3791 项 JVM 测试（0 失败、1 跳过）和完整 Debug Lint 通过，既有 3 项错误基线未扩展。使用同一正式依赖的独立包名测试版在设备上通过 5 项回归，覆盖双向分页、竖向滚动、下游选项禁用、背景图片导入、标准选中框与关闭动画，以及 Liquid 搜索/连续回弹。测试版沿用原模块已有的条款和皮肤前置状态；设备上的发布签名模块未被覆盖。
+
+跨工程修复验证时，可以显式传入 `-Plumen.sourceDir=/绝对路径/LumenCoacervationEngine`：复合构建同时替换 engine/motion，契约测试从同一份本地源码生成独立的源码 JAR。该选项默认关闭，不把本机路径写进工程配置。引擎修复发布后应统一升级 catalog，普通构建才会取得该修复。
+
+```sh
+./gradlew assembleDebug assembleDebugAndroidTest testDebugUnitTest lintFast \
+  -Plumen.sourceDir=/绝对路径/LumenCoacervationEngine --offline --no-daemon
+```
 
 ## 底栏阴影
 

@@ -39,6 +39,7 @@ internal object HomeFrameTabLocator {
     const val TAB_ITEM_SERIAL = "tv.danmaku.bili.khomeapi.frame.HomeTabItemData"
     const val ELEMENT_TAB = "tab"
     const val ELEMENT_BOTTOM = "bottom"
+    const val ELEMENT_TOP = "top"
 
     private const val K_SERIALIZER = "kotlinx.serialization.KSerializer"
     private const val SERIAL_DESCRIPTOR = "kotlinx.serialization.descriptors.SerialDescriptor"
@@ -105,9 +106,14 @@ internal object HomeFrameTabLocator {
                 ?.takeIf { it.type isSubclassOf classOf<List<*>>() }
                 ?: return Resolution.Failed("missing-$element-slot")
             ListSlot(element, field)
-        }
+        }.toMutableMap()
         val itemClass = slots.values.map { listItemClass(it.field) }.distinct().singleOrNull()
             ?: return Resolution.Failed("tab-item-type")
+        // top is the new frame's search-row menus, not navigation tabs. Its own validated
+        // slot is optional so an unknown menu shape cannot disable working tab/bottom filters.
+        dataFields.getOrNull(dataShape.elements.indexOf(ELEMENT_TOP))?.takeIf {
+            List::class.java.isAssignableFrom(it.type) && listItemClass(it) == itemClass
+        }?.let { slots[ELEMENT_TOP] = ListSlot(ELEMENT_TOP, it) }
         val itemShape = serialization.describe(itemClass)
             ?.takeIf { it.serialName == TAB_ITEM_SERIAL }
             ?: return Resolution.Failed("tab-item-descriptor")

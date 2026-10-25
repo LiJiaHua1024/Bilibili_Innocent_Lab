@@ -7,14 +7,17 @@ import java.io.File
 import java.security.MessageDigest
 import org.gradle.api.DefaultTask
 import org.gradle.api.file.DirectoryProperty
+import org.gradle.api.file.ConfigurableFileCollection
 import org.gradle.api.file.RegularFileProperty
 import org.gradle.api.tasks.InputDirectory
 import org.gradle.api.tasks.InputFile
 import org.gradle.api.tasks.Input
+import org.gradle.api.tasks.Classpath
 import org.gradle.api.provider.Property
 import org.gradle.api.tasks.OutputDirectory
 import org.gradle.api.tasks.TaskAction
 import org.gradle.process.ExecOperations
+import org.gradle.process.CommandLineArgumentProvider
 import javax.inject.Inject
 import java.util.zip.ZipEntry
 import java.util.zip.ZipOutputStream
@@ -91,6 +94,12 @@ ${specs.joinToString("\n")}
 }
 """)
     }
+}
+
+/** Keep the source archives lazy, tracked, and independent of the build-script instance at execution. */
+abstract class LumenContractJvmArguments : CommandLineArgumentProvider {
+    @get:Classpath abstract val sources: ConfigurableFileCollection
+    override fun asArguments(): Iterable<String> = listOf("-DinnocentLab.lumenSources=${sources.asPath}")
 }
 
 val releaseVersionNameOverride = providers.gradleProperty("innocentLab.releaseVersionName")
@@ -203,8 +212,13 @@ tasks.register("lintFast") {
 
 android {
     namespace = gropify.project.app.packageName
-    compileSdk = gropify.project.android.compileSdk
-    ndkVersion = "29.0.14206865"
+    compileSdk {
+        version = release(gropify.project.android.compileSdk) {
+            minorApiLevel = 2
+        }
+    }
+    buildToolsVersion = "37.0.0"
+    ndkVersion = "30.0.16248370"
 
     defaultConfig {
         applicationId = gropify.project.app.packageName
@@ -234,7 +248,7 @@ android {
     externalNativeBuild {
         cmake {
             path = file("src/main/cpp/CMakeLists.txt")
-            version = "3.31.5"
+            version = "4.1.2"
             // Keep generated native/dependency paths below Windows' tool path limits, per checkout.
             val checkoutKey = MessageDigest.getInstance("SHA-256").digest(projectDir.canonicalPath.toByteArray())
                 .take(8).joinToString("") { "%02x".format(it.toInt() and 0xff) }
@@ -304,7 +318,7 @@ android {
 }
 
 androidComponents.onVariants { variant ->
-    val copiedPayload = layout.buildDirectory.dir("intermediates/frame-native-copy/${variant.name}")
+    val variantName = variant.name
     val sourceKey = providers.provider {
         val digest = MessageDigest.getInstance("SHA-256")
         val files = fileTree("src/main/cpp").files.toList() + listOf(
@@ -321,9 +335,14 @@ androidComponents.onVariants { variant ->
             digest.update(name.toByteArray(Charsets.UTF_8)); digest.update(0)
             digest.update(providers.environmentVariable(name).orElse("").get().toByteArray(Charsets.UTF_8)); digest.update(0)
         }
-        digest.update(variant.name.toByteArray(Charsets.UTF_8))
+        digest.update(variantName.toByteArray(Charsets.UTF_8))
         digest.digest().joinToString("") { "%02x".format(it.toInt() and 255) }
     }
+    // CMake configurations can be reused out of order; never let one overwrite another's copy receipt.
+    // The short directory handle keeps Windows paths bounded; pack still checks the full 256-bit key.
+    val copiedPayload = layout.buildDirectory.dir(sourceKey.map { key ->
+        "intermediates/frame-native-copy/$variantName/${key.take(16)}"
+    })
     variant.externalNativeBuild?.arguments?.add(sourceKey.map { "-DINNOCENT_FRAME_BUILD_KEY=$it" })
     variant.externalNativeBuild?.arguments?.add(copiedPayload.map { "-DINNOCENT_FRAME_PAYLOAD_DIR=${it.asFile.invariantSeparatorsPath}" })
     val pack = tasks.register<PackFrameNativePayload>("pack${variant.name.replaceFirstChar(Char::uppercaseChar)}FrameNativePayload") {
@@ -354,19 +373,32 @@ androidComponents.onVariants(androidComponents.selector().withBuildType("debug")
     }
 }
 
-// 契约测试读取与正式二进制相同版本的官方 sources JAR，不参与 APK 编译。
+// Contract sources must match the selected binary (official Maven or explicit local build).
 val lumenContractSources = configurations.create("lumenContractSources") {
     isCanBeConsumed = false
     isTransitive = false
 }
+val localLumenSource = providers.gradleProperty("lumen.sourceDir").orNull?.let(rootProject::file)
 for (library in listOf(libs.lumen.engine.get(), libs.lumen.motion.get())) {
-    dependencies.add(lumenContractSources.name, mapOf(
-        "group" to library.module.group,
-        "name" to library.module.name,
-        "version" to library.versionConstraint.requiredVersion,
-        "classifier" to "sources",
-        "ext" to "jar"
-    ))
+    if (localLumenSource != null) {
+        val artifact = library.module.name
+        val sources = tasks.register<org.gradle.api.tasks.bundling.Zip>(
+            "package${artifact.split('-').joinToString("") { it.replaceFirstChar(Char::uppercaseChar) }}ContractSources"
+        ) {
+            from(localLumenSource.resolve("$artifact/src/main/java"))
+            archiveFileName.set("$artifact-local-sources.jar")
+            destinationDirectory.set(layout.buildDirectory.dir("lumen-contract-sources"))
+        }
+        dependencies.add(lumenContractSources.name, files(sources.flatMap { it.archiveFile }))
+    } else {
+        dependencies.add(lumenContractSources.name, mapOf(
+            "group" to library.module.group,
+            "name" to library.module.name,
+            "version" to library.versionConstraint.requiredVersion,
+            "classifier" to "sources",
+            "ext" to "jar"
+        ))
+    }
 }
 
 // 源码护栏读取真实文件，必须把文本也计入 Test 缓存键；仅有测试 classpath 不足以
@@ -392,11 +424,16 @@ val sourceContractInputs = files(
     }
 )
 tasks.withType<Test>().configureEach {
-    doFirst {
-        systemProperty("innocentLab.lumenSources", lumenContractSources.asPath)
-    }
+    jvmArgumentProviders.add(objects.newInstance(LumenContractJvmArguments::class.java).apply {
+        sources.from(lumenContractSources)
+    })
     inputs.files(sourceContractInputs, lumenContractSources)
         .withPropertyName("sourceContractInputs")
+        .withPathSensitivity(PathSensitivity.RELATIVE)
+    // This optional generated projection is read by a JVM test in private checkouts. No secrets.
+    val projection = rootDir.parentFile.resolve("server/src/analytics/capability-catalog.json")
+    inputs.files(providers.provider { if (projection.isFile) listOf(projection) else emptyList<File>() })
+        .withPropertyName("privateCapabilityProjection")
         .withPathSensitivity(PathSensitivity.RELATIVE)
 }
 
@@ -461,7 +498,7 @@ tasks.register("contractsFor") {
             val process = ProcessBuilder("git", "diff", "--name-only", "HEAD")
                 .directory(repoDir).redirectErrorStream(true).start()
             val output = process.inputStream.bufferedReader().readText()
-            process.waitFor()
+            check(process.waitFor() == 0) { "Cannot inspect changed files: git diff failed." }
             output.lines()
                 .filter { it.contains("/src/main/") && it.endsWith(".kt") }
                 .map { it.substringAfterLast('/').removeSuffix(".kt") }
@@ -472,12 +509,14 @@ tasks.register("contractsFor") {
             println("No changed production Kotlin files.")
             return@doLast
         }
-        val contracts = root.walkTopDown().filter { it.isFile && it.extension == "kt" }.toList()
-        for (symbol in symbols) {
+        // Read each contract once even when a change touches many production files.
+        val contracts = root.walkTopDown().filter { it.isFile && it.extension == "kt" }
+            .map { it.relativeTo(root).invariantSeparatorsPath to it.readText() }.toList()
+        for (symbol in symbols.distinct()) {
             val pattern = Regex("\\b" + Regex.escape(symbol) + "\\b")
-            val hits = contracts.mapNotNull { file ->
-                val count = pattern.findAll(file.readText()).count()
-                if (count > 0) file.relativeTo(root).path.replace('\\', '/') to count else null
+            val hits = contracts.mapNotNull { (path, text) ->
+                val count = pattern.findAll(text).count()
+                if (count > 0) path to count else null
             }.sortedByDescending { it.second }
             println("== $symbol: ${hits.size} contract file(s)")
             hits.forEach { (path, count) -> println("   $count  $path") }

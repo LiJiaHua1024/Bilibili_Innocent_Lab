@@ -20,7 +20,7 @@ internal object DiagnosticCapabilityCatalog {
      * 客户端是按 "比我已知的版本更新" 做增量的，
      * VERSION 涨了却没有任何条目标在新版本上，增量就是空集（有测试钉住）。
      */
-    const val VERSION = 26
+    const val VERSION = 33
     val definitions = listOf(
         DiagnosticCapabilityDefinition("player_buffer_strategy", "player_buffer", R.string.player_buffer_mode,
             setOf("player.buffer.mode", "player.buffer.seconds", "player.buffer.memory_mb"),
@@ -58,6 +58,7 @@ internal object DiagnosticCapabilityCatalog {
         DiagnosticCapabilityDefinition("detail_promotion_hd", "detail_app_promotion", R.string.diag_cap_detail_promotion_hd, setOf("ads.video_detail.app_promotion.hidden")),
         DiagnosticCapabilityDefinition("detail_promotion_related_ad", "detail_app_promotion", R.string.diag_cap_detail_promotion_related_ad, setOf("ads.video_detail.app_promotion.hidden", "video.related.matching_enhancement.enabled", "video.related.strong_mode.enabled")),
         DiagnosticCapabilityDefinition("detail_promotion_related_game", "detail_app_promotion", R.string.diag_cap_detail_promotion_related_game, setOf("ads.video_detail.app_promotion.hidden", "video.related.matching_enhancement.enabled", "video.related.strong_mode.enabled")),
+        DiagnosticCapabilityDefinition("live_home_promotion", "live_home_promotion", R.string.hide_live_home_promotion, setOf("home.live.promotion.hidden"), introducedCatalogVersion = 31),
         DiagnosticCapabilityDefinition("home_banner_view", "home_banner", R.string.diag_cap_home_banner_view, setOf("ads.home_banner.hidden")),
         DiagnosticCapabilityDefinition("home_banner_feed", "home_banner", R.string.diag_cap_home_banner_feed, setOf("ads.home_banner.hidden")),
         DiagnosticCapabilityDefinition("merchandise", "merchandise", R.string.merch_ad_enable, setOf("ads.merchandise.hidden")),
@@ -149,6 +150,7 @@ internal object DiagnosticCapabilityCatalog {
             "host.bottom_bar.glass.renderer",
             "host.bottom_bar.compact.enabled",
             "host.bottom_bar.icon_only.enabled",
+            "host.mine.garb_dim.enabled",
             "host.bottom_bar.touch_glow.enabled"
         )),
         DiagnosticCapabilityDefinition("player_default_quality", "player_default_quality", R.string.player_default_quality, setOf("player.default_quality.qn")),
@@ -156,9 +158,18 @@ internal object DiagnosticCapabilityCatalog {
         DiagnosticCapabilityDefinition("player_capability_background", "player_capabilities", R.string.player_unlock_background, setOf("player.capability.background")),
         DiagnosticCapabilityDefinition("player_capability_small_window", "player_capabilities", R.string.player_unlock_small_window, setOf("player.capability.small_window")),
         DiagnosticCapabilityDefinition("player_capability_cast", "player_capabilities", R.string.player_unlock_cast, setOf("player.capability.cast")),
+        DiagnosticCapabilityDefinition("player_frame_interpolation", "player_capabilities", R.string.player_frame_interpolation, setOf("player.frame_interpolation.enabled"), introducedCatalogVersion = 26),
+        DiagnosticCapabilityDefinition("player_frame_interpolation_max_fps", "player_capabilities", R.string.player_frame_max_fps, setOf("player.frame_interpolation.max_fps"), introducedCatalogVersion = 27),
+        DiagnosticCapabilityDefinition("player_frame_interpolation_status_toast", "player_capabilities", R.string.player_frame_status_toast, setOf("player.frame_interpolation.status_toast"), introducedCatalogVersion = 29),
+        DiagnosticCapabilityDefinition("player_frame_interpolation_thermal_control", "player_capabilities", R.string.player_frame_disable_thermal_control, setOf("player.frame_interpolation.disable_thermal_control"), introducedCatalogVersion = 32),
         DiagnosticCapabilityDefinition("player_long_press_disabled", "player_speed", R.string.player_disable_long_press, setOf("player.long_press.disabled")),
         DiagnosticCapabilityDefinition("player_long_press_speed_percent", "player_speed", R.string.player_long_press_speed, setOf("player.long_press_speed.percent")),
         DiagnosticCapabilityDefinition("player_default_speed_percent", "player_speed", R.string.player_default_speed, setOf("player.default_speed.percent")),
+        DiagnosticCapabilityDefinition("player_speed_menu_percents", "player_speed", R.string.player_speed_menu, setOf("player.speed_menu.percents"), introducedCatalogVersion = 28),
+        DiagnosticCapabilityDefinition("player_subtitle_style", "player_subtitle_style", R.string.player_subtitle_style,
+            setOf("player.subtitle.style.enabled"), introducedCatalogVersion = 30),
+        DiagnosticCapabilityDefinition("player_ai_subtitle", "player_ai_subtitle", R.string.player_ai_subtitle,
+            setOf("player.subtitle.ai.enabled"), introducedCatalogVersion = 30),
         DiagnosticCapabilityDefinition("comments_search_links_removed", "comment_purify", R.string.remove_comment_search_links, setOf("comments.search_links.removed")),
         DiagnosticCapabilityDefinition("comments_empty_guide_removed", "comment_purify", R.string.remove_comment_empty_guide, setOf("comments.empty_guide.removed")),
         DiagnosticCapabilityDefinition("comments_vote_widgets_removed", "comment_purify", R.string.remove_comment_vote_widgets, setOf("comments.vote_widgets.removed")),
@@ -185,7 +196,7 @@ internal object DiagnosticCapabilityCatalog {
         DiagnosticCapabilityDefinition("share_content_purified", "share_purify", R.string.purify_share_content, setOf("share.content.purified")),
         DiagnosticCapabilityDefinition("share_mini_program_direct_link", "share_purify", R.string.share_mini_program_direct_link, setOf("share.mini_program.direct_link")),
         DiagnosticCapabilityDefinition("wechat_share_compat", "wechat_share_compat", R.string.wechat_share_compat,
-            setOf("share.wechat.resigned_compat"), introducedCatalogVersion = 26),
+            setOf("share.wechat.resigned_compat"), introducedCatalogVersion = 33),
         DiagnosticCapabilityDefinition("external_browser", "external_browser", R.string.force_external_browser, setOf("links.external_browser.enabled")),
         DiagnosticCapabilityDefinition("system_media_notification", "system_media_notification", R.string.system_media_notification, setOf("system.media_notification.enabled")),
         DiagnosticCapabilityDefinition("bv_to_av", "bv_to_av", R.string.show_bv_as_av, setOf("numbers.bv_as_av.enabled")),
@@ -262,6 +273,7 @@ internal object DiagnosticCapabilityCatalog {
     val splitParents = definitions.filter { it.id != it.parentId }.mapTo(linkedSetOf()) { it.parentId }
     val leafIds = byId.keys
     private val verifiedRuntimeIds = setOf(
+        "live_home_promotion",
         "search_home_recommend_hidden",
         "dynamic_frequent_visits_hidden",
         "home_recommend_pgc_removed",
@@ -290,6 +302,7 @@ internal object DiagnosticCapabilityCatalog {
         "player_long_press_disabled",
         "player_long_press_speed_percent",
         "player_default_speed_percent",
+        "player_speed_menu_percents",
         "player_capability_background",
         "player_capability_small_window",
         "player_capability_cast",

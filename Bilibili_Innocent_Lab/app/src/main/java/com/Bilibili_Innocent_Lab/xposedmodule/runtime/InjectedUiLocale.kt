@@ -48,7 +48,21 @@ internal data class InjectedUiMessages(
     val sponsorSkipped: String = "Sponsor segment skipped",
     val sponsorUndoAction: String = "Undo",
     val moduleSettingsTitle: String = "BIL settings",
-    val moduleSettingsUnavailable: String = "Could not open BIL settings. Open the settings app manually, then retry."
+    val moduleSettingsUnavailable: String = "Could not open BIL settings. Open the settings app manually, then retry.",
+    /** 插帧状态提示：`%1$s` 源帧率，`%2$d` 补帧目标帧率。 */
+    val frameStatusActive: String = "Frame interpolation on: %1\$s → %2\$d fps",
+    /** 源帧率未知时：`%1$d` 补帧目标帧率。 */
+    val frameStatusActiveTarget: String = "Frame interpolation on: %1\$d fps",
+    /** `%1$s` 为下列原因之一。 */
+    val frameStatusInactive: String = "Frame interpolation not active: %1\$s",
+    val frameReasonLoading: String = "the model is still loading",
+    val frameReasonEngine: String = "the engine is unavailable",
+    val frameReasonFormat: String = "this video is not supported",
+    val frameReasonCapability: String = "this phone cannot keep up at this resolution",
+    val frameReasonRate: String = "the video frame rate is already at the limit",
+    val frameReasonMedia: String = "HDR or protected video",
+    val frameReasonThermal: String = "the phone is too hot",
+    val frameReasonFallback: String = "switched back to normal playback to keep it smooth"
 )
 
 /**
@@ -165,6 +179,13 @@ internal object InjectedUiLocale {
             TAG_TRADITIONAL_CHINESE -> TRADITIONAL_CHINESE_MESSAGES
             else -> ENGLISH_MESSAGES
         }
+
+    /**
+     * 哔哩哔哩的非主进程（如专用播放进程）：没有 [initializeHost] 的接收器与 Provider 查询，
+     * 改读主进程写下的本地缓存（同一应用，可跨进程读取），取不到时跟随设备系统语言。
+     */
+    fun messagesForSecondaryProcess(context: Context): InjectedUiMessages =
+        messages(context, readHostCache(context))
 
     /** system/en/zh-CN/zh-Hant 白名单规范化；其他值故障开放为 system。 */
     fun normalizeSelectionTag(rawTag: String?): String {
@@ -322,7 +343,18 @@ internal object InjectedUiLocale {
         sponsorSkip = "跳过商单片段",
         sponsorUndo = "撤销商单跳过",
         sponsorSkipped = "已跳过商单",
-        sponsorUndoAction = "撤销"
+        sponsorUndoAction = "撤销",
+        frameStatusActive = "插帧已生效：%1\$s → %2\$d fps",
+        frameStatusActiveTarget = "插帧已生效：%1\$d fps",
+        frameStatusInactive = "插帧未生效：%1\$s",
+        frameReasonLoading = "模型加载中",
+        frameReasonEngine = "插帧引擎不可用",
+        frameReasonFormat = "不支持此视频",
+        frameReasonCapability = "本机性能不足以处理此分辨率",
+        frameReasonRate = "视频帧率已达上限",
+        frameReasonMedia = "HDR 或受保护的视频",
+        frameReasonThermal = "设备温度过高",
+        frameReasonFallback = "为保证流畅已切回原生播放"
     )
 
     private val TRADITIONAL_CHINESE_MESSAGES = InjectedUiMessages(
@@ -345,7 +377,18 @@ internal object InjectedUiLocale {
         sponsorSkip = "略過商單片段",
         sponsorUndo = "復原商單略過",
         sponsorSkipped = "已略過商單",
-        sponsorUndoAction = "復原"
+        sponsorUndoAction = "復原",
+        frameStatusActive = "插幀已生效：%1\$s → %2\$d fps",
+        frameStatusActiveTarget = "插幀已生效：%1\$d fps",
+        frameStatusInactive = "插幀未生效：%1\$s",
+        frameReasonLoading = "模型載入中",
+        frameReasonEngine = "插幀引擎無法使用",
+        frameReasonFormat = "不支援此影片",
+        frameReasonCapability = "本機效能不足以處理此解析度",
+        frameReasonRate = "影片幀率已達上限",
+        frameReasonMedia = "HDR 或受保護的影片",
+        frameReasonThermal = "裝置溫度過高",
+        frameReasonFallback = "為保持流暢已切回原生播放"
     )
 
     private val TRADITIONAL_CHINESE_REGIONS = setOf("TW", "HK", "MO")

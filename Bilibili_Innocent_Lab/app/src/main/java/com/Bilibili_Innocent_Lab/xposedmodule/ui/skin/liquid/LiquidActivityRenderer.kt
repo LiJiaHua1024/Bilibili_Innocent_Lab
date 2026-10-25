@@ -32,6 +32,8 @@ import androidx.core.graphics.createBitmap
 import com.highcapable.betterandroid.system.extension.utils.AndroidVersion
 import com.highcapable.betterandroid.ui.component.activity.AppViewsActivity
 import com.Bilibili_Innocent_Lab.xposedmodule.ui.skin.background.LiquidBackgroundMode
+import com.Bilibili_Innocent_Lab.xposedmodule.ui.skin.background.LiquidBackgroundConfig
+import com.lumen.coacervation.engine.host.LumenPreparedBackdropCache
 import com.Bilibili_Innocent_Lab.xposedmodule.ui.skin.background.LiquidBackgroundStore
 import com.Bilibili_Innocent_Lab.xposedmodule.ui.skin.engine.GlowBackdropTarget
 import com.Bilibili_Innocent_Lab.xposedmodule.ui.skin.engine.GlowChromeGlassApi31
@@ -140,6 +142,18 @@ internal class LiquidActivityRenderer(
         dark = darkPalette
     )
     private val backgroundConfig = LiquidBackgroundStore.read(activity).config
+    private val backdropPalette = listOf(palette.primary, palette.onPrimary, palette.secondary,
+        palette.tertiary, palette.surface, palette.background, palette.surfaceVariant)
+    private data class BackdropKey(val palette: List<Int>, val config: LiquidBackgroundConfig,
+        val width: Int, val height: Int, val density: Float, val realtimeOptics: Boolean)
+    private companion object {
+        val preparedBackdrops = LumenPreparedBackdropCache<BackdropKey, LiquidBackdropSource>(
+            LiquidBackdropSizingPolicy.MAX_PRESENTATION_PIXELS * LiquidBackdropSizingPolicy.BYTES_PER_PIXEL +
+                LiquidBackdropSizingPolicy.MAX_BUFFER_BYTES
+        )
+    }
+    private fun backdropKey(width: Int, height: Int) = BackdropKey(backdropPalette, backgroundConfig,
+        width, height, density, effectProfile == LiquidEffectProfile.REALTIME_CAPTURE)
     private val backgroundWorker = Executors.newSingleThreadExecutor { runnable ->
         Thread(runnable, "liquid-background-loader").apply { isDaemon = true }
     }
@@ -661,12 +675,14 @@ internal class LiquidActivityRenderer(
     @MainThread
     override fun onTrimMemory(level: Int) {
         if (closed || !LiquidMemoryPolicy.shouldReleaseGraphics(level)) return
+        preparedBackdrops.clear()
         releaseGraphicsForMemoryPressure()
     }
 
     @MainThread
     override fun onLowMemory() {
         if (closed) return
+        preparedBackdrops.clear()
         releaseGraphicsForMemoryPressure()
     }
 
@@ -684,6 +700,10 @@ internal class LiquidActivityRenderer(
         boundRoot?.invalidate()
         invalidateRegisteredSurfaces()
     }
+
+    internal val isReadyForMotion: Boolean
+        get() = closed || fatalPosted || backgroundConfig.mode != LiquidBackgroundMode.CUSTOM ||
+            customBackdropFailed || backdropSource?.customAssetId == backgroundConfig.assetId
 
     internal fun drawRoot(
         canvas: Canvas,
@@ -1044,6 +1064,7 @@ internal class LiquidActivityRenderer(
         }
 
         val targetSize = LiquidBackdropSizingPolicy.resolve(width, height)
+        if (restorePreparedCustomBackdrop(root, width, height)) return
         if (existing != null &&
             existing.bitmap.width == targetSize.width &&
             existing.bitmap.height == targetSize.height
@@ -1094,6 +1115,7 @@ internal class LiquidActivityRenderer(
             return
         }
         val target = LiquidBackdropSizingPolicy.resolvePresentation(width, height)
+        if (restorePreparedCustomBackdrop(root, width, height)) return
         val request = "$assetId:${target.width}x${target.height}:$width:$height"
         if (customBackdropRequest == request && customBackdropFuture?.isDone == false) return
 
@@ -1162,6 +1184,7 @@ internal class LiquidActivityRenderer(
                 val previous = backdropSource
                 captureRequests.invalidate()
                 backdropSource = source
+                preparedBackdrops.put(backdropKey(width, height), source, source.preparedByteCount)
                 backdropGeneration++
                 customBackdropRequest = null
                 bindPreparedBackendsToBackdrop(source)
@@ -1178,6 +1201,25 @@ internal class LiquidActivityRenderer(
         root.postOnAnimation {
             if (retiredBackdropSources.remove(source)) source.close()
         }
+    }
+
+    private fun restorePreparedCustomBackdrop(root: View, width: Int, height: Int): Boolean {
+        if (backgroundConfig.mode != LiquidBackgroundMode.CUSTOM) return false
+        val prepared = preparedBackdrops.get(backdropKey(width, height)) ?: return false
+        val source = runCatching { prepared.forkPublished(width, height) }.getOrNull() ?: run {
+            preparedBackdrops.clear(); return false
+        }
+        customBackdropFuture?.cancel(true)
+        customBackdropLoadGeneration++
+        customBackdropRequest = null
+        val previous = backdropSource
+        captureRequests.invalidate()
+        backdropSource = source
+        backdropGeneration++
+        bindPreparedBackendsToBackdrop(source)
+        root.invalidate(); invalidateRegisteredSurfaces()
+        if (previous != null) retireBackdropAfterFrame(root, previous)
+        return true
     }
 
     /** Surface Drawable 在 draw 时更新真实几何；弱键避免 renderer 反向延长 View 生命周期。 */

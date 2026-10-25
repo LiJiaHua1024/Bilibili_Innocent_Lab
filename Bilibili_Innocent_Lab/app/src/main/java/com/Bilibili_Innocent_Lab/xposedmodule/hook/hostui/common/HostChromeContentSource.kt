@@ -4,6 +4,7 @@ import android.graphics.Canvas
 import android.graphics.Matrix
 import android.graphics.Rect
 import android.graphics.drawable.ColorDrawable
+import android.graphics.drawable.Drawable
 import android.view.View
 import com.Bilibili_Innocent_Lab.xposedmodule.hook.hostui.background.HostBackgroundDrawable
 import com.Bilibili_Innocent_Lab.xposedmodule.ui.skin.geometry.ViewSamplingMatrix
@@ -12,7 +13,8 @@ import com.lumen.coacervation.engine.host.LumenSourceAvailability
 
 /** Supplies the scene behind transparent feed content through the engine's public source API. */
 internal class HostChromeContentSource(override val coordinateView: View, var windowBaseColor: Int,
-    private val includeViewContent: Boolean = true) : LumenVersionedContentSource {
+    private val includeViewContent: Boolean = true,
+    private val composeWindowBase: Boolean = false) : LumenVersionedContentSource {
     private val ancestors = ArrayList<View>()
     private val matrix = Matrix()
     private val mapping = ViewSamplingMatrix()
@@ -33,7 +35,7 @@ internal class HostChromeContentSource(override val coordinateView: View, var wi
             var view = if (includeViewContent) coordinateView.parent as? View else coordinateView
             var depth = 0
             while (view != null && depth++ < 128) {
-                val background = view.background
+                val background = inheritedBackground(view)
                 mix(System.identityHashCode(background).toLong())
                 if (background != null) {
                     mix(background.alpha.toLong()); mix(background.state.contentHashCode().toLong())
@@ -67,7 +69,7 @@ internal class HostChromeContentSource(override val coordinateView: View, var wi
             // would include the injected bars and feed the glass back into itself.
             for (index in ancestors.indices.reversed()) {
                 val view = ancestors[index]
-                val background = view.background ?: continue
+                val background = inheritedBackground(view) ?: continue
                 if (!mapping.sourceToTarget(view, coordinateView, matrix)) continue
                 val save = canvas.save()
                 savedBounds.set(background.bounds)
@@ -93,5 +95,12 @@ internal class HostChromeContentSource(override val coordinateView: View, var wi
                 } finally { canvas.restoreToCount(save) }
             }
         } finally { ancestors.clear() }
+    }
+
+    private fun inheritedBackground(view: View): Drawable? = view.background?.takeIf {
+        // Compose paints the visible page base inside its composition, not View.background.
+        // Ordinary ancestor/Window colors are hidden behind that base and must not leak into
+        // the glass. A module-owned wallpaper is an explicit scene input and remains live.
+        !composeWindowBase || it is HostBackgroundDrawable
     }
 }

@@ -38,4 +38,51 @@ class PlayerSpeedConfigTest {
         assertEquals(0, PlayerSpeedConfig.effectiveLongPressPercent(true, 275))
         assertEquals(275, PlayerSpeedConfig.effectiveLongPressPercent(false, 275))
     }
+    @Test fun `menu multipliers parse valid 0_1 to 8 values and sort descending with deduplication`() {
+        assertEquals(
+            listOf(800, 300, 200, 150, 125, 100, 75, 50, 10),
+            PlayerSpeedConfig.parseMenuMultipliers("0.5, 0.75, 1.0, 1.25x, 1.5X，2.0；3倍 8 0.10 1.5")
+        )
+        listOf("", "   ", "0", "0, 1.0", "0.09, 1.0", "1.0, 8.01", "1.0, 1.234", "1.0, abc").forEach {
+            assertNull(it, PlayerSpeedConfig.parseMenuMultipliers(it))
+        }
+        val tooMany = (1..13).joinToString(", ") { "1.$it" }
+        assertNull(PlayerSpeedConfig.parseMenuMultipliers(tooMany))
+    }
+    @Test fun `stored menu spec round trips and rejects malformed or out of range strings`() {
+        val percents = listOf(300, 200, 150, 125, 100, 75, 50, 10)
+        val encoded = PlayerSpeedConfig.encodeMenuPercents(percents)
+        assertEquals("300,200,150,125,100,75,50,10", encoded)
+        assertEquals(percents, PlayerSpeedConfig.parseStoredMenuPercents(encoded))
+        assertEquals("3, 2, 1.5, 1.25, 1, 0.75, 0.5, 0.1", PlayerSpeedConfig.formatMenuInput(percents))
+        assertEquals("3x / 2x / 1.5x / 1.25x / 1x / 0.75x / 0.5x / 0.1x", PlayerSpeedConfig.formatMenuSummary(percents))
+        listOf(null, "", "  ", "0", "9,100", "801,100", "100,bad", "1".repeat(200),
+            "1,100", "1.25,100", "100,,50", ",100", "100,", "+100").forEach {
+            assertTrue(PlayerSpeedConfig.parseStoredMenuPercents(it).isEmpty())
+        }
+    }
+    @Test fun `every supported menu speed round trips with the same precision as single speed`() {
+        for (percent in PlayerSpeedConfig.MIN_PERCENT..PlayerSpeedConfig.MAX_PERCENT) {
+            assertEquals(listOf(percent), PlayerSpeedConfig.parseMenuMultipliers(PlayerSpeedConfig.formatMultiplier(percent)))
+            assertEquals(listOf(percent), PlayerSpeedConfig.parseStoredMenuPercents(PlayerSpeedConfig.encodeMenuPercents(listOf(percent))))
+        }
+        val twelve = (100..111).toList()
+        assertEquals(twelve.reversed(), PlayerSpeedConfig.parseMenuMultipliers(PlayerSpeedConfig.formatMenuInput(twelve)))
+        assertNull(PlayerSpeedConfig.parseMenuMultipliers("1,".repeat(100)))
+        assertTrue(PlayerSpeedConfig.parseStoredMenuPercents((100..112).joinToString(",")).isEmpty())
+    }
+    @Test fun `menu customization is mutually exclusive with default speed but independent of long press`() {
+        val menuSpec = "300,200,150,100,50"
+        assertEquals(listOf(300, 200, 150, 100, 50), PlayerSpeedConfig.effectiveMenuPercents(0, menuSpec))
+        assertEquals(listOf(3f, 2f, 1.5f, 1f, 0.5f), PlayerSpeedConfig.menuMultipliers(0, menuSpec))
+        assertFalse(PlayerSpeedConfig.conflictsWithDefaultSpeed(0, menuSpec))
+
+        // Default speed active -> menu customization suppressed
+        assertTrue(PlayerSpeedConfig.conflictsWithDefaultSpeed(150, menuSpec))
+        assertTrue(PlayerSpeedConfig.effectiveMenuPercents(150, menuSpec).isEmpty())
+        assertTrue(PlayerSpeedConfig.menuMultipliers(150, menuSpec).isEmpty())
+
+        // Long-press speed remains independent when menu customization is active
+        assertEquals(300, PlayerSpeedConfig.effectiveLongPressPercent(false, 300))
+    }
 }

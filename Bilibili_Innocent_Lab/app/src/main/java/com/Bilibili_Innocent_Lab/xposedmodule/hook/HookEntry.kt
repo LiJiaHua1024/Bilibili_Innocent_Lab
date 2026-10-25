@@ -19,6 +19,9 @@ import com.highcapable.kavaref.extension.classOf
 import com.highcapable.kavaref.extension.isStatic
 import com.highcapable.kavaref.extension.isSubclassOf
 import io.github.libxposed.api.XposedModule
+import com.Bilibili_Innocent_Lab.xposedmodule.hook.feature.interpolation.FrameInterpolationEntryGate
+import com.Bilibili_Innocent_Lab.xposedmodule.hook.feature.interpolation.FrameInterpolationFeatureInstaller
+import com.Bilibili_Innocent_Lab.xposedmodule.hook.feature.interpolation.FrameRateTarget
 import io.github.libxposed.api.XposedModuleInterface
 import java.lang.reflect.Constructor
 import java.lang.reflect.Method
@@ -99,6 +102,7 @@ import com.Bilibili_Innocent_Lab.xposedmodule.hook.feature.HomeTabFilterFeatureI
 import com.Bilibili_Innocent_Lab.xposedmodule.hook.feature.HomeComponentFilterFeatureInstaller
 import com.Bilibili_Innocent_Lab.xposedmodule.hook.feature.HookEnvironment
 import com.Bilibili_Innocent_Lab.xposedmodule.hook.feature.HookRegistrar
+import com.Bilibili_Innocent_Lab.xposedmodule.hook.feature.LiveHomePromotionFeatureInstaller
 import com.Bilibili_Innocent_Lab.xposedmodule.hook.feature.LiveRoomWidgetFeatureInstaller
 import com.Bilibili_Innocent_Lab.xposedmodule.hook.feature.MerchandiseFeatureInstaller
 import com.Bilibili_Innocent_Lab.xposedmodule.hook.feature.MineVipFeatureInstaller
@@ -137,6 +141,8 @@ import com.Bilibili_Innocent_Lab.xposedmodule.hook.feature.PlayerBufferConfig
 import com.Bilibili_Innocent_Lab.xposedmodule.hook.feature.PlayerCapabilityFeatureInstaller
 import com.Bilibili_Innocent_Lab.xposedmodule.hook.feature.PlayerCapabilityOptions
 import com.Bilibili_Innocent_Lab.xposedmodule.hook.feature.PlayerSpeedFeatureInstaller
+import com.Bilibili_Innocent_Lab.xposedmodule.hook.feature.PlayerAiSubtitleFeatureInstaller
+import com.Bilibili_Innocent_Lab.xposedmodule.hook.feature.PlayerSubtitleStyleFeatureInstaller
 import com.Bilibili_Innocent_Lab.xposedmodule.hook.feature.SponsorBlockFeatureInstaller
 import com.Bilibili_Innocent_Lab.xposedmodule.hook.feature.TeenagersModeFeatureInstaller
 import com.Bilibili_Innocent_Lab.xposedmodule.hook.feature.VideoRelateFilterFeatureInstaller
@@ -2281,8 +2287,9 @@ class HookEntry : XposedModule() {
     }
 
     override fun onPackageReady(param: XposedModuleInterface.PackageReadyParam) {
+        if (param.packageName == "android") return
         if (param.packageName != TARGET_PACKAGE) {
-            // 模块 scope 固定为 tv.danmaku.bili（module.prop 的 staticScope=true），改包名的
+            // 推荐 scope 包含宿主与系统框架；宿主专用 Hook 仍只接受 tv.danmaku.bili，改包名的
             // 克隆宿主既进不了作用域、也无法复用按 TARGET_PACKAGE 解析的宿主资源 id。过去这里
             // 静默 return，失败完全不可观测；至少要留下实际包名，让"多开为什么不生效"可查。
             logError(
@@ -2439,7 +2446,6 @@ class HookEntry : XposedModule() {
             val applicationOnCreateCompleted = java.util.concurrent.atomic.AtomicBoolean(false)
             val scanResultReported = java.util.concurrent.atomic.AtomicBoolean(false)
             val authorizationRetryScheduled = java.util.concurrent.atomic.AtomicBoolean(false)
-            val authorizationRetryConsumed = java.util.concurrent.atomic.AtomicBoolean(false)
             val authorizationRetryPending = java.util.concurrent.atomic.AtomicBoolean(false)
             val authorizedInstallerRef =
                 java.util.concurrent.atomic.AtomicReference<((Context) -> Unit)?>(null)
@@ -2650,6 +2656,13 @@ class HookEntry : XposedModule() {
             val featureInstallCoordinator = FeatureInstallCoordinator(hookEnvironment)
             val sponsorClassesRef = java.util.concurrent.atomic.AtomicReference(hostAdaptResult?.sponsorPlayer)
             val classicPointsRef = java.util.concurrent.atomic.AtomicReference(hostAdaptResult?.commentClassicStyle)
+            val pagePointsRef = java.util.concurrent.atomic.AtomicReference(hostAdaptResult?.pageBoundaries)
+            val searchHomeInstaller = SearchHomeRecommendFeatureInstaller(
+                enabled = hookConfig.getBoolean(FeaturePreferences.HIDE_SEARCH_HOME_RECOMMEND, false),
+                cachedPoints = { pagePointsRef.get() })
+            val endPageInstaller = PlayerEndPageRecommendFeatureInstaller(
+                enabled = hookConfig.getBoolean(FeaturePreferences.HIDE_PLAYER_END_PAGE_RECOMMEND, false),
+                cachedPoints = { pagePointsRef.get()?.endPageMerger })
             val popupPointsRef = java.util.concurrent.atomic.AtomicReference(hostAdaptResult?.playerPopupPromotion)
             val popupInstaller = PlayerPopupPromotionFeatureInstaller(
                 enabled = hookConfig.getBoolean(FeaturePreferences.HIDE_PLAYER_POPUP_PROMOTION, false),
@@ -2747,6 +2760,9 @@ class HookEntry : XposedModule() {
 
             featureInstallCoordinator.installAll(
                 listOf(
+                    LiveHomePromotionFeatureInstaller(
+                        enabled = prefs.getBoolean(FeaturePreferences.HIDE_LIVE_HOME_PROMOTION, false)
+                    ),
                     HomeBannerFeatureInstaller(
                         enabled = prefs.getBoolean(PREF_BANNER_ENABLED, true),
                         point = hostAdaptResult?.banner,
@@ -2754,6 +2770,61 @@ class HookEntry : XposedModule() {
                     )
                 )
             )
+
+            fun createTopBarFx(chromePoints: Map<String, VersionAdapter.HookPoint> = hostAdaptResult?.homeChrome.orEmpty()) =
+                HostTopBarFxFeatureInstaller(
+                    liquidGlass = prefs.getBoolean(
+                        FeaturePreferences.HOST_TOP_BAR_LIQUID_GLASS,
+                        false
+                    ),
+                    touchGlow = prefs.getBoolean(
+                        FeaturePreferences.HOST_TOP_BAR_TOUCH_GLOW,
+                        false
+                    ),
+                    points = hostAdaptResult?.homeTopBar,
+                    backgroundPreset = com.Bilibili_Innocent_Lab.xposedmodule.hook.hostui.background.HostBackgroundPreset.read(
+                        prefs.getString(FeaturePreferences.HOST_BACKGROUND_PRESET, "off")),
+                    appearance = com.Bilibili_Innocent_Lab.xposedmodule.settings.appearance.HostChromeAppearance.read(
+                        prefs.getString(FeaturePreferences.HOST_TOP_BAR_GLASS_MATERIAL, "soft"),
+                        prefs.getString(FeaturePreferences.HOST_TOP_BAR_GLASS_RENDERER, "legacy"),
+                        bottom = false,
+                        enabled = prefs.getBoolean(FeaturePreferences.HOST_TOP_BAR_LIQUID_GLASS, false)
+                    ),
+                    chromePoints = chromePoints
+                )
+
+            fun createBottomBarFx(chromePoints: Map<String, VersionAdapter.HookPoint> = hostAdaptResult?.homeChrome.orEmpty(),
+                semanticsPoint: com.Bilibili_Innocent_Lab.xposedmodule.hook.hostui.chrome.HomeChromeSemanticsPoint? = hostAdaptResult?.homeChromeSemantics) =
+                HostBottomBarFxFeatureInstaller(
+                    liquidGlass = prefs.getBoolean(
+                        FeaturePreferences.HOST_BOTTOM_BAR_LIQUID_GLASS,
+                        false
+                    ),
+                    touchGlow = prefs.getBoolean(
+                        FeaturePreferences.HOST_BOTTOM_BAR_TOUCH_GLOW,
+                        false
+                    ),
+                    points = hostAdaptResult?.bottomBar,
+                    compact = prefs.getBoolean(FeaturePreferences.HOST_BOTTOM_BAR_COMPACT, false),
+                    iconOnly = prefs.getBoolean(FeaturePreferences.HOST_BOTTOM_BAR_ICON_ONLY, false),
+                    mineGarbDim = prefs.getBoolean(FeaturePreferences.HOST_MINE_GARB_DIM, true),
+                    appearance = com.Bilibili_Innocent_Lab.xposedmodule.settings.appearance.HostChromeAppearance.read(
+                        prefs.getString(FeaturePreferences.HOST_BOTTOM_BAR_GLASS_MATERIAL, "soft"),
+                        prefs.getString(FeaturePreferences.HOST_BOTTOM_BAR_GLASS_RENDERER, "legacy"),
+                        bottom = true,
+                        enabled = prefs.getBoolean(FeaturePreferences.HOST_BOTTOM_BAR_LIQUID_GLASS, false)
+                    ),
+                    chromePoints = chromePoints,
+                    semanticsPoint = semanticsPoint
+                )
+
+            val homeChromeEnabled = listOf(FeaturePreferences.HOST_TOP_BAR_LIQUID_GLASS,
+                FeaturePreferences.HOST_TOP_BAR_TOUCH_GLOW, FeaturePreferences.HOST_BOTTOM_BAR_LIQUID_GLASS,
+                FeaturePreferences.HOST_BOTTOM_BAR_TOUCH_GLOW).any { prefs.getBoolean(it, false) }
+            val topBarFxInstaller = createTopBarFx()
+            val bottomBarFxInstaller = createBottomBarFx()
+            val homeTopTabCentering = com.Bilibili_Innocent_Lab.xposedmodule.hook.hostui.top.HomeTopTabCenteringHooks(
+                hostAdaptResult?.homeTopBar, hostAdaptResult?.homeChrome.orEmpty())
 
             featureInstallCoordinator.installAll(
                 listOf(
@@ -2774,25 +2845,7 @@ class HookEntry : XposedModule() {
                             (!prefs.getBoolean(FeaturePreferences.HOST_BOTTOM_BAR_LIQUID_GLASS, false) &&
                                 prefs.getBoolean(FeaturePreferences.HOST_BOTTOM_BAR_TOUCH_GLOW, false))
                     ),
-                    HostTopBarFxFeatureInstaller(
-                        liquidGlass = prefs.getBoolean(
-                            FeaturePreferences.HOST_TOP_BAR_LIQUID_GLASS,
-                            false
-                        ),
-                        touchGlow = prefs.getBoolean(
-                            FeaturePreferences.HOST_TOP_BAR_TOUCH_GLOW,
-                            false
-                        ),
-                        points = hostAdaptResult?.homeTopBar,
-                        backgroundPreset = com.Bilibili_Innocent_Lab.xposedmodule.hook.hostui.background.HostBackgroundPreset.read(
-                            prefs.getString(FeaturePreferences.HOST_BACKGROUND_PRESET, "off")),
-                        appearance = com.Bilibili_Innocent_Lab.xposedmodule.settings.appearance.HostChromeAppearance.read(
-                            prefs.getString(FeaturePreferences.HOST_TOP_BAR_GLASS_MATERIAL, "soft"),
-                            prefs.getString(FeaturePreferences.HOST_TOP_BAR_GLASS_RENDERER, "legacy"),
-                            bottom = false,
-                            enabled = prefs.getBoolean(FeaturePreferences.HOST_TOP_BAR_LIQUID_GLASS, false)
-                        )
-                    )
+                    topBarFxInstaller
                 )
             )
 
@@ -2927,7 +2980,7 @@ class HookEntry : XposedModule() {
                         ),
                         semanticLogDir = semanticLogDir
                     ),
-                    SearchHomeRecommendFeatureInstaller(prefs.getBoolean(FeaturePreferences.HIDE_SEARCH_HOME_RECOMMEND, false)),
+                    searchHomeInstaller,
                     SearchPurifyFeatureInstaller(
                         removeCommercial = prefs.getBoolean(
                             FeaturePreferences.REMOVE_SEARCH_COMMERCIAL,
@@ -3108,7 +3161,8 @@ class HookEntry : XposedModule() {
                             FeaturePreferences.HOME_TAB_HIDDEN_SELECTORS,
                             ""
                         ).orEmpty(),
-                        points = hostAdaptResult?.homeTabs
+                        points = hostAdaptResult?.homeTabs,
+                        centering = homeTopTabCentering
                     ),
                     HomeComponentFilterFeatureInstaller(
                         rules = prefs.getString(
@@ -3132,26 +3186,9 @@ class HookEntry : XposedModule() {
                         ).orEmpty(),
                         points = hostAdaptResult?.bottomBar
                     ),
-                    HostBottomBarFxFeatureInstaller(
-                        liquidGlass = prefs.getBoolean(
-                            FeaturePreferences.HOST_BOTTOM_BAR_LIQUID_GLASS,
-                            false
-                        ),
-                        touchGlow = prefs.getBoolean(
-                            FeaturePreferences.HOST_BOTTOM_BAR_TOUCH_GLOW,
-                            false
-                        ),
-                        points = hostAdaptResult?.bottomBar,
-                        compact = prefs.getBoolean(FeaturePreferences.HOST_BOTTOM_BAR_COMPACT, false),
-                        iconOnly = prefs.getBoolean(FeaturePreferences.HOST_BOTTOM_BAR_ICON_ONLY, false),
-                        appearance = com.Bilibili_Innocent_Lab.xposedmodule.settings.appearance.HostChromeAppearance.read(
-                            prefs.getString(FeaturePreferences.HOST_BOTTOM_BAR_GLASS_MATERIAL, "soft"),
-                            prefs.getString(FeaturePreferences.HOST_BOTTOM_BAR_GLASS_RENDERER, "legacy"),
-                            bottom = true,
-                            enabled = prefs.getBoolean(FeaturePreferences.HOST_BOTTOM_BAR_LIQUID_GLASS, false)
-                        )
-                    ),
+                    bottomBarFxInstaller,
                     *HostVideoCardStyleFeatureInstaller.shared(
+                        cardSurfaces = hostAdaptResult?.pageBoundaries?.cardSurfaces.orEmpty(),
                         enabled = prefs.getBoolean(FeaturePreferences.HOST_VIDEO_CARDS, false),
                         material = com.Bilibili_Innocent_Lab.xposedmodule.settings.appearance.HostCardMaterial.parse(prefs.getString(FeaturePreferences.HOST_CARD_MATERIAL, "original")),
                         radiusDp = prefs.getInt(FeaturePreferences.HOST_VIDEO_CARD_RADIUS_DP, -1),
@@ -3262,9 +3299,7 @@ class HookEntry : XposedModule() {
                         ),
                         points = hostAdaptResult?.playerInteractiveOverlays
                     ),
-                    PlayerEndPageRecommendFeatureInstaller(
-                        enabled = prefs.getBoolean(FeaturePreferences.HIDE_PLAYER_END_PAGE_RECOMMEND, false)
-                    ),
+                    endPageInstaller,
                     popupInstaller
                 )
             )
@@ -3444,6 +3479,18 @@ class HookEntry : XposedModule() {
                             FeaturePreferences.PLAYER_DECODE_MODE,
                             0
                         )
+                    ),
+                    // 入口门控关闭时发布版不安装任何插帧 Hook；debug 验证构建另见安装器注释。
+                    FrameInterpolationFeatureInstaller(
+                        enabled = prefs.getBoolean(FeaturePreferences.PLAYER_FRAME_INTERPOLATION, false) &&
+                            FrameInterpolationEntryGate.entryOpen(),
+                        verificationAllowed = com.Bilibili_Innocent_Lab.xposedmodule.BuildConfig.DEBUG,
+                        moduleApk = runCatching { java.io.File(moduleApplicationInfo.sourceDir) }.getOrNull(),
+                        remoteFile = { name -> runCatching { openRemoteFile(name) }.getOrNull() },
+                        maxFps = prefs.getInt(FeaturePreferences.PLAYER_FRAME_INTERPOLATION_MAX_FPS, 60)
+                            .takeIf { it in FrameRateTarget.CEILINGS } ?: 60,
+                        statusToast = prefs.getBoolean(FeaturePreferences.PLAYER_FRAME_INTERPOLATION_STATUS_TOAST, false),
+                        disableThermalControl = prefs.getBoolean(FeaturePreferences.PLAYER_FRAME_INTERPOLATION_DISABLE_THERMAL_CONTROL, false)
                     )
                 )
             )
@@ -3613,10 +3660,19 @@ class HookEntry : XposedModule() {
                         smallWindow = prefs.getBoolean(FeaturePreferences.PLAYER_UNLOCK_SMALL_WINDOW, false),
                         cast = prefs.getBoolean(FeaturePreferences.PLAYER_UNLOCK_CAST, false)
                     )),
+                    PlayerAiSubtitleFeatureInstaller(
+                        enabled = prefs.getBoolean(FeaturePreferences.PLAYER_AI_SUBTITLE, false)
+                    ),
+                    PlayerSubtitleStyleFeatureInstaller(
+                        enabled = prefs.getBoolean(FeaturePreferences.PLAYER_SUBTITLE_STYLE, false),
+                        moduleApk = runCatching { java.io.File(moduleApplicationInfo.sourceDir) }.getOrNull()
+                    ),
                     PlayerSpeedFeatureInstaller(
                         disableLongPress = prefs.getBoolean(FeaturePreferences.PLAYER_DISABLE_LONG_PRESS, false),
                         longPressPercent = prefs.getInt(FeaturePreferences.PLAYER_LONG_PRESS_SPEED_PERCENT, 0),
-                        defaultPercent = prefs.getInt(FeaturePreferences.PLAYER_DEFAULT_SPEED_PERCENT, 0)
+                        defaultPercent = prefs.getInt(FeaturePreferences.PLAYER_DEFAULT_SPEED_PERCENT, 0),
+                        speedMenuSpec = prefs.getString(FeaturePreferences.PLAYER_SPEED_MENU_PERCENTS, "").orEmpty(),
+                        cachedMenuPoints = hostAdaptResult?.playerSpeedMenu
                     ),
                     sponsorInstaller,
                     SystemMediaNotificationFeatureInstaller(
@@ -4826,6 +4882,30 @@ class HookEntry : XposedModule() {
                                             }
                                         }
                                     }
+                                    if (searchHomeInstaller.requiresAdaptationRetry || endPageInstaller.requiresAdaptationRetry) {
+                                        pagePointsRef.set(VersionAdapter.loadCached(attachedContext,
+                                            versionAdapterResetTimestamp)?.pageBoundaries)
+                                        hookEnvironment.postToMain?.invoke {
+                                            if (searchHomeInstaller.requiresAdaptationRetry)
+                                                featureInstallCoordinator.installAll(listOf(searchHomeInstaller))
+                                            if (endPageInstaller.requiresAdaptationRetry)
+                                                featureInstallCoordinator.installAll(listOf(endPageInstaller))
+                                        }
+                                    }
+                                    run {
+                                        val adaptedChrome = VersionAdapter.loadCached(attachedContext, versionAdapterResetTimestamp)
+                                        val chrome = adaptedChrome?.homeChrome.orEmpty()
+                                        hookEnvironment.postToMain?.invoke {
+                                            val pending = buildList {
+                                                if (homeChromeEnabled) {
+                                                    if (topBarFxInstaller.updateChromePoints(chrome)) add(topBarFxInstaller)
+                                                    if (bottomBarFxInstaller.updateChromePoints(chrome, adaptedChrome?.homeChromeSemantics)) add(bottomBarFxInstaller)
+                                                }
+                                            }
+                                            if (pending.isNotEmpty()) featureInstallCoordinator.installAll(pending)
+                                            if (homeTopTabCentering.updateChromePoints(chrome)) homeTopTabCentering.install(hookEnvironment)
+                                        }
+                                    }
                                     retryFreeCopyHooksAfterAdapt()
                                     VersionAdapter.showAdaptToast(
                                         attachedContext,
@@ -4847,8 +4927,18 @@ class HookEntry : XposedModule() {
                         brandSplashCustomEnabled = prefs.getBoolean(FeaturePreferences.BRAND_SPLASH_CUSTOM, false) &&
                             !prefs.getBoolean(FeaturePreferences.BRAND_SPLASH_SKIP, false),
                         followFeedStyleEnabled = prefs.getBoolean(FeaturePreferences.HOST_VIDEO_CARDS, false),
+                        homeChromeEnabled = homeChromeEnabled,
+                        homeTopTabCenteringEnabled = true,
+                        homeChromeIconOnly = prefs.getBoolean(FeaturePreferences.HOST_BOTTOM_BAR_LIQUID_GLASS, false) &&
+                            prefs.getBoolean(FeaturePreferences.HOST_BOTTOM_BAR_ICON_ONLY, false),
                         playerQualityEnabled = com.Bilibili_Innocent_Lab.xposedmodule.hook.feature.PlayerQualityConfig.normalize(
-                            prefs.getInt(FeaturePreferences.PLAYER_DEFAULT_QUALITY_QN, 0)) != 0
+                            prefs.getInt(FeaturePreferences.PLAYER_DEFAULT_QUALITY_QN, 0)) != 0,
+                        searchHomeRecommendEnabled = prefs.getBoolean(FeaturePreferences.HIDE_SEARCH_HOME_RECOMMEND, false),
+                        playerEndPageRecommendEnabled = prefs.getBoolean(FeaturePreferences.HIDE_PLAYER_END_PAGE_RECOMMEND, false),
+                        playerSpeedMenuEnabled = com.Bilibili_Innocent_Lab.xposedmodule.hook.feature.PlayerSpeedConfig.effectiveMenuPercents(
+                            prefs.getInt(FeaturePreferences.PLAYER_DEFAULT_SPEED_PERCENT, 0),
+                            prefs.getString(FeaturePreferences.PLAYER_SPEED_MENU_PERCENTS, "")
+                        ).isNotEmpty()
                     ) }
                 }.onFailure { throwable ->
                     logError(
@@ -4999,33 +5089,8 @@ class HookEntry : XposedModule() {
                 }
             }
 
-            fun authorizeAndInstallObserved(context: Context, applicationHint: android.app.Application?) {
-                val appContext = context.applicationContext ?: context
-                if (processName == TARGET_PACKAGE) {
-                    runCatching {
-                        HostRuntimeDiagnosticsBridge.initialize(
-                            context = appContext,
-                            processName = processName,
-                            logError = { message ->
-                                logError("host_runtime_diagnostics_receiver", "[BIL] $message")
-                            }
-                        )
-                    }.onFailure { throwable ->
-                        logError(
-                            "host_runtime_diagnostics_initialize",
-                            "[BIL] 宿主诊断桥初始化失败，继续校验 Hook 配置: $throwable"
-                        )
-                    }
-                    // B12：模块入口一跑起来就要能回答存活探测，哪怕后续授权/安装链还没完成。
-                    runCatching {
-                        HostRuntimeProbeResponder.ensureRegistered(
-                            context = appContext,
-                            logError = { message ->
-                                logError("host_runtime_probe_receiver", "[BIL] $message")
-                            }
-                        )
-                    }
-                }
+            fun requestAdmission(appContext: Context): com.Bilibili_Innocent_Lab.xposedmodule.runtime.HostAdmissionClient.Result {
+                StartupTrace.attempt()
                 val bootstrapStartedAtMs = android.os.SystemClock.elapsedRealtime()
                 val runtimeMode = com.Bilibili_Innocent_Lab.xposedmodule.runtime.noroot.NoRootRuntimeDetector.detect(
                     appContext, XposedModule::class.java.classLoader, HookEntry::class.java.classLoader)
@@ -5059,7 +5124,9 @@ class HookEntry : XposedModule() {
                     HostRuntimeProbeResponder.disabledRevision = normal.noRootRevision
                     reportNoRootHeartbeatIfSynced(appContext, normal, active = false)
                     frameworkLog("[BIL] 免 Root 关闭文档已确认，本进程不安装 Hook")
-                    return
+                    return com.Bilibili_Innocent_Lab.xposedmodule.runtime.HostAdmissionClient.Result(
+                        reason = com.Bilibili_Innocent_Lab.xposedmodule.runtime.HostAdmissionRouteClassifier.REASON_SYNC_REQUIRED,
+                        disabledRevision = normal.noRootRevision)
                 }
                 if (processName == TARGET_PACKAGE) {
                     frameworkLog("[BIL] 启动授权尝试(process=$processName)")
@@ -5082,41 +5149,40 @@ class HookEntry : XposedModule() {
                         "[BIL] 启动授权阶段耗时(remote_config=${remoteConfigElapsedMs}ms," +
                             " admission=${admissionElapsedMs}ms," +
                             " total=${android.os.SystemClock.elapsedRealtime() - bootstrapStartedAtMs}ms," +
+                            " config=${reason ?: "ready"}," +
                             " result=${if (admission.grant != null) "granted" else admission.reason})"
                     )
+                    admission.diagnostics.forEach {
+                        frameworkLog("[BIL] 启动授权通道诊断(${it.summary()})")
+                    }
                 }
+                return admission
+            }
+
+            fun applyAdmission(appContext: Context, admission: com.Bilibili_Innocent_Lab.xposedmodule.runtime.HostAdmissionClient.Result): Boolean {
                 val grant = admission.grant
                 if (grant == null) {
                     NPatchProcessDiagnostics.record(if (admission.disabledRevision > 0L)
                         NPatchProcessState.DISABLED else NPatchProcessState.REJECTED)
                     // 标准框架的配置拒绝不能被免 Root 的关闭记录变成安装终态。
-                    if (runtimeMode == com.Bilibili_Innocent_Lab.xposedmodule.runtime.noroot.HookRuntimeMode.NPATCH_LEGACY &&
+                    if (nPatchStartup.get() &&
                         admission.disabledRevision > 0L && !authorizedHooksInstalled.get()) {
                         authorizedInstallerRef.set(null)
                         authorizationRetryPending.set(false)
                         HostRuntimeProbeResponder.disabledRevision = admission.disabledRevision
                         if (processName == TARGET_PACKAGE) HostRuntimeDiagnosticsBridge.recordConfigRejected(admission.reason)
                         frameworkLog("[BIL] 当前关闭许可已确认，本进程不安装 Hook")
-                        return
+                        return false
                     }
                     if (processName == TARGET_PACKAGE) HostRuntimeDiagnosticsBridge.recordConfigRejected(admission.reason)
                     if (admission.reason == "embedded_mode_unsupported") {
                         authorizedInstallerRef.set(null)
                         authorizationRetryPending.set(false)
                         frameworkLog("[BIL] 当前版本不支持集成模式，本进程不安装功能")
-                        return
-                    }
-                    if (processName == TARGET_PACKAGE) {
-                        // attach 阶段可能仍处在后台启动窗口，MIUI 会暂时丢弃发往模块 App 的
-                        // 跨包回退广播；保留安装闭包，等首个宿主 Activity 可见后再尝试一次。
-                        authorizationRetryPending.set(true)
-                        frameworkLog("[BIL] 前台授权重试排队(reason=${admission.reason})")
-                        scheduleAuthorizationRetry(appContext, applicationHint)
-                    } else {
-                        authorizedInstallerRef.set(null)
+                        return false
                     }
                     frameworkLog("[BIL] 启动授权未完成，当前进程不安装功能(reason=${admission.reason})")
-                    return
+                    return false
                 }
                 val config = grant.snapshot
                 NPatchProcessDiagnostics.record(NPatchProcessState.LOADED, source = grant.source)
@@ -5129,12 +5195,47 @@ class HookEntry : XposedModule() {
                 }
                 frameworkLog("[BIL] 已获得新鲜启动许可(source=${grant.source}, generation=${config.generation})")
                 performAuthorizationAndInstall(appContext, config, grant.identity)
+                return authorizedHooksInstalled.get()
             }
 
             fun authorizeAndInstall(context: Context?, applicationHint: android.app.Application? = null) {
                 if (context == null || !authorizationAttempted.compareAndSet(false, true)) return
-                StartupTrace.attempt()
-                StartupTrace.measure("authorization") { authorizeAndInstallObserved(context, applicationHint) }
+                val appContext = context.applicationContext ?: context
+                if (processName == TARGET_PACKAGE) {
+                    runCatching {
+                        HostRuntimeDiagnosticsBridge.initialize(
+                            context = appContext,
+                            processName = processName,
+                            logError = { message ->
+                                logError("host_runtime_diagnostics_receiver", "[BIL] $message")
+                            }
+                        )
+                    }.onFailure { throwable ->
+                        logError(
+                            "host_runtime_diagnostics_initialize",
+                            "[BIL] 宿主诊断桥初始化失败，继续校验 Hook 配置: $throwable"
+                        )
+                    }
+                    // B12：模块入口一跑起来就要能回答存活探测，哪怕后续授权/安装链还没完成。
+                    runCatching {
+                        HostRuntimeProbeResponder.ensureRegistered(
+                            context = appContext,
+                            logError = { message ->
+                                logError("host_runtime_probe_receiver", "[BIL] $message")
+                            }
+                        )
+                    }
+                }
+                val admission = StartupTrace.measure("authorization") { requestAdmission(appContext) }
+                if (!applyAdmission(appContext, admission) && admission.grant == null && authorizedInstallerRef.get() != null) {
+                    if (processName == TARGET_PACKAGE) {
+                        authorizationRetryPending.set(true)
+                        frameworkLog("[BIL] 前台授权重试排队(reason=${admission.reason})")
+                        scheduleAuthorizationRetry(appContext, applicationHint)
+                    } else {
+                        authorizedInstallerRef.set(null)
+                    }
+                }
             }
 
             scheduleAuthorizationRetry = retry@{ context, applicationHint ->
@@ -5149,33 +5250,25 @@ class HookEntry : XposedModule() {
                     return@retry
                 }
                 runCatching {
-                    application.registerActivityLifecycleCallbacks(
-                        object : android.app.Application.ActivityLifecycleCallbacks {
-                            private fun retry(activity: android.app.Activity) {
-                                if (!authorizationRetryConsumed.compareAndSet(false, true)) return
-                                application.unregisterActivityLifecycleCallbacks(this)
-                                if (authorizedHooksInstalled.get()) return
-                                authorizationRetryPending.set(false)
-                                authorizationAttempted.set(false)
-                                frameworkLog("[BIL] 宿主 Activity 已恢复，执行前台授权重试")
-                                authorizeAndInstall(activity.applicationContext, application)
-                                if (authorizedHooksInstalled.get()) {
-                                    HostThreadGuard.run("roaming.lifecycle-retry") {
-                                        com.Bilibili_Innocent_Lab.xposedmodule.runtime.RoamingSettingsLauncher
-                                            .initializeHost(activity)
-                                    }
+                    com.Bilibili_Innocent_Lab.xposedmodule.runtime.HostAdmissionRecovery(
+                        application = application,
+                        admit = { StartupTrace.measure("authorization") { requestAdmission(application) } },
+                        accept = { result, activity ->
+                            val installed = applyAdmission(application, result)
+                            if (installed) {
+                                HostThreadGuard.run("roaming.lifecycle-retry") {
+                                    com.Bilibili_Innocent_Lab.xposedmodule.runtime.RoamingSettingsLauncher
+                                        .initializeHost(activity)
                                 }
                             }
-
-                            override fun onActivityResumed(activity: android.app.Activity) = retry(activity)
-                            override fun onActivityCreated(activity: android.app.Activity, state: android.os.Bundle?) = Unit
-                            override fun onActivityStarted(activity: android.app.Activity) = Unit
-                            override fun onActivityPaused(activity: android.app.Activity) = Unit
-                            override fun onActivityStopped(activity: android.app.Activity) = Unit
-                            override fun onActivitySaveInstanceState(activity: android.app.Activity, state: android.os.Bundle) = Unit
-                            override fun onActivityDestroyed(activity: android.app.Activity) = Unit
+                            installed
+                        },
+                        log = { frameworkLog(it) },
+                        finished = {
+                            authorizationRetryPending.set(false)
+                            if (!authorizedHooksInstalled.get()) authorizedInstallerRef.set(null)
                         }
-                    )
+                    ).start()
                     frameworkLog("[BIL] 前台授权重试监听已注册")
                 }.onFailure {
                     authorizationRetryScheduled.set(false)
@@ -5185,7 +5278,7 @@ class HookEntry : XposedModule() {
 
             // 未授权前只保留两个宿主生命周期 bootstrap。attach.before 同步读取 API 102
             // Remote Preferences；Instrumentation 仅作为 Application.attach 被改写时的兜底。
-            // 每个进程只尝试一次，且只有明确授权才安装完整 Hook。
+            // 同步 bootstrap 每进程一次；失败后的前台恢复独立限次，只有明确授权才安装完整 Hook。
             runCatching {
                 hookExactMethod(
                     classOf<android.app.Application>(),

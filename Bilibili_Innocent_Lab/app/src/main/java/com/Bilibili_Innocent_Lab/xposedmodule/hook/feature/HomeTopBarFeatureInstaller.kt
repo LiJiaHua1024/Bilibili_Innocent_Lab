@@ -7,6 +7,9 @@ import com.Bilibili_Innocent_Lab.xposedmodule.runtime.KavaMemberLookup
 import com.highcapable.kavaref.extension.classOf
 import com.highcapable.kavaref.extension.isStatic
 import java.lang.reflect.Method
+import java.lang.reflect.Field
+import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.atomic.AtomicBoolean
 
 /**
  * Compose 顶栏右上角项列表的过滤器。
@@ -55,7 +58,8 @@ internal class ComposeTopRightFilter(
 internal class HomeTopBarFeatureInstaller(
     private val hideGameMenu: Boolean,
     private val hideSearchDefaultWord: Boolean,
-    private val points: VersionAdapter.HomeTopBarPoints?
+    private val points: VersionAdapter.HomeTopBarPoints?,
+    private val frameResolver: (ClassLoader?) -> HomeFrameTabLocator.Resolution = HomeFrameTabLocator::resolve
 ) : FeatureInstaller {
 
     override val id: String = ID
@@ -85,6 +89,9 @@ internal class HomeTopBarFeatureInstaller(
         // 会让可用性变成两者之积，比单层更差。
         var menuLayerInstalled = false
         var composeLayerInstalled = false
+        var frameLayerInstalled = false
+        var frameExpected = false
+        var gameHookCount = 0
         if (hideGameMenu) {
             val point = points?.gameMenu
             if (point != null) {
@@ -125,9 +132,24 @@ internal class HomeTopBarFeatureInstaller(
                 }.isSuccess
             }
 
-            // 两条路径只要有一条装上就算就绪：老宿主没有 Compose 层、
-            // 将来老菜单路径下线后也只会剩 Compose 层，要求"全装上"会永久报 partial。
-            gameReady = menuLayerInstalled || composeLayerInstalled
+            // Only present paths enter the denominator. A known path's failed registration
+            // remains partial even when another coexisting route is usable.
+            val frame = frameResolver(environment.classLoader)
+            frameExpected = frame !is HomeFrameTabLocator.Resolution.Absent
+            if (frame is HomeFrameTabLocator.Resolution.Found) {
+                val count = installFrameMenus(environment, frame.model)
+                frameLayerInstalled = count > 0 && count == frame.model.constructors.size
+                installedCount += count
+            }
+            gameHookCount = installedCount
+            gameReady = (menuLayerInstalled || composeLayerInstalled || frameLayerInstalled) &&
+                (points?.gameMenu == null || menuLayerInstalled) &&
+                (composePoint == null || composeLayerInstalled) && (!frameExpected || frameLayerInstalled)
+            environment.reportStatus("home_game_menu_frame", when {
+                frameLayerInstalled -> "installed"
+                frameExpected -> "missing"
+                else -> "absent"
+            })
             environment.reportStatus(
                 CHANNEL_GAME_LAYERS,
                 "menu=${layerState(points?.gameMenu != null, menuLayerInstalled)}," +
@@ -220,18 +242,20 @@ internal class HomeTopBarFeatureInstaller(
         // 分母按"这个宿主上确实存在的落点数"算，而不是固定 1：老宿主只有菜单层、
         // 放量后可能只有 Compose 层，固定分母会把正常情况报成缺失。
         val gameLayerTotal =
-            (if (points?.gameMenu != null) 1 else 0) + (if (points?.composeGameMenu != null) 1 else 0)
+            (if (points?.gameMenu != null) 1 else 0) + (if (points?.composeGameMenu != null) 1 else 0) +
+                (if (frameExpected) 1 else 0)
         val gameLayerInstalled =
-            (if (menuLayerInstalled) 1 else 0) + (if (composeLayerInstalled) 1 else 0)
+            (if (menuLayerInstalled) 1 else 0) + (if (composeLayerInstalled) 1 else 0) +
+                (if (frameLayerInstalled) 1 else 0)
         if (hideGameMenu) environment.reportCapabilityCoverage(
             "home_top_bar_game_menu_hidden",
-            points?.gameMenu != null || points?.composeGameMenu != null,
+            points?.gameMenu != null || points?.composeGameMenu != null || frameExpected,
             gameLayerInstalled,
             gameLayerTotal.coerceAtLeast(1)
         )
         if (hideSearchDefaultWord) environment.reportCapabilityCoverage(
             "home_top_bar_search_word_hidden", true,
-            installedCount - gameLayerInstalled,
+            installedCount - gameHookCount,
             1 + points?.defaultWordMethods.orEmpty().size.coerceAtLeast(1) +
                 (if (searchMoss != null) 2 else 0) + (if (kotlinSearchProtocol != null) 1 else 0)
         )
@@ -263,6 +287,32 @@ internal class HomeTopBarFeatureInstaller(
             "[BIL] 首页顶部栏净化已安装，hooks=$installedCount"
         )
         return FeatureInstallResult.Installed(installedCount)
+    }
+
+    private fun installFrameMenus(environment: HookEnvironment, model: HomeFrameTabLocator.Model): Int {
+        val slot = model.slot(HomeFrameTabLocator.ELEMENT_TOP) ?: return 0
+        val observed = AtomicBoolean()
+        val applied = AtomicBoolean()
+        val hook = HomeFrameListHook(slot, model.item, onScan = {
+            if (observed.compareAndSet(false, true)) environment.reportRuntimeEvidence(ID, FeatureRuntimeStage.OBSERVED)
+        }, shouldHide = { isGameMenuAction(model.item.string(it, "uri")) }, onApplied = { before, after ->
+            if (applied.compareAndSet(false, true)) {
+                environment.reportRuntimeEvidence(ID, FeatureRuntimeStage.APPLIED, before - after)
+                environment.reportStatus("home_game_menu_frame", "applied")
+                environment.logInfo("home_game_menu_frame", "[BIL] 已隐藏首页顶部游戏中心入口（新首页数据层，$before → $after）")
+            }
+        }, preserveNavigation = false)
+        var count = 0
+        model.constructors.forEachIndexed { index, constructor ->
+            runCatching {
+                environment.registrar.constructor("home.top_bar.game_frame.$index", constructor) {
+                    before { hook.enter() }
+                    after { hook.exit(if (hasThrowable) null else instance) }
+                }
+                count++
+            }.onFailure { environment.logError("home_game_menu_frame_$index", "[BIL] 首页游戏入口数据边界注册失败: $it") }
+        }
+        return count
     }
 
     private fun installKotlinDefaultWords(environment: HookEnvironment): FeatureInstallResult {
@@ -342,6 +392,8 @@ internal class HomeTopBarFeatureInstaller(
         /** 游戏中心两层各自的状态；合并进 [CHANNEL_STATUS] 就无法分因。 */
         private const val CHANNEL_GAME_LAYERS = "home_game_menu_layers"
         private const val GAME_MENU_ACTION = "action://game_center/home/menu"
+        private const val GAME_MENU_URI = "bilibili://game_center/home"
+        private val gameMenuFields = ConcurrentHashMap<Class<*>, List<Field>>()
 
         internal fun layerState(present: Boolean, installed: Boolean): String = when {
             installed -> "ok"
@@ -356,16 +408,22 @@ internal class HomeTopBarFeatureInstaller(
          * 两层共用的**纯判据**——"什么算游戏中心入口"只能有一个定义，否则一层改了
          * 另一层跟不上。共用判据不等于串联：注册、降级、状态三者仍各自独立。
          */
-        private fun containsGameMenuAction(holder: Any): Boolean = KavaMemberLookup.fields(
-            holder.javaClass,
-            includeSuperclasses = true,
-            makeAccessible = true
-        ).any { field ->
-            if (field.type != classOf<String>()) return@any false
+        private fun containsGameMenuAction(holder: Any): Boolean = gameFields(holder.javaClass).any { field ->
             val action = runCatching { field.get(holder) as? String }.getOrNull()
                 ?: return@any false
-            action == GAME_MENU_ACTION || action.startsWith("$GAME_MENU_ACTION?")
+            isGameMenuAction(action)
         }
+        private fun gameFields(owner: Class<*>): List<Field> {
+            gameMenuFields[owner]?.let { return it }
+            val fields = KavaMemberLookup.fields(owner, includeSuperclasses = true, makeAccessible = true) {
+                it.type == classOf<String>() && !it.isStatic
+            }
+            if (gameMenuFields.size < 128) return gameMenuFields.putIfAbsent(owner, fields) ?: fields
+            return fields
+        }
+        internal fun isGameMenuAction(action: String?): Boolean = action != null &&
+            (action == GAME_MENU_ACTION || action.startsWith("$GAME_MENU_ACTION?") ||
+                action == GAME_MENU_URI || action.startsWith("$GAME_MENU_URI?"))
         private const val SEARCH_MOSS_CLASS = "com.bapis.bilibili.app.interfaces.v1.SearchMoss"
         private const val DEFAULT_WORDS_REPLY_CLASS = "com.bapis.bilibili.app.interfaces.v1.DefaultWordsReply"
         private const val DEFAULT_WORDS_METHOD = "executeDefaultWords"

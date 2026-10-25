@@ -2,13 +2,13 @@
 
 本页随[当前路线图](npatch-implementation-roadmap.md)维护，当前范围为有线机 `13a7a291`、Android 16/arm64、B 站 8.90.2、固定修复版 833/签名等级 2。各案例注明 Manager/embed、Manager 安装状态与产物；不把一种模式的业务结果外推为另一种模式或标准框架实机结果。
 
-本页 36 个案例的范围归属见[全目录复核](npatch-scope-audit.md#412-行目录与-36-个案例的完整覆盖)：8 个加载/产物/恢复案例、2 个重签名扩展案例、26 个通用业务回归案例。保留全部实际证据；业务案例里的通用修复不改称 NPatch 专有缺陷，剩余穷尽验收也不构成专项前置。原 412 行目录不变，另附[逐行范围归类](npatch-scope-matrix.tsv)。
+本页 36 个案例的范围归属见[全目录复核](npatch-scope-audit.md#412-行目录与-36-个案例的完整覆盖)：8 个加载/产物/恢复案例、2 个重签名扩展案例、26 个通用业务回归案例。保留全部实际证据；业务案例里的通用修复不改称 NPatch 专有缺陷，剩余穷尽验收也不构成专项前置。该复核及[逐行范围归类](npatch-scope-matrix.tsv)对应当时的 412 行目录；2026-10-25 合并 main 后新增的 17 行不在该历史归类范围内。
 
 ## 全量目录与状态
 
-[逐项矩阵](npatch-feature-matrix.tsv)由 `SettingsCatalog`、`DiagnosticCapabilityCatalog` 和 `DiagnosticFeatureRegistry` 交叉生成，包含 237 个设置和 175 个能力。设置行的 `links` 是相关能力，能力行的 `links` 是相关设置；`installer_group` 对应 Hook 注册组，具体进程适用性还需按安装器和实际业务核对。`local_scope` 保留纯界面、诊断或宿主前置授权项，避免它们因没有独立 Hook 被遗漏。
+[逐项矩阵](npatch-feature-matrix.tsv)由 `SettingsCatalog`、`DiagnosticCapabilityCatalog` 和 `DiagnosticFeatureRegistry` 交叉生成，包含 246 个设置和 183 个能力。设置行的 `links` 是相关能力，能力行的 `links` 是相关设置；`installer_group` 对应 Hook 注册组，具体进程适用性还需按安装器和实际业务核对。`local_scope` 保留纯界面、诊断或宿主前置授权项，避免它们因没有独立 Hook 被遗漏。
 
-状态含义：`pending` 待验、`installed` 已安装、`observed` 已触发、`passed` 对应行为案例通过、`blocked` 当前案例失败、`not_applicable` 有证据证明不适用。每个非待验状态必须引用本页案例；安装成功不升级为行为通过。2B 的加载模式正式准入已按限定范围完成，不等于 412 行通用业务穷尽验收；embed 现为 355 pending、48 observed、7 installed、2 passed。F19.1 新增两行仅提升到双模式 `observed`，账号内流程仍待验。
+状态含义：`pending` 待验、`installed` 已安装、`observed` 已触发、`passed` 对应行为案例通过、`blocked` 当前案例失败、`not_applicable` 有证据证明不适用。每个非待验状态必须引用本页案例；安装成功不升级为行为通过。2B 的加载模式正式准入已按限定范围完成，不等于 429 行通用业务穷尽验收；embed 现为 372 pending、48 observed、7 installed、2 passed。F19.1 新增两行仅提升到双模式 `observed`，账号内流程仍待验。2026-10-25 合并 main 新增的 9 个设置和 8 个能力均为双模式 `pending`，原有验收状态与案例引用保留；构建和 JVM 测试通过不代表这些新增业务已在宿主内验证。
 
 `NPatchAcceptanceMatrixTest` 校验目录版本、完整设置/能力集合、父注册组、状态值及案例引用是否存在。目录变化会使矩阵检查失败，更新模板在 `app/build/reports/npatch/feature-matrix.template.tsv`；合并新增行时保留已核验状态和证据，不整体用模板覆盖。Gradle 已把矩阵和本页计入 Test 输入，改动不会错误复用旧测试结果。矩阵只包含构建期公开元数据，不读取偏好、账号或令牌。
 

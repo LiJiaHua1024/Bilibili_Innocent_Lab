@@ -6,6 +6,37 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class SettingsImportPlannerTest {
+    @Test fun `older backups retain disabled mine dimming and current backups restore both choices`() {
+        val spec = SettingsCatalog.byId.getValue("host.mine.garb_dim.enabled")
+        val current = snapshot(spec to StoredSetting(true, SettingValue.Bool(false)))
+        val planner = SettingsImportPlanner(listOf(spec), 65)
+        for (version in 1..64) {
+            val older = planner.plan(document(version, emptyList()), current)
+            assertEquals(ImportStatus.NEW_IN_CURRENT, older.entries.single().status)
+            assertTrue(older.writes.isEmpty())
+        }
+        for (enabled in listOf(false, true)) {
+            val before = snapshot(spec to StoredSetting(true, SettingValue.Bool(!enabled)))
+            val restored = planner.plan(document(65, listOf(record(spec, true, SettingValue.Bool(enabled)))), before)
+            assertEquals(ImportStatus.EXACT, restored.entries.single().status)
+            assertEquals(SettingValue.Bool(enabled), restored.writes.single().value)
+        }
+    }
+
+    @Test fun `older backups preserve a confirmed interpolation thermal choice`() {
+        val spec = SettingsCatalog.byId.getValue("player.frame_interpolation.disable_thermal_control")
+        val current = snapshot(spec to StoredSetting(true, SettingValue.Bool(true)))
+        val planner = SettingsImportPlanner(listOf(spec), 64)
+        for (version in 1..63) {
+            val older = planner.plan(document(version, emptyList()), current)
+            assertEquals(ImportStatus.NEW_IN_CURRENT, older.entries.single().status)
+            assertTrue(older.writes.isEmpty())
+        }
+        val restored = planner.plan(document(64, listOf(record(spec, true, SettingValue.Bool(false)))), current)
+        assertEquals(ImportStatus.EXACT, restored.entries.single().status)
+        assertEquals(SettingValue.Bool(false), restored.writes.single().value)
+    }
+
     @Test fun `older backups preserve reply button visibility intent and current backups restore it`() {
         val spec = SettingsCatalog.byId.getValue("comments.reply_button.removed")
         val current = snapshot(spec to StoredSetting(true, SettingValue.Bool(true)))

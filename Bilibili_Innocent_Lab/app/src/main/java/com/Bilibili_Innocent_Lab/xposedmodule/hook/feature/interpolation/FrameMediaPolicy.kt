@@ -135,7 +135,7 @@ internal object FrameMediaPolicy {
 
     private const val MAX_TEXT = 256
     private const val MAX_DIMENSION = 4096
-    private const val MAX_PIXELS = 1920L * 1080L
+    private const val MAX_PIXELS = 4096L * 2160L
     private val VIDEO_MIME = Regex("video/[a-z0-9][a-z0-9.+-]*")
     private val AUDIO_MIME = Regex("audio/[a-z0-9][a-z0-9.+-]*")
     private val CODEC_TOKEN = Regex("[a-z0-9][a-z0-9._-]*")

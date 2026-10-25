@@ -89,10 +89,13 @@ class FrameMediaPolicyTest {
     }
 
     @Test fun `bounded dimensions include portrait and reject overflow and oversized tensors`() {
-        for ((width, height) in listOf(0 to 1, 1 to -1, 1920 to 1081, 1 to Int.MAX_VALUE,
+        for ((width, height) in listOf(0 to 1, 1 to -1, 4096 to 2161, 1 to Int.MAX_VALUE,
                 Int.MAX_VALUE to Int.MAX_VALUE, 4097 to 1)) {
             assertEquals("$width x $height", Reason.INVALID_SIZE, reason(media().copy(width = width, height = height)))
         }
+        // 4K 源由捕获缩到处理尺寸后插帧；源尺寸本身只受 4096×2160 像素上限约束。
+        for ((width, height) in listOf(1920 to 1081, 3840 to 2160, 2160 to 3840, 4096 to 2160))
+            assertNotEquals("$width x $height", Reason.INVALID_SIZE, reason(media().copy(width = width, height = height)))
     }
 
     @Test fun `DTS family decoded to verified PCM is a candidate without forcing audio conversion`() {

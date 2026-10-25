@@ -37,8 +37,10 @@ internal object ReleaseHighlightsCatalog {
     // 20 → 21（1.2.0）：新增的设置（智能过滤的接口类型 / 模型 / 超时 / 多来源 / 各面判定来源 / 自定义类型 /
     // 判定口径 / 缓存保留天数）都已有公告条目与导航目标；其余改动（NPatch 下设置同步与重启入口、
     // 9.14.0 适配、竖屏进入详情页的来源放行、新通道过滤）没有引入新设置，不需要新增条目。
+    // 21 → 22（1.2.1）：1.2.0 之后新增的设置随各自功能另开批次 4 起的公告条目与导航目标，
+    // 本次改版本号不新增条目。
     // 注意以后改版本号都要改一下这个地方的版本号，下面这个REVIEWED，不然过不了ci
-    const val REVIEWED_VERSION_CODE = 21
+    const val REVIEWED_VERSION_CODE = 22
     const val SETTINGS_BASELINE_VERSION = 13
     // 历史已达 64 项；新增功能时保留已有公告，目录继续以 96 项为硬上限。
     const val MAX_BUNDLED_ENTRIES = 96
@@ -310,6 +312,32 @@ internal object ReleaseHighlightsCatalog {
         ReleaseHighlight("recommend-publish-time", HighlightKind.NEW, R.string.highlights_recommend_publish_time,
             HighlightDestination(SettingsCatalog.ID_RECOMMEND_VIDEO_PUBLISH_TIME_RULE))
     )), ReleaseHighlightsBatch(23, listOf(
+        ReleaseHighlight("player-frame-interpolation", HighlightKind.NEW, R.string.highlights_player_frame_interpolation,
+            HighlightDestination("player.frame_interpolation.enabled"))
+    )), ReleaseHighlightsBatch(24, listOf(
+        ReleaseHighlight("player-frame-max-fps", HighlightKind.NEW, R.string.highlights_player_frame_max_fps,
+            HighlightDestination("player.frame_interpolation.max_fps"))
+    )), ReleaseHighlightsBatch(25, listOf(
+        ReleaseHighlight("player-speed-menu", HighlightKind.NEW, R.string.highlights_player_speed_menu,
+            HighlightDestination(SettingsCatalog.ID_PLAYER_SPEED_MENU))
+    )), ReleaseHighlightsBatch(26, listOf(
+        ReleaseHighlight("player-frame-status-toast", HighlightKind.NEW, R.string.highlights_player_frame_status_toast,
+            HighlightDestination("player.frame_interpolation.status_toast"))
+    )), ReleaseHighlightsBatch(27, listOf(
+        ReleaseHighlight("player-subtitle-style", HighlightKind.NEW, R.string.player_subtitle_style_tip,
+            HighlightDestination("player.subtitle.style.enabled")),
+        ReleaseHighlight("player-ai-subtitle", HighlightKind.NEW, R.string.player_ai_subtitle_tip,
+            HighlightDestination("player.subtitle.ai.enabled"))
+    )), ReleaseHighlightsBatch(28, listOf(
+        ReleaseHighlight("live-home-promotion", HighlightKind.NEW, R.string.highlights_live_home_promotion,
+            HighlightDestination("home.live.promotion.hidden"))
+    )), ReleaseHighlightsBatch(29, listOf(
+        ReleaseHighlight("player-frame-thermal-control", HighlightKind.NEW, R.string.highlights_player_frame_thermal_control,
+            HighlightDestination("player.frame_interpolation.disable_thermal_control"))
+    )), ReleaseHighlightsBatch(30, listOf(
+        ReleaseHighlight("host-mine-garb-dim", HighlightKind.NEW, R.string.host_mine_garb_dim_tip,
+            HighlightDestination("host.mine.garb_dim.enabled"))
+    )), ReleaseHighlightsBatch(31, listOf(
         ReleaseHighlight("wechat-resigned-sharing", HighlightKind.NEW, R.string.wechat_share_compat_tip,
             HighlightDestination("share.wechat.resigned_compat"))
     )))

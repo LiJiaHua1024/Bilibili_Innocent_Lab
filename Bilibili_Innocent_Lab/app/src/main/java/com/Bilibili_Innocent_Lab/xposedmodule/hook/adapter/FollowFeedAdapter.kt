@@ -69,11 +69,20 @@ internal object FollowFeedAdapter {
     private const val HOME = "com.bilibili.bplus.followinglist.home."
     private const val PERSONAL = "com.bilibili.bplus.followinglist.quick.consume."
     private const val PERSONAL_PAGE = PERSONAL + "VideoQuickConsumeFragment"
-    private val painterOwners = listOf("gv1.c", "iU.d")
-    // z0 是已核旧家族，T/Q 是双 9.15.0 的真实 home 装饰器；不把其它页面拼成 home 候选。
-    private val homeDecorations = listOf(HOME + "z0", HOME + "T", HOME + "Q")
-    private val personalDecorations = listOf(PERSONAL + "F", PERSONAL + "E")
-    private val personalSeparators = listOf(PERSONAL + "y0", PERSONAL + "U", PERSONAL + "S")
+    private const val CURRENT_PAINTER = "rU.d"
+    private val painterOwners = listOf(CURRENT_PAINTER, "mU.d", "gv1.c", "iU.d")
+    // 9.17.0：rU.d + home.a0 / quick.F / quick.T，CS.I.b / CS.J.j,n 的归属语义已核。
+    // 9.16.0：mU.d + home.U / quick.I / quick.W；模型和父类仍须完整复核。
+    // z0 是旧家族，T/Q 是双 9.15.0 的 home 装饰器，不跨页面拼接。
+    private val homeDecorations = listOf(HOME + "U", HOME + "z0", HOME + "T", HOME + "Q")
+    private val personalDecorations = listOf(PERSONAL + "I", PERSONAL + "F", PERSONAL + "E")
+    private val personalSeparators = listOf(PERSONAL + "W", PERSONAL + "y0", PERSONAL + "U", PERSONAL + "S")
+
+    private fun homeCandidates(painter: String): List<String> =
+        if (painter == CURRENT_PAINTER) listOf(HOME + "a0") + homeDecorations else homeDecorations
+
+    private fun separatorCandidates(painter: String): List<String> =
+        if (painter == CURRENT_PAINTER) listOf(PERSONAL + "T") + personalSeparators else personalSeparators
 
     data class Resolved(val points: FollowFeedPoints, val host: FollowFeedHostAccess, val paint: Method,
         val homeDecoration: Class<*>, val personalDecoration: Class<*>?, val separator: Method?, val header: Method?)
@@ -105,15 +114,16 @@ internal object FollowFeedAdapter {
             it.name == cached.painterMethod && paintAbi(it, recycler, module)
         }.singleOrNull() ?: return@runCatching null
         val home = Lookup.classOrNull(loader, cached.homeDecorationClass)?.takeIf {
-            it.name in homeDecorations && it.superclass == owner
+            it.name in homeCandidates(owner.name) && it.superclass == owner
         } ?: return@runCatching null
         val personal = cached.personalDecorationClass?.let { Lookup.classOrNull(loader, it) }
             ?.takeIf { it.name in personalDecorations && it.superclass == owner ||
                 it == owner && legacyPersonal(loader, owner) != null }
             ?: personal(loader, owner)
-        val separator = cached.personalSeparatorClass?.takeIf { it in personalSeparators }
+        val separatorNames = separatorCandidates(owner.name)
+        val separator = cached.personalSeparatorClass?.takeIf { it in separatorNames }
             ?.let { separator(loader, it) }
-            ?: personalSeparators.mapNotNull { separator(loader, it) }.singleOrNull()
+            ?: separatorNames.mapNotNull { separator(loader, it) }.singleOrNull()
         val header = cached.headerMethod?.let { name -> header(loader)?.takeIf { it.name == name } }
         // 旧缓存的首页入口有效，不代表当时缺失的 UP 主页描述可以永久跳过。
         val refreshed = cached.copy(personalDecorationClass = personal?.name ?: cached.personalDecorationClass,
@@ -137,10 +147,14 @@ internal object FollowFeedAdapter {
                 ?.let { family -> Triple(method, item, family) }
         }
         val (paint, item, family) = paints.singleOrNull() ?: return@runCatching null
-        val home = homeDecorations.mapNotNull { Lookup.classOrNull(loader, it) }
+        val homeNames = homeCandidates(owner.name)
+        val home = homeNames.mapNotNull { Lookup.classOrNull(loader, it) }
             .filter { it.superclass == owner }.singleOrNull() ?: return@runCatching null
         val personal = personal(loader, owner)
-        val separator = personalSeparators.mapNotNull { separator(loader, it) }.singleOrNull()
+        // T also names an older decoration. Admit the new role only for
+        // the exact painter generation verified with its actual personal-page consumer.
+        val separatorNames = separatorCandidates(owner.name)
+        val separator = separatorNames.mapNotNull { separator(loader, it) }.singleOrNull()
         FollowFeedPoints(owner.name, paint.name, paint.parameterTypes[3].name, item.name, home.name, family,
             personal?.name, separator?.declaringClass?.name, header(loader)?.name)
     }.getOrNull()

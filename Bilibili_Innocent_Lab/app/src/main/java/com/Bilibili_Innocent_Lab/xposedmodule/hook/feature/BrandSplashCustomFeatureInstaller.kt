@@ -190,7 +190,9 @@ internal class BrandSplashSelectionRuntime(
         environment.registrar.exact("brand.custom.refresh", response, list.name) {
             after {
                 if (hasThrowable) return@after
-                val original = result as? List<*> ?: return@after
+                // A missing server list follows the same empty-list reconciliation path in the host.
+                // Preserve a saved VIP choice before that path can clear storage and custom mode.
+                val original = if (result == null) emptyList<Any?>() else result as? List<*> ?: return@after
                 if (!state.isInitialized()) {
                     if (Looper.myLooper() == Looper.getMainLooper()) {
                         warmUp() // No file access, waiting, or decoding on the startup/render thread.

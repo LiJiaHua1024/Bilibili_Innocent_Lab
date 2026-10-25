@@ -3,9 +3,10 @@ if(NOT TARGET ncnn)
 endif()
 
 set(frame_shader_headers)
-foreach(shader warp warp_pack4)
-    set(source "${CMAKE_CURRENT_SOURCE_DIR}/upstream/${shader}.comp")
-    set(header "${CMAKE_CURRENT_BINARY_DIR}/generated/${shader}.comp.hex.h")
+foreach(shader upstream/warp upstream/warp_pack4 frame_preproc frame_postproc frame_fused frame_fused_rgb8 frame_reduce)
+    get_filename_component(shader_name "${shader}" NAME)
+    set(source "${CMAKE_CURRENT_SOURCE_DIR}/${shader}.comp")
+    set(header "${CMAKE_CURRENT_BINARY_DIR}/generated/${shader_name}.comp.hex.h")
     add_custom_command(OUTPUT "${header}"
         COMMAND "${CMAKE_COMMAND}" "-DSOURCE=${source}" "-DOUTPUT=${header}"
             -P "${CMAKE_CURRENT_SOURCE_DIR}/embed_shader.cmake"

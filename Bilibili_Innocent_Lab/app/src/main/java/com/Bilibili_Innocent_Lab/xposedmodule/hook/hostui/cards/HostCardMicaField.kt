@@ -9,6 +9,7 @@ import android.os.Handler
 import android.os.Looper
 import android.view.View
 import com.Bilibili_Innocent_Lab.xposedmodule.hook.hostui.background.HostBackgroundDrawable
+import com.Bilibili_Innocent_Lab.xposedmodule.hook.hostui.common.HostLatestWorkQueue
 import com.lumen.coacervation.engine.host.LumenMicaBackdrop
 import com.lumen.coacervation.engine.host.LumenMicaImage
 import com.lumen.coacervation.engine.host.LumenMicaLayer
@@ -25,6 +26,7 @@ internal class HostCardMicaField(private val owner: View, private val field: Vie
     private var source: HostBackgroundDrawable.MicaSource? = null
     private var generation = 0L
     private var closed = false
+    private val preparationsQueue = HostLatestWorkQueue(worker::execute)
     internal var preparations = 0L
         private set
     val drawable = object : Drawable() {
@@ -63,7 +65,7 @@ internal class HostCardMicaField(private val owner: View, private val field: Vie
         val width = (owner.width * scale).toInt().coerceAtLeast(1)
         val height = (owner.height * scale).toInt().coerceAtLeast(1)
         val weak = WeakReference(this)
-        worker.execute {
+        preparationsQueue.submit {
             val image = runCatching {
                 val bitmap = input.snapshot(width, height)
                 try { LumenMicaImage.prepare(bitmap) } finally { bitmap.recycle() }
@@ -83,6 +85,7 @@ internal class HostCardMicaField(private val owner: View, private val field: Vie
     override fun close() {
         if (closed) return
         closed = true; generation++
+        preparationsQueue.clear()
         source = null
         backdrop.close()
     }
