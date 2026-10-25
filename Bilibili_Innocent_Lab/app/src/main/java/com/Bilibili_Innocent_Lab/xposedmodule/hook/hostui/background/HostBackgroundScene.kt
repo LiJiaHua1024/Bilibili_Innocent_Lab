@@ -28,7 +28,9 @@ internal class HostBackgroundScene(private val config: HostBackgroundConfig, pri
     private val paint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG)
     private val source = Rect()
     private val destination = RectF()
-    internal val isReady get() = synchronized(lock) { wanted.isNotEmpty() && wanted.filter { it.band in first..last }.all { ready.containsKey(it) } }
+    internal val isReady get() = synchronized(lock) {
+        wanted.isNotEmpty() && wanted.all { it.band !in first..last || ready.containsKey(it) }
+    }
     internal val retainedTileCount get() = synchronized(lock) { ready.size }
 
     fun draw(canvas: Canvas, bounds: Rect, scroll: Long, night: Boolean, alpha: Int, filter: ColorFilter?, synchronous: Boolean) {

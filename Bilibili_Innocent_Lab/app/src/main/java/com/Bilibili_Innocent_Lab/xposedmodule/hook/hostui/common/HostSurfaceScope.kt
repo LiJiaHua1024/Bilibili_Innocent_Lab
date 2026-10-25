@@ -10,6 +10,8 @@ import com.Bilibili_Innocent_Lab.xposedmodule.settings.appearance.HostGlassRende
 import com.Bilibili_Innocent_Lab.xposedmodule.settings.appearance.HostGlassMaterial
 import com.lumen.coacervation.engine.host.LumenSurfaceBinding
 import com.lumen.coacervation.engine.host.LumenSurfaceBackend
+import com.lumen.coacervation.engine.host.LumenSurfaceFailure
+import com.lumen.coacervation.engine.host.LumenSurfaceMaterial
 import com.lumen.coacervation.engine.host.LumenSurfaceDiagnostics
 import com.lumen.coacervation.engine.host.LumenSurfaceOptions
 import com.lumen.coacervation.engine.host.LumenSurfaceSession
@@ -25,7 +27,8 @@ import java.util.WeakHashMap
  */
 internal class HostSurfaceScope(anchor: View, colors: HostChromeColors,
     private val samplingBackend: LumenSurfaceBackend = LumenSurfaceBackend.AUTO,
-    private val appearance: HostChromeAppearance = HostChromeAppearance()) {
+    private val appearance: HostChromeAppearance = HostChromeAppearance(),
+    private val reuseGpuFrames: Boolean = true) {
     private class Surface(var options: LumenSurfaceOptions) {
         var prism = false
         var prismSurface: HostPrismSurface? = null
@@ -62,13 +65,30 @@ internal class HostSurfaceScope(anchor: View, colors: HostChromeColors,
             backdropVersion = version
             // Ancestor backgrounds and retained child updates can bypass the owner's dirty
             // flag. Wake the hosts too so both backends adopt the updated scene this frame.
-            session?.notifyContentChanged()
+            if (canRetainGpuFrame()) (viewportSource ?: contentSource)?.coordinateView?.invalidate()
+            else session?.notifyContentChanged()
         }
         true
     }
     private val focusListener = ViewTreeObserver.OnWindowFocusChangeListener { focused ->
         // Memory pressure can release graphics while backgrounded; restore them on return.
         if (focused && !closed) session?.resume()
+    }
+
+    private fun canRetainGpuFrame(): Boolean {
+        // API 31 needs an equivalent-filter swap after every content capture. Keep
+        // that path, software probes and any pending/failing binding unchanged.
+        if (!reuseGpuFrames || Build.VERSION.SDK_INT < 32) return false
+        val active = session?.diagnostics() ?: return false
+        if (active.paused || active.lastFailure != LumenSurfaceFailure.NONE) return false
+        var sampled = false
+        for (spec in surfaces.values) {
+            if (!spec.options.sampling.enabled || spec.options.material == LumenSurfaceMaterial.STATIC) continue
+            val backend = spec.prismSurface?.diagnostics()?.backdropBackend ?: spec.binding?.diagnostics()?.backend
+            if (backend != LumenSurfaceBackend.GPU) return false
+            sampled = true
+        }
+        return sampled
     }
 
     fun attach(surface: View, explicitContent: View? = null) {
