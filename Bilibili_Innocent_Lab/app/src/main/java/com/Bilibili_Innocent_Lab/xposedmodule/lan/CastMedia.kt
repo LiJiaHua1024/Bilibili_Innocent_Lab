@@ -41,6 +41,8 @@ internal class CastMedia(private val directory: File,
     private val connections = java.util.concurrent.ConcurrentHashMap.newKeySet<java.net.HttpURLConnection>()
     private val publication = Any()
     fun prepare(source: CastSource, overlay: CastDanmakuStyle?, comments: List<CastDanmaku>, progress: (String) -> Unit): File {
+        val metrics = CastPreparationMetrics()
+        var success = false
         check(!cancelled.get())
         directory.mkdirs()
         // Use actual free bytes conservatively; do not evict the host's other caches to satisfy a cast.
@@ -59,10 +61,14 @@ internal class CastMedia(private val directory: File,
                 check(!cancelled.get())
                 progress("正在读取已授权媒体轨道 ${index + 1}/${source.urls.distinct().size}")
                 val input = File(directory, "${output.nameWithoutExtension}-$index.track").also(inputs::add)
-                downloaded += CastMediaFetch(open, cancelled, connections, { code, host ->
-                    android.util.Log.w("BIL-LAN", "media candidate rejected http=$code host=$host")
-                }).download(listOf(url) + source.backups[url].orEmpty(),
-                    source.headers, input, budget - downloaded) { directory.usableSpace > 64L * 1024 * 1024 }
+                val downloadStart = System.nanoTime()
+                try {
+                    downloaded += CastMediaFetch(open, cancelled, connections, { code, host ->
+                        android.util.Log.w("BIL-LAN", "media candidate rejected http=$code host=$host")
+                    }).download(listOf(url) + source.backups[url].orEmpty(),
+                        source.headers, input, budget - downloaded) { directory.usableSpace > 64L * 1024 * 1024 }
+                    metrics.downloadedBytes = downloaded
+                } finally { metrics.downloadNs += System.nanoTime() - downloadStart }
                 val extractor = MediaExtractor().also(extractors::add)
                 extractor.setDataSource(input.absolutePath)
                 repeat(extractor.trackCount) { index ->
@@ -84,10 +90,10 @@ internal class CastMedia(private val directory: File,
             video.extractor.selectTrack(video.index)
             val writer = MediaMuxer(output.absolutePath, MediaMuxer.OutputFormat.MUXER_OUTPUT_MPEG_4).also { muxer = it }
             val audioTrack = writer.addTrack(sound.format)
-            if (overlay != null && overlay.enabled) {
+            if (overlay != null && overlay.enabled && comments.isNotEmpty()) {
                 progress("正在合成弹幕视频；保持此页面开启")
                 CastVideoEncoder.transcode(video.extractor, video.format, writer, audioTrack, audioExtractor, overlay, comments,
-                    cancelled) {
+                    cancelled, metrics) {
                         require(directory.usableSpace > 64L * 1024 * 1024 && output.length() <= 2L * 1024 * 1024 * 1024) { "media-budget-exceeded" }
                         progress(it)
                     }
@@ -95,18 +101,26 @@ internal class CastMedia(private val directory: File,
             } else {
                 val videoTrack = writer.addTrack(video.format)
                 writer.start(); started = true
-                progress("正在合并原画音视频；完成后主动推送到电视")
+                progress(if (overlay?.enabled == true) "暂无可用弹幕，正在合并原画音视频" else "正在合并原画音视频；完成后主动推送到电视")
+                val videoStart = System.nanoTime()
                 copy(video.extractor, writer, videoTrack)
+                metrics.videoNs = System.nanoTime() - videoStart
+                val audioStart = System.nanoTime()
                 copy(audioExtractor, writer, audioTrack)
+                metrics.audioNs = System.nanoTime() - audioStart
+                val finalizeStart = System.nanoTime()
                 writer.stop(); started = false
+                metrics.finalizeNs = System.nanoTime() - finalizeStart
             }
             synchronized(publication) { check(!cancelled.get()); ready = output }
+            success = true
             return output
         } catch (failure: Exception) { output.delete(); throw failure }
         finally {
             if (started) runCatching { muxer?.stop() }
             runCatching { muxer?.release() }; extractors.forEach { runCatching { it.release() } }
             inputs.forEach(File::delete)
+            android.util.Log.i("BIL-LAN", metrics.summary(success))
         }
     }
     private fun copy(extractor: MediaExtractor, muxer: MediaMuxer, track: Int) {
