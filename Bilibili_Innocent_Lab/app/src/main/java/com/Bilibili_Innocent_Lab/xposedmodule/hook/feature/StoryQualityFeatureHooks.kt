@@ -16,6 +16,11 @@ internal class StoryQualityFeatureHooks(private val runtime: StoryQualityRuntime
         val token: PlayerQualitySessions.Token)
     private class RequestFrame(val owner: Any?, val params: Any?)
     private class CoroutineTicket(val coroutine: WeakReference<Any>, val ticket: Ticket)
+    /** 仅存活于本次 onCreate 的同步帧，退出时连同 owner 一起清除。 */
+    private class Creation(val owner: Any, val previous: Creation?) {
+        var container: WeakReference<Any>? = null
+        var sharedBuilds = 0
+    }
 
     private val tickets = ArrayList<Ticket>()
     private val coroutines = ArrayList<CoroutineTicket>()
@@ -25,6 +30,7 @@ internal class StoryQualityFeatureHooks(private val runtime: StoryQualityRuntime
     private val resolving = ThreadLocal<Ticket>()
     private val cloning = ThreadLocal<Ticket>()
     private val pendingReparse = ThreadLocal<StoryQualityReparseGate.Lease>()
+    private val creating = ThreadLocal<Creation>()
     private var reparseGate: StoryQualityReparseGate? = null
     private var hostAccess: StoryQualityHostAccess? = null
     val complete: Boolean get() = ready.get()
@@ -80,6 +86,12 @@ internal class StoryQualityFeatureHooks(private val runtime: StoryQualityRuntime
             param.setObjectExtra(SCOPE, runtime.enter(if (valid) owner else null, item, admission, parameters))
         }
         fun leave(param: ModernHookParam) {
+            (param.getObjectExtra(CREATION) as? Creation)?.let { frame ->
+                if (creating.get() === frame) {
+                    frame.previous?.let(creating::set) ?: creating.remove()
+                }
+                param.setObjectExtra(CREATION, null)
+            }
             if (param.getObjectExtra(REQUEST_FRAME) == true) {
                 (param.getObjectExtra(PREVIOUS_REQUEST) as? RequestFrame)?.let(requesting::set) ?: requesting.remove()
                 param.setObjectExtra(REQUEST_FRAME, false)
@@ -124,37 +136,37 @@ internal class StoryQualityFeatureHooks(private val runtime: StoryQualityRuntime
             environment.registrar.exact(id, method.declaringClass, method.name, *method.parameterTypes, block = block)
             registered += id
         }
+        fun confirmShared(owner: Any) {
+            if (!ready.get() || runtime.ownerFor(owner) !== owner || !runtime.onOwnerThread(owner)) return
+            val handler = access.handler(owner) ?: return
+            val provider = access.provider(owner) ?: return
+            runtime.bind(owner, handler, provider, access.service(owner))
+            val parameters = access.current(owner) ?: return
+            val item = access.item(parameters) ?: return
+            val index = access.currentIndex(handler) ?: return
+            if (access.item(access.at(provider, index)) != item) return
+            runtime.confirmShared(owner, parameters, item, index, access.admission(owner, parameters, confirmedShared = true))
+        }
         try {
             register("player.story.create", roles.onCreate) {
                 safeBefore {
                     instance?.let { runtime.close(it); runtime.bind(it, null, null) }
                     ensureStoryScope(this)
+                    if (access.shared?.usesBuilder == true && "player.story.ready" in registered) instance?.let { owner ->
+                        Creation(owner, creating.get()).also { creating.set(it); setObjectExtra(CREATION, it) }
+                    }
                 }
                 safeAfter {
                     try {
                         if (!hasThrowable) instance?.let { owner ->
                             runtime.bind(owner, access.handler(owner), access.provider(owner), access.service(owner))
+                            val frame = getObjectExtra(CREATION) as? Creation
+                            val container = frame?.container?.get()
+                            if (frame != null && frame.owner === owner && frame.sharedBuilds == 1 && container != null &&
+                                access.shared?.ownsContainer(owner, container) == true) confirmShared(owner)
                         }
                         else instance?.let(runtime::close)
                     } finally { leave(this) }
-                }
-            }
-            register("player.story.ready", access.sharedReady) {
-                safeBefore { ensureStoryScope(this) }
-                safeAfter {
-                    if (hasThrowable) { instance?.let(runtime::invalidate); return@safeAfter }
-                    if (!ready.get() || argOrNull(1) == null) return@safeAfter
-                    val owner = instance ?: return@safeAfter
-                    if (runtime.ownerFor(owner) !== owner || !runtime.onOwnerThread(owner)) return@safeAfter
-                    val handler = access.handler(owner) ?: return@safeAfter
-                    val provider = access.provider(owner) ?: return@safeAfter
-                    runtime.bind(owner, handler, provider, access.service(owner))
-                    val parameters = access.current(owner) ?: return@safeAfter
-                    val item = access.item(parameters) ?: return@safeAfter
-                    val index = access.currentIndex(handler) ?: return@safeAfter
-                    if (access.item(access.at(provider, index)) != item) return@safeAfter
-                    runtime.confirmShared(owner, parameters, item, index,
-                        access.admission(owner, parameters, confirmedShared = true))
                 }
             }
             listOf("release" to roles.release, "destroy" to roles.onDestroy).forEach { (name, method) ->
@@ -428,6 +440,36 @@ internal class StoryQualityFeatureHooks(private val runtime: StoryQualityRuntime
                     }
                 }
             }
+            access.shared?.let { shared ->
+                // 共享接入单独注册；缺失或框架拒绝此可选 Hook 时，基础链路仍然就绪。
+                runCatching {
+                    register("player.story.ready", shared.ready) {
+                        safeBefore {
+                            if (!shared.usesBuilder) ensureStoryScope(this)
+                            else {
+                                val frame = creating.get()
+                                if (frame != null && runtime.inStory() && runtime.onOwnerThread(frame.owner) &&
+                                    instance?.let(shared::hasSharingBundle) == true) setObjectExtra(SHARED_BUILD, frame)
+                            }
+                        }
+                        safeAfter {
+                            if (shared.usesBuilder) {
+                                val frame = getObjectExtra(SHARED_BUILD) as? Creation ?: return@safeAfter
+                                if (hasThrowable || creating.get() !== frame) return@safeAfter
+                                result?.let { frame.container = WeakReference(it); frame.sharedBuilds++ }
+                                return@safeAfter
+                            }
+                            if (hasThrowable) { instance?.let(runtime::invalidate); return@safeAfter }
+                            if (!ready.get() || argOrNull(1) == null) return@safeAfter
+                            val owner = instance ?: return@safeAfter
+                            confirmShared(owner)
+                        }
+                    }
+                }.onFailure {
+                    environment.logError("player_story_shared_registration", "[BIL] Story 共享接入注册失败，保留基础画质链路")
+                    error()
+                }
+            }
             ready.set(true)
             return true
         } catch (_: Throwable) {
@@ -460,6 +502,8 @@ internal class StoryQualityFeatureHooks(private val runtime: StoryQualityRuntime
     }
 
     companion object {
+        private const val CREATION = "story.quality.creation"
+        private const val SHARED_BUILD = "story.quality.shared_build"
         private const val SCOPE = "story.quality.scope"
         private const val REQUEST = "story.quality.request"
         private const val REQUEST_FRAME = "story.quality.request_frame"

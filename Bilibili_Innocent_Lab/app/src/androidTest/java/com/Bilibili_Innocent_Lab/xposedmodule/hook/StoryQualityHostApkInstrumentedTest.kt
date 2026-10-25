@@ -72,6 +72,7 @@ class StoryQualityHostApkInstrumentedTest {
             .put("points", points?.toJson() ?: JSONObject.NULL)
             .put("semantic_complete", points?.semanticComplete == true)
             .put("roles", roles != null).put("host_access", access != null)
+            .put("shared_entry", access?.shared?.ready?.toGenericString() ?: JSONObject.NULL)
             .put("reparse_ready", access?.reparseReady == true).put("resource_access", resources != null)
         File(directory, "$version-story.json").writeText(report.toString(2))
         assertTrue("Story semantic roles: $queryReport", points?.semanticComplete == true)
@@ -79,5 +80,8 @@ class StoryQualityHostApkInstrumentedTest {
         assertNotNull("Story owner/provider contracts", access)
         assertTrue("Story reparse contracts", access?.reparseReady == true)
         assertNotNull("Story resource contracts", resources)
+        args.getString("expectedSharedEntry")?.let { expected ->
+            assertEquals("Version-specific shared entry", expected.toBooleanStrict(), access?.shared != null)
+        }
     }
 }
