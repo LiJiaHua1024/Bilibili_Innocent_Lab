@@ -56,6 +56,18 @@ internal class HostRuntimeProbeTracker(private val now: () -> Long) {
         return true
     }
 
+    /** 加入仍有效的窗口；只有主动验证延长期限，普通探测不能缩短或无限续期。 */
+    fun merge(verify: Boolean, timeoutMs: Long): String? {
+        val nonce = pendingNonce ?: return null
+        val current = now()
+        if (current >= pendingDeadline) return null
+        if (verify) {
+            pendingVerify = true
+            pendingDeadline = maxOf(pendingDeadline, current + timeoutMs)
+        }
+        return nonce
+    }
+
     /**
      * 宿主回执到达。返回本次回执的结论，不能把上轮保留的 status 当作本次确认。
      * `hooksInstalled=false` 说明模块入口在跑但 Hook 没装上：不确认、不清窗口，等后续

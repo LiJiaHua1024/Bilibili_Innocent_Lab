@@ -6,6 +6,7 @@ import android.os.Handler
 import android.os.Looper
 import com.Bilibili_Innocent_Lab.xposedmodule.runtime.HostReceiptWire
 import com.Bilibili_Innocent_Lab.xposedmodule.runtime.noroot.NoRootSupportController
+import com.Bilibili_Innocent_Lab.xposedmodule.settings.remote.AuthorityPublication
 import com.Bilibili_Innocent_Lab.xposedmodule.settings.remote.PublicationAuthorityStore
 import com.Bilibili_Innocent_Lab.xposedmodule.settings.remote.RemoteHookConfigStore
 import com.Bilibili_Innocent_Lab.xposedmodule.settings.remote.RemoteHookConfigPublishResult
@@ -24,15 +25,32 @@ internal object RestartConfigBarrier {
             val queued = runCatching { worker.execute {
                 @Suppress("UseKtx") // 同步 commit 的布尔结果是保存屏障，不能丢弃。
                 val persisted = runCatching {
-                    preferences.edit().commit() && PublicationAuthorityStore.current(app)?.let { captured ->
-                        captured.decision.isAuthorized &&
-                            (com.Bilibili_Innocent_Lab.xposedmodule.runtime.noroot.LspatchRuntimeProfiles.usesDirectConfig(app) ||
-                                RemoteHookConfigStore.publish(app, captured.decision) is RemoteHookConfigPublishResult.Success)
-                    } == true
+                    persistStandardRestartConfig(
+                        persistLocal = { preferences.edit().commit() },
+                        capture = { PublicationAuthorityStore.current(app) },
+                        lspatchDirect = { com.Bilibili_Innocent_Lab.xposedmodule.runtime.noroot.LspatchRuntimeProfiles.usesDirectConfig(app) },
+                        publishRemote = { RemoteHookConfigStore.publish(app, it.decision) is RemoteHookConfigPublishResult.Success },
+                        stillCurrent = { PublicationAuthorityStore.matches(app, it) }
+                    )
                 }.getOrDefault(false)
                 main.post { done(persisted) }
             } }.isSuccess
             if (!queued) main.post { done(false) }
         }
     }
+}
+
+/** 标准通道仍优先发布镜像；通信兼容模式的当前直达文档也能满足保存屏障。 */
+internal fun persistStandardRestartConfig(
+    persistLocal: () -> Boolean,
+    capture: () -> AuthorityPublication?,
+    lspatchDirect: () -> Boolean,
+    publishRemote: (AuthorityPublication) -> Boolean,
+    stillCurrent: (AuthorityPublication) -> Boolean
+): Boolean {
+    if (!persistLocal()) return false
+    val publication = capture()?.takeIf { it.decision.isAuthorized } ?: return false
+    val available = lspatchDirect() || runCatching { publishRemote(publication) }.getOrDefault(false) ||
+        publication.directAllowed
+    return available && stillCurrent(publication)
 }

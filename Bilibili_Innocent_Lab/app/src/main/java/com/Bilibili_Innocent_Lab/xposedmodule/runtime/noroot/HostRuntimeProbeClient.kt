@@ -25,19 +25,16 @@ internal object HostRuntimeProbeClient {
     internal const val VERIFY_TIMEOUT_MS = 15_000L
 
     private val lock = Any()
-    private val tracker = HostRuntimeProbeTracker(SystemClock::elapsedRealtime)
     private val mainHandler = Handler(Looper.getMainLooper())
+    private val session = HostRuntimeProbeSession(SystemClock::elapsedRealtime) { mainHandler.post(it) }
     private val scheduler: ScheduledExecutorService =
         Executors.newSingleThreadScheduledExecutor { runnable ->
             Thread(runnable, "BIL-HostRuntimeProbe").apply { isDaemon = true }
         }
 
-    private var pendingNonce: String? = null
-
-    private var onSettled: ((HostRuntimeProbeStatus) -> Unit)? = null
     private var timeoutTask: ScheduledFuture<*>? = null
 
-    fun status(): HostRuntimeProbeStatus = synchronized(lock) { tracker.status }
+    fun status(): HostRuntimeProbeStatus = synchronized(lock) { session.status }
 
     /**
      * 发起一次探测。`verify=true` 表示用户主动验证：超时后结算为
@@ -52,13 +49,14 @@ internal object HostRuntimeProbeClient {
         val timeoutMs = if (verify) VERIFY_TIMEOUT_MS else RESUME_TIMEOUT_MS
         val nonce = UUID.randomUUID().toString()
         synchronized(lock) {
-            this.onSettled = onSettled
-            if (!tracker.begin(nonce, verify, timeoutMs)) return
-            pendingNonce = nonce
-            timeoutTask?.cancel(false)
-            timeoutTask = scheduler.schedule(
-                { settleTimeout(nonce) }, timeoutMs, TimeUnit.MILLISECONDS
-            )
+            val request = session.request(nonce, verify, timeoutMs, onSettled)
+            if (request.scheduleTimeout) {
+                timeoutTask?.cancel(false)
+                timeoutTask = scheduler.schedule(
+                    { settleTimeout(request.nonce) }, timeoutMs, TimeUnit.MILLISECONDS
+                )
+            }
+            if (!request.newWindow) return
         }
         dispatch(appContext, nonce)
         scheduler.schedule({ resend(appContext, nonce) }, RESEND_MS, TimeUnit.MILLISECONDS)
@@ -67,11 +65,11 @@ internal object HostRuntimeProbeClient {
     /** 宿主回执入口；nonce 不属于当前窗口时直接丢弃，返回 false 供调用方决定是否记日志。 */
     fun onHostReply(nonce: String, hooksInstalled: Boolean): Boolean {
         synchronized(lock) {
-            when (tracker.onReply(nonce, hooksInstalled)) {
+            when (session.onReply(nonce, hooksInstalled)) {
                 HostRuntimeProbeTracker.ReplyResult.REJECTED -> return false
                 HostRuntimeProbeTracker.ReplyResult.PENDING -> Unit
                 HostRuntimeProbeTracker.ReplyResult.CONFIRMED ->
-                    settleLocked(HostRuntimeProbeStatus.CONFIRMED)
+                    cancelTimeoutLocked()
             }
         }
         return true
@@ -80,32 +78,27 @@ internal object HostRuntimeProbeClient {
     /** 心跳（宿主装完 Hook 后上报）是更强的证据，随时可以确认并结束窗口。 */
     fun markHostAlive() {
         synchronized(lock) {
-            tracker.onHeartbeat()
-            if (pendingNonce != null) settleLocked(HostRuntimeProbeStatus.CONFIRMED)
+            session.onHeartbeat()
+            cancelTimeoutLocked()
         }
     }
 
     private fun resend(context: Context, nonce: String) {
-        if (!synchronized(lock) { tracker.isPending(nonce) }) return
+        if (!synchronized(lock) { session.isPending(nonce) }) return
         dispatch(context, nonce)
         scheduler.schedule({ resend(context, nonce) }, RESEND_MS, TimeUnit.MILLISECONDS)
     }
 
     private fun settleTimeout(nonce: String) {
         synchronized(lock) {
-            val status = tracker.onTimeout(nonce) ?: return
-            settleLocked(status)
+            if (session.onTimeout(nonce)) cancelTimeoutLocked()
         }
     }
 
     /** 与窗口状态共用一把锁，避免旧结算清掉新窗口的任务或回调。 */
-    private fun settleLocked(status: HostRuntimeProbeStatus) {
+    private fun cancelTimeoutLocked() {
         timeoutTask?.cancel(false)
         timeoutTask = null
-        pendingNonce = null
-        val callback = onSettled
-        onSettled = null
-        callback?.let { deliver -> mainHandler.post { deliver(status) } }
     }
 
     private fun dispatch(context: Context, nonce: String) {
