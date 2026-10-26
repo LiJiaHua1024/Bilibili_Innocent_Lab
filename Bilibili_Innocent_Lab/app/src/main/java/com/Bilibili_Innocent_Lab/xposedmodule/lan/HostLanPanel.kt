@@ -208,7 +208,7 @@ internal class HostLanPanel(private val runtime: () -> LanRuntime?, private val 
     }
     private fun seek(activity: Activity, net: LanRuntime) = input(activity, "跳转进度", "输入目标秒数，例如 90 表示 1 分 30 秒", InputType.TYPE_CLASS_NUMBER) { value ->
         val seconds = value.toLongOrNull()?.takeIf { it in 0..604800 } ?: error("invalid-position")
-        net.control { client, device -> client.seek(device, seconds * 1000) }
+        net.seek(seconds * 1000)
     }
     private fun speeds(activity: Activity, net: LanRuntime) {
         val target = sheet(activity, "播放速度", "需电视支持，拒绝时会显示原因")

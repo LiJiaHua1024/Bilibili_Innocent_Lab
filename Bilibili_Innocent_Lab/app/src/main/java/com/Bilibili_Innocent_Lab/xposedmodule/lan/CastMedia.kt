@@ -31,9 +31,12 @@ internal fun validateMediaUrl(value: String, allowHttp: Boolean = false) {
         listOf("bilivideo.com", "bilivideo.cn", "bilibili.com").any { host == it || host.endsWith(".$it") }) { "untrusted-media-origin" }
 }
 
+/** A media URL the receiver may fetch; [response] enforces the random token and the receiver address. */
+internal interface CastPublication : AutoCloseable { fun response(request: LanRequest): LanResponse }
+
 /** Lossless track remux: no resolution cap, no TV account API, no entitlement or DRM mutation. */
 internal class CastMedia(private val directory: File,
-    private val open: (String) -> java.net.HttpURLConnection = { java.net.URL(it).openConnection() as java.net.HttpURLConnection }) : AutoCloseable {
+    private val open: (String) -> java.net.HttpURLConnection = { java.net.URL(it).openConnection() as java.net.HttpURLConnection }) : CastPublication {
     private val cancelled = AtomicBoolean(false)
     @Volatile private var ready: File? = null
     @Volatile private var token: String? = null
@@ -53,8 +56,6 @@ internal class CastMedia(private val directory: File,
         var muxer: MediaMuxer? = null
         var started = false
         try {
-            data class Track(val extractor: MediaExtractor, val index: Int, val format: MediaFormat)
-            val videos = ArrayList<Track>(); val audio = ArrayList<Track>()
             val budget = minOf(2L * 1024 * 1024 * 1024, directory.usableSpace / 3)
             val sharedBudget = CastDownloadBudget(budget)
             val space = CastWriteSpace({ directory.usableSpace })
@@ -76,18 +77,8 @@ internal class CastMedia(private val directory: File,
                 check(!cancelled.get())
                 val extractor = MediaExtractor().also(extractors::add)
                 extractor.setDataSource(input.absolutePath)
-                repeat(extractor.trackCount) { index ->
-                    val format = extractor.getTrackFormat(index)
-                    require(!format.containsKey("crypto-key")) { "drm-not-supported" }
-                    val type = format.getString(MediaFormat.KEY_MIME).orEmpty()
-                    if (type.startsWith("video/")) videos += Track(extractor, index, format)
-                    if (type == "audio/mp4a-latm") audio += Track(extractor, index, format)
-                }
             }
-            val video = videos.maxByOrNull { it.format.getInteger(MediaFormat.KEY_WIDTH).toLong() * it.format.getInteger(MediaFormat.KEY_HEIGHT) }
-                ?: error("video-track-unavailable")
-            val sound = audio.maxByOrNull { if (it.format.containsKey(MediaFormat.KEY_BIT_RATE)) it.format.getInteger(MediaFormat.KEY_BIT_RATE) else 0 }
-                ?: error("audio-track-unavailable")
+            val (video, sound) = CastTracks.select(extractors.toList())
             // One extractor has only one selected track at a time. A second instance preserves progressive A/V.
             val audioExtractor = MediaExtractor().also(extractors::add)
             audioExtractor.setDataSource(inputs[extractors.indexOf(sound.extractor)].absolutePath)
@@ -97,8 +88,8 @@ internal class CastMedia(private val directory: File,
             val audioTrack = writer.addTrack(sound.format)
             if (overlay != null && overlay.enabled && comments.isNotEmpty()) {
                 progress("正在合成弹幕视频；保持此页面开启")
-                CastVideoEncoder.transcode(video.extractor, video.format, writer, audioTrack, audioExtractor, overlay, comments,
-                    cancelled, metrics) {
+                CastVideoEncoder.transcode(video.extractor, video.format, CastMuxerSink(writer), audioTrack,
+                    CastExtractorReader(audioExtractor), overlay, comments, cancelled, metrics) {
                         require(directory.usableSpace > 64L * 1024 * 1024 && output.length() <= 2L * 1024 * 1024 * 1024) { "media-budget-exceeded" }
                         progress(it)
                     }
@@ -151,7 +142,7 @@ internal class CastMedia(private val directory: File,
         receiver = receiverIp; token = LanCrypto.randomId()
         "$base/media/${token}.mp4"
     }
-    fun response(request: LanRequest): LanResponse {
+    override fun response(request: LanRequest): LanResponse {
         val current = ready ?: return LanResponse(404)
         val secret = token ?: return LanResponse(404)
         if (request.method !in setOf("GET", "HEAD") || request.path != "/media/$secret.mp4" ||
@@ -163,7 +154,7 @@ internal class CastMedia(private val directory: File,
         val headers = linkedMapOf("Accept-Ranges" to "bytes", "transferMode.dlna.org" to "Streaming",
             "contentFeatures.dlna.org" to "DLNA.ORG_OP=01;DLNA.ORG_CI=0;DLNA.ORG_FLAGS=01700000000000000000000000000000")
         if (partial) headers["Content-Range"] = "bytes ${range.start}-${range.end}/$length"
-        return LanResponse(if (partial) 206 else 200, "video/mp4", length = range.length, headers = headers, stream = { out ->
+        return LanResponse(if (partial) 206 else 200, "video/mp4", length = range.length, headers = headers, media = true, stream = { out ->
             RandomAccessFile(current, "r").use { input ->
                 input.seek(range.start)
                 val buffer = ByteArray(64 * 1024)

@@ -203,3 +203,9 @@ Debug APK 与测试 APK 构建完成；最终全量 JVM 检查共 4,018 项、1 
 详见 [DLNA 实时弹幕合成方案评估](lan-cast-realtime-options.md)。建议共用输入缓存、解码、GPU 弹幕、硬件编码和时间轴，保留完整 MP4，优先增加 HLS-TS 与连续 HTTP TS；fMP4 按明确的设备兼容收益启用。面向用户提供「自动 / 边合成边播 / 完整准备后播放」，协议选择放设备高级设置。无需为本轮 DLNA 同时实现 Google Cast、AirPlay、DASH、WebRTC 等不同接收协议。
 
 当前实现仍需完整预合成，没有实时分片、新增弹幕订阅或手机侧音频倍速。此次吞吐结果只说明流式试验具备基础，持续高分辨率温升、后台运行和电视各协议兼容性仍需后续验收。本轮改动未 commit、未 push，保留在原分支供人工 review。
+
+### 2026-10-26 流式管线与 HLS-TS / 连续 TS（无设备阶段）
+
+用户要求按方案评估先完成第 1、2 步，且不得使用测试机。本轮没有执行 ADB、设备搜索或投送。实现细节与边界见 [实施进度](lan-cast-realtime-options.md#2026-10-26-实施进度第-12-步无设备阶段)。默认投屏仍为完整 MP4，界面暂无流式入口，因此现有用户路径不变。完整 MP4 合成改为经过 `CastMuxerSink` 与共用选轨；输出参数与零起点的帧/音频处理保持原样，但这次重构没有在手机上复测。
+
+同一轮 `assembleDebug assembleDebugAndroidTest testDebugUnitTest lintFast --offline --no-daemon` 通过：4,039 项 JVM 测试，1 项原有跳过、0 失败；快速 Lint 273 个警告、0 个未过滤错误，3 项错误 baseline 未改。新增 4 个警告均为 `UsableSpace`，保留与完整准备相同的保守空间预算，不驱逐宿主其他缓存。没有运行完整 Lint。已执行 `--stop`，未发现残留 Gradle / Kotlin 守护进程。未 commit、未 push。

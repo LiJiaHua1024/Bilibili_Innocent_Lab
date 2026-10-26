@@ -24,8 +24,8 @@ internal class LanRuntime(context: Context) : AutoCloseable {
     @Volatile var status = "局域网会话已开启"; private set
     @Volatile var devices: List<DlnaDevice> = emptyList(); private set
     @Volatile var selected: DlnaDevice? = null; private set
-    @Volatile private var media: CastMedia? = null
-    @Volatile private var preparation: CastMedia? = null
+    @Volatile private var media: CastPublication? = null
+    @Volatile private var preparation: AutoCloseable? = null
     private val preparing = AtomicBoolean(false)
     private val transportLock = Any()
     private val protocol = LanPeerProtocol(trust.id, trust::get, trust::put, { watching }, { id, state ->
@@ -49,7 +49,13 @@ internal class LanRuntime(context: Context) : AutoCloseable {
             server.close(); workers.shutdownNow(); sync.shutdownNow(); throw failure
         }
         // Remove only files owned by this feature from an interrupted previous session.
-        directory.listFiles()?.filter { it.name.matches(Regex("[A-Za-z0-9_-]{22}(\\.mp4|-[0-9]{1,2}\\.track)")) }?.forEach(File::delete)
+        directory.listFiles()?.forEach { file ->
+            if (file.isFile && file.name.matches(Regex("[A-Za-z0-9_-]{22}(\\.mp4|-[0-9]{1,2}\\.(track|range))"))) file.delete()
+            if (file.isDirectory && file.name.matches(Regex("stream-[A-Za-z0-9_-]{22}"))) {
+                file.listFiles()?.filter { it.name.matches(Regex("[0-9]{1,6}\\.(ts|part)")) }?.forEach(File::delete)
+                file.delete()
+            }
+        }
         sync.scheduleWithFixedDelay({
             if (closed.get()) return@scheduleWithFixedDelay
             for (peer in discovery?.peers().orEmpty()) {
@@ -82,48 +88,142 @@ internal class LanRuntime(context: Context) : AutoCloseable {
         complete()
     }
     fun cast(device: DlnaDevice, source: CastSource, title: String, position: Long,
-        style: CastDanmakuStyle?, completion: (Boolean) -> Unit) {
+        style: CastDanmakuStyle?, delivery: CastDelivery = CastDelivery.COMPLETE_MP4, completion: (Boolean) -> Unit) {
         if (!preparing.compareAndSet(false, true)) { status = "正在准备视频，可先取消准备"; completion(false); return }
-        val next = CastMedia(directory) { wifi.network.openConnection(java.net.URL(it)) as java.net.HttpURLConnection }
-        preparation = next
+        val attempt = CastAttempt()
+        preparation = attempt
         val accepted = task {
             try {
                 val comments = if (style?.enabled == true) {
                     status = "正在读取视频弹幕…"
                     CastDanmakuSource.fetch(source.cid) { wifi.network.openConnection(java.net.URL(it)) as java.net.HttpURLConnection }
                 } else emptyList()
-                next.prepare(source, style, comments) { status = it }
-                check(!closed.get() && preparation === next)
-                check(watching?.let { it.bvid == source.bvid && it.cid == source.cid } == true) { "current-video-changed" }
-                val uri = next.publish(device.description.host, base)
-                val previous = media
-                media = next
-                try {
-                    synchronized(transportLock) {
-                        check(!closed.get())
-                        dlna.setMedia(device, uri, title, "video/mp4"); dlna.play(device)
-                        if (position >= 1000) dlna.seek(device, position)
-                        selected = device
-                    }
-                    check(!closed.get())
+                val output = delivery.stream
+                val streamed = output != null && try {
+                    publishStream(device, source, title, position, style, comments, output, attempt)
+                    lastStream = StreamRequest(device, source, title, style, delivery)
+                    true
                 } catch (failure: Exception) {
-                    synchronized(transportLock) { runCatching { dlna.stop(device) } }
-                    media = previous; next.close(); throw failure
+                    // Fall back only for a capability gap; cancellation and a changed video are never retried.
+                    if (attempt.closed || closed.get() || !fallback(failure)) throw failure
+                    status = "该视频或电视暂不支持边合成边播，改为完整准备…"
+                    false
                 }
-                previous?.close()
-                status = "已推送到 ${device.name}，请确认电视实际开始播放"
+                if (!streamed) { publishComplete(device, source, title, position, style, comments, attempt); lastStream = null }
                 completion(true)
             } catch (failure: Exception) {
                 completion(false); throw failure
             } finally {
-                if (media !== next) next.close()
-                if (preparation === next) preparation = null
+                attempt.close()
+                if (preparation === attempt) preparation = null
                 preparing.set(false)
             }
         }
         if (!accepted) {
-            next.close(); if (preparation === next) preparation = null
+            attempt.close(); if (preparation === attempt) preparation = null
             preparing.set(false); completion(false)
+        }
+    }
+
+    private fun fallback(failure: Exception): Boolean = failure is DlnaFault || failure.message.orEmpty().let {
+        it.startsWith("ts-") || it in setOf("media-range-ignored", "media-range-unavailable", "media-range-mismatch", "seek-unavailable")
+    }
+
+    private fun opener(): (String) -> java.net.HttpURLConnection = { wifi.network.openConnection(java.net.URL(it)) as java.net.HttpURLConnection }
+
+    private fun publishComplete(device: DlnaDevice, source: CastSource, title: String, position: Long,
+        style: CastDanmakuStyle?, comments: List<CastDanmaku>, attempt: CastAttempt) {
+        val next = CastMedia(directory, opener()).also(attempt::own)
+        next.prepare(source, style, comments) { status = it }
+        verify(source, attempt)
+        transport(device, attempt, next, next.publish(device.description.host, base), title, "video/mp4", position)
+        status = "已推送到 ${device.name}，请确认电视实际开始播放"
+    }
+
+    private fun publishStream(device: DlnaDevice, source: CastSource, title: String, position: Long,
+        style: CastDanmakuStyle?, comments: List<CastDanmaku>, output: CastStreamOutput, attempt: CastAttempt) {
+        val pipeline = CastStreamPipeline(directory, source, style, comments, opener()) { status = it }
+        var published: CastStreamCast? = null
+        val space = CastWriteSpace({ directory.usableSpace })
+        val session = try {
+            CastStreamSession(directory, device.description.host, pipeline, hasSpace = space::allows, failed = {
+                if (media === published && !closed.get()) status = "后续片段准备失败，电视播放到已准备部分后会停止"
+            })
+        } catch (failure: Exception) { pipeline.close(); throw failure }
+        val cast = CastStreamCast(session, pipeline, output).also(attempt::own)
+        session.start(position.coerceAtLeast(0) * 1000)
+        status = "正在准备首批分片…"
+        session.awaitReady { !closed.get() && !attempt.closed }
+        verify(source, attempt)
+        published = cast
+        transport(device, attempt, cast, session.uri(base, output), title, output.mime, 0)
+        status = "已推送到 ${device.name}（边合成边播），后续片段持续准备中"
+    }
+
+    private fun verify(source: CastSource, attempt: CastAttempt) {
+        check(!closed.get() && preparation === attempt && !attempt.closed) { "media-preparation-cancelled" }
+        check(watching?.let { it.bvid == source.bvid && it.cid == source.cid } == true) { "current-video-changed" }
+    }
+
+    private fun transport(device: DlnaDevice, attempt: CastAttempt, next: CastPublication, uri: String, title: String,
+        mime: String, seekMs: Long) {
+        val previous = media
+        media = next
+        try {
+            synchronized(transportLock) {
+                check(!closed.get())
+                dlna.setMedia(device, uri, title, mime); dlna.play(device)
+                if (seekMs >= 1000) dlna.seek(device, seekMs)
+                selected = device
+            }
+            check(!closed.get())
+        } catch (failure: Exception) {
+            synchronized(transportLock) { runCatching { dlna.stop(device) } }
+            media = previous; throw failure
+        }
+        attempt.disown(next)
+        previous?.close()
+    }
+
+    /**
+     * Seeks in source time. A streaming cast maps to its own clock and seeks the receiver only inside published
+     * HLS segments; anything else rebuilds the stream from the target, with a short rebuffer.
+     */
+    fun seek(positionMs: Long) = task {
+        require(positionMs in 0..604_800_000) { "invalid-position" }
+        val rebuild = synchronized(transportLock) {
+            check(!closed.get())
+            val device = selected ?: error("no-selected-receiver")
+            val stream = media as? CastStreamCast
+            if (stream == null) { dlna.seek(device, positionMs); status = "电视已接受遥控指令"; return@task }
+            val outputUs = stream.session.timeline.outputUs(positionMs * 1000)
+            if (stream.output == CastStreamOutput.HLS_TS && outputUs >= 0 && outputUs < stream.session.publishedUs) {
+                dlna.seek(device, outputUs / 1000); status = "电视已接受遥控指令"; return@task
+            }
+            lastStream ?: error("stream-seek-unavailable")
+        }
+        status = "目标进度尚未准备，正在从该位置重新推送…"
+        cast(rebuild.device, rebuild.source, rebuild.title, positionMs, rebuild.style, rebuild.delivery) {}
+    }
+
+    private data class StreamRequest(val device: DlnaDevice, val source: CastSource, val title: String,
+        val style: CastDanmakuStyle?, val delivery: CastDelivery)
+    @Volatile private var lastStream: StreamRequest? = null
+
+    /** Owns whatever the current attempt prepared until it is published; cancellation closes it. */
+    private class CastAttempt : AutoCloseable {
+        @Volatile var closed = false; private set
+        private var current: AutoCloseable? = null
+        @Synchronized fun own(value: AutoCloseable) {
+            if (closed) { runCatching { value.close() }; error("media-preparation-cancelled") }
+            // A failed stream attempt is released before the complete-MP4 fallback takes ownership.
+            current?.let { runCatching { it.close() } }
+            current = value
+        }
+        @Synchronized fun disown(value: AutoCloseable) { if (current === value) current = null }
+        override fun close() {
+            val owned = synchronized(this) { closed = true; current.also { current = null } }
+            owned?.let { runCatching { it.close() } }
         }
     }
     fun cancelPreparation() { preparation?.close(); preparation = null; status = "已取消准备" }

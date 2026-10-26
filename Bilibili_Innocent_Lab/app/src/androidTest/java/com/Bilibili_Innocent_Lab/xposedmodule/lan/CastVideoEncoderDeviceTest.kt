@@ -83,7 +83,7 @@ class CastVideoEncoderDeviceTest {
             }
             if (variant == "legacy") CastLegacyBenchmarkEncoder.transcode(video, format, writer, audioTrack, audio,
                 style, comments, AtomicBoolean(false), progress)
-            else CastVideoEncoder.transcode(video, format, writer, audioTrack, audio,
+            else CastVideoEncoder.transcode(video, format, CastMuxerSink(writer), audioTrack, CastExtractorReader(audio),
                 style, comments, AtomicBoolean(false), metrics, useRateHint = variant == "hinted", progress = progress)
             val elapsedMs = (System.nanoTime() - begin) / 1_000_000
             writer.release(); muxer = null
@@ -131,7 +131,7 @@ class CastVideoEncoderDeviceTest {
             val writer = MediaMuxer(output.path, MediaMuxer.OutputFormat.MUXER_OUTPUT_MPEG_4).also { muxer = it }
             val track = writer.addTrack(audio.getTrackFormat(ai))
             val failure = runCatching {
-                CastVideoEncoder.transcode(video, video.getTrackFormat(vi), writer, track, audio, CastDanmakuStyle(),
+                CastVideoEncoder.transcode(video, video.getTrackFormat(vi), CastMuxerSink(writer), track, CastExtractorReader(audio), CastDanmakuStyle(),
                     listOf(CastDanmaku(0, 5, -1, "取消后的资源回收")), cancelled, CastPreparationMetrics()) { cancelled.set(true) }
             }.exceptionOrNull()
             assertTrue(cancelled.get()); assertNotNull(failure)

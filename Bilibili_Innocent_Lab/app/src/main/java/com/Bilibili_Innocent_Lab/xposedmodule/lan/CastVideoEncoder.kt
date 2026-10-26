@@ -5,7 +5,6 @@ import android.media.MediaCodec
 import android.media.MediaCodecInfo
 import android.media.MediaExtractor
 import android.media.MediaFormat
-import android.media.MediaMuxer
 import android.opengl.EGL14
 import android.opengl.EGLExt
 import android.opengl.GLES11Ext
@@ -19,9 +18,15 @@ import java.util.concurrent.atomic.AtomicBoolean
 
 /** Surface decode → GLES composition → hardware AVC encode; audio is copied without recompression. */
 internal object CastVideoEncoder {
-    fun transcode(video: MediaExtractor, format: MediaFormat, muxer: MediaMuxer, audioTrack: Int,
-        audio: MediaExtractor, style: CastDanmakuStyle, comments: List<CastDanmaku>, cancelled: AtomicBoolean,
-        metrics: CastPreparationMetrics, useRateHint: Boolean = false, progress: (String) -> Unit) {
+    /**
+     * Frames before a positive [startUs] are decoded but not rendered (the caller seeks to the previous sync
+     * sample). Danmaku use source time; encoded PTS is source time − [offsetUs]. [audio] must already yield
+     * output time. While [hold] is set the sink is waiting for the receiver on purpose, so stall checks pause.
+     */
+    fun transcode(video: MediaExtractor, format: MediaFormat, sink: CastSampleSink, audioTrack: Int,
+        audio: CastSampleReader, style: CastDanmakuStyle, comments: List<CastDanmaku>, cancelled: AtomicBoolean,
+        metrics: CastPreparationMetrics, startUs: Long = 0, offsetUs: Long = 0, hold: CastFlowHold = CastFlowHold(),
+        useRateHint: Boolean = false, progress: (String) -> Unit) {
         val videoStart = System.nanoTime()
         val width = format.getInteger(MediaFormat.KEY_WIDTH); val height = format.getInteger(MediaFormat.KEY_HEIGHT)
         require(width in 16..7680 && height in 16..4320 && width % 2 == 0 && height % 2 == 0)
@@ -67,8 +72,8 @@ internal object CastVideoEncoder {
             }) { metrics.decoderRateHint = it }.also { decoder = it }
             metrics.decoder = codec.name
             codec.start(); decoderStarted = true
-            val output = CastEncoderDrain(encoder, muxer, audioTrack, audio, cancelled, metrics, progress).also { drain = it }
-            val input = CastDecoderFeed(codec, video, cancelled, metrics).also { feed = it }
+            val output = CastEncoderDrain(encoder, sink, audioTrack, audio, cancelled, metrics, progress).also { drain = it }
+            val input = CastDecoderFeed(codec, video, cancelled, metrics, hold).also { feed = it }
             val decoded = MediaCodec.BufferInfo()
             var decodeDone = false
             var lastOutput = System.nanoTime()
@@ -79,16 +84,19 @@ internal object CastVideoEncoder {
                 metrics.codecIdleNs += System.nanoTime() - begin
                 if (slot >= 0) {
                     val frame = decoded.size > 0
-                    codec.releaseOutputBuffer(slot, frame)
-                    if (frame) {
-                        try { surface.draw(decoded.presentationTimeUs) }
+                    // A zero start renders every frame, exactly as the complete-MP4 path always did.
+                    val render = frame && (startUs <= 0 || decoded.presentationTimeUs >= startUs)
+                    codec.releaseOutputBuffer(slot, render)
+                    if (render) {
+                        try { surface.draw(decoded.presentationTimeUs, decoded.presentationTimeUs - offsetUs) }
                         catch (error: Throwable) { output.checkHealth(); input.checkHealth(); throw error }
-                        lastOutput = System.nanoTime()
                     }
+                    if (frame) lastOutput = System.nanoTime()
                     if (decoded.flags and MediaCodec.BUFFER_FLAG_END_OF_STREAM != 0) {
                         decodeDone = true; encoder.signalEndOfInputStream()
                     }
                 } else if (slot == MediaCodec.INFO_OUTPUT_FORMAT_CHANGED) lastOutput = System.nanoTime()
+                if (hold.held) lastOutput = System.nanoTime()
                 check(System.nanoTime() - lastOutput < 30_000_000_000L) { "decoder-stalled" }
             }
             output.awaitCompletion()
@@ -187,7 +195,7 @@ private class CastSurface(private val input: Surface, private val width: Int, pr
         GLES20.glTexParameteri(target, GLES20.GL_TEXTURE_WRAP_S, GLES20.GL_CLAMP_TO_EDGE)
         GLES20.glTexParameteri(target, GLES20.GL_TEXTURE_WRAP_T, GLES20.GL_CLAMP_TO_EDGE)
     }
-    fun draw(presentationUs: Long) {
+    fun draw(sourceUs: Long, presentationUs: Long) {
         val waitStart = System.nanoTime()
         synchronized(frame) {
             val deadline = System.nanoTime() + 5_000_000_000L
@@ -211,7 +219,7 @@ private class CastSurface(private val input: Surface, private val width: Int, pr
         GLES20.glEnableVertexAttribArray(shader.coordinate)
         GLES20.glVertexAttribPointer(shader.coordinate, 2, GLES20.GL_FLOAT, false, 0, coords)
         GLES20.glDrawArrays(GLES20.GL_TRIANGLE_STRIP, 0, 4)
-        checkNotNull(overlay).draw(presentationUs / 1000)
+        checkNotNull(overlay).draw(sourceUs / 1000)
         require(GLES20.glGetError() == GLES20.GL_NO_ERROR) { "composition-failed" }
         EGLExt.eglPresentationTimeANDROID(display, window, presentationUs * 1000)
         metrics.composeNs += System.nanoTime() - composeStart

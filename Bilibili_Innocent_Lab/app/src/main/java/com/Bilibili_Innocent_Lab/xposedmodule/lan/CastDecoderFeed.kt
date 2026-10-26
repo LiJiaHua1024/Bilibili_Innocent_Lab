@@ -7,7 +7,8 @@ import java.util.concurrent.atomic.AtomicReference
 
 /** Input extraction overlaps GL work; codec-owned buffers provide the queue bound and backpressure. */
 internal class CastDecoderFeed(private val decoder: MediaCodec, private val source: MediaExtractor,
-    private val cancelled: AtomicBoolean, private val metrics: CastPreparationMetrics) : AutoCloseable {
+    private val cancelled: AtomicBoolean, private val metrics: CastPreparationMetrics,
+    private val hold: CastFlowHold = CastFlowHold()) : AutoCloseable {
     private val stopped = AtomicBoolean(false)
     private val failure = AtomicReference<Throwable>()
     private val worker = Thread(::feed, "BIL-Cast-Input").apply { start() }
@@ -23,6 +24,8 @@ internal class CastDecoderFeed(private val decoder: MediaCodec, private val sour
             while (!stopped.get() && !cancelled.get()) {
                 val slot = decoder.dequeueInputBuffer(10_000)
                 if (slot < 0) {
+                    // A paused receiver legitimately fills every codec buffer; that is not a stalled decoder.
+                    if (hold.held) lastInput = System.nanoTime()
                     check(System.nanoTime() - lastInput < 30_000_000_000L) { "decoder-input-stalled" }
                     continue
                 }
