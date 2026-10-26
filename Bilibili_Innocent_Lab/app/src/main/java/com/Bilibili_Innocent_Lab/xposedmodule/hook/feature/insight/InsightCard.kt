@@ -36,6 +36,8 @@ import kotlin.math.roundToInt
 import java.util.concurrent.ArrayBlockingQueue
 import java.util.concurrent.ThreadPoolExecutor
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicReference
 import java.util.concurrent.atomic.AtomicLong
 
 internal fun insightText(context: Context, chinese: String, english: String, traditional: String = chinese): String =
@@ -239,7 +241,9 @@ internal class InsightCard(context: Context, private val repository: InsightRepo
         column.addView(scroll, LayoutParams(-1, 0, 1f))
         window.setContentView(column)
         var material: InsightSurfaces? = null
+        val responses = mutableListOf<InsightResponseText>()
         window.setOnDismissListener {
+            responses.forEach { it.close() }; responses.clear()
             material?.close(); material = null
             if (dialog === window) {
                 dialog = null; askSend = null; revision.incrementAndGet(); busy = false; pending = null; updateActions()
@@ -260,24 +264,25 @@ internal class InsightCard(context: Context, private val repository: InsightRepo
         }.also { transcript.addView(it, LayoutParams(-2, 44.toPx(context))); skin.control(it) }
         if (mode != InsightMode.ASK) {
             val output = line("")
+            val response = InsightResponseText(output).also { responses += it }
             lateinit var retry: Button
             fun load() {
-                output.text = if (mode == InsightMode.COMMENTS)
-                    insightText(context, "正在读取评论并整理话题…", "Loading comments and topics…", "正在讀取評論並整理話題…")
-                    else insightText(context, "正在生成…", "Generating…", "正在生成…")
+                response.begin(if (mode == InsightMode.COMMENTS)
+                    insightText(context, "正在读取评论并整理话题", "Loading comments and topics", "正在讀取評論並整理話題")
+                    else insightText(context, "正在生成", "Generating", "正在生成"))
                 retry.visibility = GONE
-                if (mode == InsightMode.SUMMARY && summary != null) { output.text = render(checkNotNull(summary), true, summaryMode = true); return }
-                request(mode, current, output, retry) { entry ->
+                if (mode == InsightMode.SUMMARY && summary != null) { response.complete(render(checkNotNull(summary), true, summaryMode = true)); return }
+                request(mode, current, output, retry, response = response) { entry ->
                     if (mode == InsightMode.CHAPTERS) {
                         chaptersReady(current.video, entry)
                         if (entry.output.text.isNotBlank()) summary = entry
-                        output.text = insightText(context,
+                        response.complete(insightText(context,
                             "已准备好 ${entry.output.chapters.size} 个章节。宿主下次刷新进度或重新打开当前分 P 后，可在播放器原生章节中查看与跳转。",
                             "${entry.output.chapters.size} chapters are ready. View them in the native player after the next progress refresh or reopening this part.",
-                            "已準備好 ${entry.output.chapters.size} 個章節。宿主下次重新整理進度或重新開啟目前分 P 後，可在播放器原生章節中查看與跳轉。")
+                            "已準備好 ${entry.output.chapters.size} 個章節。宿主下次重新整理進度或重新開啟目前分 P 後，可在播放器原生章節中查看與跳轉。"))
                     } else {
                         if (mode == InsightMode.SUMMARY) summary = entry
-                        output.text = render(entry, mode == InsightMode.SUMMARY, summaryMode = mode == InsightMode.SUMMARY)
+                        response.complete(render(entry, mode == InsightMode.SUMMARY, summaryMode = mode == InsightMode.SUMMARY))
                         if (mode == InsightMode.SUMMARY && automaticChapters && nativeChaptersAvailable && entry.output.chapters.isNotEmpty())
                             request(InsightMode.CHAPTERS, current, null, null) { chaptersReady(current.video, it) }
                     }
@@ -303,11 +308,17 @@ internal class InsightCard(context: Context, private val repository: InsightRepo
                 if (query.isNotEmpty() && !busy) {
                     line(query); field.setText("")
                     val answer = line("")
+                    val response = InsightResponseText(answer) {
+                        // 仅当用户仍在底部时跟随新内容，向上阅读不会被逐 token 抢走位置。
+                        if (!scroll.canScrollVertically(1)) scroll.post(HostThreadGuard.runnable("insight.follow") {
+                            if (window.isShowing) scroll.fullScroll(FOCUS_DOWN)
+                        })
+                    }.also { responses += it }
                     lateinit var retry: Button
                     fun ask() {
-                        answer.text = insightText(context, "正在回答…", "Answering…", "正在回答…"); retry.visibility = GONE
-                        request(InsightMode.ASK, current, answer, retry, query) { entry ->
-                            answer.text = render(entry, true); history.addLast(query to entry.output.text)
+                        response.begin(insightText(context, "正在回答", "Answering", "正在回答")); retry.visibility = GONE
+                        request(InsightMode.ASK, current, answer, retry, query, response) { entry ->
+                            response.complete(render(entry, true)); history.addLast(query to entry.output.text)
                             askContext = entry.duration to entry.timed
                             while (history.size > 6) history.removeFirst()
                         }
@@ -325,21 +336,42 @@ internal class InsightCard(context: Context, private val repository: InsightRepo
         else -> insightText(context, "暂时无法生成，请重试。", "Could not generate. Please retry.", "暫時無法生成，請重試。")
     }
     private fun request(mode: InsightMode, current: InsightPlayerSession, failure: TextView?, retry: View?, query: String = "",
-        completed: (InsightCache.Entry) -> Unit) {
+        response: InsightResponseText? = null, completed: (InsightCache.Entry) -> Unit) {
         val repo = repository ?: return
         if (busy || !current.valid()) return
         busy = true; updateActions()
         val token = revision.get(); val weak = WeakReference(this); val past = history.toList()
         val failedView = WeakReference(failure); val retryView = WeakReference(retry)
+        val responseView = WeakReference(response)
+        val finished = AtomicBoolean(false)
+        val scheduled = AtomicBoolean(false)
+        val latest = AtomicReference<String?>()
+        fun progress(text: String) {
+            if (finished.get() || weak.get()?.revision?.get() != token) return
+            latest.set(text)
+            if (scheduled.compareAndSet(false, true)) weak.get()?.postDelayed(HostThreadGuard.runnable("insight.progress") {
+                scheduled.set(false)
+                val card = weak.get() ?: return@runnable
+                if (finished.get() || card.revision.get() != token || card.session?.video != current.video) return@runnable
+                latest.getAndSet(null)?.let { responseView.get()?.preview(it) }
+            }, 32)
+        }
         pending = completed
         fun deliver(outcome: Result<InsightCache.Entry>) {
+            finished.set(true)
             val card = weak.get() ?: return
             card.post(HostThreadGuard.runnable("insight.result") {
                 if (card.revision.get() != token || card.session?.video != current.video) return@runnable
                 card.busy = false; card.updateActions()
                 val callback = card.pending; card.pending = null
-                outcome.onSuccess { callback?.invoke(it) }.onFailure { error ->
-                    failedView.get()?.text = card.errorText(error); retryView.get()?.visibility = VISIBLE
+                outcome.onSuccess { entry ->
+                    // 短响应可能在首个合并帧前完成；冲刷最后的真实增量后再启用完整结果与时间链接。
+                    latest.getAndSet(null)?.takeIf(String::isNotBlank)?.let { responseView.get()?.preview(it) }
+                    callback?.invoke(entry)
+                }.onFailure { error ->
+                    latest.set(null)
+                    responseView.get()?.fail(card.errorText(error)) ?: run { failedView.get()?.text = card.errorText(error) }
+                    retryView.get()?.visibility = VISIBLE
                 }
             })
         }
@@ -347,12 +379,15 @@ internal class InsightCard(context: Context, private val repository: InsightRepo
             if (weak.get()?.revision?.get() != token) return@execute
             val cached = runCatching { repo.cached(current.video, mode) }.getOrNull()
             if (cached != null) deliver(Result.success(cached)) else runCatching { worker.execute {
-                deliver(runCatching { repo.generate(current.video, mode, query, past) { weak.get()?.revision?.get() != token } })
+                deliver(runCatching { repo.generate(current.video, mode, query, past, onProgress = if (responseView.get() != null) ::progress else null) {
+                    weak.get()?.revision?.get() != token
+                } })
             } }.onFailure { deliver(Result.failure(it)) }
         } }.isSuccess
         if (!submitted) {
             busy = false; pending = null; updateActions()
-            failure?.text = insightText(context, "请求队列已满，请稍后重试。", "Queue full. Try again shortly.", "請求佇列已滿，請稍後重試。")
+            val message = insightText(context, "请求队列已满，请稍后重试。", "Queue full. Try again shortly.", "請求佇列已滿，請稍後重試。")
+            response?.fail(message) ?: run { failure?.text = message }
             retry?.visibility = VISIBLE
         }
     }

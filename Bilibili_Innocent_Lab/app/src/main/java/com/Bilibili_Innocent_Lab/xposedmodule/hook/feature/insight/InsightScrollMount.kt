@@ -8,7 +8,6 @@ import com.Bilibili_Innocent_Lab.xposedmodule.hook.feature.HookEnvironment
 import com.Bilibili_Innocent_Lab.xposedmodule.runtime.HostThreadGuard
 import com.Bilibili_Innocent_Lab.xposedmodule.runtime.KavaMemberLookup as Lookup
 import com.highcapable.betterandroid.ui.extension.component.base.toPx
-import com.highcapable.kavaref.extension.isStatic
 import java.lang.ref.WeakReference
 import java.lang.reflect.InvocationHandler
 import java.lang.reflect.Method
@@ -57,7 +56,7 @@ internal class InsightIntroHeaders private constructor(private val environment: 
     private val component: Class<*>, private val entry: Class<*>, private val unit: Any, private val scrollTo: Method) {
     private val owners = WeakHashMap<View, WeakReference<InsightScrollMount>>()
     private val adapters = WeakHashMap<Any, WeakReference<InsightScrollMount>>()
-    private val plans = mutableMapOf<Class<*>, Pair<Method, Method>?>()
+    private val plans = mutableMapOf<Class<*>, InsightAdapterItems?>()
     private val hooked = mutableSetOf<Method>()
     fun install(): Int {
         environment.registrar.exact("insight.intro.adapter", recycler, "setAdapter", adapterType) { after {
@@ -82,15 +81,14 @@ internal class InsightIntroHeaders private constructor(private val environment: 
         val type = adapter.javaClass
         environment.logInfo("insight.header.adapter.${type.name}", "AI Insight header adapter=${type.name}")
         val plan = plans.getOrPut(type) {
-            val read = Lookup.inheritedMethodOrNull(type, "getItems")?.takeIf { List::class.java.isAssignableFrom(it.returnType) }
-            val write = Lookup.declaredMethods(type, true) { !it.isStatic && it.returnType == Void.TYPE &&
-                it.parameterTypes.toList() == listOf(List::class.java) }.singleOrNull()
-            environment.logInfo("insight.header.plan.${type.name}", "AI Insight header plan read=${read != null} write=${write != null}")
-            if (read == null || write == null) null else read to write
+            InsightAdapterItems.resolve(type).also { resolved ->
+                environment.logInfo("insight.header.plan.${type.name}",
+                    "AI Insight header plan read=${resolved?.readKind ?: "none"} write=${resolved != null}")
+            }
         } ?: return@run
         adapters[adapter] = WeakReference(mount)
-        if (hooked.add(plan.second)) environment.registrar.exact("insight.intro.items.${type.name}",
-            plan.second.declaringClass, plan.second.name, *plan.second.parameterTypes) { before {
+        if (hooked.add(plan.write)) environment.registrar.exact("insight.intro.items.${type.name}",
+            plan.write.declaringClass, plan.write.name, *plan.write.parameterTypes) { before {
             val target = instance?.let { adapters[it]?.get() } ?: return@before
             val items = argOrNull(0) as? List<*> ?: return@before
             if (!target.closed) {
@@ -102,9 +100,10 @@ internal class InsightIntroHeaders private constructor(private val environment: 
         // 数据可能先于 setAdapter 到达；下一次主线程任务补入，避开 RecyclerView 正在布局的阶段。
         list.post(HostThreadGuard.runnable("insight.header.initial") {
             if (!mount.closed && getAdapter.invoke(list) === adapter) {
-                val items = plan.first.invoke(adapter) as? List<*> ?: return@runnable
+                val items = plan.read(adapter) ?: return@runnable
+                if (items.any { it == null || !component.isInstance(it) }) return@runnable
                 if (items.firstOrNull() !== mount.component) {
-                    mount.beforeUpdate(); plan.second.invoke(adapter, mount.items(items))
+                    mount.beforeUpdate(); plan.write.invoke(adapter, mount.items(items))
                 }
             }
         })

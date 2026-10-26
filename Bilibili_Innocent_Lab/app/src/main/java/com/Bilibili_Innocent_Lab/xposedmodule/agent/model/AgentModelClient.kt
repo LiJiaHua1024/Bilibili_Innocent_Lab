@@ -17,6 +17,7 @@ internal class AgentModelClient(
     private val capabilities = AgentBoundedCache<String, AgentModelCapabilities>(clock = clock)
     private val tokenParameters = AgentBoundedCache<String, String>(clock = clock)
     private val rejectedReasoning = AgentBoundedCache<String, Boolean>(clock = clock)
+    private val nonStreaming = AgentBoundedCache<String, Boolean>(clock = clock)
     private val jsonObjectOnly = AgentBoundedCache<String, Boolean>(clock = clock)
 
     init { require(outputTokenBudget in 256..8192 && inputTextLimit in 65_536..500_000) }
@@ -42,6 +43,11 @@ internal class AgentModelClient(
         timeoutMs: Int, cancelled: () -> Boolean): AgentModelTurn =
         generateImpl(source, messages, JSONArray(), false, timeoutMs, cancelled, probing = false, schema = schema)
 
+    /** 保留非流式入口的尾随取消 lambda，流式能力由业务显式选择。 */
+    fun generateStructuredStreaming(source: AgentModelSource, messages: JSONArray, schema: JSONObject,
+        timeoutMs: Int, cancelled: () -> Boolean, onDelta: (String) -> Unit): AgentModelTurn =
+        generateImpl(source, messages, JSONArray(), false, timeoutMs, cancelled, probing = false, schema = schema, onDelta = onDelta)
+
     /** 只供显式无副作用能力挑战；普通任务没有跳过视觉门禁的参数。 */
     internal fun probeGenerate(
         source: AgentModelSource,
@@ -54,7 +60,8 @@ internal class AgentModelClient(
 
     private fun generateImpl(
         source: AgentModelSource, messages: JSONArray, tools: JSONArray, withVision: Boolean,
-        timeoutMs: Int, cancelled: () -> Boolean, probing: Boolean, schema: JSONObject? = null
+        timeoutMs: Int, cancelled: () -> Boolean, probing: Boolean, schema: JSONObject? = null,
+        onDelta: ((String) -> Unit)? = null
     ): AgentModelTurn {
         if (cancelled()) throw AgentModelException(AgentModelException.Reason.CANCELLED)
         if (source.protocol != AgentSourceProtocol.CHAT) throw AgentModelException(AgentModelException.Reason.INVALID_REQUEST)
@@ -63,8 +70,9 @@ internal class AgentModelClient(
         }
         val allowed = validateTools(tools)
         val historyIds = validateMessages(messages, withVision)
+        var streaming = onDelta != null && nonStreaming[source.fingerprint] != true
         val body = JSONObject().put("model", source.model).put("messages", JSONArray(messages.toString()))
-            .put("stream", false)
+            .put("stream", streaming)
         if (tools.length() > 0) body.put("tools", JSONArray(tools.toString())).put("tool_choice", "auto")
         val optionalReasoning = knownReasoningParams(source)?.takeIf { rejectedReasoning[source.fingerprint] != true }
         optionalReasoning?.keys()?.forEach { body.put(it, optionalReasoning.get(it)) }
@@ -86,7 +94,7 @@ internal class AgentModelClient(
         val deadline = System.nanoTime() + timeoutMs.coerceIn(1, AgentHttpsTransport.MAX_TIMEOUT_MS) * 1_000_000L
         var parameter = tokenParameters[source.fingerprint] ?: "max_tokens"
         val rejectedTokens = hashSetOf<String>()
-        val attempts = if (schema == null) 3 else 4
+        val attempts = if (schema == null) 3 else if (streaming) 5 else 4
         repeat(attempts) { attempt ->
             body.remove("max_tokens")
             body.remove("max_completion_tokens")
@@ -97,7 +105,11 @@ internal class AgentModelClient(
             if (remaining <= 0) throw AgentModelException(AgentModelException.Reason.TIMEOUT)
             if (cancelled()) throw AgentModelException(AgentModelException.Reason.CANCELLED)
             try {
-                val payload = transport.post(source, bytes, remaining, cancelled)
+                val payload = if (!streaming) transport.post(source, bytes, remaining, cancelled)
+                    else transport.postStreaming(source, bytes, remaining, cancelled) { delta ->
+                        if (cancelled()) throw AgentModelException(AgentModelException.Reason.CANCELLED)
+                        checkNotNull(onDelta)(delta)
+                    }
                 if (cancelled()) throw AgentModelException(AgentModelException.Reason.CANCELLED)
                 if (System.nanoTime() >= deadline) throw AgentModelException(AgentModelException.Reason.TIMEOUT)
                 val turn = decode(payload, allowed, historyIds)
@@ -109,6 +121,10 @@ internal class AgentModelClient(
                 // 只对明确拒绝的参数做有界回退，共用截止时间；永不剥掉 tools 或输出预算。
                 if (attempt == attempts - 1) throw e
                 when {
+                    e.reason == AgentModelException.Reason.STREAM_PARAMETER && streaming -> {
+                        streaming = false; body.put("stream", false)
+                        nonStreaming[source.fingerprint] = true
+                    }
                     e.reason == AgentModelException.Reason.RESPONSE_FORMAT_PARAMETER && schema != null && !objectMode -> {
                         objectMode = true
                         applyFormat()

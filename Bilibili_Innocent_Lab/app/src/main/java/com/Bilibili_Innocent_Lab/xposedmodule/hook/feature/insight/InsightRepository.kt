@@ -89,7 +89,8 @@ internal class InsightRepository(
         if (mode == InsightMode.ASK) null else cache.read(InsightCache.key(video, source, mode), mode)
             ?.also { trace("cache mode=$mode timed=${it.timed}") }
     @Synchronized fun generate(video: InsightVideo, mode: InsightMode, question: String = "",
-        history: List<Pair<String, String>> = emptyList(), cancelled: () -> Boolean = { false }): InsightCache.Entry {
+        history: List<Pair<String, String>> = emptyList(), onProgress: ((String) -> Unit)? = null,
+        cancelled: () -> Boolean = { false }): InsightCache.Entry {
         var stage = "context"
         try {
             check(!cancelled())
@@ -124,7 +125,15 @@ internal class InsightRepository(
                 stage = "model"
                 val remaining = ((deadline - System.nanoTime()) / 1_000_000L).coerceAtMost(90_000).toInt()
                 if (remaining <= 0) throw AgentModelException(AgentModelException.Reason.TIMEOUT)
-                val turn = client.generateStructured(source, messages, InsightProtocol.schema(mode, input), remaining, cancelled)
+                val preview = onProgress?.let { InsightStreamText(mode, input) }
+                var previous = ""
+                val turn = client.generateStructuredStreaming(source, messages, InsightProtocol.schema(mode, input), remaining, cancelled) { delta ->
+                    check(!cancelled())
+                    preview?.let { projection ->
+                        val text = projection.append(delta)
+                        if (text != previous) { previous = text; onProgress.invoke(text) }
+                    }
+                }
                 check(!cancelled())
                 stage = "decode"
                 try {
@@ -133,6 +142,7 @@ internal class InsightRepository(
                 } catch (invalid: InsightValidationException) {
                     if (attempt != 0 || cancelled()) throw invalid
                     trace("repair mode=$mode rule=${invalid.rule}")
+                    onProgress?.invoke("")
                     // 只反馈本地固定约束；不保留错误回答，避免把它锚定进材料或问答历史。
                     messages = JSONArray(original.toString()).put(JSONObject().put("role", "user")
                         .put("content", "本地校验拒绝上次输出：${invalid.hint} 请据原材料修正输出。"))
