@@ -1622,7 +1622,7 @@
     <string name="npatch_setup_restart">重启并验证</string>
     <string name="npatch_setup_diagnostics">打开诊断</string>
     <string name="npatch_live_apply">立即应用可热更新的值</string>
-    <string name="npatch_live_tip">支持当前已启用且完整安装的复制开关/手动亮色、弹幕权重/彩字、首页关键词/时长/播放量。自动跟随、首次开启能力、布局、网页及其他进程仍需重启；不会刷新已有内容。</string>
+    <string name="npatch_live_tip">适用于 NPatch / LSPatch 主进程。支持当前已启用且完整安装的复制开关/手动亮色、弹幕权重/彩字、首页关键词/时长/播放量。自动跟随、首次开启能力、布局、网页及其他进程仍需重启；不会刷新已有内容。</string>
     <string name="npatch_live_working">正在保存并验证可热更新的值…</string>
     <string name="npatch_live_result">已即时应用 %1$d 项，另有 %2$d 项需重启。仅影响当前主界面后续的新内容；完整配置回执仍以冷启动为准。</string>
     <string name="npatch_live_failed">未能确认热应用结果。请保持设置 App 可用，重启哔哩哔哩或查看诊断后重试。</string>

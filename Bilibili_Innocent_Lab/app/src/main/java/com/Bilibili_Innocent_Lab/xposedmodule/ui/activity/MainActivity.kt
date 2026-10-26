@@ -685,7 +685,10 @@ class MainActivity : SkinnedActivity() {
     internal fun applyNPatchValues() {
         if (liveApplyPending) return
         val bridge = noRootPrefsBridge
-        if (bridge == null || !NoRootSupportStore.isDesiredEnabled(applicationContext)) {
+        val channel = HostConfigChannels.read(applicationContext)
+        if (bridge == null || channel == HostConfigChannel.STANDARD ||
+            com.Bilibili_Innocent_Lab.xposedmodule.runtime.noroot.EmbeddedModePolicy.isSettingsBlocked(applicationContext) ||
+            channel == HostConfigChannel.NPATCH && !NoRootSupportStore.isDesiredEnabled(applicationContext)) {
             liveApplyStatusView?.setText(R.string.npatch_live_failed)
             return
         }
@@ -693,8 +696,9 @@ class MainActivity : SkinnedActivity() {
         liveApplyStatusView?.setText(R.string.npatch_live_working)
         val ref = WeakReference(this)
         val app = applicationContext
-        NoRootSupportController.flushBeforeRestart(app, bridge) { flushed ->
-            if (flushed != NoRootSupportController.FlushResult.SUCCESS) {
+        com.Bilibili_Innocent_Lab.xposedmodule.runtime.restart.RestartConfigBarrier.flush(
+            app, bridge, noRoot = channel == HostConfigChannel.NPATCH) { flushed ->
+            if (!flushed || HostConfigChannels.read(app) != channel) {
                 Handler(Looper.getMainLooper()).post {
                     ref.get()?.let { activity ->
                         activity.liveApplyPending = false

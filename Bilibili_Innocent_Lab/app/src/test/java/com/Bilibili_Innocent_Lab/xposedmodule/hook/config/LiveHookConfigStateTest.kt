@@ -2,6 +2,7 @@ package com.Bilibili_Innocent_Lab.xposedmodule.hook.config
 
 import com.Bilibili_Innocent_Lab.xposedmodule.hook.HookEntry
 import com.Bilibili_Innocent_Lab.xposedmodule.hook.feature.FeaturePreferences as P
+import com.Bilibili_Innocent_Lab.xposedmodule.runtime.noroot.HostConfigChannel
 import com.Bilibili_Innocent_Lab.xposedmodule.settings.remote.PublicationIdentity
 import com.Bilibili_Innocent_Lab.xposedmodule.settings.remote.RemoteHookConfigSnapshot
 import com.Bilibili_Innocent_Lab.xposedmodule.settings.terms.UserTermsDecision
@@ -99,6 +100,60 @@ class LiveHookConfigStateTest {
         assertEquals("REJECTED", state.apply(snapshot(2, base + (P.DANMAKU_WEIGHT_FILTER_MINIMUM to 9)),
             identity(2), installed) { false }.status)
         assertEquals(3, state.danmaku().minimum)
+    }
+
+    @Test fun lspatchUsesItsPublicationRevisionWithoutNpatchOptIn() {
+        val initial = snapshot().copy(noRootRevision = 0)
+        val state = LiveHookConfigState(initial, identity(), HostConfigChannel.LSPATCH)
+        val next = snapshot(7, base + mapOf(HookEntry.PREF_FREE_COPY_LIGHT_MODE to true,
+            P.DANMAKU_WEIGHT_FILTER_MINIMUM to 8, "structural" to true)).copy(noRootRevision = 0)
+        val report = state.apply(next, identity(7), installed)
+        assertEquals("APPLIED", report.status)
+        assertEquals(2, report.applied)
+        assertEquals(1, report.deferred)
+        assertEquals(7L, report.revision)
+        assertTrue(state.getBoolean(HookEntry.PREF_FREE_COPY_LIGHT_MODE, false))
+        assertEquals(8, state.danmaku().minimum)
+        assertFalse(state.getBoolean("structural", true))
+        assertEquals(0, state.apply(next, identity(7), installed).applied)
+        assertEquals("REJECTED", state.apply(initial, identity(), installed).status)
+        assertEquals("REJECTED", state.apply(next, identity(7).copy(fingerprint = "f".repeat(64)), installed).status)
+    }
+
+    @Test fun liveChannelCannotAcceptAnotherCarriersDocumentOrStandardFramework() {
+        val changed = snapshot(2, base + (HookEntry.PREF_FREE_COPY_LIGHT_MODE to true))
+        val lspatch = LiveHookConfigState(snapshot().copy(noRootRevision = 0), identity(), HostConfigChannel.LSPATCH)
+        assertEquals("REJECTED", lspatch.apply(changed, identity(2), installed).status)
+        assertEquals("REJECTED", state().apply(changed.copy(noRootRevision = 0), identity(2), installed).status)
+        val standard = LiveHookConfigState(snapshot(), identity(), HostConfigChannel.STANDARD)
+        assertEquals("REJECTED", standard.apply(changed, identity(2), installed).status)
+        assertFalse(lspatch.getBoolean(HookEntry.PREF_FREE_COPY_LIGHT_MODE, false))
+    }
+
+    @Test fun lspatchKeepsAuthorizationInstallationAndDeadlineBoundaries() {
+        val initial = snapshot().copy(noRootRevision = 0)
+        val state = LiveHookConfigState(initial, identity(), HostConfigChannel.LSPATCH)
+        val next = snapshot(2, base + (HookEntry.PREF_FREE_COPY_LIGHT_MODE to true)).copy(noRootRevision = 0)
+        for (id in listOf(identity(2).copy(incarnation = "new"), identity(2).copy(consentRevision = 2),
+            identity(2).copy(snapshotRevision = 3))) {
+            assertEquals("REJECTED", state.apply(next, id, installed).status)
+        }
+        for (invalid in listOf(next.copy(deliveryEnabled = false), next.copy(decision = UserTermsDecision.DECLINED),
+            next.copy(moduleVersionCode = 22), next.copy(generation = 0))) {
+            assertEquals("REJECTED", state.apply(invalid, identity(2), installed).status)
+        }
+        assertEquals("REJECTED", state.apply(next, identity(2), installed) { false }.status)
+        assertEquals("RESTART_REQUIRED", state.apply(next, identity(2), emptySet()).status)
+        assertFalse(state.getBoolean(HookEntry.PREF_FREE_COPY_LIGHT_MODE, false))
+    }
+
+    @Test fun npatchCannotRegressThePublicationOrderWhileIncreasingSnapshotRevision() {
+        val state = LiveHookConfigState(snapshot(5), identity(5))
+        val next = snapshot(4, base + (HookEntry.PREF_FREE_COPY_LIGHT_MODE to true)).copy(noRootRevision = 6)
+        assertEquals("REJECTED", state.apply(next, identity(4), installed).status)
+        assertFalse(state.getBoolean(HookEntry.PREF_FREE_COPY_LIGHT_MODE, false))
+        val invalidInitial = LiveHookConfigState(snapshot(), identity(2))
+        assertEquals("REJECTED", invalidInitial.apply(snapshot(3), identity(3), installed).status)
     }
 
     @Test fun concurrentReadersOnlySeeWholeImmutableRuleSets() {

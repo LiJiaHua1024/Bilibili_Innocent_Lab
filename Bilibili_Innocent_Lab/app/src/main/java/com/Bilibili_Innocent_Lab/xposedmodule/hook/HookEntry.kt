@@ -2452,6 +2452,8 @@ class HookEntry : XposedModule() {
             val activeHookConfig =
                 java.util.concurrent.atomic.AtomicReference<HookConfigSource?>(null)
             val nPatchStartup = java.util.concurrent.atomic.AtomicBoolean(false)
+            val liveConfigChannel = java.util.concurrent.atomic.AtomicReference(
+                com.Bilibili_Innocent_Lab.xposedmodule.runtime.noroot.HostConfigChannel.STANDARD)
             lateinit var scheduleAuthorizationRetry: (Context, android.app.Application?) -> Unit
 
             fun installAuthorizedHooks(authorizationContext: Context) {
@@ -5026,8 +5028,9 @@ class HookEntry : XposedModule() {
                     frameworkLog("[BIL] Hook 授权未确认，当前宿主进程不安装任何功能")
                     return
                 }
-                val live = if (nPatchStartup.get() && processName == TARGET_PACKAGE && identity != null)
-                    com.Bilibili_Innocent_Lab.xposedmodule.hook.config.LiveHookConfigState(config, identity) else null
+                val live = if (liveConfigChannel.get() != com.Bilibili_Innocent_Lab.xposedmodule.runtime.noroot.HostConfigChannel.STANDARD &&
+                    processName == TARGET_PACKAGE && identity != null)
+                    com.Bilibili_Innocent_Lab.xposedmodule.hook.config.LiveHookConfigState(config, identity, liveConfigChannel.get()) else null
                 activeHookConfig.set(live ?: SnapshotHookConfigSource(config.values))
                 if (!authorizedInstallStarted.compareAndSet(false, true)) {
                     authorizedInstallerRef.set(null)
@@ -5061,7 +5064,7 @@ class HookEntry : XposedModule() {
                     }
                     if (processName == TARGET_PACKAGE) {
                         HostRuntimeDiagnosticsBridge.recordInstallChainCompleted()
-                        if (live != null) runCatching {
+                        if (live != null && nPatchStartup.get()) runCatching {
                             com.Bilibili_Innocent_Lab.xposedmodule.runtime.noroot.NPatchRoamingStatus.registerHost(appContext)
                         }.onFailure { frameworkLog("[BIL] 漫游缓存查询不可用") }
                         if (live != null) runCatching {
@@ -5097,6 +5100,11 @@ class HookEntry : XposedModule() {
                 val nPatchRuntime = runtimeMode == com.Bilibili_Innocent_Lab.xposedmodule.runtime.noroot.HookRuntimeMode.NPATCH_LEGACY
                 val lspatchRuntime = runtimeMode == com.Bilibili_Innocent_Lab.xposedmodule.runtime.noroot.HookRuntimeMode.LSPATCH
                 nPatchStartup.set(nPatchRuntime)
+                liveConfigChannel.set(when {
+                    nPatchRuntime -> com.Bilibili_Innocent_Lab.xposedmodule.runtime.noroot.HostConfigChannel.NPATCH
+                    lspatchRuntime -> com.Bilibili_Innocent_Lab.xposedmodule.runtime.noroot.HostConfigChannel.LSPATCH
+                    else -> com.Bilibili_Innocent_Lab.xposedmodule.runtime.noroot.HostConfigChannel.STANDARD
+                })
                 if (lspatchRuntime) {
                     val profile = com.Bilibili_Innocent_Lab.xposedmodule.runtime.noroot.LspatchRuntimeProfiles.read(appContext, appContext.packageName)
                     frameworkLog("[BIL] LSPatch 运行档案(mode=${profile.mode}, loader=${profile.loaderVersion}, api=${profile.loaderApi}, process=$processName)")

@@ -15,6 +15,7 @@ import androidx.annotation.RequiresApi
 import com.Bilibili_Innocent_Lab.xposedmodule.BuildConfig
 import com.Bilibili_Innocent_Lab.xposedmodule.hook.config.LiveApplyReport
 import com.Bilibili_Innocent_Lab.xposedmodule.hook.config.LiveHookConfigState
+import com.Bilibili_Innocent_Lab.xposedmodule.hook.config.LiveConfigChannelPolicy
 import com.Bilibili_Innocent_Lab.xposedmodule.runtime.CrossAppBroadcastCompat
 import com.Bilibili_Innocent_Lab.xposedmodule.runtime.HostAdmissionClient
 import com.Bilibili_Innocent_Lab.xposedmodule.runtime.HostFeatureInstallState
@@ -80,8 +81,9 @@ internal object NPatchLiveConfig {
     private val registered = AtomicBoolean(false)
     private val busy = AtomicBoolean(false)
 
-    /** 只在实际 NPatch 主进程完成安装后注册；不会唤醒宿主或更新任何子进程。 */
+    /** 只在实际补丁主进程完成安装后注册；不会唤醒宿主或更新任何子进程。 */
     fun registerHost(context: Context, state: LiveHookConfigState, artifact: LoadedModuleArtifact?, applied: () -> Unit) {
+        if (state.channel == HostConfigChannel.STANDARD) return
         if (!registered.compareAndSet(false, true)) return
         val app = context.applicationContext ?: context
         try {
@@ -111,9 +113,13 @@ internal object NPatchLiveConfig {
                                 var report = LiveApplyReport("REJECTED")
                                 try {
                                     if (moduleHash.matches(Regex("[a-f0-9]{64}")) && artifact?.digest() == moduleHash) {
-                                        val grant = HostAdmissionClient.admit(app, null, "remote_group_unavailable", nPatchRuntime = true).grant
+                                        val grant = HostAdmissionClient.admit(app, null, "remote_group_unavailable",
+                                            nPatchRuntime = state.channel == HostConfigChannel.NPATCH,
+                                            lspatchRuntime = state.channel == HostConfigChannel.LSPATCH).grant
                                         val identity = grant?.identity
-                                        if (grant != null && identity != null && identity.fingerprint == fingerprint && grant.snapshot.noRootRevision == revision &&
+                                        if (grant != null && identity != null && identity.fingerprint == fingerprint &&
+                                            LiveConfigChannelPolicy.revision(state.channel, grant.snapshot.generation,
+                                                grant.snapshot.noRootRevision) == revision &&
                                             SystemClock.elapsedRealtime() < deadline) {
                                             val installed = HostRuntimeDiagnosticsBridge.snapshot().features.filter {
                                                 it.installState == HostFeatureInstallState.INSTALLED && !it.runtimeError
@@ -159,9 +165,15 @@ internal object NPatchLiveConfig {
     }
 
     private fun requestFromSettings(app: Context, result: (LiveApplyReport) -> Unit) {
+        val channel = HostConfigChannels.read(app)
         val authority = PublicationAuthorityStore.current(app)
         val hash = moduleDigest(File(app.applicationInfo.sourceDir))
-        if (authority == null || !authority.decision.isAuthorized || !NoRootSupportStore.isDesiredEnabled(app) || hash == null) {
+        val revision = authority?.let {
+            LiveConfigChannelPolicy.revision(channel, it.identity.snapshotRevision, it.noRootRevision)
+        }
+        if (authority == null || !authority.decision.isAuthorized || revision == null ||
+            EmbeddedModePolicy.isSettingsBlocked(app) ||
+            channel == HostConfigChannel.NPATCH && !NoRootSupportStore.isDesiredEnabled(app) || hash == null) {
             main.post { result(LiveApplyReport("REJECTED")) }
             return
         }
@@ -185,11 +197,12 @@ internal object NPatchLiveConfig {
                 val valid = resultCode == HANDLED && value != null && value.getInt("version") == 1 && value.getString("nonce") == nonce &&
                     status in setOf("APPLIED", "UNCHANGED", "RESTART_REQUIRED", "REJECTED") &&
                     value.getInt("applied") in 0..16 && value.getInt("deferred") in 0..512 && value.getInt("pid") > 0 &&
-                    (status == "REJECTED" || value.getLong("revision") == authority.noRootRevision)
+                    (status == "REJECTED" || value.getLong("revision") == revision)
                 if (!valid) { finish(LiveApplyReport("UNAVAILABLE")); return }
                 val report = LiveApplyReport(status!!, value.getInt("applied"), value.getInt("deferred"), value.getLong("revision"))
                 worker.execute {
-                    val stillCurrent = PublicationAuthorityStore.current(app)?.identity == authority.identity
+                    val stillCurrent = HostConfigChannels.read(app) == channel &&
+                        PublicationAuthorityStore.current(app)?.identity == authority.identity
                     main.post { finish(if (stillCurrent) report else LiveApplyReport("REJECTED")) }
                 }
             }
@@ -198,7 +211,7 @@ internal object NPatchLiveConfig {
             CrossAppBroadcastCompat.sendOrderedBroadcast(app, Intent(ACTION).setPackage(NoRootSupportState.TARGET_PACKAGE)
                 .addFlags(Intent.FLAG_RECEIVER_FOREGROUND).putExtra("nonce", nonce).putExtra("proof", proof)
                 .putExtra("deadline", SystemClock.elapsedRealtime() + WINDOW_MS).putExtra("moduleHash", hash)
-                .putExtra("fingerprint", authority.identity.fingerprint).putExtra("revision", authority.noRootRevision), receiver, main)
+                .putExtra("fingerprint", authority.identity.fingerprint).putExtra("revision", revision), receiver, main)
         }.onFailure { main.post { finish(LiveApplyReport("UNAVAILABLE")) } }
     }
 

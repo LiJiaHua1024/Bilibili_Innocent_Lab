@@ -1622,7 +1622,7 @@
     <string name="npatch_setup_restart">重新啟動並驗證</string>
     <string name="npatch_setup_diagnostics">開啟診斷</string>
     <string name="npatch_live_apply">立即套用可熱更新的值</string>
-    <string name="npatch_live_tip">支援目前已啟用且完整安裝的複製開關/手動亮色、彈幕權重/彩字、首頁關鍵字/時長/播放量。自動跟隨、首次開啟能力、版面、網頁及其他處理程序仍需重新啟動；不會重新整理既有內容。</string>
+    <string name="npatch_live_tip">適用於 NPatch / LSPatch 主處理程序。支援目前已啟用且完整安裝的複製開關/手動亮色、彈幕權重/彩字、首頁關鍵字/時長/播放量。自動跟隨、首次開啟能力、版面、網頁及其他處理程序仍需重新啟動；不會重新整理既有內容。</string>
     <string name="npatch_live_working">正在儲存並驗證可熱更新的值…</string>
     <string name="npatch_live_result">已即時套用 %1$d 項，另有 %2$d 項需重新啟動。僅影響目前主介面後續的新內容；完整設定回執仍以冷啟動為準。</string>
     <string name="npatch_live_failed">未能確認熱套用結果。請保持設定 App 可用，重新啟動嗶哩嗶哩或查看診斷後重試。</string>

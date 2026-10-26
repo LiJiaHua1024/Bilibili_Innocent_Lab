@@ -6,6 +6,7 @@ import com.Bilibili_Innocent_Lab.xposedmodule.hook.feature.FeaturePreferences as
 import com.Bilibili_Innocent_Lab.xposedmodule.hook.feature.RuleSetCodec
 import com.Bilibili_Innocent_Lab.xposedmodule.hook.feature.VideoDurationRange
 import com.Bilibili_Innocent_Lab.xposedmodule.hook.feature.VideoPlayCountRange
+import com.Bilibili_Innocent_Lab.xposedmodule.runtime.noroot.HostConfigChannel
 import com.Bilibili_Innocent_Lab.xposedmodule.settings.remote.PublicationIdentity
 import com.Bilibili_Innocent_Lab.xposedmodule.settings.remote.RemoteHookConfigContract
 import com.Bilibili_Innocent_Lab.xposedmodule.settings.remote.RemoteHookConfigSnapshot
@@ -15,14 +16,28 @@ internal data class LiveHomeRules(val titles: Set<String>, val duration: VideoDu
 internal data class LiveDanmakuRules(val minimum: Int?, val colorful: Boolean)
 internal data class LiveApplyReport(val status: String, val applied: Int = 0, val deferred: Int = 0, val revision: Long = 0)
 
+/** 两种免 Root 通道各自验证文档类型，标准框架没有接入此显式热应用协议。 */
+internal object LiveConfigChannelPolicy {
+    fun revision(channel: HostConfigChannel, generation: Long, noRootRevision: Long): Long? = when (channel) {
+        HostConfigChannel.NPATCH -> noRootRevision.takeIf { generation > 0 && it > 0 }
+        HostConfigChannel.LSPATCH -> generation.takeIf { it > 0 && noRootRevision == 0L }
+        HostConfigChannel.STANDARD -> null
+    }
+}
+
 /** 只更新有完整叶项安装证据的值；原启动授权与结构配置始终不可变。 */
 internal class LiveHookConfigState(
     private val initial: RemoteHookConfigSnapshot,
-    private val authority: PublicationIdentity
+    private val authority: PublicationIdentity,
+    val channel: HostConfigChannel = HostConfigChannel.NPATCH
 ) : HookConfigSource {
     private data class State(val source: SnapshotHookConfigSource, val values: Map<String, Any>,
-        val revision: Long, val fingerprint: String, val home: LiveHomeRules, val danmaku: LiveDanmakuRules)
-    private val current = AtomicReference(make(initial.values, initial.noRootRevision, authority.fingerprint))
+        val revision: Long, val publicationRevision: Long, val fingerprint: String,
+        val home: LiveHomeRules, val danmaku: LiveDanmakuRules)
+    private fun revision(snapshot: RemoteHookConfigSnapshot) =
+        LiveConfigChannelPolicy.revision(channel, snapshot.generation, snapshot.noRootRevision)
+    private val current = AtomicReference(make(initial.values, revision(initial) ?: 0L,
+        initial.generation, authority.fingerprint))
 
     override fun getBoolean(key: String, defaultValue: Boolean) = current.get().source.getBoolean(key, defaultValue)
     override fun getInt(key: String, defaultValue: Int) = current.get().source.getInt(key, defaultValue)
@@ -34,12 +49,16 @@ internal class LiveHookConfigState(
     @Synchronized fun apply(candidate: RemoteHookConfigSnapshot, identity: PublicationIdentity,
                             installed: Set<String>, mayCommit: () -> Boolean = { true }): LiveApplyReport {
         val previous = current.get()
-        if (!initial.authorized || !candidate.authorized || initial.noRootRevision <= 0 || candidate.noRootRevision <= 0 ||
+        val candidateRevision = revision(candidate) ?: return LiveApplyReport("REJECTED")
+        if (!initial.authorized || !candidate.authorized || revision(initial) == null ||
+            authority.snapshotRevision != initial.generation ||
             candidate.moduleVersionCode != initial.moduleVersionCode || identity.incarnation != authority.incarnation ||
             identity.consentRevision != authority.consentRevision ||
             identity.snapshotRevision != candidate.generation ||
-            candidate.noRootRevision < previous.revision ||
-            candidate.noRootRevision == previous.revision && identity.fingerprint != previous.fingerprint) {
+            identity.snapshotRevision < previous.publicationRevision ||
+            candidateRevision < previous.revision ||
+            (candidateRevision == previous.revision || identity.snapshotRevision == previous.publicationRevision) &&
+                identity.fingerprint != previous.fingerprint) {
             return LiveApplyReport("REJECTED")
         }
         val allowed = mutableSetOf<String>()
@@ -96,17 +115,17 @@ internal class LiveHookConfigState(
         val deferred = (values.keys + candidate.values.keys).count {
             it !in ignored && values[it] != candidate.values[it]
         }
-        val replacement = make(values, candidate.noRootRevision, identity.fingerprint)
+        val replacement = make(values, candidateRevision, identity.snapshotRevision, identity.fingerprint)
         if (!mayCommit()) return LiveApplyReport("REJECTED")
         current.set(replacement)
         return LiveApplyReport(if (applied > 0) "APPLIED" else if (deferred > 0) "RESTART_REQUIRED" else "UNCHANGED",
-            applied, deferred, candidate.noRootRevision)
+            applied, deferred, candidateRevision)
     }
 
-    private fun make(values: Map<String, Any>, revision: Long, fingerprint: String): State {
+    private fun make(values: Map<String, Any>, revision: Long, publicationRevision: Long, fingerprint: String): State {
         val frozen = values.toMap()
         val source = SnapshotHookConfigSource(frozen)
-        return State(source, frozen, revision, fingerprint,
+        return State(source, frozen, revision, publicationRevision, fingerprint,
             LiveHomeRules(if (source.getBoolean(P.HOME_RECOMMEND_TITLE_FILTER_ENABLED, false))
                 RuleSetCodec.parse(source.getString(P.HOME_RECOMMEND_TITLE_FILTER_KEYWORDS, "")) else emptySet(),
                 VideoDurationRange(source.getInt(P.RECOMMEND_VIDEO_MIN_DURATION_SECONDS, 0),
