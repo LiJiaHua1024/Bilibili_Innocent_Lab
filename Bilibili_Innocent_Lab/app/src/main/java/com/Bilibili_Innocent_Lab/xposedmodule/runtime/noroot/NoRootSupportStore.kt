@@ -426,7 +426,45 @@ internal object NoRootSupportStore {
         }
     }
 
-    private fun readSnapshotLocked(context: Context): NoRootConfigSnapshot? {
+    /** 只在原始关闭意图仍有效时修复停用文档；旧版本文件仅提供 revision 下界，不恢复配置。 */
+    @SuppressLint("UseKtx") // 修复完成须同时确认快照和状态持久化，不能丢弃 commit 结果。
+    fun ensureDisabledSnapshot(context: Context): NoRootConfigSnapshot? = synchronized(ioLock) {
+        val stored = prefs(context)
+        if (stored.getBoolean(KEY_DESIRED_ENABLED, false)) return@synchronized null
+        val current = readSnapshotLocked(context)?.takeUnless { it.enabled }
+        val syncRevision = stored.getLong(KEY_SYNC_REVISION, 0L).coerceAtLeast(0L)
+        val heartbeatRevision = stored.getLong(KEY_HEARTBEAT_REVISION, 0L).coerceAtLeast(0L)
+        if (current != null && current.revision == syncRevision && heartbeatRevision == 0L &&
+            stored.getString(KEY_SYNC_STATE, null) in setOf(SyncState.DISABLED.name, SyncState.DISABLE_RESTART_REQUIRED.name)) {
+            return@synchronized current
+        }
+        val previous = readSnapshotLocked(context, currentVersionOnly = false)
+        val lowerBound = maxOf(previous?.revision ?: 0L, syncRevision, heartbeatRevision)
+        val tombstone = current?.takeIf { it.revision >= lowerBound } ?: run {
+            if (lowerBound == Long.MAX_VALUE) return@synchronized null
+            NoRootConfigSnapshot(NoRootConfigSnapshotCodec.CURRENT_SCHEMA_VERSION, SettingsCatalog.CATALOG_VERSION,
+                BuildConfig.APPLICATION_ID, BuildConfig.VERSION_CODE.toLong(), nextRevision(lowerBound),
+                adapterResetRevision(context), false, emptyMap())
+        }
+        if (tombstone !== current && !writeSnapshotLocked(context, tombstone)) return@synchronized null
+        // 新文档必须取得自己的停用确认；保留 disableWasActive，不能把旧 Hook 描述为已退出。
+        val saved = stored.edit()
+            .putString(KEY_SYNC_STATE, SyncState.DISABLE_RESTART_REQUIRED.name)
+            .putLong(KEY_SYNC_REVISION, tombstone.revision)
+            .remove(KEY_SYNC_DETAIL)
+            .remove(KEY_REMOTE_SYNCED_REVISION)
+            .remove(KEY_HEARTBEAT_REVISION)
+            .remove(KEY_HEARTBEAT_MODULE_VERSION)
+            .remove(KEY_HEARTBEAT_TARGET_VERSION)
+            .remove(KEY_HEARTBEAT_TARGET_UPDATE_TIME)
+            .remove(KEY_HEARTBEAT_TARGET_PACKAGE)
+            .remove(KEY_HEARTBEAT_RECEIVED_AT)
+            .remove(KEY_RUNTIME_REPLY_RECEIVED_AT)
+            .commit()
+        tombstone.takeIf { saved }
+    }
+
+    private fun readSnapshotLocked(context: Context, currentVersionOnly: Boolean = true): NoRootConfigSnapshot? {
         val atomicFile = AtomicFile(File(context.filesDir, SNAPSHOT_FILE))
         if (!atomicFile.baseFile.isFile) return null
         val payload = runCatching {
@@ -435,7 +473,7 @@ internal object NoRootSupportStore {
         return NoRootConfigSnapshotCodec.decode(
             payload,
             expectedModulePackage = BuildConfig.APPLICATION_ID,
-            expectedModuleVersionCode = BuildConfig.VERSION_CODE.toLong()
+            expectedModuleVersionCode = if (currentVersionOnly) BuildConfig.VERSION_CODE.toLong() else null
         )
     }
 

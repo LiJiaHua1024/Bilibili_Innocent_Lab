@@ -348,7 +348,11 @@ internal object NoRootSupportController {
         generation: Long,
         deadlineNanos: Long
     ): FlushResult = UserTermsConsentStore.withAuthorityLock {
-        val tombstone = NoRootSupportStore.readSnapshot(appContext)?.takeUnless { it.enabled }
+        if (requestGeneration.get() != generation || NoRootSupportStore.isDesiredEnabled(appContext)) {
+            return@withAuthorityLock FlushResult.FAILED
+        }
+        if (System.nanoTime() >= deadlineNanos) return@withAuthorityLock FlushResult.TIMED_OUT
+        val tombstone = NoRootSupportStore.ensureDisabledSnapshot(appContext)
             ?: return@withAuthorityLock FlushResult.FAILED
         if (System.nanoTime() >= deadlineNanos) return@withAuthorityLock FlushResult.TIMED_OUT
         if (acceptsFlushCompletion(appContext, generation, false, tombstone.revision, true)) {
