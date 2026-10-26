@@ -16,16 +16,12 @@ internal object NPatchStartupHistory {
                     NPatchProcessCodec.decode(bytes.toString(Charsets.UTF_8)).orEmpty()
                 }
             }.getOrDefault(emptyList())
-            val enriched = rows.map { row ->
-                val previous = old.singleOrNull { it.processName == row.processName &&
-                    it.targetUpdateTime == row.targetUpdateTime && it.moduleVersionCode == row.moduleVersionCode }
-                row.copy(startups = NPatchStartupCodec.merge(previous?.startups.orEmpty(), row.startups))
-            }
-            val bytes = NPatchProcessCodec.encode(enriched.map { it.copy(support = NPatchSupportEvidence()) }).toByteArray(Charsets.UTF_8)
+            val update = NPatchStartupHistoryPolicy.merge(old, rows)
+            val bytes = NPatchProcessCodec.encode(update.persisted.map { it.copy(support = NPatchSupportEvidence()) }).toByteArray(Charsets.UTF_8)
             val output = file.startWrite()
             try { output.write(bytes); file.finishWrite(output) }
             catch (failure: Exception) { file.failWrite(output); throw failure }
-            enriched
+            update.current
         }.getOrDefault(rows)
     }
 }
