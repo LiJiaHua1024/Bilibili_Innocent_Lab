@@ -22,7 +22,8 @@ internal class AudioRescueFeatureInstaller(
     private val config: AudioRescueConfig,
     private val debugTrace: Boolean = false,
     private val moduleApk: File? = null,
-    private val hostCodeCache: File? = null
+    private val hostCodeCache: File? = null,
+    private val remoteFile: ((String) -> java.io.InputStream?)? = null
 ) : FeatureInstaller {
     override val id = "player_audio_rescue"
     private class Session(val rate: Int, val channels: Int, val encoding: Int, val config: AudioRescueConfig) {
@@ -50,8 +51,8 @@ internal class AudioRescueFeatureInstaller(
         if (!config.enabled) return FeatureInstallResult.Skipped("disabled")
         if (environment.processName != MAIN_PROCESS && environment.processName != PLAYER_PROCESS)
             return FeatureInstallResult.Skipped("non-main-process")
-        if ((config.noiseReduction || config.voiceFocus) && moduleApk != null && hostCodeCache != null)
-            AudioRescueModel.prepare(moduleApk, hostCodeCache, environment.logInfo)
+        if ((config.noiseReduction || config.voiceFocus) && moduleApk != null && hostCodeCache != null && remoteFile != null)
+            AudioRescueModel.prepare(moduleApk, hostCodeCache, remoteFile, environment.logInfo)
         val int = Int::class.javaPrimitiveType!!
         val signatures = listOf(
             arrayOf(ByteArray::class.java, int, int), arrayOf(ByteArray::class.java, int, int, int),

@@ -3470,7 +3470,8 @@ class HookEntry : XposedModule() {
                     AudioRescueFeatureInstaller(
                         readAudioRescueConfig(prefs), debugTrace = com.Bilibili_Innocent_Lab.xposedmodule.BuildConfig.DEBUG,
                         moduleApk = runCatching { java.io.File(moduleApplicationInfo.sourceDir) }.getOrNull(),
-                        hostCodeCache = attachedContext.codeCacheDir
+                        hostCodeCache = attachedContext.codeCacheDir,
+                        remoteFile = { name -> android.os.ParcelFileDescriptor.AutoCloseInputStream(openRemoteFile(name)) }
                     ),
                     PlayerCodecForceFeatureInstaller(
                         codecPreferenceValue = prefs.getInt(

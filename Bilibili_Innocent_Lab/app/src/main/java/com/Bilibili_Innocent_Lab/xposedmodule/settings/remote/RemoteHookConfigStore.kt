@@ -91,6 +91,10 @@ internal object RemoteHookConfigStore {
     private val operationIds = AtomicLong()
     private val candidates = ServiceCandidateGate<XposedService>()
     private val metadataExecutor = HostReceiptWire.executor("bil-framework-metadata")
+    private val displayMetadataExecutor = HostReceiptWire.executor("bil-framework-description")
+    private val metadataRecovery = java.util.concurrent.ScheduledThreadPoolExecutor(1) { task ->
+        Thread(task, "bil-framework-recovery").apply { isDaemon = true }
+    }.apply { removeOnCancelPolicy = true }
     private val committer = RemoteHookConfigCommitter()
     @Volatile private var connectionId = 0L
     private val observedKeys = RemoteHookConfigContract.hookValueKeys
@@ -159,10 +163,6 @@ internal object RemoteHookConfigStore {
         return publishSnapshotAndNotify(appContext, decision)
     }
 
-    /**
-     * 更新最终用户意图并交给既有单线程发布器合并。条款等待同步、设置变化和服务重连
-     * 都经过同一个队列，避免 Binder/SharedPreferences 并发写入同一远端分组。
-     */
     fun requestDecisionPublish(context: Context, decision: UserTermsDecision) {
         val appContext = context.applicationContext ?: context
         applicationContext = appContext
@@ -347,6 +347,13 @@ internal object RemoteHookConfigStore {
     /** 在已绑定的框架服务上执行一次性操作（如写入远程文件）；未绑定或失败时返回 null。 */
     fun <T> withService(action: (XposedService) -> T): T? = service?.let { runCatching { action(it) }.getOrNull() }
 
+    fun <T> withServiceResult(action: (XposedService) -> T): FrameworkServiceCall<T> {
+        val captured = synchronized(stateLock) { service to frameworkStatus }
+        return callFrameworkService(captured.first, captured.second,
+            isCurrent = { service === captured.first && connectionId == captured.second.connectionId },
+            onDeath = { captured.first?.let(::serviceDied) }, action = action)
+    }
+
     fun status(): ModernFrameworkStatus = frameworkStatus
 
     fun diagnostics(): RemoteHookConfigDiagnostics = publishDiagnostics.copy(
@@ -387,30 +394,17 @@ internal object RemoteHookConfigStore {
                 val arrival = synchronized(stateLock) {
                     candidates.arrive(boundService)
                 }
-                runCatching { metadataExecutor.execute {
-                    val metadata = readModernFrameworkStatus(
-                        readApiVersion = { boundService.apiVersion },
-                        readProperties = { boundService.frameworkProperties },
-                        readName = { boundService.frameworkName },
-                        readVersion = { boundService.frameworkVersion },
-                        readVersionCode = { boundService.frameworkVersionCode })
-                    if (!candidates.matches(boundService, arrival)) return@execute
-                    val newStatus = synchronized(stateLock) {
-                        if (!candidates.matches(boundService, arrival)) null
-                        else if (!metadata.capable && frameworkStatus.capable && service !== boundService) null
-                        else {
-                            if (service !== boundService) connectionId += 1L
-                            service = boundService
-                            metadata.copy(connectionId = connectionId).also { frameworkStatus = it }
-                        }
-                    }
-                    if (newStatus != null) notifyStatusListeners(newStatus)
-                    applicationContext?.let(::requestPublish)
-                } }
+                readServiceCapabilities(boundService, arrival, 0)
             }
 
             override fun onServiceDied(deadService: XposedService) {
-                val disconnected = synchronized(stateLock) {
+                serviceDied(deadService)
+            }
+        })
+    }
+
+    private fun serviceDied(deadService: XposedService) {
+        val disconnected = synchronized(stateLock) {
                     candidates.remove(deadService)
                     if (service !== deadService) {
                         null
@@ -425,9 +419,61 @@ internal object RemoteHookConfigStore {
                         ).also { frameworkStatus = it }
                     }
                 }
-                if (disconnected != null) notifyStatusListeners(disconnected)
+        if (disconnected != null) notifyStatusListeners(disconnected)
+    }
+
+    private fun readServiceCapabilities(bound: XposedService, arrival: Long, attempt: Int) {
+        if (!candidates.matches(bound, arrival)) return
+        fun retry() {
+            if (attempt < 2) metadataRecovery.schedule({ readServiceCapabilities(bound, arrival, attempt + 1) },
+                750L, java.util.concurrent.TimeUnit.MILLISECONDS)
+        }
+        val timeout = metadataRecovery.schedule({
+            val failed = synchronized(stateLock) {
+                if (!candidates.matches(bound, arrival) || frameworkStatus.capable) null
+                else frameworkStatus.copy(failureCode = "framework_metadata_unavailable").also { frameworkStatus = it }
             }
-        })
+            if (failed != null) notifyStatusListeners(failed)
+        }, 2_000L, java.util.concurrent.TimeUnit.MILLISECONDS)
+        runCatching { metadataExecutor.execute {
+            try {
+                if (!candidates.matches(bound, arrival)) return@execute
+                val metadata = readModernFrameworkCapabilities({ bound.apiVersion }, { bound.frameworkProperties })
+                    .withModernFrameworkIdentity { bound.frameworkName }
+                val updated = synchronized(stateLock) {
+                    if (!candidates.matches(bound, arrival) || !metadata.capable && frameworkStatus.capable && service !== bound) null
+                    else {
+                        if (service !== bound) connectionId += 1L
+                        service = bound
+                        metadata.copy(connectionId = connectionId).also { frameworkStatus = it }
+                    }
+                }
+                if (updated != null) {
+                    notifyStatusListeners(updated)
+                    applicationContext?.let(::requestPublish)
+                    if (metadata.failureCode == null) readServiceDescription(bound, arrival, updated)
+                }
+                if (metadata.failureCode != null) retry()
+            } finally { timeout.cancel(false) }
+        } }.onFailure {
+            timeout.cancel(false)
+            Log.w(TAG, "framework metadata queue unavailable")
+            retry()
+        }
+    }
+
+    private fun readServiceDescription(bound: XposedService, arrival: Long, status: ModernFrameworkStatus) {
+        runCatching { displayMetadataExecutor.execute {
+            if (!candidates.matches(bound, arrival)) return@execute
+            val metadata = status.withModernFrameworkVersions({ bound.frameworkVersion }, { bound.frameworkVersionCode })
+            val updated = synchronized(stateLock) {
+                if (!candidates.matches(bound, arrival) || service !== bound || connectionId != status.connectionId ||
+                    frameworkStatus.capable != status.capable || frameworkStatus.apiVersion != status.apiVersion ||
+                    frameworkStatus.properties != status.properties) null
+                else metadata.also { frameworkStatus = it }
+            }
+            if (updated != null) notifyStatusListeners(updated)
+        } }.onFailure { Log.w(TAG, "framework description queue unavailable") }
     }
 
     private fun notifyStatusListeners(status: ModernFrameworkStatus) {
@@ -475,7 +521,7 @@ internal object RemoteHookConfigStore {
                         logFailure(attempt.second)
                         val failure = attempt.second as? RemoteHookConfigPublishResult.Failure
                         if (failure == null || failure.reason !in setOf("Xposed service is not connected",
-                            "Xposed framework metadata is unavailable") && failure.throwable !is android.os.DeadObjectException) break
+                            "Xposed framework metadata is unavailable") && !isFrameworkServiceDeath(failure.throwable)) break
                     }
                 } while (shouldRepeatRemotePublish(
                     dirty = publishDirty.get(),

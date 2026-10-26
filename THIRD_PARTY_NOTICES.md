@@ -11,11 +11,16 @@ Copyright (c) 2024 Rong Xiaobin. MIT license; see
 `third_party/GTCRN-LICENSE.txt`. The streaming spectral contract is adapted with
 a shared complex speech mask applied to the original stereo spectra, causal
 rate conversion and transactional rollback of each track's state.
+The model weights are not included in the APK. They are downloaded or imported
+explicitly by the user and checked against the pinned size and SHA-256.
 ONNX Runtime Android 1.31.0 is provided by Microsoft under the MIT license;
 the versioned upstream texts are preserved as
 `third_party/ONNXRuntime-LICENSE.txt` and
 `third_party/ONNXRuntime-ThirdPartyNotices.txt` from
 https://github.com/microsoft/onnxruntime/tree/v1.31.0.
+Only the Java bridge is packaged in the APK. The native ARM runtime is extracted
+from the user-downloaded original 1.31.0 Android AAR, after archive and individual
+library verification. License notices continue to apply to these optional files.
 
 ## Material Design Icons
 

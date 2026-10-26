@@ -17,6 +17,7 @@ import org.gradle.api.tasks.TaskAction
 import org.gradle.process.ExecOperations
 import javax.inject.Inject
 import java.util.zip.ZipEntry
+import java.util.zip.ZipFile
 import java.util.zip.ZipOutputStream
 import java.time.LocalDateTime
 import java.nio.file.Files
@@ -90,6 +91,28 @@ ${specs.joinToString("\n")}
     }
 }
 """)
+    }
+}
+
+/** Guard the built APK itself, including dependency transitives and all generated asset sources. */
+abstract class VerifyAudioApk : DefaultTask() {
+    @get:InputDirectory @get:org.gradle.api.tasks.PathSensitive(PathSensitivity.RELATIVE)
+    abstract val apkDirectory: DirectoryProperty
+    @TaskAction fun verify() {
+        val apks = apkDirectory.get().asFile.walkTopDown().filter { it.isFile && it.extension == "apk" }.toList()
+        check(apks.isNotEmpty()) { "Audio packaging check found no APK" }
+        for (apk in apks) ZipFile(apk).use { zip ->
+            val forbidden = zip.entries().asSequence().filter { entry ->
+                entry.name.endsWith("/libonnxruntime.so") || entry.name.endsWith("/libonnxruntime4j_jni.so") ||
+                    entry.name.startsWith("assets/audio-rescue/") && entry.name.endsWith(".onnx")
+            }.map { it.name }.toList()
+            check(forbidden.isEmpty()) { "Optional audio payload leaked into APK: $forbidden" }
+            val payloadBytes = zip.entries().asSequence().sumOf { it.compressedSize.coerceAtLeast(0) }
+            check(apk.length() - payloadBytes < 8L * 1024 * 1024) {
+                "APK has excessive unused ZIP space (possibly deleted audio payload from incremental packaging). Remove this variant's APK output and repackage."
+            }
+            logger.lifecycle("Audio packaging verified: ${apk.name} (${apk.length()} bytes), no model/native runtime")
+        }
     }
 }
 
@@ -292,9 +315,8 @@ android {
         "lib/arm64-v8a/libinnocent_frame_interpolation.so",
         "lib/armeabi-v7a/libinnocent_frame_interpolation.so"
     )
-    // Audio runtime verification pins upstream bytes; do not re-strip these already stripped
-    // Maven payloads, or the build would invalidate their content hashes.
-    packaging.jniLibs.keepDebugSymbols += setOf("**/libonnxruntime.so", "**/libonnxruntime4j_jni.so")
+    // Keep ORT's Java bridge in dex; weights and native runtime are verified on-demand downloads.
+    packaging.jniLibs.excludes += setOf("**/libonnxruntime.so", "**/libonnxruntime4j_jni.so")
 
     sourceSets {
         getByName("test") {
@@ -306,6 +328,12 @@ android {
 }
 
 androidComponents.onVariants { variant ->
+    val audioPackaging = tasks.register<VerifyAudioApk>("verify${variant.name.replaceFirstChar { it.uppercase() }}AudioApk") {
+        apkDirectory.set(variant.artifacts.get(SingleArtifact.APK))
+    }
+    tasks.matching { it.name == "assemble${variant.name.replaceFirstChar { it.uppercase() }}" }.configureEach {
+        finalizedBy(audioPackaging)
+    }
     val copiedPayload = layout.buildDirectory.dir("intermediates/frame-native-copy/${variant.name}")
     val sourceKey = providers.provider {
         val digest = MessageDigest.getInstance("SHA-256")

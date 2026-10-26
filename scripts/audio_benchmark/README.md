@@ -22,7 +22,17 @@ uv run --project scripts/audio_benchmark scripts/audio_benchmark/report.py
 
 `measure` 为语音模型实测固定延迟并补偿后计算 SI-SDR / STOI，报告对齐帧数和实际评估帧数；固定 48 kHz 测试集的模型延迟为 1582 帧。语音模型样本的旧版和修订版都评估相同源时间区间（剔除最后 1582 帧），不为各样本单独拟合延迟。原始处理输出保留真实启动静音和末尾延迟。爆音不做延迟或响度归一化，单独报告首段衰减和峰值；缺耳用左右差报告，干净参考为恢复后的双声道，不把恢复第二耳误算为参考失真。`index.html` 支持原始、旧版、桌面修订版、一加实测、干净参考同位置切换，指标和连续 A/B 优先使用一加输出。所有试听统一衰减约 12 dB；可选择匹配人声增益，爆音与缺耳仍保持固定增益。默认不自动播放。
 
-设备测试：按项目说明构建并覆盖安装 Debug 和 AndroidTest 包，把清单中 `.f32` 与 `index.tsv` 放进模块自己的 `files/audio-benchmark/fixtures/`，然后运行：
+2026-10-26 起，APK 不再包含模型权重或 ONNX 原生库。桌面渲染仍使用 `fetch_sources.py` 的固定模型与 `fetch_runtime.py` 的桌面 JAR，不受 Android 下载流程影响。
+
+设备测试前，准备指定版本的两个原始文件，使用以下命令验证并生成设备资源（此命令不联网、不调用 adb）：
+
+```powershell
+uv run --project scripts/audio_benchmark scripts/audio_benchmark/prepare_device_assets.py --model <gtcrn.onnx路径> --runtime <onnxruntime-android-1.31.0.aar路径>
+```
+
+默认生成 `captures/audio-assets/device/` 的五个文件，放到模块私有 `files/audio-benchmark/assets/`。同级 `offline-import/` 保存两份原文件，供设置页手动导入。测试入口只读取这些显式提供且再次校验的文件；不从 APK 读取、不自动下载。首次原生加载仍须在宿主中单独验证。
+
+设备测试：按项目说明构建并覆盖安装 Debug 和 AndroidTest 包，把清单中 `.f32` 与 `index.tsv` 放进模块自己的 `files/audio-benchmark/fixtures/`，把上述五个资源放到 `files/audio-benchmark/assets/`，然后运行：
 
 ```powershell
 adb -s 13a7a291 shell am instrument -w -r -e class 'com.Bilibili_Innocent_Lab.xposedmodule.hook.feature.audio.AudioRescueBenchmarkDeviceTest#renderCorpusAndExerciseAudioTrack' com.Bilibili_Innocent_Lab.xposedmodule.test/androidx.test.runner.AndroidJUnitRunner

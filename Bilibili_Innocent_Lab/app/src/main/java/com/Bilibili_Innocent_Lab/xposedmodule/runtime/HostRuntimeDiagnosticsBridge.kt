@@ -347,7 +347,8 @@ internal object HostRuntimeDiagnosticsBridge {
             capturedAtEpochMs = capturedAtEpochMs.coerceAtLeast(1L),
             processName = HostRuntimeDiagnosticsCodec.TARGET_PACKAGE,
             features = evidence.values.toList(),
-            bootstrap = bootstrap
+            bootstrap = bootstrap,
+            audioModelState = com.Bilibili_Innocent_Lab.xposedmodule.hook.feature.audio.AudioRescueModel.status()
         )
     }
 

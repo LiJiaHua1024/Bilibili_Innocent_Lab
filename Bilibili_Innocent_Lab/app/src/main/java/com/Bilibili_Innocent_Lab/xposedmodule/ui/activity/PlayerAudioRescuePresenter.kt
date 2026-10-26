@@ -83,6 +83,7 @@ private fun MainActivity.showAudioRescueDialog(anchor: View, onSaved: () -> Unit
         updatePadding(horizontal = (12 * density).toInt(), vertical = (14 * density).toInt())
     }
     body.addView(label(R.string.player_audio_scope))
+    addAudioAssetControls(body)
     fun check(key: String, title: Int, tip: Int): CheckBox {
         val control = CheckBox(this).apply {
             text = getString(title)

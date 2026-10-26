@@ -24,7 +24,7 @@ import org.junit.runner.RunWith
 class AudioRescueBenchmarkDeviceTest {
     @Test fun profileStages() {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
-        AudioRescueModel.prepare(File(context.applicationInfo.sourceDir), context.codeCacheDir) { _, line -> report(line) }
+        AudioRescueModel.prepare(File(context.applicationInfo.sourceDir), context.codeCacheDir, { name -> File(context.filesDir, "audio-benchmark/assets/$name").takeIf { it.isFile }?.inputStream() }) { _, line -> report(line) }
         val deadline = System.nanoTime() + 20_000_000_000L
         while (AudioRescueModel.current() == null && System.nanoTime() < deadline) Thread.sleep(25)
         val model = checkNotNull(AudioRescueModel.current())
@@ -59,7 +59,7 @@ class AudioRescueBenchmarkDeviceTest {
         assumeTrue("fixed corpus not pushed", File(source, "index.tsv").isFile)
         val target = File(context.filesDir, "audio-benchmark/device").apply { mkdirs() }
         val start = System.nanoTime()
-        AudioRescueModel.prepare(File(context.applicationInfo.sourceDir), context.codeCacheDir) { key, line ->
+        AudioRescueModel.prepare(File(context.applicationInfo.sourceDir), context.codeCacheDir, { name -> File(context.filesDir, "audio-benchmark/assets/$name").takeIf { it.isFile }?.inputStream() }) { key, line ->
             instrumentation.sendStatus(0, Bundle().apply { putString(key, line) })
         }
         val deadline = System.nanoTime() + 20_000_000_000L

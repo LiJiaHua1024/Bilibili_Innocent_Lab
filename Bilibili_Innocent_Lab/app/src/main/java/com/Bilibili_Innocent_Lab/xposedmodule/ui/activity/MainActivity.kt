@@ -234,6 +234,13 @@ class MainActivity : SkinnedActivity() {
 
     private val homeComponent by lazy { ComponentName(packageName, "${BuildConfig.APPLICATION_ID}.Home") } 
 
+    internal val audioAssetsPicker = registerForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris ->
+        if (uris.isNotEmpty()) {
+            com.Bilibili_Innocent_Lab.xposedmodule.settings.audio.AudioAssetCoordinator.initialize(applicationContext)
+            com.Bilibili_Innocent_Lab.xposedmodule.settings.audio.AudioAssetCoordinator.importFiles(uris)
+        }
+    }
+
     private val settingsBackupLauncher = registerForActivityResult(
         ActivityResultContracts.StartActivityForResult()
     ) { result ->
