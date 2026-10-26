@@ -18,8 +18,8 @@ class CastDanmakuLayoutTest {
         assertEquals(640f, frame.getValue("right").x, .001f)
         assertEquals(440f, frame.getValue("left").x, .001f)
         assertEquals(540f, frame.getValue("top").x, .001f)
-        assertEquals(32.5f, frame.getValue("top").y, .001f)
-        assertEquals(710.25f, frame.getValue("bottom").y, .001f)
+        assertEquals(33f, frame.getValue("top").y, .001f)
+        assertEquals(710f, frame.getValue("bottom").y, .001f)
         assertEquals(setOf("left", "right"), frame(layout, 4001).map { it.text }.toSet())
     }
 
@@ -57,6 +57,39 @@ class CastDanmakuLayoutTest {
         val before = measured
         repeat(3000) { frame(layout, it * 1000L / 30) }
         assertEquals(before, measured)
+    }
+
+    @Test fun `fixed baselines are pixel aligned while horizontal scrolling remains continuous`() {
+        val layout = CastDanmakuLayout(listOf(comment(0, "moving"), comment(0, "bottom", 4)),
+            1280, 532, style) { 200f }
+        val frame = frame(layout, 2347).associateBy { it.text }
+        assertEquals(904.48f, frame.getValue("moving").x, .001f)
+        assertEquals(33f, frame.getValue("moving").y, .001f)
+        assertEquals(522f, frame.getValue("bottom").y, .001f)
+    }
+}
+
+class CastDanmakuTypographyTest {
+    @Test fun `cropped widescreen frames retain the type size of equally wide 16 to 9 frames`() {
+        assertEquals(25f, CastDanmakuTypography.textSize(1280, 532, 1f), .001f)
+        assertEquals(25f, CastDanmakuTypography.textSize(1280, 720, 1f), .001f)
+        assertEquals(37.5f, CastDanmakuTypography.textSize(1920, 800, 1f), .001f)
+        assertEquals(75f, CastDanmakuTypography.textSize(3840, 1600, 1f), .001f)
+    }
+
+    @Test fun `four to three and portrait videos use their fitted screen height`() {
+        assertEquals(25f, CastDanmakuTypography.textSize(960, 720, 1f), .001f)
+        assertEquals(37.5f, CastDanmakuTypography.textSize(1440, 1080, 1f), .001f)
+        assertEquals(25f, CastDanmakuTypography.textSize(405, 720, 1f), .001f)
+        assertEquals(50f, CastDanmakuTypography.textSize(810, 1440, 1f), .001f)
+    }
+
+    @Test fun `user scale is respected without enlarging the video raster`() {
+        assertEquals(12.5f, CastDanmakuTypography.textSize(1280, 532, .5f), .001f)
+        assertEquals(50f, CastDanmakuTypography.textSize(1280, 532, 2f), .001f)
+        assertEquals(8.333333f, CastDanmakuTypography.textSize(426, 240, 1f), .001f)
+        assertTrue(runCatching { CastDanmakuTypography.textSize(0, 720, 1f) }.isFailure)
+        assertTrue(runCatching { CastDanmakuTypography.textSize(1280, 720, Float.NaN) }.isFailure)
     }
 }
 

@@ -21,7 +21,7 @@ import java.util.concurrent.atomic.AtomicBoolean
 internal object CastVideoEncoder {
     fun transcode(video: MediaExtractor, format: MediaFormat, muxer: MediaMuxer, audioTrack: Int,
         audio: MediaExtractor, style: CastDanmakuStyle, comments: List<CastDanmaku>, cancelled: AtomicBoolean,
-        metrics: CastPreparationMetrics, progress: (String) -> Unit) {
+        metrics: CastPreparationMetrics, useRateHint: Boolean = false, progress: (String) -> Unit) {
         val videoStart = System.nanoTime()
         val width = format.getInteger(MediaFormat.KEY_WIDTH); val height = format.getInteger(MediaFormat.KEY_HEIGHT)
         require(width in 16..7680 && height in 16..4320 && width % 2 == 0 && height % 2 == 0)
@@ -29,18 +29,26 @@ internal object CastVideoEncoder {
         // The 8-bit overlay path has no HDR tone mapper; refuse it instead of silently washing out colors.
         require(!format.containsKey(MediaFormat.KEY_HDR_STATIC_INFO) && (!format.containsKey(MediaFormat.KEY_COLOR_TRANSFER) ||
             format.getInteger(MediaFormat.KEY_COLOR_TRANSFER) !in setOf(MediaFormat.COLOR_TRANSFER_ST2084, MediaFormat.COLOR_TRANSFER_HLG))) { "hdr-overlay-not-supported" }
-        val encoder = MediaCodec.createEncoderByType("video/avc")
+        var encoder = MediaCodec.createEncoderByType("video/avc")
         metrics.encoder = encoder.name
         var decoder: MediaCodec? = null
         var render: CastSurface? = null
-        var started = false
+        var drain: CastEncoderDrain? = null
+        var feed: CastDecoderFeed? = null
         var encoderStarted = false
         var decoderStarted = false
         try {
-            val outputFormat = MediaFormat.createVideoFormat("video/avc", width, height).apply {
+            val mime = format.getString(MediaFormat.KEY_MIME) ?: error("missing-video-mime")
+            decoder = MediaCodec.createDecoderByType(mime)
+            val sourceFps = if (format.containsKey(MediaFormat.KEY_FRAME_RATE)) format.getInteger(MediaFormat.KEY_FRAME_RATE).coerceIn(1, 120) else 30
+            val sourceIndex = video.sampleTrackIndex
+            require(sourceIndex >= 0) { "empty-video-track" }
+            val rate = if (useRateHint) CastCodecRatePolicy.requested(sourceFps,
+                rateLimit(checkNotNull(decoder), mime, width, height), rateLimit(encoder, "video/avc", width, height)) else 0f
+            fun outputFormat() = MediaFormat.createVideoFormat("video/avc", width, height).apply {
                 setInteger(MediaFormat.KEY_COLOR_FORMAT, MediaCodecInfo.CodecCapabilities.COLOR_FormatSurface)
                 setInteger(MediaFormat.KEY_BIT_RATE, (width.toLong() * height * 6).coerceIn(2_000_000, 60_000_000).toInt())
-                setInteger(MediaFormat.KEY_FRAME_RATE, if (format.containsKey(MediaFormat.KEY_FRAME_RATE)) format.getInteger(MediaFormat.KEY_FRAME_RATE).coerceIn(1, 120) else 30)
+                setInteger(MediaFormat.KEY_FRAME_RATE, sourceFps)
                 setInteger(MediaFormat.KEY_I_FRAME_INTERVAL, 1)
                 // Offline transcoding has no wall-clock playback deadline; retain the source frame rate/PTS.
                 setInteger(MediaFormat.KEY_PRIORITY, 1)
@@ -48,107 +56,78 @@ internal object CastVideoEncoder {
                     if (format.containsKey(key)) setInteger(key, format.getInteger(key))
                 }
             }
-            require(encoder.codecInfo.getCapabilitiesForType("video/avc").isFormatSupported(outputFormat)) { "encoder-resolution-not-supported" }
-            encoder.configure(outputFormat, null, null, MediaCodec.CONFIGURE_FLAG_ENCODE)
+            require(encoder.codecInfo.getCapabilitiesForType("video/avc").isFormatSupported(outputFormat())) { "encoder-resolution-not-supported" }
+            encoder = configure(encoder, null, MediaCodec.CONFIGURE_FLAG_ENCODE, rate, ::outputFormat) { metrics.encoderRateHint = it }
+            metrics.encoder = encoder.name
+            metrics.width = width; metrics.height = height; metrics.sourceFps = sourceFps
             val surface = CastSurface(encoder.createInputSurface(), width, height, comments, style, metrics, cancelled).also { render = it }
             encoder.start(); encoderStarted = true
-            val codec = MediaCodec.createDecoderByType(format.getString(MediaFormat.KEY_MIME) ?: error("missing-video-mime")).also { decoder = it }
+            val codec = configure(checkNotNull(decoder), surface.decoderSurface, 0, rate, {
+                video.getTrackFormat(sourceIndex).apply { setInteger(MediaFormat.KEY_PRIORITY, 1) }
+            }) { metrics.decoderRateHint = it }.also { decoder = it }
             metrics.decoder = codec.name
-            format.setInteger(MediaFormat.KEY_PRIORITY, 1)
-            codec.configure(format, surface.decoderSurface, null, 0); codec.start(); decoderStarted = true
-            val decoded = MediaCodec.BufferInfo(); val encoded = MediaCodec.BufferInfo()
-            var inputDone = false; var decodeDone = false; var encodeDone = false; var videoTrack = -1
-            var lastProgress = -1L
+            codec.start(); decoderStarted = true
+            val output = CastEncoderDrain(encoder, muxer, audioTrack, audio, cancelled, metrics, progress).also { drain = it }
+            val input = CastDecoderFeed(codec, video, cancelled, metrics).also { feed = it }
+            val decoded = MediaCodec.BufferInfo()
+            var decodeDone = false
             var lastOutput = System.nanoTime()
-            fun drainEncoder(waitUs: Long): Boolean {
-                var advanced = false
-                while (true) {
-                    check(!cancelled.get())
-                    val slot = encoder.dequeueOutputBuffer(encoded, if (advanced) 0 else waitUs)
-                    if (slot == MediaCodec.INFO_TRY_AGAIN_LATER) break
-                    if (slot == MediaCodec.INFO_OUTPUT_FORMAT_CHANGED) {
-                        check(!started)
-                        videoTrack = muxer.addTrack(encoder.outputFormat); muxer.start(); started = true
-                        advanced = true
-                    } else if (slot >= 0) {
-                        try {
-                            if (encoded.flags and MediaCodec.BUFFER_FLAG_CODEC_CONFIG == 0 && encoded.size > 0) {
-                                check(started)
-                                val buffer = checkNotNull(encoder.getOutputBuffer(slot))
-                                buffer.position(encoded.offset); buffer.limit(encoded.offset + encoded.size)
-                                val writeStart = System.nanoTime()
-                                muxer.writeSampleData(videoTrack, buffer, encoded)
-                                metrics.muxWriteNs += System.nanoTime() - writeStart
-                                val seconds = encoded.presentationTimeUs / 1_000_000
-                                if (seconds / 5 != lastProgress) { lastProgress = seconds / 5; progress("已合成 ${seconds} 秒弹幕视频") }
-                            }
-                            encodeDone = encoded.flags and MediaCodec.BUFFER_FLAG_END_OF_STREAM != 0
-                        } finally { encoder.releaseOutputBuffer(slot, false) }
-                        advanced = true; lastOutput = System.nanoTime()
-                        if (encodeDone) break
+            while (!decodeDone) {
+                output.checkHealth(); input.checkHealth()
+                val begin = System.nanoTime()
+                val slot = codec.dequeueOutputBuffer(decoded, 10_000)
+                metrics.codecIdleNs += System.nanoTime() - begin
+                if (slot >= 0) {
+                    val frame = decoded.size > 0
+                    codec.releaseOutputBuffer(slot, frame)
+                    if (frame) {
+                        try { surface.draw(decoded.presentationTimeUs) }
+                        catch (error: Throwable) { output.checkHealth(); input.checkHealth(); throw error }
+                        lastOutput = System.nanoTime()
                     }
-                }
-                return advanced
-            }
-            while (!encodeDone) {
-                check(!cancelled.get())
-                // Drain before swapping another Surface frame so encoder backpressure cannot deadlock EGL.
-                var advanced = drainEncoder(0)
-                if (encodeDone) break
-                var fed = 0
-                while (!inputDone && fed < 8) {
-                    val slot = codec.dequeueInputBuffer(0)
-                    if (slot < 0) break
-                    val buffer = checkNotNull(codec.getInputBuffer(slot)).apply { clear() }
-                    val count = video.readSampleData(buffer, 0)
-                    if (count < 0) { codec.queueInputBuffer(slot, 0, 0, 0, MediaCodec.BUFFER_FLAG_END_OF_STREAM); inputDone = true }
-                    else {
-                        require(count <= buffer.capacity())
-                        codec.queueInputBuffer(slot, 0, count, video.sampleTime, 0); video.advance()
+                    if (decoded.flags and MediaCodec.BUFFER_FLAG_END_OF_STREAM != 0) {
+                        decodeDone = true; encoder.signalEndOfInputStream()
                     }
-                    fed++; advanced = true
-                }
-                if (!decodeDone) {
-                    val slot = codec.dequeueOutputBuffer(decoded, 0)
-                    if (slot >= 0) {
-                        val frame = decoded.size > 0
-                        codec.releaseOutputBuffer(slot, frame)
-                        if (frame) { surface.draw(decoded.presentationTimeUs); lastOutput = System.nanoTime() }
-                        if (decoded.flags and MediaCodec.BUFFER_FLAG_END_OF_STREAM != 0) {
-                            decodeDone = true; encoder.signalEndOfInputStream()
-                        }
-                        advanced = true
-                    } else if (slot == MediaCodec.INFO_OUTPUT_FORMAT_CHANGED) advanced = true
-                }
-                // Wait only when no stage can advance, rather than imposing a blocking input dequeue per frame.
-                if (!advanced) {
-                    val idleStart = System.nanoTime()
-                    drainEncoder(1_000)
-                    metrics.codecIdleNs += System.nanoTime() - idleStart
-                }
-                check(System.nanoTime() - lastOutput < 30_000_000_000L) { "encoder-stalled" }
+                } else if (slot == MediaCodec.INFO_OUTPUT_FORMAT_CHANGED) lastOutput = System.nanoTime()
+                check(System.nanoTime() - lastOutput < 30_000_000_000L) { "decoder-stalled" }
             }
-            metrics.videoNs = System.nanoTime() - videoStart
-            val audioStart = System.nanoTime()
-            val audioBuffer = ByteBuffer.allocateDirect(2 * 1024 * 1024)
-            while (!cancelled.get()) {
-                audioBuffer.clear()
-                val count = audio.readSampleData(audioBuffer, 0)
-                if (count < 0) break
-                require(count <= audioBuffer.capacity())
-                encoded.set(0, count, audio.sampleTime, 0); muxer.writeSampleData(audioTrack, audioBuffer, encoded); audio.advance()
-            }
-            metrics.audioNs = System.nanoTime() - audioStart
-            check(!cancelled.get())
-            val finalizeStart = System.nanoTime()
-            muxer.stop(); started = false
-            metrics.finalizeNs = System.nanoTime() - finalizeStart
+            output.awaitCompletion()
+            metrics.videoNs = System.nanoTime() - videoStart - metrics.finalizeNs
         } finally {
+            feed?.close()
+            drain?.close()
             if (decoderStarted) runCatching { decoder?.stop() }
             runCatching { decoder?.release() }
             if (encoderStarted) runCatching { encoder.stop() }
             runCatching { encoder.release() }; runCatching { render?.close() }
-            if (started) runCatching { muxer.stop() }
+        }
+    }
+
+    private fun rateLimit(codec: MediaCodec, mime: String, width: Int, height: Int): Double? = runCatching {
+        codec.codecInfo.getCapabilitiesForType(mime).videoCapabilities?.getSupportedFrameRatesFor(width, height)?.upper
+    }.getOrNull()
+
+    /** Some vendors reject optional operating-rate hints. Retry a fresh codec with the original format. */
+    private fun configure(initial: MediaCodec, surface: Surface?, flags: Int, rate: Float,
+        format: () -> MediaFormat, selected: (Float) -> Unit): MediaCodec {
+        val name = initial.name
+        try {
+            initial.configure(format().apply { if (rate > 0f) setFloat(MediaFormat.KEY_OPERATING_RATE, rate) }, surface, null, flags)
+            selected(rate)
+            return initial
+        } catch (failure: Exception) {
+            if (rate <= 0f) throw failure
+            initial.release()
+            val retry = MediaCodec.createByCodecName(name)
+            try {
+                retry.configure(format(), surface, null, flags)
+                selected(0f)
+                return retry
+            } catch (retryFailure: Throwable) {
+                runCatching { retry.release() }
+                retryFailure.addSuppressed(failure)
+                throw retryFailure
+            }
         }
     }
 }

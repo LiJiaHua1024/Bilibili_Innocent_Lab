@@ -2,11 +2,15 @@ package com.Bilibili_Innocent_Lab.xposedmodule.lan
 
 import android.graphics.Color
 import android.graphics.Canvas
+import android.graphics.Bitmap
 import android.opengl.EGL14
 import android.opengl.GLES20
+import android.os.Bundle
 import androidx.core.graphics.createBitmap
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import androidx.test.platform.app.InstrumentationRegistry
 import com.Bilibili_Innocent_Lab.xposedmodule.hook.feature.interpolation.FrameGl
+import java.io.File
 import java.nio.ByteBuffer
 import org.junit.Assert.*
 import org.junit.Test
@@ -42,7 +46,7 @@ class CastDanmakuRendererInstrumentedTest {
         GLES20.glClear(GLES20.GL_COLOR_BUFFER_BIT)
     }
 
-    private fun compare(reference: CastDanmakuReferencePainter, time: Long) {
+    private fun compare(reference: CastDanmakuReferencePainter, time: Long, sample: String) {
         val expected = createBitmap(width, height)
         try {
             expected.eraseColor(background)
@@ -52,22 +56,49 @@ class CastDanmakuRendererInstrumentedTest {
             assertEquals(GLES20.GL_NO_ERROR, GLES20.glGetError())
             val baseline = IntArray(width * height)
             expected.getPixels(baseline, 0, width, 0, 0, width, height)
-            var totalError = 0L; var severe = 0; var ink = 0
+            val actual = IntArray(width * height)
+            var totalError = 0L; var severe = 0; var ink = 0; var actualInk = 0; var unionInk = 0
             repeat(height) { y -> repeat(width) { x ->
                 val color = baseline[y * width + x]
                 val offset = ((height - 1 - y) * width + x) * 4
-                val error = abs((pixels.get(offset).toInt() and 255) - Color.red(color)) +
-                    abs((pixels.get(offset + 1).toInt() and 255) - Color.green(color)) +
-                    abs((pixels.get(offset + 2).toInt() and 255) - Color.blue(color))
+                val red = pixels.get(offset).toInt() and 255
+                val green = pixels.get(offset + 1).toInt() and 255
+                val blue = pixels.get(offset + 2).toInt() and 255
+                actual[y * width + x] = Color.rgb(red, green, blue)
+                val error = abs(red - Color.red(color)) + abs(green - Color.green(color)) + abs(blue - Color.blue(color))
                 totalError += error
                 if (error > 96) severe++
-                if (color != background) ink++
+                val expectedHasInk = abs(Color.red(color) - 32) + abs(Color.green(color) - 48) + abs(Color.blue(color) - 64) > 12
+                val actualHasInk = abs(red - 32) + abs(green - 48) + abs(blue - 64) > 12
+                if (expectedHasInk) ink++
+                if (actualHasInk) actualInk++
+                if (expectedHasInk || actualHasInk) unionInk++
             } }
+            capture(sample, expected, actual)
             assertTrue("reference contains visible text", ink > 100)
             // Canvas subpixel rasterization and GLES bilinear translation differ at antialiased edges.
-            assertTrue("mean channel error ${totalError.toDouble() / (width * height * 3)}", totalError < width.toLong() * height * 6)
-            assertTrue("severe pixels $severe", severe < width * height / 50)
+            // Normalize to glyph pixels, not the mostly empty video frame: missing text must fail.
+            val meanError = totalError.toDouble() / (unionInk * 3)
+            val summary = "$sample ink=$ink actualInk=$actualInk union=$unionInk meanChannelError=$meanError severe=$severe"
+            InstrumentationRegistry.getInstrumentation().sendStatus(0, Bundle().apply { putString("castImage", summary) })
+            assertTrue(summary, actualInk in (ink * .75).toInt()..(ink * 1.25).toInt())
+            assertTrue(summary, meanError < 24)
+            assertTrue(summary, severe < unionInk / 3)
         } finally { expected.recycle() }
+    }
+
+    private fun capture(sample: String, expected: Bitmap, actual: IntArray) {
+        if (InstrumentationRegistry.getArguments().getString("castCapture") != "true") return
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val directory = File(context.getExternalFilesDir(null) ?: context.filesDir, "cast-benchmark")
+        check(directory.isDirectory || directory.mkdirs())
+        File(directory, "$sample-canvas.png").outputStream().use { check(expected.compress(Bitmap.CompressFormat.PNG, 100, it)) }
+        val rendered = createBitmap(width, height)
+        try {
+            rendered.setPixels(actual, 0, width, 0, 0, width, height)
+            File(directory, "$sample-gles.png").outputStream().use { check(rendered.compress(Bitmap.CompressFormat.PNG, 100, it)) }
+        } finally { rendered.recycle() }
+        InstrumentationRegistry.getInstrumentation().sendStatus(0, Bundle().apply { putString("castCapture", directory.absolutePath) })
     }
 
     @Test fun cachedSpritesMatchCanvasForChineseColorOpacityModesAndRewind() = withGl {
@@ -79,7 +110,9 @@ class CastDanmakuRendererInstrumentedTest {
         val metrics = CastPreparationMetrics()
         val reference = CastDanmakuReferencePainter(comments, width, height, style)
         CastDanmakuRenderer(comments, width, height, style, metrics).use { renderer ->
-            for (time in listOf(2000L, 3000L, 2000L)) { clear(); renderer.draw(time); compare(reference, time) }
+            for (time in listOf(2000L, 2347L, 3000L, 2000L)) {
+                clear(); renderer.draw(time); compare(reference, time, "modes-$time")
+            }
             val uploads = metrics.textUploads
             repeat(240) { clear(); renderer.draw(2000) }
             assertEquals("same text must not be re-uploaded each frame", uploads, metrics.textUploads)
@@ -96,10 +129,24 @@ class CastDanmakuRendererInstrumentedTest {
         CastDanmakuRenderer(comments, width, height, style, metrics, maxAtlasSide = 256).use { renderer ->
             for (i in 0..20) {
                 val time = i * 5000L + 2000
-                clear(); renderer.draw(time); compare(reference, time)
+                clear(); renderer.draw(time); compare(reference, time, "atlas-$i")
             }
             assertTrue("exercise atlas reuse", metrics.atlasResets > 0)
             assertTrue(metrics.atlasBytes <= 256L * 256 * 4)
+        }
+    }
+
+    @Test fun smallAndLargeStylesKeepOutlinedTextAndUnicodeReadable() = withGl {
+        val comments = listOf(
+            CastDanmaku(0, 1, Color.WHITE, "细节检查：清晰中文 123 ABC café"),
+            CastDanmaku(0, 4, Color.CYAN, "底部：👋🏽 组合字符 e\u0301"),
+            CastDanmaku(100, 5, Color.YELLOW, "描边与透明度"))
+        for ((name, sampleStyle) in listOf("small" to CastDanmakuStyle(scale = .5f, opacity = .2f),
+            "large" to CastDanmakuStyle(scale = 2f, opacity = 1f))) {
+            val reference = CastDanmakuReferencePainter(comments, width, height, sampleStyle)
+            CastDanmakuRenderer(comments, width, height, sampleStyle, CastPreparationMetrics()).use { renderer ->
+                clear(); renderer.draw(2347); compare(reference, 2347, name)
+            }
         }
     }
 }

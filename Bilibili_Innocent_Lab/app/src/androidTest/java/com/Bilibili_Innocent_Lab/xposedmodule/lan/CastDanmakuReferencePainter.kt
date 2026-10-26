@@ -3,12 +3,14 @@ package com.Bilibili_Innocent_Lab.xposedmodule.lan
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
+import kotlin.math.roundToInt
 
 /** Draws into the encoded frames; DLNA receivers need no special subtitle or danmaku implementation. */
 internal class CastDanmakuReferencePainter(comments: List<CastDanmaku>, width: Int, height: Int, style: CastDanmakuStyle) {
     private data class Entry(val value: CastDanmaku, val lane: Int, val width: Float, val lifetime: Long)
     private val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        textSize = 25f * height / 720 * style.scale; typeface = android.graphics.Typeface.DEFAULT_BOLD
+        textSize = 25f * maxOf(width / 1280f, height / 720f) * style.scale
+        typeface = android.graphics.Typeface.DEFAULT_BOLD
     }
     private val line = paint.textSize * 1.3f
     private val width = width.toFloat()
@@ -17,7 +19,7 @@ internal class CastDanmakuReferencePainter(comments: List<CastDanmaku>, width: I
     init {
         val lanes = (height * style.coverage / line).toInt().coerceIn(1, 40)
         val next = Array(4) { LongArray(lanes) }
-        entries = comments.mapNotNull { value ->
+        entries = comments.sortedBy { it.atMs }.mapNotNull { value ->
             val group = when (value.mode) { 4 -> 1; 5 -> 2; 6 -> 3; else -> 0 }
             val lane = next[group].indices.minByOrNull { next[group][it] } ?: return@mapNotNull null
             if (next[group][lane] > value.atMs) return@mapNotNull null
@@ -30,15 +32,15 @@ internal class CastDanmakuReferencePainter(comments: List<CastDanmaku>, width: I
         }
     }
     fun draw(canvas: Canvas, timeMs: Long) {
-        val first = entries.binarySearchBy((timeMs - 60_000).coerceAtLeast(0)) { it.value.atMs }.let { if (it < 0) -it - 1 else it }
-        for (index in first until entries.size) {
-            val entry = entries[index]
+        // Small test fixtures deliberately use a complete scan, independent of production cursor logic.
+        for (entry in entries) {
             val age = timeMs - entry.value.atMs
             if (age < 0) break
             if (age > entry.lifetime) continue
             val x = when (entry.value.mode) { 4, 5 -> (width - entry.width) / 2;
                 6 -> -entry.width + age * width / 8000; else -> width - age * width / 8000 }
-            val y = if (entry.value.mode == 4) canvas.height - line * entry.lane - line * .3f else line * (entry.lane + 1)
+            val y = (if (entry.value.mode == 4) canvas.height - line * entry.lane - line * .3f
+                else line * (entry.lane + 1)).roundToInt().toFloat()
             paint.style = Paint.Style.STROKE; paint.strokeWidth = paint.textSize * .1f; paint.color = Color.BLACK; paint.alpha = alpha
             canvas.drawText(entry.value.text, x, y, paint)
             paint.style = Paint.Style.FILL; paint.color = entry.value.color; paint.alpha = alpha

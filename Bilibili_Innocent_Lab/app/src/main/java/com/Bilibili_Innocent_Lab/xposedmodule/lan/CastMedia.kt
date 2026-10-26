@@ -56,19 +56,24 @@ internal class CastMedia(private val directory: File,
             data class Track(val extractor: MediaExtractor, val index: Int, val format: MediaFormat)
             val videos = ArrayList<Track>(); val audio = ArrayList<Track>()
             val budget = minOf(2L * 1024 * 1024 * 1024, directory.usableSpace / 3)
-            var downloaded = 0L
-            source.urls.distinct().forEachIndexed { index, url ->
-                check(!cancelled.get())
-                progress("正在读取已授权媒体轨道 ${index + 1}/${source.urls.distinct().size}")
-                val input = File(directory, "${output.nameWithoutExtension}-$index.track").also(inputs::add)
-                val downloadStart = System.nanoTime()
-                try {
-                    downloaded += CastMediaFetch(open, cancelled, connections, { code, host ->
+            val sharedBudget = CastDownloadBudget(budget)
+            val space = CastWriteSpace({ directory.usableSpace })
+            val urls = source.urls.distinct()
+            urls.indices.forEach { index -> inputs += File(directory, "${output.nameWithoutExtension}-$index.track") }
+            val downloadStart = System.nanoTime()
+            try {
+                metrics.downloadedBytes = CastParallelTracks.download(urls.size, cancelled, {
+                    connections.forEach { runCatching { it.disconnect() } }
+                }, { complete -> progress("正在并行读取已授权媒体轨道 $complete/${urls.size}") }) { index ->
+                    val url = urls[index]
+                    CastMediaFetch(open, cancelled, connections, { code, host ->
                         android.util.Log.w("BIL-LAN", "media candidate rejected http=$code host=$host")
                     }).download(listOf(url) + source.backups[url].orEmpty(),
-                        source.headers, input, budget - downloaded) { directory.usableSpace > 64L * 1024 * 1024 }
-                    metrics.downloadedBytes = downloaded
-                } finally { metrics.downloadNs += System.nanoTime() - downloadStart }
+                        source.headers, inputs[index], budget, sharedBudget, space::allows)
+                }
+            } finally { metrics.downloadNs = System.nanoTime() - downloadStart }
+            inputs.forEach { input ->
+                check(!cancelled.get())
                 val extractor = MediaExtractor().also(extractors::add)
                 extractor.setDataSource(input.absolutePath)
                 repeat(extractor.trackCount) { index ->
@@ -126,14 +131,15 @@ internal class CastMedia(private val directory: File,
     private fun copy(extractor: MediaExtractor, muxer: MediaMuxer, track: Int) {
         val buffer = ByteBuffer.allocateDirect(8 * 1024 * 1024)
         val info = MediaCodec.BufferInfo()
+        val space = CastWriteSpace({ directory.usableSpace })
         while (!cancelled.get()) {
             buffer.clear()
             val size = extractor.readSampleData(buffer, 0)
             if (size < 0) break
             require(size <= buffer.capacity())
+            require(space.allows(size)) { "insufficient-space" }
             info.set(0, size, extractor.sampleTime, if (extractor.sampleFlags and MediaExtractor.SAMPLE_FLAG_SYNC != 0) MediaCodec.BUFFER_FLAG_KEY_FRAME else 0)
             muxer.writeSampleData(track, buffer, info)
-            require(directory.usableSpace > 64L * 1024 * 1024) { "insufficient-space" }
             extractor.advance()
         }
         check(!cancelled.get())

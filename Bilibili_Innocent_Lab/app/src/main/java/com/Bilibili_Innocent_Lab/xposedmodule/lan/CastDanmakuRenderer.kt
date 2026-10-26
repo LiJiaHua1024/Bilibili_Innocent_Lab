@@ -21,15 +21,19 @@ internal class CastDanmakuRenderer(comments: List<CastDanmaku>, private val widt
     private data class TextKey(val text: String, val color: Int)
     private data class TileKey(val text: TextKey, val x: Int, val y: Int)
     private data class Bounds(val left: Int, val top: Int, val width: Int, val height: Int)
+    private data class Tile(val key: TileKey, val width: Int, val height: Int)
+    private data class Sprite(val box: Bounds, val tiles: Array<Tile>)
     private val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        textSize = 25f * height / 720 * style.scale
+        textSize = CastDanmakuTypography.textSize(width, height, style.scale)
         typeface = Typeface.DEFAULT_BOLD
         strokeWidth = textSize * .1f
     }
     private val alpha = (style.opacity * 255).toInt()
     private val layout = CastDanmakuLayout(comments, width, height, style, paint::measureText)
-    private val bounds = object : LinkedHashMap<TextKey, Bounds>(128, .75f, true) {
-        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<TextKey, Bounds>?) = size > 512
+    // Entries are stable for a composition. Cache their keys and tile descriptions too, rather than
+    // allocating TextKey/TileKey and recalculating bounds for each active comment on every frame.
+    private val sprites = object : LinkedHashMap<CastDanmakuLayout.Entry, Sprite>(128, .75f, true) {
+        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<CastDanmakuLayout.Entry, Sprite>?) = size > 512
     }
     private val scratchBounds = Rect()
     private var texture = 0
@@ -67,54 +71,62 @@ internal class CastDanmakuRenderer(comments: List<CastDanmaku>, private val widt
         GLES20.glEnable(GLES20.GL_BLEND)
         GLES20.glBlendFunc(GLES20.GL_ONE, GLES20.GL_ONE_MINUS_SRC_ALPHA)
         layout.visit(timeMs) { entry, x, baseline ->
-            val key = TextKey(entry.value.text, entry.value.color)
-            val box = bounds.getOrPut(key) {
-                paint.style = Paint.Style.FILL
-                paint.getTextBounds(key.text, 0, key.text.length, scratchBounds)
-                val font = paint.fontMetrics
-                val padding = ceil(paint.strokeWidth / 2).toInt() + 2
-                val left = floor(minOf(0f, scratchBounds.left.toFloat())).toInt() - padding
-                val top = floor(minOf(font.top, scratchBounds.top.toFloat())).toInt() - padding
-                Bounds(left, top, ceil(maxOf(entry.width, scratchBounds.right.toFloat())).toInt() + padding - left,
-                    ceil(maxOf(font.bottom, scratchBounds.bottom.toFloat())).toInt() + padding - top)
-            }
+            val sprite = sprites.getOrPut(entry) { createSprite(entry) }
+            val box = sprite.box
             val left = x + box.left; val top = baseline + box.top
             // Tile long text without splitting Unicode strings/shaping, and upload only visible tiles.
-            var ty = 0
-            while (ty < box.height) {
-                val h = minOf(tileSize, box.height - ty)
-                if (top + ty < height && top + ty + h > 0) {
-                    var tx = 0
-                    while (tx < box.width) {
-                        val w = minOf(tileSize, box.width - tx)
-                        if (left + tx < width && left + tx + w > 0) {
-                            val tileX = tx; val tileY = ty
-                            val region = atlas.obtain(TileKey(key, tx, ty), w + 2, h + 2) { region ->
-                                // One-pixel overlap around each tile preserves bilinear filtering at tile seams.
-                                val bitmap = createBitmap(w + 2, h + 2)
-                                try {
-                                    val canvas = Canvas(bitmap)
-                                    val bx = (1 - box.left - tileX).toFloat(); val by = (1 - box.top - tileY).toFloat()
-                                    paint.style = Paint.Style.STROKE; paint.color = Color.BLACK; paint.alpha = alpha
-                                    canvas.drawText(key.text, bx, by, paint)
-                                    paint.style = Paint.Style.FILL; paint.color = key.color; paint.alpha = alpha
-                                    canvas.drawText(key.text, bx, by, paint)
-                                    GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, texture)
-                                    GLUtils.texSubImage2D(GLES20.GL_TEXTURE_2D, 0, region.x, region.y, bitmap)
-                                    metrics.textUploads++
-                                    metrics.uploadedBytes += bitmap.width.toLong() * bitmap.height * 4
-                                } finally { bitmap.recycle() }
-                            }
-                            quad(left + tx, top + ty, w, h, region)
-                        }
-                        tx += w
+            for (tile in sprite.tiles) {
+                val tx = tile.key.x; val ty = tile.key.y
+                val w = tile.width; val h = tile.height
+                if (left + tx < width && left + tx + w > 0 && top + ty < height && top + ty + h > 0) {
+                    // Construct the Canvas upload closure only on cache misses, not for every moving quad.
+                    val region = atlas[tile.key] ?: atlas.obtain(tile.key, w + 2, h + 2) { region ->
+                        // One-pixel overlap around each tile preserves bilinear filtering at tile seams.
+                        val bitmap = createBitmap(w + 2, h + 2)
+                        try {
+                            val canvas = Canvas(bitmap)
+                            val bx = (1 - box.left - tx).toFloat(); val by = (1 - box.top - ty).toFloat()
+                            paint.style = Paint.Style.STROKE; paint.color = Color.BLACK; paint.alpha = alpha
+                            canvas.drawText(tile.key.text.text, bx, by, paint)
+                            paint.style = Paint.Style.FILL; paint.color = tile.key.text.color; paint.alpha = alpha
+                            canvas.drawText(tile.key.text.text, bx, by, paint)
+                            GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, texture)
+                            GLUtils.texSubImage2D(GLES20.GL_TEXTURE_2D, 0, region.x, region.y, bitmap)
+                            metrics.textUploads++
+                            metrics.uploadedBytes += bitmap.width.toLong() * bitmap.height * 4
+                        } finally { bitmap.recycle() }
                     }
+                    quad(left + tx, top + ty, w, h, region)
                 }
-                ty += h
             }
         }
         flush()
         metrics.atlasResets = atlas.resets
+    }
+
+    private fun createSprite(entry: CastDanmakuLayout.Entry): Sprite {
+        val key = TextKey(entry.value.text, entry.value.color)
+        paint.style = Paint.Style.FILL
+        paint.getTextBounds(key.text, 0, key.text.length, scratchBounds)
+        val font = paint.fontMetrics
+        val padding = ceil(paint.strokeWidth / 2).toInt() + 2
+        val left = floor(minOf(0f, scratchBounds.left.toFloat())).toInt() - padding
+        val top = floor(minOf(font.top, scratchBounds.top.toFloat())).toInt() - padding
+        val box = Bounds(left, top, ceil(maxOf(entry.width, scratchBounds.right.toFloat())).toInt() + padding - left,
+            ceil(maxOf(font.bottom, scratchBounds.bottom.toFloat())).toInt() + padding - top)
+        val tiles = ArrayList<Tile>()
+        var y = 0
+        while (y < box.height) {
+            val h = minOf(tileSize, box.height - y)
+            var x = 0
+            while (x < box.width) {
+                val w = minOf(tileSize, box.width - x)
+                tiles += Tile(TileKey(key, x, y), w, h)
+                x += w
+            }
+            y += h
+        }
+        return Sprite(box, tiles.toTypedArray())
     }
 
     private fun quad(x: Float, y: Float, w: Int, h: Int, region: CastAtlasCache.Region) {

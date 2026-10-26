@@ -13,14 +13,14 @@ class CastMediaFetchTest {
     private val primary = "http://a.bilivideo.com/upgcxcode/42/video.m4s?deadline=123&token=signed"
     private val backup = "https://b.bilivideo.com/upgcxcode/42/video.m4s?deadline=123&token=backup"
     private val headers = mapOf("User-Agent" to "Bilibili Freedoooooom/MarkII", "Referer" to "https://www.bilibili.com/")
-    private class Reply(url: String, private val code: Int, private val bytes: ByteArray,
+    private open class Reply(url: String, private val code: Int, private val bytes: ByteArray,
         private val fields: Map<String, String> = emptyMap()) : HttpURLConnection(URL(url)) {
         var closed = false
         override fun connect() {}
         override fun disconnect() { closed = true }
         override fun usingProxy() = false
         override fun getResponseCode() = code
-        override fun getInputStream() = bytes.inputStream()
+        override fun getInputStream(): java.io.InputStream = bytes.inputStream()
         override fun getContentLengthLong() = fields["Content-Length"]?.toLong() ?: bytes.size.toLong()
         override fun getHeaderField(name: String) = fields.entries.firstOrNull { it.key.equals(name, true) }?.value
     }
@@ -93,5 +93,59 @@ class CastMediaFetchTest {
         assertTrue(runCatching { CastMediaFetch({ opened = true; error("must-not-open") }, AtomicBoolean(true), linkedSetOf())
             .download(listOf(primary), headers, folder.newFile(), 100) { true } }.isFailure)
         assertFalse(opened)
+    }
+    @Test fun `failed candidate releases its partial bytes before a backup consumes the shared budget`() {
+        val first = Reply(primary, 200, "abc".toByteArray(), mapOf("Content-Length" to "6"))
+        val second = Reply(backup, 200, "abcdef".toByteArray())
+        val budget = CastDownloadBudget(6)
+        val file = folder.newFile()
+        val fetch = CastMediaFetch({ if (it == primary) first else second }, AtomicBoolean(false), linkedSetOf())
+        assertEquals(6L, fetch.download(listOf(primary, backup), headers, file, 6, budget) { true })
+        assertEquals("abcdef", file.readText())
+        assertTrue(runCatching { budget.acquire(1) }.isFailure)
+    }
+    @Test fun `separate tracks share one quota and a rejected track cannot erase the successful claim`() {
+        val budget = CastDownloadBudget(8)
+        val fetch = CastMediaFetch({ Reply(it, 200, "track".toByteArray()) }, AtomicBoolean(false), linkedSetOf())
+        val first = folder.newFile(); val second = folder.newFile()
+        assertEquals(5L, fetch.download(listOf(primary), headers, first, 8, budget) { true })
+        val failure = runCatching { fetch.download(listOf(backup), headers, second, 8, budget) { true } }.exceptionOrNull()
+        assertEquals("media-budget-exceeded", failure?.message)
+        assertEquals("track", first.readText()); assertFalse(second.exists())
+        budget.acquire(3)
+        assertTrue(runCatching { budget.acquire(1) }.isFailure)
+    }
+    @Test fun `failed partial cleanup retains quota and stops before the backup`() {
+        val budget = CastDownloadBudget(6)
+        var opened = 0; var removals = 0
+        val file = folder.newFile()
+        val fetch = CastMediaFetch({ opened++; Reply(it, 200, "abc".toByteArray(), mapOf("Content-Length" to "6")) },
+            AtomicBoolean(false), linkedSetOf(), removePartial = { removals++; false })
+        val failure = runCatching { fetch.download(listOf(primary, backup), headers, file, 6, budget) { true } }.exceptionOrNull()
+        assertTrue(failure is MediaCleanupFailure)
+        assertEquals(1, opened); assertEquals(1, removals); assertEquals("abc", file.readText())
+        budget.acquire(3)
+        assertTrue(runCatching { budget.acquire(1) }.isFailure)
+    }
+    @Test fun `cancellation discards partial bytes and never starts a backup`() {
+        val cancelled = AtomicBoolean(false)
+        var opened = 0
+        val reply = object : Reply(primary, 200, ByteArray(6)) {
+            override fun getInputStream() = object : java.io.InputStream() {
+                var reads = 0
+                override fun read(): Int = error("bulk reads expected")
+                override fun read(bytes: ByteArray, offset: Int, length: Int): Int {
+                    if (++reads == 2) cancelled.set(true)
+                    bytes.fill(1, offset, offset + 3)
+                    return 3
+                }
+            }
+        }
+        val budget = CastDownloadBudget(6)
+        val file = folder.newFile()
+        val fetch = CastMediaFetch({ opened++; reply }, cancelled, linkedSetOf())
+        assertTrue(runCatching { fetch.download(listOf(primary, backup), headers, file, 6, budget) { true } }.isFailure)
+        assertEquals(1, opened); assertTrue(reply.closed); assertFalse(file.exists())
+        budget.acquire(6)
     }
 }

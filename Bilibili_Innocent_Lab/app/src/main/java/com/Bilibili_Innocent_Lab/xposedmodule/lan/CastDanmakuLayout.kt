@@ -1,10 +1,21 @@
 package com.Bilibili_Innocent_Lab.xposedmodule.lan
 
+import kotlin.math.roundToInt
+
+/** Keep the same apparent type size when fitting wide, 4:3 or portrait content into a 16:9 TV. */
+internal object CastDanmakuTypography {
+    fun textSize(width: Int, height: Int, scale: Float): Float {
+        require(width > 0 && height > 0 && scale.isFinite() && scale > 0)
+        // Cropped cinemascope frames have fewer rows, but occupy the same screen width as 16:9 video.
+        return 25f * maxOf(width / 1280f, height / 720f) * scale
+    }
+}
+
 /** Media-time layout, independent of Canvas/GLES. Advancing a frame visits only active comments. */
 internal class CastDanmakuLayout(comments: List<CastDanmaku>, private val width: Int,
     private val height: Int, style: CastDanmakuStyle, measure: (String) -> Float) {
     data class Entry(val value: CastDanmaku, val lane: Int, val width: Float, val lifetime: Long)
-    private val line = 25f * height / 720 * style.scale * 1.3f
+    private val line = CastDanmakuTypography.textSize(width, height, style.scale) * 1.3f
     private val entries: List<Entry>
     private val active = ArrayList<Entry>()
     private var cursor = 0
@@ -54,7 +65,9 @@ internal class CastDanmakuLayout(comments: List<CastDanmaku>, private val width:
                 else -> width - age * width / 8000f
             }
             val y = if (entry.value.mode == 4) height - line * entry.lane - line * .3f else line * (entry.lane + 1)
-            draw(entry, x, y)
+            // Vertical positions never animate: pixel alignment avoids an extra bilinear blur of every glyph.
+            // Horizontal positions remain fractional so scrolling does not turn into visible pixel steps.
+            draw(entry, x, y.roundToInt().toFloat())
             index++
         }
         previousTime = timeMs
@@ -69,6 +82,8 @@ internal class CastAtlasCache<K>(val side: Int, private val beforeReset: () -> U
     var resets = 0; private set
     val size get() = regions.size
     init { require(side >= 4) }
+
+    operator fun get(key: K): Region? = regions[key]
 
     fun obtain(key: K, width: Int, height: Int, upload: (Region) -> Unit): Region {
         require(width in 1..side && height in 1..side)
