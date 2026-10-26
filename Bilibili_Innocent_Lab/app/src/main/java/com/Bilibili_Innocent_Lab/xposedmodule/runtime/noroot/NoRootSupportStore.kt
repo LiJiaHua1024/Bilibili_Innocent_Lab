@@ -6,9 +6,8 @@ import android.content.SharedPreferences
 import android.util.AtomicFile
 import androidx.core.content.edit
 import com.Bilibili_Innocent_Lab.xposedmodule.BuildConfig
-import com.Bilibili_Innocent_Lab.xposedmodule.settings.backup.SettingValue
 import com.Bilibili_Innocent_Lab.xposedmodule.settings.backup.SettingsCatalog
-import com.Bilibili_Innocent_Lab.xposedmodule.settings.backup.ModuleSettingsStore
+import com.Bilibili_Innocent_Lab.xposedmodule.settings.remote.RemoteHookConfigContract
 import com.highcapable.betterandroid.system.extension.component.versionCodeCompat
 import java.io.File
 import kotlin.math.max
@@ -348,19 +347,7 @@ internal object NoRootSupportStore {
         bridge: SharedPreferences
     ): NoRootConfigSnapshot? = synchronized(ioLock) {
         if (!isDesiredEnabled(context)) return@synchronized null
-        val settingsStore = ModuleSettingsStore(bridge)
-        val values = linkedMapOf<String, Any>()
-        SettingsCatalog.specs.forEach { spec ->
-            val storedValue = settingsStore.read(spec).value
-            // 与备份协议采用同一兼容语义：离散旧值回落默认、连续范围收敛；
-            // 无法可靠解释的损坏值也只在快照中回落，不反向改写用户原 prefs。
-            val value = spec.normalizeForBackup(storedValue) ?: spec.defaultValue
-            values[spec.storageKey] = when (value) {
-                is SettingValue.Bool -> value.value
-                is SettingValue.IntValue -> value.value
-                is SettingValue.Text -> value.value
-            }
-        }
+        val values = snapshotValues(bridge)
         val previous = readSnapshotLocked(context)
         val draft = NoRootConfigSnapshot(
             schemaVersion = NoRootConfigSnapshotCodec.CURRENT_SCHEMA_VERSION,
@@ -381,6 +368,15 @@ internal object NoRootSupportStore {
         clearHeartbeat(context)
         prefs(context).edit { remove(KEY_REMOTE_SYNCED_REVISION) }
         resolved
+    }
+
+    /** 与标准发布共用类型回落及旧键迁移，单次读取避免混合批量修改前后的配置。 */
+    internal fun snapshotValues(bridge: SharedPreferences): Map<String, Any> {
+        val normalized = RemoteHookConfigContract.resolveSourceValues(bridge.all)
+        // 运行时凭据继续只在发布时合并；免 Root 文件仍只包含可备份设置。
+        return SettingsCatalog.specs.associateTo(linkedMapOf()) { spec ->
+            spec.storageKey to normalized.getValue(spec.storageKey)
+        }
     }
 
     fun readSnapshot(context: Context): NoRootConfigSnapshot? = synchronized(ioLock) {
