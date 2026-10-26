@@ -150,11 +150,7 @@ internal fun MainActivity.showRestartConfirmDialog(anchor: View? = null, resumeN
                 route == RestartRoute.ROOT -> R.string.restart_root_button
                 else -> R.string.shizuku_restart_button
             })
-            button.isEnabled = !checking && when (route) {
-                RestartRoute.ROOT -> true
-                RestartRoute.SHIZUKU -> shizuku?.recommended == true
-                else -> false
-            }
+            button.isEnabled = canOpenRestartControls(checking, route, shizuku)
             styleRestartActionButton(button, !checking && isPrimary && snapshot.preferred == route)
             button.alpha = if (button.isEnabled) 1f else 0.38f
         }
