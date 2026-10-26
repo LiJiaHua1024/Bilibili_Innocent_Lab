@@ -55,9 +55,18 @@ internal class PrivacyFeatureRuntime(
             else if (env.processName != "tv.danmaku.bili") FeatureInstallResult.Skipped("non-main-process")
             else {
                 val host = PrivacyHostAccess(requireNotNull(env.classLoader))
-                val accounts = host.type("com.bilibili.lib.accounts.BiliAccounts")
-                val get = requireNotNull(Lookup.methodOrNull(accounts, "get", classOf<Context>())) { "accounts-get-context" }
-                val login = requireNotNull(Lookup.methodOrNull(accounts, "isLogin")) { "accounts-is-login" }
+                // Account state (login flag) is the gate every guest sub-feature reads. It must
+                // resolve before anything runs; a host build without it skips guest browsing cleanly
+                // (not-applicable-host) rather than throwing mid-way. BiliAccounts.get(Context)/isLogin
+                // are stable, un-obfuscated names across all supported host builds.
+                val accounts = PrivacyStructuralResolver.type(host.loader, "com.bilibili.lib.accounts.BiliAccounts")
+                val get = accounts?.let { PrivacyStructuralResolver.method(it, "get", classOf<Context>()) }
+                val login = accounts?.let { PrivacyStructuralResolver.method(it, "isLogin") }
+                if (get == null || login == null) {
+                    env.reportRuntimeEvidence("guest_browsing", FeatureRuntimeStage.ADAPTED)
+                    env.reportStatus("guest_browsing_status", "not-applicable-host:account-state")
+                    return@FunctionalFeatureInstaller FeatureInstallResult.Skipped("missing-host-structure")
+                }
                 val guest = { incognito || login.invoke(get.invoke(null, context)) == false }
                 val library = GuestLibraryRuntime(context, incognito, guest) {
                     env.reportRuntimeEvidence("guest_browsing", FeatureRuntimeStage.ERROR)
@@ -106,7 +115,7 @@ internal class PrivacyFeatureRuntime(
      */
     private fun prepareAccountIsolation(env: HookEnvironment, session: IncognitoSession): (() -> Int)? = runCatching {
         val host = PrivacyHostAccess(requireNotNull(env.classLoader))
-        val reg = mutableListOf<() -> Unit>()
+        val plan = PrivacyInstallPlan()
         var count = 0
         val accounts = host.type("com.bilibili.lib.accounts.BiliAccounts")
         val values: Map<String, Any?> = mapOf(
@@ -118,14 +127,14 @@ internal class PrivacyFeatureRuntime(
         )
         values.forEach { (name, value) ->
             val m = requireNotNull(Lookup.methodOrNull(accounts, name))
-            reg += { env.registrar.exact("incognito.account.$name", accounts, name, *m.parameterTypes) { before { result = value } } }
+            plan.step { env.registrar.exact("incognito.account.$name", accounts, name, *m.parameterTypes) { before { result = value } } }
             count++
         }
         // Guest responses must never expire/revoke the real account persisted before the session.
         Lookup.declaredMethods(accounts) { it.returnType == Void.TYPE &&
             it.name in setOf("logout", "logoutByUser", "clearAccessToken", "clearAccessTokenByAuthJsb",
                 "clearAccessTokenModel", "clearFastLogin", "signedInWithToken") }.forEach { m ->
-            reg += { env.registrar.exact("incognito.account.preserve.${m.name}.${m.parameterCount}", accounts, m.name, *m.parameterTypes) {
+            plan.step { env.registrar.exact("incognito.account.preserve.${m.name}.${m.parameterCount}", accounts, m.name, *m.parameterTypes) {
                 before { result = null }
             } }
             count++
@@ -135,7 +144,7 @@ internal class PrivacyFeatureRuntime(
             Lookup.declaredMethods(owner) { it.returnType == classOf<String>() && it.parameterCount == 0 &&
                 it.name in setOf("getBuvid", "getLocalBuvid", "getRemoteBuvid", "softGetBuvid",
                     "getFpLocal", "getFpRemote", "getFp", "getSessionId", "getGuestId", "getAccessKey") }.forEach { m ->
-                reg += { env.registrar.exact("incognito.identity.$ownerName.${m.name}", owner, m.name) {
+                plan.step { env.registrar.exact("incognito.identity.$ownerName.${m.name}", owner, m.name) {
                     before {
                         result = when (m.name) {
                             "getAccessKey" -> ""
@@ -151,7 +160,7 @@ internal class PrivacyFeatureRuntime(
         for (name in listOf("com.bilibili.api.PhoneDeviceId", "com.bilibili.api.DisplayID")) {
             val owner = host.type(name)
             requireNotNull(Lookup.methodOrNull(owner, "get"))
-            reg += { env.registrar.exact("incognito.identity.$name", owner, "get") {
+            plan.step { env.registrar.exact("incognito.identity.$name", owner, "get") {
                 before { result = session.identity()!!.buvid }
             } }
             count++
@@ -169,7 +178,7 @@ internal class PrivacyFeatureRuntime(
             val builderType = requireNotNull(Lookup.methodOrNull(msg, "newBuilder")).returnType
             setters.forEach { (setter, fingerprint) ->
                 val m = Lookup.methodOrNull(builderType, setter, classOf<String>()) ?: return@forEach
-                reg += { env.registrar.exact("incognito.metadata.$msgName.$setter", builderType, m.name, *m.parameterTypes) {
+                plan.step { env.registrar.exact("incognito.metadata.$msgName.$setter", builderType, m.name, *m.parameterTypes) {
                     before { args[0] = if (fingerprint) session.identity()!!.buvid else "" }
                 } }
                 count++
@@ -182,7 +191,7 @@ internal class PrivacyFeatureRuntime(
             val stringFactories = mapOf("l" to { "" }, "a" to { session.identity()!!.buvid })
                 .filterKeys { Lookup.methodOrNull(metadataFactory, it) != null }
             stringFactories.forEach { (method, value) ->
-                reg += { env.registrar.exact("incognito.rpc.identity.$method", metadataFactory, method) {
+                plan.step { env.registrar.exact("incognito.rpc.identity.$method", metadataFactory, method) {
                     before { result = value() }
                 } }
                 count++
@@ -192,7 +201,7 @@ internal class PrivacyFeatureRuntime(
                 "m" to "com.bapis.bilibili.metadata.device.Device")) {
                 if (Lookup.methodOrNull(metadataFactory, method) == null) continue
                 val type = host.type(typeName)
-                reg += { env.registrar.exact("incognito.rpc.metadata.$method", metadataFactory, method) {
+                plan.step { env.registrar.exact("incognito.rpc.metadata.$method", metadataFactory, method) {
                     after {
                         if (hasThrowable) return@after
                         val bytes = result as? ByteArray
@@ -230,7 +239,7 @@ internal class PrivacyFeatureRuntime(
         val recent = classOf<android.provider.SearchRecentSuggestions>()
 
         return@runCatching {
-            reg.forEach { it() }
+            plan.apply()
             count += telemetryApply()
             env.registrar.exact("incognito.search.query", provider, "query", classOf<android.net.Uri>(),
                 classOf<Array<String>>(), classOf<String>(), classOf<Array<String>>(), classOf<String>()) {
