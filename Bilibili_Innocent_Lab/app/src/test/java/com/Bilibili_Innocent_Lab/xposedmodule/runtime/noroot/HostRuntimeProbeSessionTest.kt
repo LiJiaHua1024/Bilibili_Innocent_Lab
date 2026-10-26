@@ -8,6 +8,33 @@ class HostRuntimeProbeSessionTest {
     private val deliveries = mutableListOf<() -> Unit>()
     private val session = HostRuntimeProbeSession({ now }) { deliveries += it }
 
+    @Test fun anExpiredPositiveReplySettlesAllObserversOnceWithoutWaitingForTheTimer() {
+        val results = mutableListOf<HostRuntimeProbeStatus>()
+        session.request("resume", false, 1_500, results::add)
+        now = 100
+        session.request("verify", true, 15_000, results::add)
+        now = 15_101
+        assertEquals(HostRuntimeProbeTracker.ReplyResult.REJECTED, session.onReply("resume", true))
+        assertEquals(HostRuntimeProbeStatus.NOT_RUNNING, session.status)
+        assertFalse(session.hasPendingRequest)
+        assertFalse(session.onTimeout("resume"))
+        assertEquals(HostRuntimeProbeTracker.ReplyResult.REJECTED, session.onReply("resume", true))
+        drain()
+        assertEquals(listOf(HostRuntimeProbeStatus.NOT_RUNNING, HostRuntimeProbeStatus.NOT_RUNNING), results)
+    }
+
+    @Test fun anExpiredNegativeReplyCannotChangeAnOrdinaryTimeoutIntoAVerifiedFailure() {
+        val results = mutableListOf<HostRuntimeProbeStatus>()
+        session.request("resume", false, 1_500, results::add)
+        now = 1_500
+        assertEquals(HostRuntimeProbeTracker.ReplyResult.REJECTED, session.onReply("resume", false))
+        assertEquals(HostRuntimeProbeStatus.UNCONFIRMED, session.status)
+        assertFalse(session.hasPendingRequest)
+        assertFalse(session.onTimeout("resume"))
+        drain()
+        assertEquals(listOf(HostRuntimeProbeStatus.UNCONFIRMED), results)
+    }
+
     @Test fun explicitVerificationUpgradesAResumeProbeAndKeepsBothCallbacks() {
         val results = mutableListOf<Pair<String, HostRuntimeProbeStatus>>()
         val resume = session.request("resume", false, 1_500) { results += "resume" to it }
@@ -80,6 +107,7 @@ class HostRuntimeProbeSessionTest {
         assertEquals(HostRuntimeProbeTracker.ReplyResult.REJECTED, session.onReply("expired", true))
         assertFalse(session.onTimeout("expired"))
         assertTrue(session.isPending("current"))
+        assertTrue(session.hasPendingRequest)
         session.onHeartbeat()
         drain()
         assertEquals(listOf("expired" to HostRuntimeProbeStatus.UNCONFIRMED,

@@ -74,7 +74,7 @@ internal class HostRuntimeProbeTracker(private val now: () -> Long) {
      * 回执/心跳或超时结算，避免宿主启动途中的瞬时回执被误判为“未生效”。
      */
     fun onReply(nonce: String, hooksInstalled: Boolean): ReplyResult {
-        if (nonce != pendingNonce) return ReplyResult.REJECTED
+        if (nonce != pendingNonce || now() >= pendingDeadline) return ReplyResult.REJECTED
         if (!hooksInstalled) {
             aliveWithoutHooks = true
             return ReplyResult.PENDING

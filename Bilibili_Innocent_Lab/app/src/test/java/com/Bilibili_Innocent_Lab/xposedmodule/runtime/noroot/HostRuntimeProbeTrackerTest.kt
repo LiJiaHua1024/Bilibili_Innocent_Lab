@@ -12,6 +12,27 @@ class HostRuntimeProbeTrackerTest {
     private var now = 0L
     private val tracker = HostRuntimeProbeTracker { now }
 
+    @Test fun expiredRepliesAreRejectedBeforeTheDelayedTimerRunsWithoutChangingTimeoutEvidence() {
+        for (verify in listOf(false, true)) for (installed in listOf(false, true)) for (offset in listOf(0L, 1L)) {
+            var time = 0L
+            val current = HostRuntimeProbeTracker { time }
+            val timeout = if (verify) 15_000L else 1_500L
+            assertTrue(current.begin("request", verify, timeout))
+            time = timeout + offset
+            assertEquals(ReplyResult.REJECTED, current.onReply("request", installed))
+            assertEquals(if (verify) HostRuntimeProbeStatus.NOT_RUNNING else HostRuntimeProbeStatus.UNCONFIRMED,
+                current.onTimeout("request"))
+        }
+    }
+
+    @Test fun aReplyImmediatelyBeforeTheDeadlineStillConfirms() {
+        tracker.begin("request", true, 15_000)
+        now = 14_999
+        assertEquals(ReplyResult.CONFIRMED, tracker.onReply("request", true))
+        now = 15_000
+        assertNull(tracker.onTimeout("request"))
+    }
+
     @Test
     fun `a plain probe that times out stays unconfirmed`() {
         assertTrue(tracker.begin("nonce-1", verify = false, timeoutMs = 1_500L))

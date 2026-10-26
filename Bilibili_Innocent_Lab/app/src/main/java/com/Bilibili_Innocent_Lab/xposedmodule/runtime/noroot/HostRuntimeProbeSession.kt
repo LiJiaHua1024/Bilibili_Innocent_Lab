@@ -8,6 +8,7 @@ internal class HostRuntimeProbeSession(now: () -> Long, private val deliver: (()
     private var pendingNonce: String? = null
     private val callbacks = mutableListOf<(HostRuntimeProbeStatus) -> Unit>()
     val status: HostRuntimeProbeStatus get() = tracker.status
+    val hasPendingRequest: Boolean get() = pendingNonce != null
 
     fun request(nonce: String, verify: Boolean, timeoutMs: Long,
                 callback: (HostRuntimeProbeStatus) -> Unit): Request {
@@ -25,7 +26,12 @@ internal class HostRuntimeProbeSession(now: () -> Long, private val deliver: (()
 
     fun onReply(nonce: String, hooksInstalled: Boolean): HostRuntimeProbeTracker.ReplyResult =
         tracker.onReply(nonce, hooksInstalled).also {
-            if (it == HostRuntimeProbeTracker.ReplyResult.CONFIRMED) settle(HostRuntimeProbeStatus.CONFIRMED)
+            when (it) {
+                HostRuntimeProbeTracker.ReplyResult.CONFIRMED -> settle(HostRuntimeProbeStatus.CONFIRMED)
+                // 计时任务可能还未运行；拒绝过期回执的同时按原有超时语义结算每个回调。
+                HostRuntimeProbeTracker.ReplyResult.REJECTED -> onTimeout(nonce)
+                HostRuntimeProbeTracker.ReplyResult.PENDING -> Unit
+            }
         }
 
     fun onHeartbeat() {

@@ -66,7 +66,11 @@ internal object HostRuntimeProbeClient {
     fun onHostReply(nonce: String, hooksInstalled: Boolean): Boolean {
         synchronized(lock) {
             when (session.onReply(nonce, hooksInstalled)) {
-                HostRuntimeProbeTracker.ReplyResult.REJECTED -> return false
+                HostRuntimeProbeTracker.ReplyResult.REJECTED -> {
+                    // 过期回执已结算窗口；旧 nonce 被拒时，不能取消另一个仍有效窗口的计时。
+                    if (!session.hasPendingRequest) cancelTimeoutLocked()
+                    return false
+                }
                 HostRuntimeProbeTracker.ReplyResult.PENDING -> Unit
                 HostRuntimeProbeTracker.ReplyResult.CONFIRMED ->
                     cancelTimeoutLocked()
