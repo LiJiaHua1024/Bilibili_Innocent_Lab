@@ -9,14 +9,22 @@ import java.util.concurrent.atomic.AtomicBoolean
 
 /** Stop producers before Neurons can persist a queue for replay outside the session. */
 internal class IncognitoTelemetryHooks(private val session: IncognitoSession) {
-    fun install(env: HookEnvironment): Int {
+    /** Resolve Neurons producers first; a missing anchor returns null so the whole feature can skip. */
+    fun prepare(env: HookEnvironment): (() -> Int)? = runCatching {
         val owner = PrivacyHostAccess(requireNotNull(env.classLoader))
             .type("com.bilibili.lib.neuron.api.Neurons")
-        val evidence = AtomicBoolean()
         val producers = Lookup.declaredMethods(owner) {
             it.returnType == Void.TYPE && (it.name.startsWith("report") || it.name.startsWith("track"))
         }
         require(producers.any { it.name == "trackT" } && producers.any { it.name == "reportClick" })
+        return@runCatching { applyProducers(env, owner, producers) }
+    }.getOrNull()
+
+    fun install(env: HookEnvironment): Int =
+        prepare(env)?.invoke() ?: error("Neurons telemetry anchors unavailable")
+
+    private fun applyProducers(env: HookEnvironment, owner: Class<*>, producers: List<java.lang.reflect.Method>): Int {
+        val evidence = AtomicBoolean()
         for (method in producers) {
             env.registrar.exact("incognito.neurons.${method.name}.${method.parameterTypes.joinToString { it.name }}",
                 owner, method.name, *method.parameterTypes) {

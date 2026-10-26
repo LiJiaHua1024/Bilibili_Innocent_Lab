@@ -13,6 +13,9 @@ import java.util.concurrent.ConcurrentHashMap
 /** Chromium bypasses the host OkHttp boundary and can reuse the real profile's cookies.
  * Until it has an independently verified ephemeral profile adapter, embedded pages stay offline. */
 internal class IncognitoWebHooks {
+    /** WebView anchors are platform classes present on every supported API; prepare never fails. */
+    fun prepare(env: HookEnvironment): (() -> Int) = { install(env) }
+
     fun install(env: HookEnvironment): Int {
         val configuredTypes = ConcurrentHashMap.newKeySet<Class<*>>()
         fun settings(target: Any) {
