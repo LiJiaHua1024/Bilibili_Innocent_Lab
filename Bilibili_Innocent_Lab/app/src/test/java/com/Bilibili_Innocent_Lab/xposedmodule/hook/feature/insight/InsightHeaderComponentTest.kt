@@ -13,7 +13,7 @@ interface InsightEntryFixture { fun getRoot(): View }
 
 class InsightHeaderComponentTest {
     private fun header() = InsightHeaderComponent(InsightComponentFixture::class.java, InsightEntryFixture::class.java,
-        Unit, { error("No Android view needed for the component contract") }, {}).value
+        Unit, { error("No Android view needed for the component contract") }, bind = {}).value
     @Test fun `native adapter updates preserve every original item and insert exactly one module header`() {
         val first = Any(); val second = Any(); val older = header(); val current = header()
         val original = listOf(first, older, second)

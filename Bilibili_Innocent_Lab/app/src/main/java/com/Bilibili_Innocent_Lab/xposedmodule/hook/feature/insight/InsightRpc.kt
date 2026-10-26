@@ -41,14 +41,19 @@ internal object InsightRpc {
         // 通用 KotlinMossChannel 的变换器只接收响应；这里需要请求 CID，复用它的 codec/代理边界并按单次调用捕获。
         val kotlinName = KotlinMossBridgeMembers.kotlinMossClassName(mossName) ?: return count
         val kotlin = Lookup.classOrNull(loader, kotlinName) ?: return count
-        val entry = KotlinMossBridgeMembers.callbackEntry(kotlin, rpc) ?: return count
+        val entry = KotlinMossBridgeMembers.callbackEntry(kotlin, rpc)
+            ?: KotlinMossBridgeMembers.legacyCallbackEntry(kotlin, rpc) ?: return count
         val members = KotlinMossChannel.prepare(env, loader, "AI Insight", "insight.rpc") ?: return count
+        // 旧版 4 参入口不传 ProtoBuf，宿主 moss 服务使用 ProtoBuf.Default；取不到就不装，Java 通道照常。
+        val legacy = entry.parameterCount == 4
+        val defaultFormat = if (legacy) members.defaultProtoBuf() ?: return count else null
         val requestCodec = KotlinMossBridgeMembers.JavaReplyCodec.resolve(requestClass) ?: return count
         val replyCodec = KotlinMossBridgeMembers.JavaReplyCodec.resolve(replyClass) ?: return count
         env.registrar.exact("insight.rpc.$kotlinName.$rpc", kotlin, entry.name, *entry.parameterTypes) { before {
             val original = argOrNull(0) ?: return@before
-            val requestBridge = members.bridgeFor(argOrNull(4), argOrNull(1), requestCodec) ?: return@before
-            val replyBridge = members.bridgeFor(argOrNull(4), argOrNull(2), replyCodec) ?: return@before
+            val format = if (legacy) defaultFormat else argOrNull(4)
+            val requestBridge = members.bridgeFor(format, argOrNull(1), requestCodec) ?: return@before
+            val replyBridge = members.bridgeFor(format, argOrNull(2), replyCodec) ?: return@before
             val request = requestBridge.read(original)
             val updated = transformRequest(request)
             if (updated !== request) args[0] = requestBridge.write(updated)

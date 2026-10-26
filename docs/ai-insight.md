@@ -219,3 +219,22 @@ Prompt 再次按 guide 逐句执行删除测试，格式、字段、数量与长
 本次 Gradle 使用 `--no-daemon` 并已退出；检测到另一 checkout 正在构建，按本机约定暂不停止共享 Kotlin/Gradle 进程，避免干扰其开发。
 
 用户随后自行在手机上实测本轮流式正文与等待动效，反馈未发现问题；该结论来自用户手动验收，没有对应的截图或日志记录。
+
+
+## 多版本静态适配（2026-10-26）
+
+用 `tools/hostlab` 远程 MCP 对 inventory 中全部 38 个宿主样本（8.84.0 / 8840200 至 9.17.0 / 9170100，sample revision `1c744580ec53f13d57339e162246945e5004e577`，runner revision `8782f43d`）逐版检查本功能用到的宿主类、成员签名、protobuf builder 链、UIComponent 协议、简介 adapter 形状和 moss 调用点。两轮矩阵各分 4 个 Actions 作业：成员结构 [40308614759](https://github.com/jichuo1/innocent-lab-host-analysis/actions/runs/40308614759)、[40308619562](https://github.com/jichuo1/innocent-lab-host-analysis/actions/runs/40308619562)、[40308623456](https://github.com/jichuo1/innocent-lab-host-analysis/actions/runs/40308623456)、[40308627518](https://github.com/jichuo1/innocent-lab-host-analysis/actions/runs/40308627518)；调用点 [40310054232](https://github.com/jichuo1/innocent-lab-host-analysis/actions/runs/40310054232)、[40310057688](https://github.com/jichuo1/innocent-lab-host-analysis/actions/runs/40310057688)、[40310061714](https://github.com/jichuo1/innocent-lab-host-analysis/actions/runs/40310061714)、[40310065694](https://github.com/jichuo1/innocent-lab-host-analysis/actions/runs/40310065694)。
+
+全部版本一致、无需改动的部分：简介 Fragment 三个生命周期方法、详情 Activity、播放器包装器与 seek 协程类名、`ViewProgressReply → VideoGuide → VideoViewPoint → VideoPoint` 的 getter 与 builder 方法（含 `setCover`、`setPointPermanent`）、`ViewMoss` 的 `viewProgress`/`view`、`Arc` 元信息、`DMMoss` 字幕、评论 `MainList*` 与 `ReplyInfo → Content.getMessage`。简介 adapter 每版都只有一个 `void(List)` 写入方法；8.84.0–8.96.0 另有 `getItems()`，8.97.0 起只剩唯一 List 字段，现有 `InsightAdapterItems` 两种读法均覆盖。
+
+发现并修复的问题：
+
+- 8.84.0–8.88.0 没有名为 `UIComponent` 的类：接口与 entry 被混淆为 `com.bilibili.app.gemini.ui.g` / `g$b`，`bindToView` 混淆为 `a`，三个重用键与 `createViewEntry`、`getRoot` 保留原名。原实现在这 4 个版本直接以 `missing-intro-components` 跳过整个功能。现由 `InsightComponentContract` 先按名称查找，缺失时从未混淆的 `DataBindingComponent` / `EmptyViewComponent` 的接口按结构反查，绑定方法名随解析结果传给 Proxy，不硬编码 `g`。
+- 8.96.0 起三个重用键变为接口默认方法，Proxy 仍会交给处理器；新增安装期校验：组件接口或 entry 出现处理器不认识的实例方法时拒绝安装，避免宿主新增成员后在列表绑定时抛错。
+- 8.84.0–9.8.0 的 `K*Moss` 回调入口只有 4 个参数（无 `ProtoBuf`），原实现只认 9.9.0 起的 5 参形态。调用点矩阵显示 8.96.0 起评论、9.5.0 起弹幕已有宿主代码走 `KReplyMoss`/`KDMMoss`，这些版本的评论/字幕捕获会退化为兜底接口。现补充 `legacyCallbackEntry`，旧形态使用宿主 `ProtoBuf.Default`（与播放编码偏好旧版路径一致）。`SubtitleMoss` 自 8.90.2 才存在、Java 版无宿主调用，9.17.0 才有 `KSubtitleMoss` 调用，原有 DM 通道与公开接口兜底保留。
+- 播放器结构的后台 DEX 适配原先只在开启 SponsorBlock 时运行，只开 AI Insight 且直接定位失败时会永久跳过。现两者任一开启即补查，Insight 与 SponsorBlock 一样在适配完成后重试安装，注册开始后不重复挂 Hook。
+- 8.84.0 的 `DmViewReq` builder 没有 `setWithoutSubtitle`，现有代码已按缺失跳过请求改写，不影响响应读取。
+
+`recycler` 视图 ID 位于资源表，本次 DEX 查询无法覆盖；缺失时安装器会在挂载阶段返回而不是崩溃。以上为静态证据，只证明成员与调用形态存在，不能代替各版本实机验收；本轮仅有 8.90.2 的历史实机结果。
+
+本地验收：`assembleDebug testDebugUnitTest lintFast --offline --no-daemon` 通过，新增 5 项回归（命名/混淆协议解析、未知成员拒绝、混淆绑定分派、旧版 4 参回调入口），快速 Lint 警告数与上轮相同（264），baseline 与规则未改；未运行完整 Lint，未连接手机。矩阵输出与分析脚本保存在已忽略的 `captures/compat-20261026/`。

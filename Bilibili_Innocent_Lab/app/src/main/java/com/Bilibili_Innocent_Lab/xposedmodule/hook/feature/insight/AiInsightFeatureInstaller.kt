@@ -33,13 +33,21 @@ internal object InsightSources {
 internal class AiInsightFeatureInstaller(private val enabled: Boolean, private val automaticChapters: Boolean,
     private val sources: List<SemanticSource>, private val cacheRoot: File,
     private val cachedClasses: () -> SponsorPlayerClasses? = { null }) : FeatureInstaller {
+    /** 直接定位失败且尚无后台适配缓存时为 true；适配完成后由 HookEntry 重试，与 SponsorBlock 相同。 */
+    @Volatile var requiresAdaptationRetry = false
+        private set
+    private val registrationStarted = java.util.concurrent.atomic.AtomicBoolean(false)
     override val id = "ai_insight"
     override fun install(environment: HookEnvironment): FeatureInstallResult {
         if (!enabled) return FeatureInstallResult.Skipped("disabled")
         if (environment.processName != "tv.danmaku.bili") return FeatureInstallResult.Skipped("non-main-process")
         val loader = environment.classLoader ?: return FeatureInstallResult.Skipped("missing-classloader")
         val player = SponsorPlayerLocator.direct(loader) ?: cachedClasses()?.let { SponsorPlayerLocator.resolve(loader, it) }
-            ?: return FeatureInstallResult.Skipped("missing-player-structure")
+        if (player == null) {
+            requiresAdaptationRetry = true
+            return FeatureInstallResult.Skipped("missing-player-structure")
+        }
+        requiresAdaptationRetry = false
         val fragment = Lookup.classOrNull(loader, INTRO) ?: return FeatureInstallResult.Skipped("missing-intro-fragment")
         val create = Lookup.methodOrNull(fragment, "onCreateView", LayoutInflater::class.java, ViewGroup::class.java, Bundle::class.java)
             ?.takeIf { View::class.java.isAssignableFrom(it.returnType) } ?: return FeatureInstallResult.Skipped("missing-intro-view")
@@ -47,6 +55,8 @@ internal class AiInsightFeatureInstaller(private val enabled: Boolean, private v
             ?: return FeatureInstallResult.Skipped("missing-intro-lifecycle")
         val destroy = Lookup.methodOrNull(fragment, "onDestroyView") ?: return FeatureInstallResult.Skipped("missing-intro-destroy")
         val headers = InsightIntroHeaders.resolve(environment) ?: return FeatureInstallResult.Skipped("missing-intro-components")
+        // 只重试尚未解析的结构；注册开始后不重放部分 Hook。
+        if (!registrationStarted.compareAndSet(false, true)) return FeatureInstallResult.Skipped("already-registered")
         val snapshot = InsightHostSnapshot()
         val cache = InsightCache(cacheRoot)
         val source = InsightSources.resolve(sources)
