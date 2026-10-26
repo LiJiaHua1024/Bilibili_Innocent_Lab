@@ -1255,9 +1255,10 @@ class MainActivity : SkinnedActivity() {
         activationSourceView?.apply {
             val baseText = when (displayState) {
                 ActivationDisplayState.EMBEDDED_UNSUPPORTED -> getString(R.string.embedded_mode_unsupported)
-                ActivationDisplayState.ACTIVE_LSPATCH -> if (!framework.capable) getString(
-                    R.string.activated_by_noapi, "LSPatch"
-                ) else getString(R.string.activated_by, framework.name, framework.apiVersion)
+                ActivationDisplayState.ACTIVE_LSPATCH -> ActivationFrameworkSource.lspatch(framework).let { source ->
+                    if (source.apiVersion == null) getString(R.string.activated_by_noapi, source.name)
+                    else getString(R.string.activated_by, source.name, source.apiVersion)
+                }
                 ActivationDisplayState.ACTIVE_LSPOSED -> if (framework.apiVersion > 0) getString(
                     R.string.activated_by,
                     framework.name,
