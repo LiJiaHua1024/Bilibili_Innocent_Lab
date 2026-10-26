@@ -1610,6 +1610,15 @@
     <string name="no_root_restart_resume_message">Make sure you force stopped Bilibili in system app details. Opening an already running app does not restart it. Current settings will be saved again before opening; activation requires a matching host receipt.</string>
     <string name="no_root_restart_launch_verify">Open and verify</string>
     <string name="no_root_restart_launch_failed">Could not open Bilibili</string>
+    <string name="lspatch_setup_title">LSPatch setup guide</string>
+    <string name="lspatch_setup_page">LSPatch setup · %1$d/3</string>
+    <string name="lspatch_setup_profile">Installed LSPatch loader: %1$s · API %2$s</string>
+    <string name="lspatch_setup_manager">In LSPatch Manager, select this installed module for the patched Bilibili app. Module updates may require refreshing the module selection in the manager. Installed patch metadata alone does not confirm activation.</string>
+    <string name="lspatch_setup_direct">LSPatch uses direct settings delivery automatically after you accept the terms. The NPatch switch is not required. Save settings, then restart and verify Bilibili to confirm they took effect.</string>
+    <string name="no_root_setup_background">Keep the module settings app available for current authorization. If your system restricts its background activity, review the module app details. This guide does not change or verify system restrictions.</string>
+    <string name="no_root_setup_open_manager">Open patch manager</string>
+    <string name="no_root_setup_module_details">Open module app details</string>
+    <string name="no_root_setup_manager_unavailable">Cannot open this patch manager. Check that the matching manager is installed and enabled.</string>
     <string name="npatch_setup_title">NPatch setup guide</string>
     <string name="npatch_setup_page">NPatch setup · %1$d/3</string>
     <string name="npatch_setup_manager">In Manager mode, select the installed module and Bilibili scope in NPatch Manager. If the mode is unknown, check Diagnostics before continuing. Parameters alone do not confirm activation.</string>

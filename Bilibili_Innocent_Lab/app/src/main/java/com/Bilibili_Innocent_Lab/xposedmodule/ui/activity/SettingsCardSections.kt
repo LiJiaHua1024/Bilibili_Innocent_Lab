@@ -932,6 +932,9 @@ internal fun MainActivity.experimentalFeaturesCard(
     scope: Hikage.Performer<NativeLinearLayout.LayoutParams>,
     uiSettings: ModuleUiSettings
 ) = with(scope) {
+    val noRootSetup = NoRootSetupPolicy.forChannel(
+        com.Bilibili_Innocent_Lab.xposedmodule.runtime.noroot.HostConfigChannels.read(this@experimentalFeaturesCard)
+    )
     LinearLayout(
         lparams = LayoutParams(widthMatchParent = true) {
             updateMargins(horizontal = 15.dp)
@@ -1466,53 +1469,62 @@ internal fun MainActivity.experimentalFeaturesCard(
                     bindSettingDestination(this, com.Bilibili_Innocent_Lab.xposedmodule.agent.AgentPreferences.ENABLED)
                     setOnClickListener { showAgentDialog(anchor = it) }
                 }
-                MaterialSwitch(
-                    lparams = LayoutParams(widthMatchParent = true) {
-                        bottomMargin = 5.dp
+                if (noRootSetup.needsOptIn) {
+                    MaterialSwitch(
+                        lparams = LayoutParams(widthMatchParent = true) {
+                            bottomMargin = 5.dp
+                        }
+                    ) {
+                        text = stringResource(R.string.no_root_support_enable)
+                        isAllCaps = false
+                        textColor = colorResource(R.color.colorTextGray)
+                        textSize = 15f
+                        isChecked = noRootDesiredEnabled
+                        isEnabled = noRootDesiredEnabled ||
+                            (
+                                AndroidVersion.isAtLeast(AndroidVersion.P) &&
+                                    noRootPrefsBridge != null
+                                )
+                        setOnCheckedChangeListener { _, isChecked ->
+                            if (noRootProgrammaticSwitch) return@setOnCheckedChangeListener
+                            noRootDesiredEnabled = isChecked
+                            if (isChecked) enableAndSynchronizeNoRootSupport()
+                            else disableNoRootSupport()
+                        }
+                        noRootSwitch = this
                     }
-                ) {
-                    text = stringResource(R.string.no_root_support_enable)
-                    isAllCaps = false
-                    textColor = colorResource(R.color.colorTextGray)
-                    textSize = 15f
-                    isChecked = noRootDesiredEnabled
-                    isEnabled = noRootDesiredEnabled ||
-                        (
-                            AndroidVersion.isAtLeast(AndroidVersion.P) &&
-                                noRootPrefsBridge != null
-                            )
-                    setOnCheckedChangeListener { _, isChecked ->
-                        if (noRootProgrammaticSwitch) return@setOnCheckedChangeListener
-                        noRootDesiredEnabled = isChecked
-                        if (isChecked) enableAndSynchronizeNoRootSupport()
-                        else disableNoRootSupport()
+                    TextView(
+                        lparams = LayoutParams(widthMatchParent = true)
+                    ) {
+                        alpha = 0.6f
+                        setLineSpacing(6f, 1f)
+                        text = stringResource(R.string.no_root_support_tip)
+                        textColor = colorResource(R.color.colorTextDark)
+                        textSize = 12f
                     }
-                    noRootSwitch = this
-                }
-                TextView(
-                    lparams = LayoutParams(widthMatchParent = true)
-                ) {
-                    alpha = 0.6f
-                    setLineSpacing(6f, 1f)
-                    text = stringResource(R.string.no_root_support_tip)
-                    textColor = colorResource(R.color.colorTextDark)
-                    textSize = 12f
-                }
-                TextView(
-                    lparams = LayoutParams(widthMatchParent = true) {
-                        topMargin = 4.dp
-                        bottomMargin = 10.dp
+                    TextView(
+                        lparams = LayoutParams(widthMatchParent = true) {
+                            topMargin = 4.dp
+                            bottomMargin = 10.dp
+                        }
+                    ) {
+                        alpha = 0.8f
+                        setLineSpacing(6f, 1f)
+                        text = stringResource(noRootStatusText(currentNoRootDisplayState()))
+                        textColor = colorResource(R.color.colorTextGray)
+                        textSize = 12f
+                        noRootStatusView = this
                     }
-                ) {
-                    alpha = 0.8f
-                    setLineSpacing(6f, 1f)
-                    text = stringResource(noRootStatusText(currentNoRootDisplayState()))
-                    textColor = colorResource(R.color.colorTextGray)
-                    textSize = 12f
-                    noRootStatusView = this
+                } else {
+                    TextView(lparams = LayoutParams(widthMatchParent = true) { bottomMargin = 10.dp }) {
+                        text = stringResource(R.string.lspatch_setup_direct)
+                        textColor = colorResource(R.color.colorTextGray)
+                        textSize = 12f
+                        setLineSpacing(6f, 1f)
+                    }
                 }
                 TextView(lparams = LayoutParams(widthMatchParent = true) { bottomMargin = 12.dp }) {
-                    text = stringResource(R.string.npatch_setup_title)
+                    text = stringResource(if (noRootSetup.lspatch) R.string.lspatch_setup_title else R.string.npatch_setup_title)
                     textColor = colorResource(R.color.colorTextGray)
                     textSize = 15f
                     setPadding(12.dp, 10.dp, 12.dp, 10.dp)

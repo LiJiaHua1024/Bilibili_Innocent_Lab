@@ -1,7 +1,9 @@
 package com.Bilibili_Innocent_Lab.xposedmodule.ui.activity
 
 import android.app.Dialog
+import android.content.Intent
 import android.graphics.Typeface
+import android.provider.Settings
 import android.view.View
 import android.view.ViewGroup
 import android.widget.LinearLayout
@@ -12,16 +14,22 @@ import com.Bilibili_Innocent_Lab.xposedmodule.runtime.noroot.NoRootSupportStore
 import com.Bilibili_Innocent_Lab.xposedmodule.runtime.noroot.EmbeddedModePolicy
 import com.Bilibili_Innocent_Lab.xposedmodule.runtime.noroot.NPatchMode
 import com.Bilibili_Innocent_Lab.xposedmodule.runtime.noroot.NPatchRuntimeProfiles
+import com.Bilibili_Innocent_Lab.xposedmodule.runtime.noroot.HostConfigChannels
+import com.Bilibili_Innocent_Lab.xposedmodule.runtime.noroot.LspatchRuntimeProfiles
+import androidx.core.net.toUri
+import com.highcapable.betterandroid.ui.extension.component.startActivityOrElse
 import com.highcapable.betterandroid.ui.extension.view.textColor
+import com.highcapable.betterandroid.ui.extension.view.toast
 
 /** 向导只展示现有事实；每个会修改配置或启动宿主的动作均由用户点击。 */
 internal fun MainActivity.showNPatchSetupDialog(step: Int = 0, anchor: View? = null) {
     val page = step.coerceIn(0, 2)
+    val policy = NoRootSetupPolicy.forChannel(HostConfigChannels.read(this))
     val density = resources.displayMetrics.density
     val dialog = Dialog(this).also { installDialogElasticInteraction(it) }
     val container = createModalContainer()
     container.addView(TextView(this).apply {
-        text = getString(R.string.npatch_setup_page, page + 1)
+        text = getString(if (policy.lspatch) R.string.lspatch_setup_page else R.string.npatch_setup_page, page + 1)
         textColor = getColor(R.color.colorTextDark)
         textSize = 19f
         typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
@@ -34,7 +42,17 @@ internal fun MainActivity.showNPatchSetupDialog(step: Int = 0, anchor: View? = n
         NPatchMode.EMBEDDED -> R.string.npatch_profile_embedded
         NPatchMode.UNKNOWN -> R.string.npatch_profile_unknown
     })
-    val body = if (blocked) getString(R.string.embedded_mode_unsupported) else when (page) {
+    val body = if (blocked) getString(R.string.embedded_mode_unsupported) else if (policy.lspatch) {
+        val lspatch = LspatchRuntimeProfiles.read(this)
+        when (page) {
+            0 -> getString(R.string.lspatch_setup_profile,
+                lspatch.loaderVersion.takeIf { it > 0 }?.toString() ?: unknown,
+                lspatch.loaderApi.takeIf { it > 0 }?.toString() ?: unknown) +
+                "\n\n" + getString(R.string.lspatch_setup_manager)
+            1 -> getString(R.string.lspatch_setup_direct) + "\n\n" + getString(R.string.no_root_setup_background)
+            else -> getString(R.string.npatch_setup_verify)
+        }
+    } else when (page) {
         0 -> getString(R.string.npatch_profile_installed, mode,
             profile.signatureLevel?.toString() ?: unknown,
             profile.loaderVersionCode?.toString() ?: unknown, profile.loaderApi?.toString() ?: unknown) +
@@ -65,7 +83,19 @@ internal fun MainActivity.showNPatchSetupDialog(step: Int = 0, anchor: View? = n
             topMargin = (8 * density).toInt()
         })
     }
-    if (page == 1 && !blocked && !NoRootSupportStore.isDesiredEnabled(this)) {
+    if (page == 0) {
+        action(R.string.no_root_setup_open_manager) {
+            val intent = FrameworkManagerLauncher.resolvePackage(this, policy.managerPackage)
+            if (intent == null || !startActivityOrElse(intent)) toast(getString(R.string.no_root_setup_manager_unavailable))
+        }
+    }
+    if (page == 1) {
+        action(R.string.no_root_setup_module_details) {
+            val intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, "package:$packageName".toUri())
+            if (!startActivityOrElse(intent)) toast(getString(R.string.no_root_restart_open_failed))
+        }
+    }
+    if (page == 1 && !blocked && policy.needsOptIn && !NoRootSupportStore.isDesiredEnabled(this)) {
         action(R.string.no_root_support_enable, filled = true) {
             enableAndSynchronizeNoRootSupport()
             showNPatchSetupDialog(1)

@@ -1610,6 +1610,15 @@
     <string name="no_root_restart_resume_message">請確認已在系統應用程式資訊中強制停止嗶哩嗶哩。開啟仍在執行的應用程式不會重新啟動它。開啟前會再次儲存目前設定，只有收到相符的宿主回執才確認生效。</string>
     <string name="no_root_restart_launch_verify">開啟並驗證</string>
     <string name="no_root_restart_launch_failed">無法開啟嗶哩嗶哩</string>
+    <string name="lspatch_setup_title">LSPatch 使用精靈</string>
+    <string name="lspatch_setup_page">LSPatch 使用精靈 · %1$d/3</string>
+    <string name="lspatch_setup_profile">已安裝 LSPatch Loader：%1$s · API %2$s</string>
+    <string name="lspatch_setup_manager">在 LSPatch 管理員中，為修補後的嗶哩嗶哩選擇目前已安裝模組。更新模組後，可能需要在管理員中重新選擇模組。安裝包中的補丁資訊不代表已經啟用。</string>
+    <string name="lspatch_setup_direct">LSPatch 在接受條款後自動使用直達設定，無需開啟 NPatch 開關。儲存設定後，請重新啟動並驗證嗶哩嗶哩，確認目前設定已生效。</string>
+    <string name="no_root_setup_background">目前授權需要模組設定 App 可用。若系統限制其背景執行，可開啟模組應用程式資訊檢查。精靈不會修改或自動驗證系統限制。</string>
+    <string name="no_root_setup_open_manager">開啟補丁管理員</string>
+    <string name="no_root_setup_module_details">開啟模組應用程式資訊</string>
+    <string name="no_root_setup_manager_unavailable">無法開啟此補丁管理員，請檢查對應管理員是否已安裝並啟用。</string>
     <string name="npatch_setup_title">NPatch 使用精靈</string>
     <string name="npatch_setup_page">NPatch 使用精靈 · %1$d/3</string>
     <string name="npatch_setup_manager">管理員模式：在 NPatch Manager 中選擇目前模組並新增嗶哩嗶哩作用域。模式未知時先查看診斷。補丁參數相符不代表已啟用。</string>

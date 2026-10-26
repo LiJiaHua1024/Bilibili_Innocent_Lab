@@ -1610,6 +1610,15 @@
     <string name="no_root_restart_resume_message">请确认已在系统应用详情中强制停止哔哩哔哩。打开仍在运行的应用不会重启它。打开前会再次保存当前配置，只有收到匹配的宿主回执才确认生效。</string>
     <string name="no_root_restart_launch_verify">打开并验证</string>
     <string name="no_root_restart_launch_failed">无法打开哔哩哔哩</string>
+    <string name="lspatch_setup_title">LSPatch 使用向导</string>
+    <string name="lspatch_setup_page">LSPatch 使用向导 · %1$d/3</string>
+    <string name="lspatch_setup_profile">已安装 LSPatch Loader：%1$s · API %2$s</string>
+    <string name="lspatch_setup_manager">在 LSPatch 管理器中，为修补后的哔哩哔哩选择当前已安装模块。更新模块后，可能需要在管理器中重新选择模块。安装包中的补丁信息不代表已经激活。</string>
+    <string name="lspatch_setup_direct">LSPatch 在接受条款后自动使用直达配置，无需开启 NPatch 开关。保存设置后，请重启并验证哔哩哔哩，确认当前配置已生效。</string>
+    <string name="no_root_setup_background">当前授权需要模块设置 App 可用。若系统限制其后台运行，可打开模块应用详情检查。向导不会修改或自动验证系统限制。</string>
+    <string name="no_root_setup_open_manager">打开补丁管理器</string>
+    <string name="no_root_setup_module_details">打开模块应用详情</string>
+    <string name="no_root_setup_manager_unavailable">无法打开此补丁管理器，请检查对应管理器是否已安装并启用。</string>
     <string name="npatch_setup_title">NPatch 使用向导</string>
     <string name="npatch_setup_page">NPatch 使用向导 · %1$d/3</string>
     <string name="npatch_setup_manager">管理器模式：在 NPatch Manager 中选择当前模块并添加哔哩哔哩作用域。模式未知时先查看诊断。补丁参数符合不代表已激活。</string>
