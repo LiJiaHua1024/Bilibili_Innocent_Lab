@@ -7,6 +7,7 @@ import com.Bilibili_Innocent_Lab.xposedmodule.hook.adapter.dex.*
 import com.Bilibili_Innocent_Lab.xposedmodule.hook.feature.interpolation.FrameInterpolationNative
 import com.Bilibili_Innocent_Lab.xposedmodule.hook.feature.interpolation.packing.FrameNativeLoader
 import com.Bilibili_Innocent_Lab.xposedmodule.runtime.noroot.NPatchRuntimeProfiles
+import com.Bilibili_Innocent_Lab.xposedmodule.runtime.noroot.LspatchRuntimeProfiles
 import dalvik.system.DexClassLoader
 import org.junit.Assert.*
 import org.junit.Assume.assumeTrue
@@ -22,18 +23,28 @@ import java.util.zip.ZipFile
 class NPatchDexSourceInstrumentedTest {
     @Test fun originalApkFingerprintAndNativeDexQueryAgree() {
         assumeTrue(InstrumentationRegistry.getArguments().getString("verifyDexSource") == "true")
+        assertTrue(NPatchRuntimeProfiles.read(InstrumentationRegistry.getInstrumentation().targetContext).markerPresent)
+        verifyOriginal("npatch")
+    }
+
+    @Test fun lspatchOriginalApkFingerprintAndNativeDexQueryAgree() {
+        assumeTrue(InstrumentationRegistry.getArguments().getString("verifyLspatchDexSource") == "true")
+        assertTrue(LspatchRuntimeProfiles.read(InstrumentationRegistry.getInstrumentation().targetContext).modern)
+        verifyOriginal("lspatch")
+    }
+
+    private fun verifyOriginal(carrier: String) {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         val context = instrumentation.targetContext
-        assertTrue(NPatchRuntimeProfiles.read(context).markerPresent)
         @Suppress("DEPRECATION")
         val info = requireNotNull(context.packageManager.getPackageInfo("tv.danmaku.bili", 0).applicationInfo)
         val directory = File(context.codeCacheDir, "bil-host-dex-proof")
-        val source = requireNotNull(DexSourceFingerprint.inspect(info, directory))
+        val source = requireNotNull(DexSourceFingerprint.inspect(info, directory, materializeArchiveView = true))
         val original = File(source.codePaths.single())
         assertEquals(directory.canonicalFile, original.parentFile.canonicalFile)
         assertFalse(original.canWrite())
         ZipFile(info.sourceDir).use { zip ->
-            val entry = requireNotNull(zip.getEntry("assets/npatch/origin.apk"))
+            val entry = requireNotNull(zip.getEntry("assets/$carrier/origin.apk"))
             assertEquals(entry.size, original.length())
             assertArrayEquals(zip.getInputStream(entry).use(::digest), original.inputStream().use(::digest))
             assertTrue(source.dexEntryCount > zip.entries().asSequence().count { it.name.matches(Regex("classes[0-9]*\\.dex")) })
@@ -55,7 +66,7 @@ class NPatchDexSourceInstrumentedTest {
             assertEquals("AVAILABLE", DexKitAssistEngine.nativeAvailability())
         }
         instrumentation.sendStatus(0, Bundle().apply {
-            putString("stream", "\nNPatch original DEX: count=${source.dexEntryCount}; " +
+            putString("stream", "\n$carrier original DEX: count=${source.dexEntryCount}; " +
                 "fingerprint=${source.value}; original bytes matched; native query passed\n")
         })
     }

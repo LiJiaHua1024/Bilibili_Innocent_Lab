@@ -3161,7 +3161,8 @@ object VersionAdapter {
     private fun inspectHostDexSource(context: Context): DexSourceFingerprint.Result? = runCatching {
         val info = context.packageManager.getPackageInfo("tv.danmaku.bili", 0).applicationInfo
         val patched = com.Bilibili_Innocent_Lab.xposedmodule.runtime.noroot.NPatchRuntimeProfiles
-            .read(context, "tv.danmaku.bili").markerPresent
+            .read(context, "tv.danmaku.bili").markerPresent ||
+            com.Bilibili_Innocent_Lab.xposedmodule.runtime.noroot.LspatchRuntimeProfiles.read(context, "tv.danmaku.bili").modern
         DexSourceFingerprint.inspect(info, File(context.codeCacheDir, "bil-host-dex"), materializeArchiveView = patched)
     }.getOrNull()
 

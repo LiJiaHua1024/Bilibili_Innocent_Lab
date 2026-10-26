@@ -1,6 +1,7 @@
 package com.Bilibili_Innocent_Lab.xposedmodule.hook.adapter.dex
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
@@ -92,6 +93,85 @@ class DexSourceFingerprintTest {
         }
     }
 
+    @Test fun `lspatch original and code splits provide the query path with or without io redirection`() {
+        withTempDirectory { directory ->
+            val original = File(directory, "original.apk")
+            val outer = File(directory, "lspatched.apk")
+            val split = File(directory, "split.apk")
+            writeArchive(original, mapOf("classes.dex" to byteArrayOf(1), "classes2.dex" to byteArrayOf(2)))
+            writeArchive(split, mapOf("classes.dex" to byteArrayOf(3)))
+            writePatched(outer, original.readBytes(), 7, "lspatch")
+            val expected = DexSourceFingerprint.inspectCodePaths(listOf(original.path, split.path))!!
+            for (materialize in listOf(false, true)) {
+                val cache = File(directory, "cache-$materialize")
+                val actual = DexSourceFingerprint.inspectCodePaths(listOf(outer.path, split.path), cache,
+                    materializeArchiveView = materialize)!!
+                assertEquals(expected.value, actual.value)
+                assertEquals(3, actual.dexEntryCount)
+                assertTrue(File(actual.codePaths.first()).readBytes().contentEquals(original.readBytes()))
+                assertNotEquals(outer.path, actual.codePaths.first())
+                assertTrue(actual.codePaths.all { File(it).isFile })
+            }
+        }
+    }
+
+    @Test fun `lspatch repatching and cache repair preserve original identity`() {
+        withTempDirectory { directory ->
+            val original = File(directory, "original.apk")
+            val outer = File(directory, "lspatched.apk")
+            val cache = File(directory, "cache")
+            writeArchive(original, mapOf("classes.dex" to byteArrayOf(1)))
+            writePatched(outer, original.readBytes(), 7, "lspatch")
+            val first = DexSourceFingerprint.inspectCodePaths(listOf(outer.path), cache)!!
+            writePatched(outer, original.readBytes(), 8, "lspatch")
+            assertEquals(first, DexSourceFingerprint.inspectCodePaths(listOf(outer.path), cache))
+            val cached = File(first.codePaths.single())
+            cached.setWritable(true)
+            cached.writeBytes(ByteArray(cached.length().toInt()))
+            assertEquals(first, DexSourceFingerprint.inspectCodePaths(listOf(outer.path), cache))
+            cached.setWritable(true)
+            assertTrue(cached.delete())
+            assertEquals(first, DexSourceFingerprint.inspectCodePaths(listOf(outer.path), cache))
+            writeArchive(original, mapOf("classes.dex" to byteArrayOf(2)))
+            writePatched(outer, original.readBytes(), 8, "lspatch")
+            assertNotEquals(first.value, DexSourceFingerprint.inspectCodePaths(listOf(outer.path), cache)?.value)
+        }
+    }
+
+    @Test fun `lspatch missing corrupt or oversized original never selects loader dex`() {
+        withTempDirectory { directory ->
+            val original = File(directory, "original.apk")
+            val outer = File(directory, "lspatched.apk")
+            val cache = File(directory, "cache")
+            writeArchive(original, mapOf("classes.dex" to byteArrayOf(1)))
+            writePatched(outer, original.readBytes(), 7, "lspatch")
+            assertNull(DexSourceFingerprint.inspectCodePaths(listOf(outer.path)))
+            assertNull(DexSourceFingerprint.inspectCodePaths(listOf(outer.path), cache, 1))
+            writePatched(outer, byteArrayOf(1, 2, 3), 7, "lspatch")
+            assertNull(DexSourceFingerprint.inspectCodePaths(listOf(outer.path), cache))
+            for (partial in listOf("config.json", "origin.apk")) {
+                writeArchive(outer, mapOf("classes.dex" to byteArrayOf(7),
+                    "assets/lspatch/$partial" to original.readBytes()))
+                assertNull(DexSourceFingerprint.inspectCodePaths(listOf(outer.path), cache))
+            }
+        }
+    }
+
+    @Test fun `mixed patch carriers cannot choose an arbitrary original`() {
+        withTempDirectory { directory ->
+            val original = File(directory, "original.apk")
+            val outer = File(directory, "mixed.apk")
+            writeArchive(original, mapOf("classes.dex" to byteArrayOf(1)))
+            val entries = mapOf("classes.dex" to byteArrayOf(7),
+                "assets/npatch/config.json" to "{}".toByteArray(), "assets/npatch/origin.apk" to original.readBytes())
+            for (other in listOf(mapOf("assets/lspatch/config.json" to "{}".toByteArray()),
+                mapOf("assets/lspatch/config.json" to "{}".toByteArray(), "assets/lspatch/origin.apk" to original.readBytes()))) {
+                writeArchive(outer, entries + other)
+                assertNull(DexSourceFingerprint.inspectCodePaths(listOf(outer.path), File(directory, "cache")))
+            }
+        }
+    }
+
     @Test fun `unavailable oversized or invalid original never falls back to loader fingerprint`() {
         withTempDirectory { directory ->
             val outer = File(directory, "patched.apk")
@@ -145,9 +225,9 @@ class DexSourceFingerprintTest {
         }
     }
 
-    private fun writePatched(target: File, original: ByteArray, loader: Byte) = writeArchive(target,
-        mapOf("classes.dex" to byteArrayOf(loader), "assets/npatch/config.json" to "{}".toByteArray(),
-            "assets/npatch/origin.apk" to original))
+    private fun writePatched(target: File, original: ByteArray, loader: Byte, carrier: String = "npatch") = writeArchive(target,
+        mapOf("classes.dex" to byteArrayOf(loader), "assets/$carrier/config.json" to "{}".toByteArray(),
+            "assets/$carrier/origin.apk" to original))
 
     @Test fun `already redirected java view is frozen for native callers`() {
         withTempDirectory { directory ->
@@ -173,6 +253,31 @@ class DexSourceFingerprintTest {
                 File(directory, "cache"), materializeArchiveView = true)!!
             assertEquals(4, result.codePaths.size)
             assertTrue(result.codePaths.all { File(it).isFile })
+        }
+    }
+
+    @Test fun `resource splits do not invalidate either patched source with frozen views`() {
+        withTempDirectory { directory ->
+            val original = File(directory, "original.apk")
+            val split = File(directory, "code.apk")
+            val resources = File(directory, "resources.apk")
+            writeArchive(original, mapOf("classes.dex" to byteArrayOf(1), "classes2.dex" to byteArrayOf(2)))
+            writeArchive(split, mapOf("classes.dex" to byteArrayOf(3)))
+            writeArchive(resources, mapOf("resources.arsc" to byteArrayOf(4)))
+            val expected = requireNotNull(DexSourceFingerprint.inspectCodePaths(listOf(original.path, split.path)))
+            for (carrier in listOf("npatch", "lspatch")) {
+                val outer = File(directory, "$carrier.apk")
+                writePatched(outer, original.readBytes(), 7, carrier)
+                for (materialize in listOf(false, true)) {
+                    val actual = requireNotNull(DexSourceFingerprint.inspectCodePaths(
+                        listOf(outer.path, resources.path, split.path), File(directory, "$carrier-$materialize"),
+                        materializeArchiveView = materialize))
+                    assertEquals(expected.value, actual.value)
+                    assertEquals(3, actual.dexEntryCount)
+                    assertEquals(2, actual.codePaths.size)
+                    assertFalse(resources.absolutePath in actual.codePaths)
+                }
+            }
         }
     }
 

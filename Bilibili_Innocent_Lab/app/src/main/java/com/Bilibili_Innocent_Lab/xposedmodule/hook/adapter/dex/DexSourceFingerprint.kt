@@ -13,13 +13,14 @@ import java.util.zip.ZipFile
  *
  * 指纹只读取 `classes*.dex` 的 CRC 与尺寸元数据，不加载 DEX；绝对安装路径和
  * 非代码 split 不参与摘要，因此同一构建重新安装后仍得到同一结果。
- * NPatch 的外层只有 loader：后台先有界提取并验证原版 APK，指纹和 DexKit 必须共用该来源。
+ * NPatch / LSPatch 的外层只有 loader：后台先有界提取并验证原版 APK，指纹和 DexKit 必须共用该来源。
  */
 internal object DexSourceFingerprint {
 
     private const val FORMAT_VERSION = 1
     private const val MAX_ARCHIVES = 32
     private const val MAX_DEX_ENTRIES = 512
+    private val PATCH_ROOTS = listOf("assets/npatch", "assets/lspatch")
     private val DEX_ENTRY_PATTERN = Regex("^classes(?:[2-9]|[1-9][0-9]+)?\\.dex$")
 
     data class Result(
@@ -98,16 +99,25 @@ internal object DexSourceFingerprint {
     /** 只在既有适配/审计工作线程调用；不借用 loader 私有缓存路径或反射其内部实现。 */
     private fun originalArchive(outer: File, directory: File?, maximumBytes: Long, materializeView: Boolean): File =
         ZipFile(outer).use { zip ->
-            val origins = zip.entries().asSequence().filter { it.name == "assets/npatch/origin.apk" }.toList()
-            val configs = zip.entries().asSequence().filter { it.name == "assets/npatch/config.json" }.toList()
-            if (origins.isEmpty() && configs.isEmpty()) {
-                if (!materializeView) return@use outer
+            val patchEntries = zip.entries().asSequence().filter { entry ->
+                PATCH_ROOTS.any { root -> entry.name == "$root/origin.apk" || entry.name == "$root/config.json" }
+            }.take(5).toList()
+            if (patchEntries.isEmpty()) {
+                // 资源 split 没有供 native 消费的代码，保留后续空 DEX 跳过语义。
+                if (!materializeView || zip.entries().asSequence().none {
+                        !it.isDirectory && DEX_ENTRY_PATTERN.matches(it.name)
+                    }) return@use outer
                 return@use snapshotReadableView(outer, zip, requireNotNull(directory), maximumBytes)
             }
-            require(origins.size == 1 && configs.size == 1) { "Incomplete NPatch source" }
+            // 两种载体同时出现或缺少一半时，不能任取原包，也不能回退到 loader DEX。
+            val root = PATCH_ROOTS.singleOrNull { root -> patchEntries.any { it.name.startsWith("$root/") } }
+            requireNotNull(root) { "Ambiguous patched source" }
+            val origins = patchEntries.filter { it.name == "$root/origin.apk" }
+            val configs = patchEntries.filter { it.name == "$root/config.json" }
+            require(origins.size == 1 && configs.size == 1 && !configs.single().isDirectory) { "Incomplete patched source" }
             val origin = origins.single()
             require(!origin.isDirectory && origin.size in 1..maximumBytes && origin.crc >= 0)
-            val cache = requireNotNull(directory) { "NPatch original source requires a private cache" }
+            val cache = requireNotNull(directory) { "Patched original source requires a private cache" }
             require(cache.isDirectory || cache.mkdirs())
             val target = File(cache, "origin-${origin.crc}-${origin.size}.apk")
             fun matches(file: File): Boolean {
