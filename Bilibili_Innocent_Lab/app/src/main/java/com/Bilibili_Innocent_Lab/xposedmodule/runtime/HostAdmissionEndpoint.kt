@@ -5,7 +5,8 @@ import android.os.Binder
 import android.os.Bundle
 import android.os.SystemClock
 import com.Bilibili_Innocent_Lab.xposedmodule.BuildConfig
-import com.Bilibili_Innocent_Lab.xposedmodule.runtime.noroot.NPatchRuntimeProfiles
+import com.Bilibili_Innocent_Lab.xposedmodule.runtime.noroot.HostConfigChannel
+import com.Bilibili_Innocent_Lab.xposedmodule.runtime.noroot.HostConfigChannels
 import com.Bilibili_Innocent_Lab.xposedmodule.settings.remote.PublicationAuthorityStore
 import com.Bilibili_Innocent_Lab.xposedmodule.settings.terms.UserTermsAuthorizationCoordinator
 import com.Bilibili_Innocent_Lab.xposedmodule.settings.terms.UserTermsConsentStore
@@ -61,11 +62,9 @@ internal object HostAdmissionEndpoint {
                 val current = PublicationAuthorityStore.current(context) ?: return@withAuthorityLock status("storage_failed", nonce)
                 if (!current.decision.isAuthorized) return@withAuthorityLock status("denied", nonce)
                 // 身份已在上方按内核 UID 验证；从模块侧读取已安装宿主补丁标记，不信任请求自报的模式。
-                val nPatchChannel = com.Bilibili_Innocent_Lab.xposedmodule.settings.remote.isNpatchAdmissionChannel(
-                    com.Bilibili_Innocent_Lab.xposedmodule.settings.remote.RemoteHookConfigStore.status(),
-                    NPatchRuntimeProfiles.read(context).markerPresent)
-                val lspatchChannel = com.Bilibili_Innocent_Lab.xposedmodule.runtime.noroot.LspatchRuntimeProfiles
-                    .usesDirectConfig(context)
+                val channel = HostConfigChannels.read(context)
+                val nPatchChannel = channel == HostConfigChannel.NPATCH
+                val lspatchChannel = channel == HostConfigChannel.LSPATCH
                 when (method) {
                     HostAdmissionContract.METHOD_PREPARE -> {
                         val now = SystemClock.elapsedRealtime()

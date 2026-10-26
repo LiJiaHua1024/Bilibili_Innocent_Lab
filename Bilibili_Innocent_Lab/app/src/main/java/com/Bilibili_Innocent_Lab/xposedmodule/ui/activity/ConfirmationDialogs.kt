@@ -22,7 +22,8 @@ import com.Bilibili_Innocent_Lab.xposedmodule.R
 import com.Bilibili_Innocent_Lab.xposedmodule.hook.VersionAdapter
 import com.Bilibili_Innocent_Lab.xposedmodule.runtime.noroot.NoRootSupportController
 import com.Bilibili_Innocent_Lab.xposedmodule.runtime.noroot.NoRootSupportStore
-import com.Bilibili_Innocent_Lab.xposedmodule.runtime.noroot.NPatchRuntimeProfiles
+import com.Bilibili_Innocent_Lab.xposedmodule.runtime.noroot.HostConfigChannel
+import com.Bilibili_Innocent_Lab.xposedmodule.runtime.noroot.HostConfigChannels
 import com.Bilibili_Innocent_Lab.xposedmodule.runtime.restart.ShizukuAvailability
 import com.Bilibili_Innocent_Lab.xposedmodule.runtime.restart.RestartCapabilities
 import com.Bilibili_Innocent_Lab.xposedmodule.runtime.restart.RestartConfigBarrier
@@ -30,8 +31,6 @@ import com.Bilibili_Innocent_Lab.xposedmodule.runtime.restart.RestartRoute
 import com.Bilibili_Innocent_Lab.xposedmodule.runtime.restart.RestartRoutePolicy
 import com.Bilibili_Innocent_Lab.xposedmodule.runtime.restart.RootRestartAccess
 import com.Bilibili_Innocent_Lab.xposedmodule.settings.prefs
-import com.Bilibili_Innocent_Lab.xposedmodule.settings.remote.RemoteHookConfigStore
-import com.Bilibili_Innocent_Lab.xposedmodule.settings.remote.isNpatchConfigChannel
 import com.Bilibili_Innocent_Lab.xposedmodule.ui.activity.MainActivity.AnchorStyle
 import com.highcapable.betterandroid.ui.extension.view.textColor
 import com.highcapable.betterandroid.ui.extension.view.toast
@@ -482,8 +481,7 @@ private fun MainActivity.usesNoRootRestartConfig(): Boolean {
         desiredEnabled = NoRootSupportStore.isDesiredEnabled(applicationContext),
         displayState = currentNoRootDisplayState(),
         // 已关闭且收到确认的 NPatch 仍须保存停用文档，不能转去标准配置并等待启用回执。
-        nPatchCarrier = isNpatchConfigChannel(RemoteHookConfigStore.status()) ||
-            NPatchRuntimeProfiles.read(applicationContext).metadataValid
+        nPatchCarrier = HostConfigChannels.read(applicationContext) == HostConfigChannel.NPATCH
     )
 }
 

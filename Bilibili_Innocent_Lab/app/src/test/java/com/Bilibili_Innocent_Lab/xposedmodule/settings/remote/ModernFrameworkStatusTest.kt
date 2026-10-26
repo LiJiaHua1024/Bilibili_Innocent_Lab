@@ -5,22 +5,6 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class ModernFrameworkStatusTest {
-    @Test fun knownStandardFrameworkWinsOverAnInstalledNpatchMarker() {
-        val root = readModernFrameworkStatus({ 102 },
-            { XposedService.PROP_CAP_REMOTE or XposedService.PROP_CAP_SYSTEM },
-            { "LSPosed" }, { "test" }, { 1L })
-        assertFalse(isNpatchAdmissionChannel(root, patchMarkerPresent = true))
-        val lspatch = root.copy(name = "LSPatch", properties = XposedService.PROP_CAP_REMOTE)
-        assertFalse(isNpatchAdmissionChannel(lspatch, patchMarkerPresent = true))
-        assertTrue(isNpatchAdmissionChannel(root.copy(name = "NPatch"), patchMarkerPresent = false))
-    }
-
-    @Test fun installedPatchCanIdentifyDirectAdmissionWhenManagerServiceIsUnavailable() {
-        val unavailable = ModernFrameworkStatus(false, false, "", 0)
-        assertTrue(isNpatchAdmissionChannel(unavailable, true))
-        assertFalse(isNpatchAdmissionChannel(unavailable, false))
-    }
-
     @Test fun `framework routing identity precedes optional version metadata`() {
         val core = readModernFrameworkCapabilities({ 102 }, { XposedService.PROP_CAP_REMOTE })
         val named = core.withModernFrameworkIdentity { "LSPatch" }

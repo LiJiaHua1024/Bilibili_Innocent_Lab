@@ -140,7 +140,8 @@ import com.Bilibili_Innocent_Lab.xposedmodule.settings.remote.ModernFrameworkSta
 import com.Bilibili_Innocent_Lab.xposedmodule.settings.remote.ModernFrameworkStatusListener
 import com.Bilibili_Innocent_Lab.xposedmodule.settings.remote.RemoteHookConfigPublishState
 import com.Bilibili_Innocent_Lab.xposedmodule.settings.remote.RemoteHookConfigStore
-import com.Bilibili_Innocent_Lab.xposedmodule.settings.remote.isNpatchConfigChannel
+import com.Bilibili_Innocent_Lab.xposedmodule.runtime.noroot.HostConfigChannel
+import com.Bilibili_Innocent_Lab.xposedmodule.runtime.noroot.HostConfigChannels
 import com.Bilibili_Innocent_Lab.xposedmodule.settings.terms.UserTermsAuthorizationCoordinator
 import com.Bilibili_Innocent_Lab.xposedmodule.settings.terms.UserTermsAuthorizationListener
 import com.Bilibili_Innocent_Lab.xposedmodule.settings.terms.UserTermsAuthorizationSnapshot
@@ -1185,14 +1186,14 @@ class MainActivity : SkinnedActivity() {
             configState = lspatchReceipt?.bootstrap?.configState,
             installChainState = lspatchReceipt?.bootstrap?.installChainState
         )
+        val channel = HostConfigChannels.read(applicationContext, framework)
         val displayState = NoRootSupportState.activationDisplayState(
             rootActive = framework.capable,
             frameworkCheckPending = frameworkStatusCheckPending && !framework.connected,
             displayState = noRootState,
-            lspatchFramework = com.Bilibili_Innocent_Lab.xposedmodule.runtime.noroot.LspatchRuntimeProfiles
-                .usesDirectConfig(applicationContext, framework),
+            lspatchFramework = channel == HostConfigChannel.LSPATCH,
             lspatchHostState = lspatchHostState,
-            nPatchFramework = isNpatchConfigChannel(framework)
+            nPatchFramework = channel == HostConfigChannel.NPATCH
         )
         val activated = displayState == ActivationDisplayState.ACTIVE_LSPOSED ||
             displayState == ActivationDisplayState.ACTIVE_LSPATCH ||

@@ -4,7 +4,6 @@ import android.content.Context
 import android.util.Base64
 import com.Bilibili_Innocent_Lab.xposedmodule.settings.remote.RemoteHookConfigStore
 import com.Bilibili_Innocent_Lab.xposedmodule.settings.remote.ModernFrameworkStatus
-import com.Bilibili_Innocent_Lab.xposedmodule.settings.remote.isLspatch
 import com.highcapable.betterandroid.system.extension.component.PackageInfoFlagsWrapper
 import com.highcapable.betterandroid.system.extension.component.getPackageInfoOrNull
 import org.json.JSONObject
@@ -31,10 +30,8 @@ internal object LspatchRuntimeProfiles {
             parseJson(String(Base64.decode(marker, Base64.DEFAULT), Charsets.UTF_8))
         }.getOrDefault(LspatchRuntimeProfile())
 
-    fun usesDirectConfig(context: Context, status: ModernFrameworkStatus = RemoteHookConfigStore.status()): Boolean {
-        // 实际 Root 框架仍按标准通道运行；服务未到达或集成模式无管理器时依安装档案判定。
-        return if (status.capable) status.isLspatch else read(context).modern
-    }
+    fun usesDirectConfig(context: Context, status: ModernFrameworkStatus = RemoteHookConfigStore.status()): Boolean =
+        HostConfigChannels.read(context, status) == HostConfigChannel.LSPATCH
 
     internal fun parseJson(raw: String): LspatchRuntimeProfile = runCatching {
         require(raw.length <= MAX_METADATA_CHARS)

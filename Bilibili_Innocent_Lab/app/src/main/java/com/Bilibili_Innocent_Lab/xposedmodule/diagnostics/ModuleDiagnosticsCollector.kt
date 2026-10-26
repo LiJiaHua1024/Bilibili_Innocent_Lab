@@ -17,7 +17,8 @@ import com.Bilibili_Innocent_Lab.xposedmodule.settings.backup.SettingsCatalog
 import com.Bilibili_Innocent_Lab.xposedmodule.settings.modulePreferences
 import com.Bilibili_Innocent_Lab.xposedmodule.settings.remote.RemoteHookConfigPublishState
 import com.Bilibili_Innocent_Lab.xposedmodule.settings.remote.RemoteHookConfigStore
-import com.Bilibili_Innocent_Lab.xposedmodule.settings.remote.isNpatchConfigChannel
+import com.Bilibili_Innocent_Lab.xposedmodule.runtime.noroot.HostConfigChannel
+import com.Bilibili_Innocent_Lab.xposedmodule.runtime.noroot.HostConfigChannels
 import com.Bilibili_Innocent_Lab.xposedmodule.ui.skin.runtime.SkinSessionDiagnostics
 import com.highcapable.betterandroid.system.extension.component.versionCodeCompat
 import com.highcapable.betterandroid.system.extension.utils.AndroidVersion
@@ -64,6 +65,7 @@ internal object ModuleDiagnosticsCollector {
                 .isSettingsBlocked(appContext)
         )
         val framework = RemoteHookConfigStore.status()
+        val channel = HostConfigChannels.read(appContext, framework)
         val lspatchHostState = NoRootSupportState.lspatchHostReceiptState(
             configState = hostRuntime?.bootstrap?.configState,
             installChainState = hostRuntime?.bootstrap?.installChainState
@@ -72,10 +74,9 @@ internal object ModuleDiagnosticsCollector {
             rootActive = framework.capable,
             frameworkCheckPending = frameworkCheckPending && !framework.connected,
             displayState = noRootState,
-            lspatchFramework = com.Bilibili_Innocent_Lab.xposedmodule.runtime.noroot.LspatchRuntimeProfiles
-                .usesDirectConfig(appContext, framework),
+            lspatchFramework = channel == HostConfigChannel.LSPATCH,
             lspatchHostState = lspatchHostState,
-            nPatchFramework = isNpatchConfigChannel(framework)
+            nPatchFramework = channel == HostConfigChannel.NPATCH
         )
         val remote = RemoteHookConfigStore.diagnostics()
         val preferences = appContext.modulePreferences()
