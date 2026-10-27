@@ -13,7 +13,8 @@ import com.highcapable.kavaref.extension.isStatic
 
 internal class GuestLibraryHostHooks(
     private val library: GuestLibraryRuntime,
-    private val isGuest: () -> Boolean
+    private val isGuest: () -> Boolean,
+    private val history: GuestNativeHistoryHooks
 ) {
     fun install(env: HookEnvironment): Int {
         val loader = env.classLoader ?: return 0
@@ -135,7 +136,7 @@ internal class GuestLibraryHostHooks(
         }
         attempt { GuestNativeFavoriteHooks(library, isGuest).install(env) }
         attempt { GuestNativeFollowListHooks(library, isGuest).install(env) }
-        attempt { GuestNativeHistoryHooks(library, isGuest).install(env) }
+        attempt { history.install(env) }
         attempt { GuestNativeWatchLaterHooks(library, isGuest).install(env) }
         attempt { GuestNativeWatchLaterAddHooks(library, isGuest).install(env) }
         attempt { GuestNativeListHttpHooks(library, isGuest).install(env) }

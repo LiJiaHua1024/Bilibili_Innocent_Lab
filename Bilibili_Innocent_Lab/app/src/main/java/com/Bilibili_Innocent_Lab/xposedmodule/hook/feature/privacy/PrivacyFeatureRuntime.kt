@@ -87,12 +87,21 @@ internal class PrivacyFeatureRuntime(
                     env.logError("guest_onboarding", "[BIL] Guest onboarding adapter unavailable")
                     0
                 } else 0
-                val playback = runCatching { GuestPlaybackHooks(library, guest).install(env) }.getOrElse {
+                val playbackHooks = GuestPlaybackHooks(library, guest)
+                val playback = runCatching { playbackHooks.install(env) }.getOrElse {
                     env.logError("guest_playback", "[BIL] Guest playback adapter unavailable")
                     0
                 }
-                val hooks = onboarding + GuestLibraryHostHooks(library, guest).install(env) + playback +
-                    installMineOverlayGuard(env, guest)
+                val history = GuestNativeHistoryHooks(library, guest, host)
+                // KMP gRPC pipeline (8.92+ history screen and other KMP services): shared with incognito
+                // when active, otherwise installed here only to serve the local library.
+                var kmpHooks = 0
+                val kmp = kmpBoundary ?: (KmpMossBoundary.prepare(env, null) { true } as? KmpMossBoundary.Prepared.Ready)
+                    ?.boundary?.also { kmpHooks = it.install() }
+                kmp?.attach(guest, { rpc, payload -> history.kmpReply(rpc, payload) },
+                    playbackHooks.kmpViewObserver(env, host))
+                val hooks = onboarding + GuestLibraryHostHooks(library, guest, history).install(env) + playback +
+                    kmpHooks + installMineOverlayGuard(env, guest)
                 FeatureInstallResult.Installed(hooks + ((prompts as? FeatureInstallResult.Installed)?.hookCount ?: 0), complete = false)
             }
         }
