@@ -1,15 +1,15 @@
 package com.Bilibili_Innocent_Lab.xposedmodule.hook.feature.privacy
 
+import com.Bilibili_Innocent_Lab.xposedmodule.BuildConfig
 import com.Bilibili_Innocent_Lab.xposedmodule.hook.feature.HookEnvironment
 import com.Bilibili_Innocent_Lab.xposedmodule.runtime.KavaMemberLookup as Lookup
 import java.util.concurrent.ConcurrentHashMap
 
 /**
- * Diagnostic only: the host's KMP modules send HTTP through a shared Ktor client whose engine is the
- * native ignet stack ("ktor-ignet"), not OkHttp, so the OkHttp boundary never sees those calls. This
- * logs what such a call looks like — host, path and the NAMES of its query parameters and headers,
- * never any value — so an incognito session can be audited for identity that rides on this channel.
- * It changes nothing about the request.
+ * Debug builds only: the host's KMP modules send HTTP through a shared Ktor client whose engine is the
+ * native ignet stack ("ktor-ignet"), not OkHttp. This logs what such a call looks like — host, path
+ * and the NAMES of its query parameters and headers, never any value — so the [IgnetHttpBoundary]
+ * can be audited on a device. It changes nothing about the request.
  */
 internal object KtorTrafficProbe {
     private const val MAX_LOGGED = 64
@@ -17,7 +17,7 @@ internal object KtorTrafficProbe {
         "csrf", "csrf_token", "fp_local", "fp_remote")
     private val logged = ConcurrentHashMap.newKeySet<String>()
 
-    fun install(env: HookEnvironment): Int = runCatching {
+    fun install(env: HookEnvironment): Int = if (!BuildConfig.DEBUG) 0 else runCatching {
         val loader = requireNotNull(env.classLoader)
         val host = PrivacyHostAccess(loader)
         val statement = host.type("io.ktor.client.statement.HttpStatement")

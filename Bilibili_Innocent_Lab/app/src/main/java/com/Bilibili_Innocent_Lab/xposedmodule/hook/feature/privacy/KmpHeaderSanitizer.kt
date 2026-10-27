@@ -45,9 +45,9 @@ internal class KmpHeaderSanitizer(
         const val DEVICE_BIN = "x-bili-device-bin"
 
         /** Credentials and account-bound tokens; same set the OkHttp boundary strips. */
-        private val REMOVED = setOf("authorization", "cookie", "proxy-authorization", "x-bili-access-key",
+        internal val REMOVED = setOf("authorization", "cookie", "proxy-authorization", "x-bili-access-key",
             "x-bili-mid", "display-id", "x-bili-ticket", "bili-ticket", "x-bili-aurora-eid")
-        private val DEVICE_IDS = setOf("buvid", "device-id", "fp_local", "fp_remote", "guestid")
-        private val SESSION_IDS = setOf("session-id", "session_id")
+        internal val DEVICE_IDS = setOf("buvid", "device-id", "fp_local", "fp_remote", "guestid")
+        internal val SESSION_IDS = setOf("session-id", "session_id")
     }
 }

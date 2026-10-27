@@ -1,6 +1,7 @@
 package com.Bilibili_Innocent_Lab.xposedmodule.hook.feature.privacy
 
 import com.highcapable.kavaref.extension.classOf
+import com.Bilibili_Innocent_Lab.xposedmodule.BuildConfig
 import com.Bilibili_Innocent_Lab.xposedmodule.hook.feature.*
 import com.Bilibili_Innocent_Lab.xposedmodule.runtime.KavaMemberLookup as Lookup
 import java.io.ByteArrayInputStream
@@ -147,10 +148,10 @@ internal class IncognitoNetworkHooks(
                             applied("http")
                             success(original)
                         } else {
-                            // Diagnostic only: host and path (never the query) of what is sent on, once each.
-                            val target = (host.call(url, "host") as String) + (host.call(url, "encodedPath") as String)
-                            if (seenHttp.size < MAX_SEEN_HTTP && seenHttp.add(target)) {
-                                env.logInfo("incognito_http_seen:$target", "[BIL] HTTP sealed and sent: $target")
+                            // Debug builds only: host and path (never the query) of what is sent on, once each.
+                            if (BuildConfig.DEBUG && seenHttp.size < MAX_SEEN_HTTP) {
+                                val target = (host.call(url, "host") as String) + (host.call(url, "encodedPath") as String)
+                                if (seenHttp.add(target)) env.logInfo("incognito_http_seen:$target", "[BIL] HTTP sealed and sent: $target")
                             }
                             proceed.invoke(chain, sanitize(original, requireNotNull(session.identity())))
                         }

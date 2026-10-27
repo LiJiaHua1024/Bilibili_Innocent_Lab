@@ -30,13 +30,19 @@ internal class PrivacyFeatureRuntime(
                 // The host's KMP gRPC pipeline bypasses the Java moss boundary above. If the build has
                 // one that cannot be routed, incognito must not start: that channel would stay open.
                 val kmpPrepared = KmpMossBoundary.prepare(env, session) { ready.get() }
-                if (networkApply == null || accountApply == null || kmpPrepared == null) {
+                // KMP HTTP (Ktor on the native ighttp engine) bypasses both the OkHttp and the moss
+                // boundaries; a build that has it unroutable must not start. The KMP broadcast tunnel
+                // (online presence) is NOT blocked here: refusing its native bidi stream aborts the
+                // host on 9.16.1, so it is left open and tracked as a residual (round3-plan batch 1.5).
+                val ignetApply = IgnetHttpBoundary(session) { ready.get() }.prepare(env)
+                if (networkApply == null || accountApply == null || kmpPrepared == null || ignetApply == null) {
                     env.reportRuntimeEvidence("incognito_privacy", FeatureRuntimeStage.ADAPTED)
                     env.reportStatus("incognito_privacy_status",
                         "not-applicable-host:" + listOfNotNull(
                             "network".takeIf { networkApply == null },
                             "account-isolation".takeIf { accountApply == null },
-                            "kmp-moss".takeIf { kmpPrepared == null }).joinToString(","))
+                            "kmp-moss".takeIf { kmpPrepared == null },
+                            "ignet-http".takeIf { ignetApply == null }).joinToString(","))
                     return@FunctionalFeatureInstaller FeatureInstallResult.Skipped("missing-host-structure")
                 }
                 // Enter the session only once the boundary is guaranteed to install completely.
@@ -46,6 +52,7 @@ internal class PrivacyFeatureRuntime(
                 val web = webApply()
                 kmpBoundary = (kmpPrepared as? KmpMossBoundary.Prepared.Ready)?.boundary
                 val kmp = kmpBoundary?.install() ?: 0
+                val ignet = ignetApply()
                 // Audit-only: shows what the native-ignet Ktor client sends, which no boundary here covers.
                 val ktorProbe = KtorTrafficProbe.install(env)
                 ready.set(true)
@@ -55,7 +62,7 @@ internal class PrivacyFeatureRuntime(
                 }.also { bus -> env.postToMain?.invoke { bus.register() } }
                 env.reportStatus("incognito_privacy_status", "partial")
                 // Network adapters are version-bound. Never report end-to-end privacy as verified.
-                FeatureInstallResult.Installed(count + network + web + kmp + ktorProbe, complete = false)
+                FeatureInstallResult.Installed(count + network + web + kmp + ignet + ktorProbe, complete = false)
             }
         },
         FunctionalFeatureInstaller("guest_browsing") { env ->
