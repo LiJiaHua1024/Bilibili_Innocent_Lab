@@ -146,6 +146,11 @@ internal class IncognitoNetworkHooks(
                         if (!isolationReady() || PrivacyNetworkPolicy.blockHttp(host.call(url, "host") as String,
                                 host.call(url, "encodedPath") as String, host.call(original, "method") as String)) {
                             applied("http")
+                            // Debug builds only: names of what an incognito session keeps off the network, once each.
+                            if (BuildConfig.DEBUG && seenHttp.size < MAX_SEEN_HTTP) {
+                                val target = (host.call(url, "host") as String) + (host.call(url, "encodedPath") as String)
+                                if (seenHttp.add("blocked:$target")) env.logInfo("incognito_http_blocked:$target", "[BIL] HTTP withheld locally: $target")
+                            }
                             success(original)
                         } else {
                             // Debug builds only: host and path (never the query) of what is sent on, once each.

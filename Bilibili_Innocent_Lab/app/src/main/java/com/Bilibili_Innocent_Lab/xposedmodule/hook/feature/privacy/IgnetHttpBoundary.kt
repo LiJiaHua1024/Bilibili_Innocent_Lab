@@ -87,6 +87,9 @@ internal class IgnetHttpBoundary(
                         if (allowed && BuildConfig.DEBUG && seen.size < MAX_SEEN && seen.add(host + path)) {
                             env.logInfo("incognito_ignet_seen:$host$path", "[BIL] ignet HTTP sealed and sent: $host$path")
                         }
+                        if (!allowed && BuildConfig.DEBUG && seen.size < MAX_SEEN && seen.add("blocked:$host$path")) {
+                            env.logInfo("incognito_ignet_blocked:$host$path", "[BIL] ignet HTTP withheld: $host$path")
+                        }
                         allowed
                     }.getOrDefault(false)
                     if (send) return@before
