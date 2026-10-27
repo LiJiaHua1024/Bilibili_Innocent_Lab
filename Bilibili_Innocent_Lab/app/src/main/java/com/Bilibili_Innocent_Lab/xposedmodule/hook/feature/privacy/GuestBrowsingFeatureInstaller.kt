@@ -103,15 +103,26 @@ internal class GuestBrowsingFeatureInstaller(
 
         // host-current.apk classes31.dex: private final w(String, FragmentActivity, boolean):void
         // 构造 key=login_guide 的 DialogManagerInfo 后调用 addDialog；不是主动登录入口。
-        register(
-            "one-pass-guide",
-            exactMethod(
-                Lookup.classOrNull(loader, ONE_PASS_COMPANION), "w", Void.TYPE, false,
-                classOf<String>(), Lookup.classOrNull(loader, "androidx.fragment.app.FragmentActivity"),
-                classOf<Boolean>()
-            ),
-            null
-        )
+        // 8.84–8.96：Companion 上有三个 (String, FragmentActivity, boolean):void 同形方法（c/w/x），
+        // 按稳定名 w+x 命中；8.97+ 宿主把它改名并只留下唯一一个同形方法，按形状兜底命中（见
+        // captures/compat-incognito matrix d10de235: w/x on 8.84–8.96, 唯一 f on 8.97+/26 版）。
+        // 拦它只是在构造 login_guide 对话框前阻断一次性登录弹窗；login-dialog 钩子是后备。
+        val companion = Lookup.classOrNull(loader, ONE_PASS_COMPANION)
+        val fragmentActivity = Lookup.classOrNull(loader, "androidx.fragment.app.FragmentActivity")
+        val onePass = buildList {
+            if (companion != null && fragmentActivity != null) {
+                val shape = listOf(classOf<String>(), fragmentActivity, classOf<Boolean>())
+                listOf("w", "x").forEach { name ->
+                    exactMethod(companion, name, Void.TYPE, false, *shape.toTypedArray())?.let(::add)
+                    exactMethod(companion, name, Void.TYPE, true, *shape.toTypedArray())?.let(::add)
+                }
+                if (isEmpty()) PrivacyStructuralResolver.uniqueMethod(companion) { m ->
+                    m.returnType == Void.TYPE && m.parameterTypes.toList() == shape
+                }?.let(::add)
+            }
+        }.distinctBy { it.name to it.parameterTypes.toList() }
+        register("one-pass-guide", onePass.getOrNull(0), null)
+        onePass.drop(1).forEachIndexed { i, m -> register("one-pass-guide-alt${i + 1}", m, null) }
 
         // classes18.dex lp3.a: run() 检查 isLogin / PlayIndex.mNeedLogin，显示 force_login_toast。
         // a() 排程、c() 清理：只拦 run 入口，不破坏清理，也不宣称修复暂停或解锁服务端流。
@@ -141,10 +152,6 @@ internal class GuestBrowsingFeatureInstaller(
         register("overseas-forced-login", exactMethod(
             Lookup.classOrNull(loader, "tv.danmaku.bili.ui.main2.HomeLoginExpKt"), "n",
             classOf<Boolean>(), true), false)
-        register("one-pass-guide-alternate", exactMethod(
-            Lookup.classOrNull(loader, ONE_PASS_COMPANION), "x", Void.TYPE, true,
-            classOf<String>(), Lookup.classOrNull(loader, "androidx.fragment.app.FragmentActivity"),
-            classOf<Boolean>()), null)
         // 8.90.2 et1.c is exclusively the dynamic-feed login row (dy_login_bottom).
         // Do not hide arbitrary views named "login" or alter the explicit Mine login route.
         runCatching {

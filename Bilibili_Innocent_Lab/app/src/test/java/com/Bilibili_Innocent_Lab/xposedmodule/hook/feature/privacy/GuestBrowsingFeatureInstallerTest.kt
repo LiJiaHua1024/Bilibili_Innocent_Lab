@@ -51,6 +51,18 @@ class GuestBrowsingFeatureInstallerTest {
         assertTrue(FeatureRuntimeStage.ERROR in h.stages)
     }
 
+    @Test fun onePassLoginGuideIsSuppressedForGuestsOnly() {
+        val h = Harness()
+        assertTrue(h.registrar.registrationAttempts.any { it.first == "guest_browsing.one-pass-guide" })
+        var ran = 0
+        fun fire() = h.registrar.invoke("guest_browsing.one-pass-guide", args = arrayOf("home", null, true)) { ran++ }
+        fire()
+        assertEquals(0, ran)
+        h.guest = false
+        fire()
+        assertEquals(1, ran)
+    }
+
     @Test fun commentGuardLeavesServerDataAndPaginationMetadataUnchanged() {
         val h = Harness()
         val subject = CommentSubjectDescription(data = listOf("reply"), hasNext = true)
