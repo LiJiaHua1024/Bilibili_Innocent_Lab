@@ -27,12 +27,16 @@ internal class PrivacyFeatureRuntime(
                 val networkApply = IncognitoNetworkHooks(session) { ready.get() }.prepare(env)
                 val accountApply = prepareAccountIsolation(env, session)
                 val webApply = IncognitoWebHooks().prepare(env)
-                if (networkApply == null || accountApply == null) {
+                // The host's KMP gRPC pipeline bypasses the Java moss boundary above. If the build has
+                // one that cannot be routed, incognito must not start: that channel would stay open.
+                val kmpPrepared = KmpMossBoundary.prepare(env, session) { ready.get() }
+                if (networkApply == null || accountApply == null || kmpPrepared == null) {
                     env.reportRuntimeEvidence("incognito_privacy", FeatureRuntimeStage.ADAPTED)
                     env.reportStatus("incognito_privacy_status",
                         "not-applicable-host:" + listOfNotNull(
                             "network".takeIf { networkApply == null },
-                            "account-isolation".takeIf { accountApply == null }).joinToString(","))
+                            "account-isolation".takeIf { accountApply == null },
+                            "kmp-moss".takeIf { kmpPrepared == null }).joinToString(","))
                     return@FunctionalFeatureInstaller FeatureInstallResult.Skipped("missing-host-structure")
                 }
                 // Enter the session only once the boundary is guaranteed to install completely.
@@ -40,6 +44,8 @@ internal class PrivacyFeatureRuntime(
                 val network = networkApply()
                 val count = accountApply()
                 val web = webApply()
+                kmpBoundary = (kmpPrepared as? KmpMossBoundary.Prepared.Ready)?.boundary
+                val kmp = kmpBoundary?.install() ?: 0
                 ready.set(true)
                 activeSession = session
                 activeIdentityBus = IncognitoIdentityBus(context, session) {
@@ -47,7 +53,7 @@ internal class PrivacyFeatureRuntime(
                 }.also { bus -> env.postToMain?.invoke { bus.register() } }
                 env.reportStatus("incognito_privacy_status", "partial")
                 // Network adapters are version-bound. Never report end-to-end privacy as verified.
-                FeatureInstallResult.Installed(count + network + web, complete = false)
+                FeatureInstallResult.Installed(count + network + web + kmp, complete = false)
             }
         },
         FunctionalFeatureInstaller("guest_browsing") { env ->
@@ -94,6 +100,7 @@ internal class PrivacyFeatureRuntime(
 
     private var activeSession: IncognitoSession? = null
     private var activeIdentityBus: IncognitoIdentityBus? = null
+    private var kmpBoundary: KmpMossBoundary? = null
 
     private fun installMineOverlayGuard(env: HookEnvironment, guest: () -> Boolean): Int {
         val fragment = Lookup.classOrNull(env.classLoader, "tv.danmaku.bili.ui.main2.mine.HomeUserCenterFragment")
