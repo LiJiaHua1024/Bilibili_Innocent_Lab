@@ -16,7 +16,6 @@ class PrivacyNetworkPolicyTest {
             Triple("dataflow.biliapi.com", "/anything", "GET"),
             Triple("api.bilibili.com", "/x/unknown/future-write", "POST"),
             Triple("api.bilibili.com", "/x/relation/modify", "POST"),
-            Triple("line1-log.biligame.net", "/collector/api/report", "POST"),
             Triple("dataflow.biliapi.com", "/log/pbmobile/realtime", "POST"),
             Triple("api.bilibili.com", "/x/report/click/now", "POST")
         ).forEach { (host, path, method) -> assertTrue("$host$path", PrivacyNetworkPolicy.blockHttp(host,path,method)) }
@@ -39,6 +38,17 @@ class PrivacyNetworkPolicyTest {
         assertFalse(PrivacyNetworkPolicy.isBiliHost("evilbilibili.com"))
         assertFalse(PrivacyNetworkPolicy.isBiliHost("notbiligame.net"))
         assertFalse(PrivacyNetworkPolicy.blockHttp("example.com", "/history/report", "POST"))
+    }
+
+    @Test fun gameTrackerCollectorIsNeverAnsweredLocally() {
+        // Blocking biligame.net answered the tracker's config pull and report uploads with a synthetic
+        // empty success. The SDK then parsed its flush interval as 0 and re-queued flushes without delay:
+        // ~800k queued events and a host OOM within a minute on 9.16.1. It stays outside the Bilibili
+        // host list, so its traffic is sealed (identity headers replaced) but never short-circuited.
+        assertFalse(PrivacyNetworkPolicy.isBiliHost("line1-log.biligame.net"))
+        assertFalse(PrivacyNetworkPolicy.blockHttp("line1-log.biligame.net", "/collector/admin/config", "POST"))
+        assertFalse(PrivacyNetworkPolicy.blockHttp("line1-log.biligame.net", "/collector/api/report", "POST"))
+        assertTrue(PrivacyNetworkPolicy.isBiliHost("line3-h5-mobile-api.biligame.com"))
     }
 
     @Test fun protobufHeartbeatsFeedbackAndHistoryWritesAreBlockedButReadsRemain() {

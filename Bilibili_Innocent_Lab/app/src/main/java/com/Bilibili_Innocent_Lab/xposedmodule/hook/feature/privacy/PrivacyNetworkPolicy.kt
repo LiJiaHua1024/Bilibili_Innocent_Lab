@@ -3,7 +3,7 @@ package com.Bilibili_Innocent_Lab.xposedmodule.hook.feature.privacy
 /** Pure policy; never match an unrelated host by substring. */
 internal object PrivacyNetworkPolicy {
     fun isBiliHost(host: String): Boolean = listOf("bilibili.com", "biliapi.net", "biliapi.com",
-        "bilivideo.com", "hdslb.com", "biligame.com", "biligame.net").any { host == it || host.endsWith(".$it") }
+        "bilivideo.com", "hdslb.com", "biligame.com").any { host == it || host.endsWith(".$it") }
 
     fun blockHttp(host: String, path: String, method: String): Boolean {
         val normalizedHost = host.lowercase().trimEnd('.')

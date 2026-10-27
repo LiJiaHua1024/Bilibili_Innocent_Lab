@@ -68,8 +68,7 @@ class KmpSideChannelBoundaryTest {
         val h = ignet()
         assertEquals(HookExceptionPolicy.DELIVER_TO_HOST, h.registrar.policies["incognito.ignet.http.execute"])
         for ((url, method) in listOf("https://dataflow.biliapi.com/log/pbmobile/realtime" to "POST",
-                "https://api.bilibili.com/x/report/click/now" to "POST",
-                "https://line1-log.biligame.net/collector/api/report" to "POST")) {
+                "https://api.bilibili.com/x/report/click/now" to "POST")) {
             val request = h.request(url, method)
             val failure = h.execute(request).exceptionOrNull()
             assertTrue(url, failure is IOException)
