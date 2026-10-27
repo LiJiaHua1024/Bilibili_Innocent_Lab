@@ -18,8 +18,10 @@ import java.lang.reflect.Method
 import java.util.concurrent.atomic.AtomicBoolean
 
 /**
- * 8.90.2 已核实的客户端游客提示入口，不改变账户状态、服务端响应或主动登录路由。
- * 动态列表底部登录条有独立适配；注册成功不代表全部播放/分页场景均已验证。
+ * 游客提示入口：登录弹窗、一键登录引导、播放器登录 toast / 画质钳制、海外强制登录等，
+ * 不改变账户状态、服务端响应或主动登录路由。入口按"稳定名 → 稳定配置键 → 形状唯一"定位，
+ * 8.90.2 之外的版本只命中能被证明的那部分；动态列表底部登录条仍是 8.90.2 混淆名。
+ * 注册成功不代表全部播放/分页场景均已验证。
  */
 internal class GuestBrowsingFeatureInstaller(
     private val enabled: Boolean,
@@ -44,10 +46,15 @@ internal class GuestBrowsingFeatureInstaller(
             if (flag.compareAndSet(false, true)) environment.reportRuntimeEvidence(ID, stage)
         }
 
+        /**
+         * [candidate] 是只看入参的廉价预筛，先于任何账号状态读取执行；挂在 BLRemoteConfig 这类全局
+         * 通用入口时，其它键必须在不读登录态的情况下直接放行宿主。
+         */
         fun register(
             path: String,
             method: Method?,
             returnValue: Any?,
+            candidate: ModernHookParam.() -> Boolean = { true },
             matches: ModernHookParam.() -> Boolean = { true }
         ) {
             if (method == null) {
@@ -62,6 +69,7 @@ internal class GuestBrowsingFeatureInstaller(
                     before {
                         // 不在安装时快照游客状态；登录/退出后无需重新注册。未知状态放行宿主。
                         if (!enabled) return@before
+                        if (!runCatching { candidate() }.getOrDefault(false)) return@before
                         val guest = runCatching { isGuest() }.getOrElse {
                             if (guardFailed.compareAndSet(false, true)) {
                                 runtimeFailure(environment, "guest-state")
@@ -126,14 +134,39 @@ internal class GuestBrowsingFeatureInstaller(
 
         // classes18.dex lp3.a: run() 检查 isLogin / PlayIndex.mNeedLogin，显示 force_login_toast。
         // a() 排程、c() 清理：只拦 run 入口，不破坏清理，也不宣称修复暂停或解锁服务端流。
+        // 这是 8.90.2 已核实的混淆名入口；其它版本由下面的 BLRemoteConfig 键钩子在排程处统一拦截。
         register(
             "force-login-toast",
             exactMethod(Lookup.classOrNull(loader, "lp3.a"), "run", Void.TYPE, false),
             null
         )
 
+        // BLRemoteConfig 是未混淆的稳定类（getBoolean(String,boolean)/getInt(String,int) 在 8.84–9.17
+        // 全部 38 版存在，hostlab p4/p5）。两个远程配置键各自只被一个方法读取，且读取方随版本改名
+        // （8.90.2 gh6.f.a/h → 9.16.1 xu1.g.a 等），所以不挂改名后的读取方，直接按键拦配置读取：
+        //  - enable_player_force_login_toast：游客登录 toast 的排程开关（8.90.2 gh6.f.a、9.16.1 Qu0.a.a；
+        //    9.17 新增的 LoginGuidanceService 也读它）。返回 false 后 toast 根本不会排程。
+        //  - enable_player_force_login_qn：游客画质上限，宿主按 min(默认档, 该值) 钳制未登录用户；
+        //    8.90.2 gh6.f.j 与 9.16.1 xu1.g 反编译一致。返回 Int.MAX_VALUE 即取消钳制。
+        // 只取这两个键，其它配置读取不读登录态直接放行；不改变服务端响应与账号状态。
+        val remoteConfig = Lookup.classOrNull(loader, REMOTE_CONFIG)
+        register(
+            "force-login-toast-config",
+            exactMethod(remoteConfig, "getBoolean", classOf<Boolean>(), false, classOf<String>(), classOf<Boolean>()),
+            false,
+            candidate = { argOrNull(0) == KEY_FORCE_LOGIN_TOAST }
+        )
+        register(
+            "guest-quality-cap-config",
+            exactMethod(remoteConfig, "getInt", classOf<Int>(), false, classOf<String>(), classOf<Int>()),
+            Int.MAX_VALUE,
+            candidate = { argOrNull(0) == KEY_FORCE_LOGIN_QN }
+        )
+
         // classes6.dex / CommentSubjectDescription.java:1348-1350,1390: k() 返回 i=guestLimit。
         // 只取消客户端分页遮罩判定；不修改模型、返回数据、hasNext 或网络请求。
+        // 8.97+ 把 guestLimit 改成公开字段、不再有 getter（9.16.1 唯一的 ()Z 是 b()=是否 UP 主本人），
+        // 没有可挂的方法入口，所以保持 8.90.2 名称并在新版本干净跳过，不去猜同形 ()Z。
         register(
             "comment-guest-limit",
             exactMethod(
@@ -143,15 +176,19 @@ internal class GuestBrowsingFeatureInstaller(
             false
         )
 
-
-        // Verified 8.90.2 experiments: j() otherwise clamps a guest to min(i(), h()).
-        register("guest-quality-cap", exactMethod(Lookup.classOrNull(loader, "gh6.f"), "h",
-            classOf<Int>(), true), Int.MAX_VALUE)
-        register("force-login-experiment", exactMethod(Lookup.classOrNull(loader, "gh6.f"), "a",
-            classOf<Boolean>(), false), false)
-        register("overseas-forced-login", exactMethod(
-            Lookup.classOrNull(loader, "tv.danmaku.bili.ui.main2.HomeLoginExpKt"), "n",
-            classOf<Boolean>(), true), false)
+        // HomeLoginExpKt 里"拉起 bilibili://login/overseas_force 并返回是否成功"的静态 ()Z：8.90.2 是
+        // 私有 n()，8.97+ 是公开 d()（两处反编译方法体一致）。该类 8.87+ 在每个版本都只有这一个
+        // 静态 ()Z（hostlab p4），按形状唯一定位；8.84/8.86 没有这类方法，干净跳过。
+        val homeLoginExp = Lookup.classOrNull(loader, HOME_LOGIN_EXP)
+        register(
+            "overseas-forced-login",
+            homeLoginExp?.let { owner ->
+                PrivacyStructuralResolver.uniqueMethod(owner) { method ->
+                    method.isStatic && method.returnType == classOf<Boolean>() && method.parameterCount == 0
+                }
+            },
+            false
+        )
         // 8.90.2 et1.c is exclusively the dynamic-feed login row (dy_login_bottom).
         // Do not hide arbitrary views named "login" or alter the explicit Mine login route.
         runCatching {
@@ -237,5 +274,9 @@ internal class GuestBrowsingFeatureInstaller(
         private const val ONE_PASS_COMPANION =
             "tv.danmaku.bili.ui.login.OnePassLoginGuideHelperV2\$Companion"
         private const val COMMENT_DESCRIPTION = "com.bilibili.app.comment3.data.model.CommentSubjectDescription"
+        private const val REMOTE_CONFIG = "com.bilibili.lib.config.BLRemoteConfig"
+        private const val HOME_LOGIN_EXP = "tv.danmaku.bili.ui.main2.HomeLoginExpKt"
+        private const val KEY_FORCE_LOGIN_TOAST = "enable_player_force_login_toast"
+        private const val KEY_FORCE_LOGIN_QN = "enable_player_force_login_qn"
     }
 }

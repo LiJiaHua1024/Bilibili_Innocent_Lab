@@ -72,6 +72,54 @@ class GuestBrowsingFeatureInstallerTest {
         assertTrue(subject.hasNext)
     }
 
+    @Test fun playerLoginToastIsNotScheduledForGuestsAndOtherConfigReadsPassThrough() {
+        val h = Harness()
+        val config = com.bilibili.lib.config.BLRemoteConfig()
+        fun read(key: String) = h.registrar.invoke("guest_browsing.force-login-toast-config", config,
+            arrayOf(key, true)) { true }
+        assertEquals(false, read("enable_player_force_login_toast"))
+        assertEquals(true, read("enable_player_force_login_qn"))
+        assertEquals(true, read("some_other_flag"))
+        assertTrue(FeatureRuntimeStage.APPLIED in h.stages)
+        h.guest = false
+        assertEquals(true, read("enable_player_force_login_toast"))
+    }
+
+    @Test fun guestQualityCapIsLiftedOnlyForTheForcedLoginKey() {
+        val h = Harness()
+        val config = com.bilibili.lib.config.BLRemoteConfig()
+        fun read(key: String) = h.registrar.invoke("guest_browsing.guest-quality-cap-config", config,
+            arrayOf(key, 32)) { 32 }
+        assertEquals(Int.MAX_VALUE, read("enable_player_force_login_qn"))
+        assertEquals(32, read("Memorable_qn"))
+        h.guest = false
+        assertEquals(32, read("enable_player_force_login_qn"))
+    }
+
+    @Test fun unrelatedConfigReadsNeverTouchAccountState() {
+        val h = Harness()
+        h.stateFailure = true
+        val config = com.bilibili.lib.config.BLRemoteConfig()
+        assertEquals(true, h.registrar.invoke("guest_browsing.force-login-toast-config", config,
+            arrayOf("some_other_flag", true)) { true })
+        assertEquals(32, h.registrar.invoke("guest_browsing.guest-quality-cap-config", config,
+            arrayOf("some_other_int", 32)) { 32 })
+        assertFalse(FeatureRuntimeStage.ERROR in h.stages)
+        // 命中目标键但读不到登录态：放行宿主，并留下错误证据。
+        assertEquals(true, h.registrar.invoke("guest_browsing.force-login-toast-config", config,
+            arrayOf("enable_player_force_login_toast", true)) { true })
+        assertTrue(FeatureRuntimeStage.ERROR in h.stages)
+    }
+
+    @Test fun overseasForcedLoginIsLocatedByTheSingleStaticBooleanShape() {
+        val h = Harness()
+        val attempt = h.registrar.registrationAttempts.single { it.first == "guest_browsing.overseas-forced-login" }
+        assertEquals("d", attempt.second.name)
+        assertEquals(false, h.registrar.invoke("guest_browsing.overseas-forced-login") { true })
+        h.guest = false
+        assertEquals(true, h.registrar.invoke("guest_browsing.overseas-forced-login") { true })
+    }
+
     @Test fun manualLoginAndPromptCleanupRemainCallable() {
         val h = Harness()
         val prompt = lp3.a()
