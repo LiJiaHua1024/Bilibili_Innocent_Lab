@@ -46,6 +46,8 @@ internal class PrivacyFeatureRuntime(
                 val web = webApply()
                 kmpBoundary = (kmpPrepared as? KmpMossBoundary.Prepared.Ready)?.boundary
                 val kmp = kmpBoundary?.install() ?: 0
+                // Audit-only: shows what the native-ignet Ktor client sends, which no boundary here covers.
+                val ktorProbe = KtorTrafficProbe.install(env)
                 ready.set(true)
                 activeSession = session
                 activeIdentityBus = IncognitoIdentityBus(context, session) {
@@ -53,7 +55,7 @@ internal class PrivacyFeatureRuntime(
                 }.also { bus -> env.postToMain?.invoke { bus.register() } }
                 env.reportStatus("incognito_privacy_status", "partial")
                 // Network adapters are version-bound. Never report end-to-end privacy as verified.
-                FeatureInstallResult.Installed(count + network + web + kmp, complete = false)
+                FeatureInstallResult.Installed(count + network + web + kmp + ktorProbe, complete = false)
             }
         },
         FunctionalFeatureInstaller("guest_browsing") { env ->

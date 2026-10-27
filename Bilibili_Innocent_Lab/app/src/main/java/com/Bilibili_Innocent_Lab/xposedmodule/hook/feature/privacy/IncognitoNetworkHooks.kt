@@ -131,6 +131,7 @@ internal class IncognitoNetworkHooks(
             }
             return requireNotNull(host.call(builder, "build"))
         }
+        val seenHttp = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
         val proxy = Proxy.newProxyInstance(host.loader, arrayOf(interceptor)) { p, method, args ->
             when (method.name) {
                 "toString" -> "BIL incognito network boundary"
@@ -145,7 +146,14 @@ internal class IncognitoNetworkHooks(
                                 host.call(url, "encodedPath") as String, host.call(original, "method") as String)) {
                             applied("http")
                             success(original)
-                        } else proceed.invoke(chain, sanitize(original, requireNotNull(session.identity())))
+                        } else {
+                            // Diagnostic only: host and path (never the query) of what is sent on, once each.
+                            val target = (host.call(url, "host") as String) + (host.call(url, "encodedPath") as String)
+                            if (seenHttp.size < MAX_SEEN_HTTP && seenHttp.add(target)) {
+                                env.logInfo("incognito_http_seen:$target", "[BIL] HTTP sealed and sent: $target")
+                            }
+                            proceed.invoke(chain, sanitize(original, requireNotNull(session.identity())))
+                        }
                     } catch (e: InvocationTargetException) {
                         throw e.targetException
                     } catch (e: Exception) {
@@ -320,5 +328,6 @@ internal class IncognitoNetworkHooks(
 
     private companion object {
         const val REGISTERED_HOOK_COUNT = 11
+        const val MAX_SEEN_HTTP = 64
     }
 }
