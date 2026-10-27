@@ -17,6 +17,46 @@ internal class GuestPlaybackHooks(
         var restored: Boolean = false, var resume: Long? = null)
     private val players = WeakHashMap<Any, Playback>()
     private val main = Handler(Looper.getMainLooper())
+    private val diagSeen = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
+
+    internal companion object {
+        private val ITEM_ID = Regex("""(\d{1,19})\+(\d{1,19})""")
+
+        /** 8.97+ player media-item ids look like `<aid>+<cid>`; anything else (or overflow) is not parsed. */
+        fun parseItemId(raw: String): Pair<Long, Long>? {
+            val match = ITEM_ID.matchEntire(raw) ?: return null
+            val aid = match.groupValues[1].toLongOrNull() ?: return null
+            val cid = match.groupValues[2].toLongOrNull() ?: return null
+            return if (aid > 0 && cid > 0) aid to cid else null
+        }
+    }
+
+    /** One status line per milestone, so a device log shows how far a playback got without any content. */
+    private fun diag(env: HookEnvironment, milestone: String) {
+        if (diagSeen.add(milestone)) env.reportStatus("guest_player_$milestone", "seen")
+    }
+
+    /**
+     * Feeds the local library from the video page's View RPC when the host sends it through the KMP
+     * gRPC pipeline (the Java ViewMoss hooks below never see those calls). Metadata only: it never
+     * selects the current video or writes history by itself.
+     */
+    fun kmpViewObserver(env: HookEnvironment, host: PrivacyHostAccess): KmpMossBoundary.ReplyObserver {
+        val replies = mapOf(
+            "bilibili.app.viewunite.v1.View/View" to "com.bapis.bilibili.app.viewunite.v1.ViewReply",
+            "bilibili.app.view.v1.View/View" to "com.bapis.bilibili.app.view.v1.ViewReply")
+        return KmpMossBoundary.ReplyObserver(replies.keys) { rpc, bytes ->
+            if (guest()) runCatching {
+                val reply = requireNotNull(host.static(host.type(replies.getValue(rpc)), "parseFrom", bytes))
+                library.recordVideo(PrivacyVideoMetadata.read(host, reply))
+                env.reportStatus("guest_kmp_view_metadata", "recorded")
+            }.onFailure {
+                env.reportRuntimeEvidence("guest_browsing", FeatureRuntimeStage.ERROR)
+                env.logError("guest_kmp_view:${it.javaClass.simpleName}",
+                    "[BIL] KMP View reply could not be recorded: ${it.javaClass.simpleName}")
+            }
+        }
+    }
 
     fun install(env: HookEnvironment): Int {
         val host = PrivacyHostAccess(requireNotNull(env.classLoader))
@@ -65,6 +105,85 @@ internal class GuestPlaybackHooks(
                 count++
             }
         }
+        // Lazy binding. On 8.97+ the video page calls setMediaResource on an inner core that is not the
+        // hooked wrapper, so the bind hooks never fire. Two stable, named pieces still tell which video
+        // plays: IPlayerCoreService.getCurrentMediaItem().getId() (the cid) and every MediaItemParams
+        // (a data class with one primary constructor) which says which avid that cid belongs to.
+        val knownMedia = object : LinkedHashMap<Long, Long>(64, 0.75f, true) {
+            override fun removeEldestEntry(eldest: MutableMap.MutableEntry<Long, Long>) = size > 64
+        }
+        val currentItem = Lookup.classOrNull(host.loader, "tv.danmaku.biliplayerv2.service.IPlayerCoreService")
+            ?.let { Lookup.methodOrNull(it, "getCurrentMediaItem") }
+        val itemId = currentItem?.returnType?.let { Lookup.methodOrNull(it, "getId") }
+        val paramsConstructor = Lookup.declaredConstructors(params) {
+            java.lang.reflect.Modifier.isPublic(it.modifiers) && !it.isSynthetic
+        }.maxByOrNull { it.parameterCount }
+        env.reportStatus("guest_player_lazy_binding",
+            if (currentItem != null && itemId != null && paramsConstructor != null) "enabled"
+            else "unavailable:${currentItem != null},${itemId != null},${paramsConstructor != null}")
+        if (currentItem != null && itemId != null && paramsConstructor != null) {
+            env.registrar.constructor("guest.player.params", paramsConstructor) {
+                after {
+                    if (!guest() || hasThrowable) return@after
+                    diag(env, "params-built")
+                    runCatching {
+                        val built = instance ?: return@after
+                        val aid = (host.call(built, "getAvid") as Number).toLong()
+                        val cid = (host.call(built, "getId") as? String)?.toLongOrNull() ?: return@after
+                        if (aid > 0 && cid > 0) synchronized(knownMedia) { knownMedia[cid] = aid }
+                    }.onFailure {
+                        env.logError("guest_player_params:${it.javaClass.simpleName}",
+                            "[BIL] MediaItemParams could not be read: ${it.javaClass.simpleName}: ${it.message.orEmpty().take(80)}")
+                    }
+                }
+            }
+            count++
+        }
+        /** (aid, cid) of what [player] reports it is playing; aid is 0 when only the cid could be determined. */
+        fun currentMedia(player: Any): Pair<Long, Long>? {
+            val read = currentItem ?: return null
+            val idOf = itemId ?: return null
+            val media = runCatching { read.invoke(player) }.getOrNull()
+            if (media == null) { diag(env, "item-null"); return null }
+            val raw = runCatching { idOf.invoke(media) as? String }
+                .onFailure {
+                    env.logError("guest_player_item:${it.javaClass.simpleName}",
+                        "[BIL] Current media item unreadable: ${it.javaClass.simpleName}: ${it.message.orEmpty().take(80)}")
+                }.getOrNull()
+            if (raw == null) { diag(env, "item-id-null"); return null }
+            // 8.97+ ids look like "<aid>+<cid>".
+            parseItemId(raw)?.let { return it }
+            raw.toLongOrNull()?.let { return 0L to it }
+            // Not a bare cid: accept an id that embeds exactly one cid this process has just seen built.
+            val embedded = synchronized(knownMedia) { knownMedia.keys.filter { raw.contains(it.toString()) } }
+            if (embedded.size == 1) return 0L to embedded[0]
+            // Shape only (digits -> 9, letters -> a), never the id itself.
+            val shape = raw.take(24).map { if (it.isDigit()) '9' else if (it.isLetter()) 'a' else it }.joinToString("")
+            env.reportStatus("guest_player_item_id_shape", "$shape(len=${raw.length},known=${embedded.size})")
+            return null
+        }
+        /** The playback state of [player]: the bound one, or one derived from what the player reports it is playing. */
+        fun stateFor(player: Any): Playback? {
+            val existing = synchronized(players) { players[player] }
+            val current = currentMedia(player)
+            if (current == null) { diag(env, "current-media-null"); return existing }
+            val cid = current.second
+            if (existing != null && existing.cid == cid) return existing
+            val aid = current.first.takeIf { it > 0 } ?: synchronized(knownMedia) { knownMedia[cid] }
+            if (aid == null) { diag(env, "aid-unknown"); return existing }
+            val fresh = Playback(aid, cid)
+            synchronized(players) { players[player] = fresh }
+            diag(env, "bind-lazy")
+            val weak = WeakReference(player)
+            library.resumePosition(aid, cid) { position ->
+                weak.get()?.let { current ->
+                    synchronized(players) {
+                        if (players[current] === fresh && !fresh.restored) fresh.resume = position
+                    }
+                }
+            }
+            return fresh
+        }
         val coreNames = listOf("lf6.p0",
             "com.bilibili.ship.theseus.united.player.oldway.playercontainer.TheseusPlayerContainerProvider\$providePlayerContainer\$playerContainer\$1\$1\$1")
         for (coreName in coreNames) {
@@ -75,23 +194,30 @@ internal class GuestPlaybackHooks(
                 env.registrar.exact("guest.player.bind.$coreName.${types.size}", core, "setMediaResource", *types) {
                     before {
                         if (!guest()) return@before
-                        val player = instance ?: return@before
-                        val p = argOrNull(types.lastIndex) ?: return@before
-                        val aid = (host.call(p, "getAvid") as Number).toLong()
-                        // MediaItemParams.id is the media cid, validated against numeric UGC ids.
-                        val cid = (host.call(p, "getId") as? String)?.toLongOrNull() ?: return@before
-                        if (aid <= 0 || cid <= 0) return@before
-                        val state = synchronized(players) {
-                            players[player]?.takeIf { it.aid == aid && it.cid == cid }
-                                ?: Playback(aid, cid).also { players[player] = it }
-                        }
-                        val weak = WeakReference(player)
-                        library.resumePosition(aid, cid) { position ->
-                            weak.get()?.let { current ->
-                                synchronized(players) {
-                                    if (players[current] === state && !state.restored) state.resume = position
+                        diag(env, "bind-seen")
+                        runCatching {
+                            val player = instance ?: return@before
+                            val p = argOrNull(types.lastIndex) ?: return@before
+                            val aid = (host.call(p, "getAvid") as Number).toLong()
+                            // MediaItemParams.id is the media cid, validated against numeric UGC ids.
+                            val cid = (host.call(p, "getId") as? String)?.toLongOrNull() ?: return@before
+                            if (aid <= 0 || cid <= 0) return@before
+                            val state = synchronized(players) {
+                                players[player]?.takeIf { it.aid == aid && it.cid == cid }
+                                    ?: Playback(aid, cid).also { players[player] = it }
+                            }
+                            diag(env, "bind-state")
+                            val weak = WeakReference(player)
+                            library.resumePosition(aid, cid) { position ->
+                                weak.get()?.let { current ->
+                                    synchronized(players) {
+                                        if (players[current] === state && !state.restored) state.resume = position
+                                    }
                                 }
                             }
+                        }.onFailure {
+                            env.logError("guest_player_bind:${it.javaClass.simpleName}",
+                                "[BIL] Guest player bind failed: ${it.javaClass.simpleName}: ${it.message.orEmpty().take(80)}")
                         }
                     }
                 }
@@ -103,7 +229,9 @@ internal class GuestPlaybackHooks(
                         if (!guest() || hasThrowable) return@after
                         val player = instance ?: return@after
                         val position = (result as? Int)?.toLong() ?: return@after
-                        val state = synchronized(players) { players[player] } ?: return@after
+                        diag(env, "progress-seen")
+                        val state = stateFor(player) ?: return@after
+                        diag(env, "progress-with-state")
                         if (position <= 0) return@after
                         val duration = (host.call(player, "getDuration") as Number).toLong()
                         if (duration <= 0) return@after
@@ -128,7 +256,10 @@ internal class GuestPlaybackHooks(
                             if (state.last == position || state.last >= 0 && kotlin.math.abs(position - state.last) < 1000) false
                             else { state.last = position; true }
                         }
-                        if (write) library.recordProgress(state.aid, state.cid, position, duration)
+                        if (write) {
+                            diag(env, "progress-write")
+                            library.recordProgress(state.aid, state.cid, position, duration)
+                        }
                     }
                 }
                 count++
@@ -140,7 +271,7 @@ internal class GuestPlaybackHooks(
                     before {
                         if (!guest()) return@before
                         val player = instance ?: return@before
-                        val state = synchronized(players) { players[player] } ?: return@before
+                        val state = stateFor(player) ?: return@before
                         val position = (host.call(player, "getRealCurrentPosition") as Number).toLong()
                         val duration = (host.call(player, "getDuration") as Number).toLong()
                         if (position > 0 && duration > 0) library.recordProgress(state.aid, state.cid, position, duration)
@@ -154,7 +285,7 @@ internal class GuestPlaybackHooks(
         val plan = PrivacyInstallPlan()
         val millis = if (seal.legacyState == null) null else requireNotNull(Lookup.methodOrNull(
             host.type("kotlin.time.Duration"), "getInWholeMilliseconds-impl", classOf<Long>()))
-        fun recordPlayable(paramsValue: Any, duration: Long): Pair<Long, Long>? {
+        fun recordPlayable(paramsValue: Any, duration: Long, replace: Boolean = true): Pair<Long, Long>? {
             val aid = (host.call(paramsValue, "getAvid") as Number).toLong()
             val cid = (host.call(paramsValue, "getCid") as Number).toLong()
             if (aid <= 0 || cid <= 0) return null
@@ -162,7 +293,7 @@ internal class GuestPlaybackHooks(
                 host.call(paramsValue, "getTitle") as String, duration, 0, 0,
                 host.call(paramsValue, "getCover") as? String,
                 (host.call(paramsValue, "getMid") as Number).toLong(),
-                host.call(paramsValue, "getAuthor") as String))
+                host.call(paramsValue, "getAuthor") as String), replace)
             return aid to cid
         }
         plan.step {
@@ -185,8 +316,9 @@ internal class GuestPlaybackHooks(
                             library.recordProgress(aid, cid, position, duration)
                         } else {
                             // 8.97+: the seal method reads progress from player internals; local progress is
-                            // recorded by the player-core position hooks above, so only metadata is kept here.
-                            recordPlayable(paramsValue, 0) ?: return@before
+                            // recorded by the player-core position hooks above, so only metadata is kept here,
+                            // and never over a fuller record (real duration) from the View reply.
+                            recordPlayable(paramsValue, 0, replace = false) ?: return@before
                         }
                         env.reportRuntimeEvidence("guest_browsing", FeatureRuntimeStage.APPLIED)
                     }.onFailure {

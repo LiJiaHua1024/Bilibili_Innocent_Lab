@@ -121,8 +121,11 @@ internal class GuestLibraryRuntime(
         }
     }
 
-    /** Detail/preload metadata is not evidence of playback and never writes history or selects current. */
-    fun recordVideo(video: LocalVirtualLibrary.Video) {
+    /**
+     * Detail/preload metadata is not evidence of playback and never writes history or selects current.
+     * [replace] = false keeps an already known (richer) record, e.g. one with the real duration.
+     */
+    fun recordVideo(video: LocalVirtualLibrary.Video, replace: Boolean = true) {
         val token = token() ?: return
         try {
             require(video.aid in 1..LocalVirtualLibrary.MAX_ID && video.cid in 1..LocalVirtualLibrary.MAX_ID)
@@ -133,6 +136,7 @@ internal class GuestLibraryRuntime(
             synchronized(gate) {
                 if (!valid(token)) return
                 val key = video.aid to video.cid
+                if (!replace && metadata.containsKey(key)) return
                 metadata.remove(key)
                 metadata[key] = video
                 while (metadata.size > 256) metadata.remove(metadata.keys.first())
