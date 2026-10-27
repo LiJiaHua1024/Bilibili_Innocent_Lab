@@ -21,7 +21,24 @@ internal class GuestPlaybackHooks(
     fun install(env: HookEnvironment): Int {
         val host = PrivacyHostAccess(requireNotNull(env.classLoader))
         var count = 0
+        // Preflight: the Theseus player writes its DB and reports to the server from one confirmed-
+        // playback event. Without that seal point (or the storages it pairs with) nothing below is
+        // registered, so a host build can never record locally while the host keeps persisting.
+        val seal = GuestPlaybackSealLocator.locate(host.loader)
+        val entry = Lookup.classOrNull(host.loader, "com.bilibili.player.history.MediaHistoryEntry")
+        val entryConstructor = entry?.let { Lookup.constructorOrNull(it, classOf<Int>()) }
+        // NormalMediaHistoryStorage is absent from 9.15+; CommonMediaHistoryStorage is present on all 38.
+        val storages = listOf("com.bilibili.playerbizcommon.history.ugc.NormalMediaHistoryStorage",
+            "com.bilibili.playerbizcommonv2.history.CommonMediaHistoryStorage")
+            .mapNotNull { Lookup.classOrNull(host.loader, it) }
+        if (seal == null || entryConstructor == null || storages.isEmpty()) {
+            env.reportStatus("guest_playback_history", "not-applicable-host")
+            return 0
+        }
         val handler = host.type("com.bilibili.lib.moss.api.MossResponseHandler")
+        val resource = host.type("com.bilibili.lib.media.resource.MediaResource")
+        val params = host.type("tv.danmaku.videoplayer.coreV2.transformer.MediaItemParams")
+        val item = host.type("tv.danmaku.videoplayer.coreV2.MediaItem")
         fun metadata(reply: Any) {
             if (!guest()) return
             runCatching {
@@ -48,9 +65,6 @@ internal class GuestPlaybackHooks(
                 count++
             }
         }
-        val resource = host.type("com.bilibili.lib.media.resource.MediaResource")
-        val params = host.type("tv.danmaku.videoplayer.coreV2.transformer.MediaItemParams")
-        val item = host.type("tv.danmaku.videoplayer.coreV2.MediaItem")
         val coreNames = listOf("lf6.p0",
             "com.bilibili.ship.theseus.united.player.oldway.playercontainer.TheseusPlayerContainerProvider\$providePlayerContainer\$playerContainer\$1\$1\$1")
         for (coreName in coreNames) {
@@ -136,45 +150,55 @@ internal class GuestPlaybackHooks(
             }
         }
 
-        // The modern player writes its DB and reports to the server from the same confirmed-playback event.
-        val history = host.type("com.bilibili.ship.theseus.united.player.history.TheseusHistoryService")
-        val historyState = host.type("com.bilibili.ship.theseus.united.player.history.TheseusHistoryService\$b")
-        val playable = requireNotNull(Lookup.fieldOrNull(history, "g"))
-        val millis = requireNotNull(Lookup.methodOrNull(host.type("kotlin.time.Duration"),
-            "getInWholeMilliseconds-impl", classOf<Long>()))
-        env.registrar.exact("guest.player.theseus_history", history, "t", historyState, classOf<Long>()) {
-            before {
-                if (!guest()) return@before
-                // Block before reading metadata; adapter failure cannot write to the real host history.
-                result = null
-                runCatching {
-                    val owner = instance ?: return@before
-                    val paramsValue = playable.get(owner) ?: return@before
-                    val value = argOrNull(0) ?: return@before
-                    val aid = (host.call(paramsValue, "getAvid") as Number).toLong()
-                    val cid = (host.call(paramsValue, "getCid") as Number).toLong()
-                    val duration = (millis.invoke(null, host.call(value, "a")) as Number).toLong()
-                    val position = (millis.invoke(null, host.call(value, "b")) as Number).toLong()
-                    if (aid > 0 && cid > 0 && duration > 0 && position >= 0) {
-                        library.recordVideo(LocalVirtualLibrary.Video(aid, cid,
-                            host.call(paramsValue, "getTitle") as String, duration, 0, 0,
-                            host.call(paramsValue, "getCover") as? String,
-                            (host.call(paramsValue, "getMid") as Number).toLong(),
-                            host.call(paramsValue, "getAuthor") as String))
-                        library.recordProgress(aid, cid, position, duration)
+        // Seal registrations (resolved in the preflight above).
+        val plan = PrivacyInstallPlan()
+        val millis = if (seal.legacyState == null) null else requireNotNull(Lookup.methodOrNull(
+            host.type("kotlin.time.Duration"), "getInWholeMilliseconds-impl", classOf<Long>()))
+        fun recordPlayable(paramsValue: Any, duration: Long): Pair<Long, Long>? {
+            val aid = (host.call(paramsValue, "getAvid") as Number).toLong()
+            val cid = (host.call(paramsValue, "getCid") as Number).toLong()
+            if (aid <= 0 || cid <= 0) return null
+            library.recordVideo(LocalVirtualLibrary.Video(aid, cid,
+                host.call(paramsValue, "getTitle") as String, duration, 0, 0,
+                host.call(paramsValue, "getCover") as? String,
+                (host.call(paramsValue, "getMid") as Number).toLong(),
+                host.call(paramsValue, "getAuthor") as String))
+            return aid to cid
+        }
+        plan.step {
+            env.registrar.exact("guest.player.theseus_history", seal.method.declaringClass, seal.method.name,
+                *seal.method.parameterTypes) {
+                before {
+                    if (!guest()) return@before
+                    // Block before reading metadata; adapter failure cannot write to the real host history.
+                    result = null
+                    runCatching {
+                        val owner = instance ?: return@before
+                        val paramsValue = seal.playable.get(owner) ?: return@before
+                        val state = argOrNull(0)
+                        if (millis != null && state != null && seal.legacyState?.isInstance(state) == true) {
+                            // 8.84-8.96: the state argument carries kotlin Duration duration/position.
+                            val duration = (millis.invoke(null, host.call(state, "a")) as Number).toLong()
+                            val position = (millis.invoke(null, host.call(state, "b")) as Number).toLong()
+                            if (duration <= 0 || position < 0) return@before
+                            val (aid, cid) = recordPlayable(paramsValue, duration) ?: return@before
+                            library.recordProgress(aid, cid, position, duration)
+                        } else {
+                            // 8.97+: the seal method reads progress from player internals; local progress is
+                            // recorded by the player-core position hooks above, so only metadata is kept here.
+                            recordPlayable(paramsValue, 0) ?: return@before
+                        }
                         env.reportRuntimeEvidence("guest_browsing", FeatureRuntimeStage.APPLIED)
+                    }.onFailure {
+                        // Reflection errors must not escape PROTECT_HOST and resume host DB/report writes.
+                        env.reportRuntimeEvidence("guest_browsing", FeatureRuntimeStage.ERROR)
                     }
-                }.onFailure {
-                    // Reflection errors must not escape PROTECT_HOST and resume host DB/report writes.
-                    env.reportRuntimeEvidence("guest_browsing", FeatureRuntimeStage.ERROR)
                 }
             }
         }
-        count++
-        for (ownerName in listOf("com.bilibili.playerbizcommon.history.ugc.NormalMediaHistoryStorage",
-                "com.bilibili.playerbizcommonv2.history.CommonMediaHistoryStorage")) {
-            val storage = host.type(ownerName)
-            for (method in Lookup.declaredMethods(storage) { it.name in setOf("read", "readFromDB", "write") }) {
+        for (storage in storages) {
+            val ownerName = storage.name
+            for (method in Lookup.declaredMethods(storage) { it.name in setOf("read", "readFromDB", "write") }) plan.step {
                 env.registrar.exact("guest.history.storage.$ownerName.${method.name}.${method.parameterTypes.joinToString { it.name }}",
                     storage, method.name, *method.parameterTypes) {
                     before {
@@ -186,16 +210,16 @@ internal class GuestPlaybackHooks(
                                 val cid = if (key is String) key.substringAfterLast('_').toLongOrNull()
                                     else key?.let { runCatching { (host.call(it, "a") as Number).toLong() }.getOrNull() }
                                 cid?.let(library::cachedResumePosition)?.let { position ->
-                                    val entry = host.type("com.bilibili.player.history.MediaHistoryEntry")
-                                    result = requireNotNull(Lookup.constructorOrNull(entry, classOf<Int>())).newInstance(position)
+                                    result = entryConstructor.newInstance(position)
                                 }
                             }
                         }.onFailure { env.reportRuntimeEvidence("guest_browsing", FeatureRuntimeStage.ERROR) }
                     }
                 }
-                count++
             }
         }
-        return count
+        val sealed = plan.apply()
+        env.reportStatus("guest_playback_history", if (seal.legacyState != null) "adapted-legacy" else "adapted-modern")
+        return count + sealed
     }
 }

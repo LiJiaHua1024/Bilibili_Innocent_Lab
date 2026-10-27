@@ -81,8 +81,11 @@ internal class PrivacyFeatureRuntime(
                     env.logError("guest_onboarding", "[BIL] Guest onboarding adapter unavailable")
                     0
                 } else 0
-                val hooks = onboarding + GuestLibraryHostHooks(library, guest).install(env) +
-                    GuestPlaybackHooks(library, guest).install(env) +
+                val playback = runCatching { GuestPlaybackHooks(library, guest).install(env) }.getOrElse {
+                    env.logError("guest_playback", "[BIL] Guest playback adapter unavailable")
+                    0
+                }
+                val hooks = onboarding + GuestLibraryHostHooks(library, guest).install(env) + playback +
                     installMineOverlayGuard(env, guest)
                 FeatureInstallResult.Installed(hooks + ((prompts as? FeatureInstallResult.Installed)?.hookCount ?: 0), complete = false)
             }
