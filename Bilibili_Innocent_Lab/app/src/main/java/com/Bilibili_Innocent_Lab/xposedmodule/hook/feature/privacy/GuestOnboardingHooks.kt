@@ -1,48 +1,77 @@
 package com.Bilibili_Innocent_Lab.xposedmodule.hook.feature.privacy
 
 import com.Bilibili_Innocent_Lab.xposedmodule.hook.feature.HookEnvironment
-import com.highcapable.kavaref.extension.classOf
-import com.Bilibili_Innocent_Lab.xposedmodule.runtime.KavaMemberLookup as Lookup
+import java.lang.reflect.Method
 
-/** Skip both automatic requests and cached onboarding presentation, without changing host preferences. */
+/**
+ * Skip the new-user / low-activity interest-choose onboarding for guests, without changing host
+ * preferences, submitting a choice, or persisting a "completed" flag.
+ *
+ * The host obfuscates the plugin method names per build and, since 8.97, moved parts of the flow
+ * into coroutines, so the old by-name anchors (E/F/B/C/A + the obfuscated `bn3.h` type) only ever
+ * resolved on 8.90.2. These classes are instead anchored by their version-stable ABI shape (matrix
+ * `d10de235`/`664d459e`, 38 builds):
+ *  - show   = the SINGLE `(InterestChoose):void` method (`tryShowInterestDialog`), unique 38/38.
+ *  - finish = the SINGLE `(boolean, <ref>):void` method (New) / `(boolean, <ref>, boolean):void`
+ *             method (Low); `finish(false, null[, false])` resets the home loading gate and loads
+ *             the normal feed with no choice payload (confirmed by the 9.16.1 decompile of New.c).
+ * Each plugin installs independently and fails CLOSED: an absent or ambiguous shape (e.g. the Low
+ * show method is a `(InterestChoose, Continuation)` coroutine on 8.97+) is skipped, never guessed,
+ * and never strands the loading gate.
+ */
 internal class GuestOnboardingHooks(private val isGuest: () -> Boolean) {
     fun install(env: HookEnvironment): Int {
-        val host = PrivacyHostAccess(requireNotNull(env.classLoader))
-        val plugin = host.type("com.bilibili.pegasus.components.interest.NewUserInterestChoosePlugin")
-        val starts = listOf(
-            requireNotNull(Lookup.methodOrNull(plugin, "E")),
-            requireNotNull(Lookup.methodOrNull(plugin, "F", host.type("com.bilibili.pegasus.data.interestchoose.InterestChoose")))
-        )
-        val finish = requireNotNull(Lookup.methodOrNull(plugin, "B", classOf<Boolean>(), host.type("bn3.h")))
-        starts.forEach { start -> env.registrar.exact("guest.onboarding.${start.name}", plugin, start.name, *start.parameterTypes) {
+        val loader = requireNotNull(env.classLoader)
+        val model = PrivacyStructuralResolver.type(loader, "com.bilibili.pegasus.data.interestchoose.InterestChoose")
+            ?: return 0
+        var installed = 0
+        installed += installPlugin(env, loader, model,
+            "com.bilibili.pegasus.components.interest.NewUserInterestChoosePlugin", finishTrailingFalse = false,
+            status = "skipped", id = "guest.onboarding.new")
+        installed += installPlugin(env, loader, model,
+            "com.bilibili.pegasus.components.interest.LowActiveInterestChoosePlugin", finishTrailingFalse = true,
+            status = "skipped-low", id = "guest.onboarding.low")
+        return installed
+    }
+
+    /** @param finishTrailingFalse Low's finish takes a trailing realtime flag; New's does not. */
+    private fun installPlugin(
+        env: HookEnvironment, loader: ClassLoader, model: Class<*>,
+        className: String, finishTrailingFalse: Boolean, status: String, id: String
+    ): Int = runCatching {
+        val plugin = PrivacyStructuralResolver.type(loader, className) ?: return@runCatching 0
+        val show = PrivacyStructuralResolver.uniqueMethod(plugin) { m ->
+            m.returnType == Void.TYPE && m.parameterTypes.toList() == listOf(model)
+        } ?: return@runCatching 0
+        val finishShape: (Method) -> Boolean = { m ->
+            m.returnType == Void.TYPE && isRefParam(m, model) &&
+                if (finishTrailingFalse) {
+                    m.parameterCount == 3 && m.parameterTypes[0] == Boolean::class.javaPrimitiveType &&
+                        m.parameterTypes[2] == Boolean::class.javaPrimitiveType
+                } else {
+                    m.parameterCount == 2 && m.parameterTypes[0] == Boolean::class.javaPrimitiveType
+                }
+        }
+        val finish = PrivacyStructuralResolver.uniqueMethod(plugin, predicate = finishShape) ?: return@runCatching 0
+        val args: Array<Any?> = if (finishTrailingFalse) arrayOf(false, null, false) else arrayOf(false, null)
+        env.registrar.exact("$id.show", plugin, show.name, *show.parameterTypes) {
             before {
                 if (!isGuest()) return@before
                 val target = instance ?: return@before
                 result = null
-                // 8.90.2 uses B(false, null) when no choice is available. It releases the in-memory
-                // homepage loading gate and loads the normal feed. Returning from E alone strands it.
-                // No synthetic gender/age/interests, account write, or persisted 'completed' flag.
-                finish.invoke(target, false, null)
-                env.reportStatus("guest_onboarding", "skipped")
+                finish.invoke(target, *args)
+                env.reportStatus("guest_onboarding", status)
             }
         }
-        }
-        // The homepage response can use the separate low-activity plugin even for a fresh guest.
-        // Its C() method also shows the gender/age/interest wizard. A(false, null, false) is
-        // the verified no-choice fallback and resumes the normal feed without a selection payload.
-        val low = host.type("com.bilibili.pegasus.components.interest.LowActiveInterestChoosePlugin")
-        val model = host.type("com.bilibili.pegasus.data.interestchoose.InterestChoose")
-        val lowStart = requireNotNull(Lookup.methodOrNull(low, "C", model))
-        val lowFinish = requireNotNull(Lookup.methodOrNull(low, "A", classOf<Boolean>(), host.type("bn3.h"), classOf<Boolean>()))
-        env.registrar.exact("guest.onboarding.low", low, lowStart.name, *lowStart.parameterTypes) {
-            before {
-                if (!isGuest()) return@before
-                val target = instance ?: return@before
-                result = null
-                lowFinish.invoke(target, false, null, false)
-                env.reportStatus("guest_onboarding", "skipped-low")
-            }
-        }
-        return starts.size + 1
+        1
+    }.getOrElse {
+        env.logError("${id.replace('.', '_')}", "[BIL] Guest onboarding adapter unavailable: ${it.javaClass.simpleName}")
+        0
+    }
+
+    /** The finish method carries exactly one reference parameter (the choice/callback), never the model itself. */
+    private fun isRefParam(m: Method, model: Class<*>): Boolean {
+        val refs = m.parameterTypes.filter { !it.isPrimitive }
+        return refs.size == 1 && refs[0] != model
     }
 }
