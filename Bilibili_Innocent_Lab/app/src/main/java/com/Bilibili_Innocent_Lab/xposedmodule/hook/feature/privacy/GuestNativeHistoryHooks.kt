@@ -3,6 +3,7 @@ package com.Bilibili_Innocent_Lab.xposedmodule.hook.feature.privacy
 import com.Bilibili_Innocent_Lab.xposedmodule.hook.feature.HookEnvironment
 import com.Bilibili_Innocent_Lab.xposedmodule.runtime.KavaMemberLookup as Lookup
 import com.highcapable.kavaref.extension.classOf
+import com.highcapable.kavaref.extension.isStatic
 
 /** Host 8.90.2 history cards, tabs, search and editing; no host history database or remote RPC. */
 internal class GuestNativeHistoryHooks(private val library: GuestLibraryRuntime, private val isGuest: () -> Boolean) {
@@ -57,6 +58,8 @@ internal class GuestNativeHistoryHooks(private val library: GuestLibraryRuntime,
             return proto("CursorV2Reply", mapOf("addAllItems" to videos.map(::card), "setHasMore" to false,
                 "setCursor" to proto("Cursor")))
         }
+        // Preflight: every RPC/callback anchor is resolved before any hook exists. HistoryMoss and its
+        // request/reply protobufs are stable gRPC names on all 38 hostlab builds (8.84-9.17).
         val moss = host.type(PREFIX + "HistoryMoss")
         val handler = host.type("com.bilibili.lib.moss.api.MossResponseHandler")
         val next = requireNotNull(Lookup.methodOrNull(handler, "onNext", classOf<Any>()))
@@ -64,9 +67,16 @@ internal class GuestNativeHistoryHooks(private val library: GuestLibraryRuntime,
         val exception = host.type("com.bilibili.lib.moss.api.MossException")
         val error = requireNotNull(Lookup.methodOrNull(handler, "onError", exception))
         val errorConstructor = requireNotNull(Lookup.constructorOrNull(exception, classOf<String>(), classOf<Throwable>()))
-        for ((name, requestName) in mapOf("historyTab" to "HistoryTabReq", "historyTabV2" to "HistoryTabReq",
-            "cursorV2" to "CursorV2Req", "search" to "SearchReq", "clear" to "ClearReq", "delete" to "DeleteReq")) {
-            env.registrar.exact("guest.native.history.$name", moss, name, host.type(PREFIX + requestName), handler) {
+        val rpcs = mapOf("historyTab" to "HistoryTabReq", "historyTabV2" to "HistoryTabReq",
+            "cursorV2" to "CursorV2Req", "search" to "SearchReq", "clear" to "ClearReq", "delete" to "DeleteReq")
+            .mapValues { (name, request) ->
+                val type = host.type(PREFIX + request)
+                requireNotNull(Lookup.methodOrNull(moss, name, type, handler)) { "HistoryMoss.$name" }
+                type
+            }
+        val plan = PrivacyInstallPlan()
+        for ((name, requestType) in rpcs) plan.step {
+            env.registrar.exact("guest.native.history.$name", moss, name, requestType, handler) {
                 before {
                     if (!isGuest()) return@before
                     result = null
@@ -79,20 +89,44 @@ internal class GuestNativeHistoryHooks(private val library: GuestLibraryRuntime,
                 }
             }
         }
-        val fragment = host.type("com.bilibili.app.history.HistoryFragmentV3")
-        env.registrar.exact("guest.native.history.presentation", fragment, "isLogin") {
-            before { if (isGuest()) result = true }
-        }
-        env.registrar.exact("guest.native.history.login_banner", fragment, "up", classOf<Boolean>()) {
-            before { if (isGuest()) args[0] = false }
-        }
+        // Presentation is version-specific and optional: 8.84-8.96 expose a fragment isLogin() gate,
+        // a few builds the up(boolean) login banner and fallback-cache getters. 8.97+ inline these into
+        // BiliAccounts calls, so the page still renders local data but keeps the host's guest chrome.
+        val presentation = mutableListOf<String>()
+        val fragment = Lookup.classOrNull(host.loader, "com.bilibili.app.history.HistoryFragmentV3")
+        fragment?.let { Lookup.methodOrNull(it, "isLogin") }
+            ?.takeIf { !it.isStatic && it.returnType == classOf<Boolean>() }?.let { method ->
+                presentation += "isLogin"
+                plan.step {
+                    env.registrar.exact("guest.native.history.presentation", method.declaringClass, method.name) {
+                        before { if (isGuest()) result = true }
+                    }
+                }
+            }
+        fragment?.let { Lookup.methodOrNull(it, "up", classOf<Boolean>()) }
+            ?.takeIf { !it.isStatic && it.returnType == Void.TYPE }?.let { method ->
+                presentation += "banner"
+                plan.step {
+                    env.registrar.exact("guest.native.history.login_banner", method.declaringClass, method.name, classOf<Boolean>()) {
+                        before { if (isGuest()) args[0] = false }
+                    }
+                }
+            }
         for ((name, getter) in mapOf("com.bilibili.app.history.ui.viewmodel.HistoryContentViewModel" to "I2",
             "com.bilibili.app.history.search.presenter.HistorySearchTabViewModel" to "u2")) {
-            env.registrar.exact("guest.native.history.cache.$getter", host.type(name), getter) {
-                before { if (isGuest()) result = null }
+            val method = Lookup.classOrNull(host.loader, name)?.let { Lookup.methodOrNull(it, getter) }
+                ?.takeIf { !it.isStatic && it.returnType.name.startsWith("com.bilibili.common.fallbackcache.") }
+                ?: continue
+            presentation += "cache.$getter"
+            plan.step {
+                env.registrar.exact("guest.native.history.cache.$getter", method.declaringClass, method.name) {
+                    before { if (isGuest()) result = null }
+                }
             }
         }
-        env.reportStatus("guest_native_history", "adapted")
+        plan.apply()
+        env.reportStatus("guest_native_history",
+            if (presentation.isEmpty()) "adapted-rpc" else "adapted:${presentation.joinToString("+")}")
     }
     companion object { private const val PREFIX = "com.bapis.bilibili.app.interfaces.v1." }
 }
