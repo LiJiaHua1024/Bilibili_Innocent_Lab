@@ -17,7 +17,9 @@ class IncognitoTelemetryHooksTest {
                 HookPointRegistry(loader), registrar, { _, _ -> }, { _, _ -> },
                 { key, _ -> statuses += key }))
         }
-        fun id(name: String) = registrar.hooks.entries.single { it.value.member.name == name }.key
+        fun id(name: String) = registrar.hooks.entries.single {
+            it.value.member.name == name && it.value.member.declaringClass == Neurons::class.java
+        }.key
     }
 
     @Test fun eventProducersCannotEnqueueOrEvaluateUploadConditions() {

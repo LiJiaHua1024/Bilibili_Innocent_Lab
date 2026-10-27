@@ -15,7 +15,10 @@ class PrivacyNetworkPolicyTest {
             Triple("data.bilibili.com", "/log/web", "POST"),
             Triple("dataflow.biliapi.com", "/anything", "GET"),
             Triple("api.bilibili.com", "/x/unknown/future-write", "POST"),
-            Triple("api.bilibili.com", "/x/relation/modify", "POST")
+            Triple("api.bilibili.com", "/x/relation/modify", "POST"),
+            Triple("line1-log.biligame.net", "/collector/api/report", "POST"),
+            Triple("dataflow.biliapi.com", "/log/pbmobile/realtime", "POST"),
+            Triple("api.bilibili.com", "/x/report/click/now", "POST")
         ).forEach { (host, path, method) -> assertTrue("$host$path", PrivacyNetworkPolicy.blockHttp(host,path,method)) }
     }
 
@@ -34,6 +37,7 @@ class PrivacyNetworkPolicyTest {
         }
         assertFalse(PrivacyNetworkPolicy.isBiliHost("bilibili.com.attacker.test"))
         assertFalse(PrivacyNetworkPolicy.isBiliHost("evilbilibili.com"))
+        assertFalse(PrivacyNetworkPolicy.isBiliHost("notbiligame.net"))
         assertFalse(PrivacyNetworkPolicy.blockHttp("example.com", "/history/report", "POST"))
     }
 
