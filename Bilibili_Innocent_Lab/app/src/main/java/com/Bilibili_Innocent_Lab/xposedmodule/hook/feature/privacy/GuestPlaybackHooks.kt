@@ -75,10 +75,21 @@ internal class GuestPlaybackHooks(
             env.reportStatus("guest_playback_history", "not-applicable-host")
             return 0
         }
-        val handler = host.type("com.bilibili.lib.moss.api.MossResponseHandler")
-        val resource = host.type("com.bilibili.lib.media.resource.MediaResource")
-        val params = host.type("tv.danmaku.videoplayer.coreV2.transformer.MediaItemParams")
-        val item = host.type("tv.danmaku.videoplayer.coreV2.MediaItem")
+        // Everything the registrations below need is resolved here, before the first hook goes in, so a
+        // host build missing one stable class (or the stdlib Duration helper used by the 8.84-8.96 seal
+        // state) skips the feature cleanly instead of failing after some hooks are already registered.
+        // All of these exist on 38/38 builds (hostlab p7); this only guards builds not measured yet.
+        val handler = Lookup.classOrNull(host.loader, "com.bilibili.lib.moss.api.MossResponseHandler")
+        val resource = Lookup.classOrNull(host.loader, "com.bilibili.lib.media.resource.MediaResource")
+        val params = Lookup.classOrNull(host.loader, "tv.danmaku.videoplayer.coreV2.transformer.MediaItemParams")
+        val item = Lookup.classOrNull(host.loader, "tv.danmaku.videoplayer.coreV2.MediaItem")
+        val millis = if (seal.legacyState == null) null else Lookup.classOrNull(host.loader, "kotlin.time.Duration")
+            ?.let { Lookup.methodOrNull(it, "getInWholeMilliseconds-impl", classOf<Long>()) }
+        if (handler == null || resource == null || params == null || item == null ||
+            (seal.legacyState != null && millis == null)) {
+            env.reportStatus("guest_playback_history", "not-applicable-host")
+            return 0
+        }
         fun metadata(reply: Any) {
             if (!guest()) return
             runCatching {
@@ -283,8 +294,6 @@ internal class GuestPlaybackHooks(
 
         // Seal registrations (resolved in the preflight above).
         val plan = PrivacyInstallPlan()
-        val millis = if (seal.legacyState == null) null else requireNotNull(Lookup.methodOrNull(
-            host.type("kotlin.time.Duration"), "getInWholeMilliseconds-impl", classOf<Long>()))
         fun recordPlayable(paramsValue: Any, duration: Long, replace: Boolean = true): Pair<Long, Long>? {
             val aid = (host.call(paramsValue, "getAvid") as Number).toLong()
             val cid = (host.call(paramsValue, "getCid") as Number).toLong()
