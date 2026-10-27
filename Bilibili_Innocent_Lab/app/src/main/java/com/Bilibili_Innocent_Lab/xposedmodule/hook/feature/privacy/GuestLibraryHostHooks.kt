@@ -145,8 +145,13 @@ internal class GuestLibraryHostHooks(
             val helper = access.type("com.bilibili.relation.utils.FollowFlowHelper")
             val mid = requireNotNull(Lookup.fieldOrNull(helper, "c")).also { require(it.type == classOf<Long>()) }
             val callback = requireNotNull(Lookup.fieldOrNull(helper, "i"))
-            for (types in listOf(arrayOf(classOf<android.content.Context>(), classOf<String>()),
-                arrayOf(classOf<android.content.Context>(), classOf<String>(), classOf<android.graphics.Rect>()))) {
+            // 8.84 declares only (Context, String); later builds add the (Context, String, Rect) overload.
+            // Hook every overload this build declares (both are real click entries); none means skip.
+            val overloads = listOf(arrayOf(classOf<android.content.Context>(), classOf<String>()),
+                arrayOf(classOf<android.content.Context>(), classOf<String>(), classOf<android.graphics.Rect>()))
+                .filter { PrivacyStructuralResolver.method(helper, "onButtonClick", *it) != null }
+            require(overloads.isNotEmpty()) { "FollowFlowHelper.onButtonClick missing" }
+            for (types in overloads) {
                 env.registrar.exact("guest.library.follow.${types.size}", helper, "onButtonClick", *types) {
                     before {
                         if (!isGuest()) return@before
