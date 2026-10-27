@@ -2652,9 +2652,12 @@ class HookEntry : XposedModule() {
             )
             val featureInstallCoordinator = FeatureInstallCoordinator(hookEnvironment)
             val sponsorClassesRef = java.util.concurrent.atomic.AtomicReference(hostAdaptResult?.sponsorPlayer)
+            // 原生投屏点击边界：8.84.0–8.96.0 为静态回调，8.97.0 起为合并 lambda，由后台适配填充。
+            val castClickRef = java.util.concurrent.atomic.AtomicReference(hostAdaptResult?.castClick)
             val lanInstaller = com.Bilibili_Innocent_Lab.xposedmodule.hook.feature.LanContinuityFeatureInstaller(
                 hookConfig.getBoolean(FeaturePreferences.LAN_CONTINUITY_ENABLED, false),
-                { sponsorClassesRef.get() }
+                { sponsorClassesRef.get() },
+                { castClickRef.get() }
             )
             featureInstallCoordinator.installAll(listOf(lanInstaller))
             val classicPointsRef = java.util.concurrent.atomic.AtomicReference(hostAdaptResult?.commentClassicStyle)
@@ -4866,8 +4869,9 @@ class HookEntry : XposedModule() {
                                         }
                                     }
                                     if (sponsorInstaller.requiresAdaptationRetry || lanInstaller.requiresAdaptationRetry) {
-                                        sponsorClassesRef.set(VersionAdapter.loadCached(attachedContext,
-                                            versionAdapterResetTimestamp)?.sponsorPlayer)
+                                        val adaptedForPlayer = VersionAdapter.loadCached(attachedContext, versionAdapterResetTimestamp)
+                                        sponsorClassesRef.set(adaptedForPlayer?.sponsorPlayer)
+                                        castClickRef.set(adaptedForPlayer?.castClick)
                                         hookEnvironment.postToMain?.invoke {
                                             if (sponsorInstaller.requiresAdaptationRetry) {
                                                 featureInstallCoordinator.installAll(listOf(sponsorInstaller))
@@ -4935,7 +4939,9 @@ class HookEntry : XposedModule() {
                         playerSpeedMenuEnabled = com.Bilibili_Innocent_Lab.xposedmodule.hook.feature.PlayerSpeedConfig.effectiveMenuPercents(
                             prefs.getInt(FeaturePreferences.PLAYER_DEFAULT_SPEED_PERCENT, 0),
                             prefs.getString(FeaturePreferences.PLAYER_SPEED_MENU_PERCENTS, "")
-                        ).isNotEmpty()
+                        ).isNotEmpty(),
+                        // 投屏启用时后台额外定位原生点击边界（两种形态共用一个 DEX 查询）。
+                        lanContinuityEnabled = prefs.getBoolean(FeaturePreferences.LAN_CONTINUITY_ENABLED, false)
                     )
                 }.onFailure { throwable ->
                     logError(

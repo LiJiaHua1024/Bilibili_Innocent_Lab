@@ -11,6 +11,14 @@ internal data class DexAssistRequest(
 
 /** 只有结构特征足够强、且能在运行时二次验真的点才能加入该目录。 */
 internal enum class DexAssistQuery {
+    /**
+     * 原生投屏按钮点击边界：方法体专用埋点常量 + `(View)V` 返回 void。
+     *
+     * 8.84.0–8.96.0 命中 Repository 内的静态回调，8.97.0 起命中合并 lambda 的 `onClick`；
+     * 两形态都只能由方法体常量区分，且运行时还要用 payload 身份复核。
+     */
+    CAST_TOOLBAR_CLICK,
+
     /** 检查更新的网络边界：签名 `(Context) -> BiliUpgradeInfo` + 方法体日志常量。 */
     BLOCK_UPDATE,
 

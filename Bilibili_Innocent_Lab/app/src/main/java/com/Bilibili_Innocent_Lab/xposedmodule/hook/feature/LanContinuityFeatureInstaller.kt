@@ -8,6 +8,8 @@ import android.os.Looper
 import android.os.SystemClock
 import android.view.View
 import com.Bilibili_Innocent_Lab.xposedmodule.agent.host.HostAgentRouter
+import com.Bilibili_Innocent_Lab.xposedmodule.hook.adapter.CastToolbarClickLocator
+import com.Bilibili_Innocent_Lab.xposedmodule.hook.adapter.CastToolbarClickPoint
 import com.Bilibili_Innocent_Lab.xposedmodule.hook.adapter.PlayerBufferLocator
 import com.Bilibili_Innocent_Lab.xposedmodule.hook.adapter.SponsorPlayerClasses
 import com.Bilibili_Innocent_Lab.xposedmodule.hook.adapter.SponsorPlayerLocator
@@ -27,7 +29,8 @@ import java.lang.ref.WeakReference
 
 /** Instrumentation hooks are required to observe host-owned Activities across their class loaders. */
 internal class LanContinuityFeatureInstaller(private val enabled: Boolean,
-    private val classes: () -> SponsorPlayerClasses?) : FeatureInstaller {
+    private val classes: () -> SponsorPlayerClasses?,
+    private val castClick: () -> CastToolbarClickPoint? = { null }) : FeatureInstaller {
     @Volatile var requiresAdaptationRetry = false
         private set
     private val registrationStarted = java.util.concurrent.atomic.AtomicBoolean(false)
@@ -47,12 +50,15 @@ internal class LanContinuityFeatureInstaller(private val enabled: Boolean,
             environment.logError("lan_entry_$reason", "[BIL-LAN] cast entry unavailable: $reason")
             return FeatureInstallResult.Skipped(reason)
         }
-        val castOwner = Lookup.classOrNull(loader, "com.bilibili.ship.theseus.united.page.toolbar.actionview.projection.ToolbarCastScreenRepository")
-            ?: return castUnavailable("missing-native-cast-entry")
-        val castClick = Lookup.declaredMethods(castOwner, makeAccessible = true) {
-            !it.isSynthetic && java.lang.reflect.Modifier.isStatic(it.modifiers) && it.returnType == Void.TYPE &&
-                it.parameterTypes.contentEquals(arrayOf(castOwner, View::class.java))
-        }.singleOrNull() ?: return castUnavailable("ambiguous-native-cast-entry")
+        // 8.84.0–8.96.0 是 Repository 内的静态回调；8.97.0 起改为合并 lambda 的 onClick(View)V。
+        // 缓存形态在每次使用前都会用当前宿主 ClassLoader 重新验真。
+        val castPoint = CastToolbarClickLocator.direct(loader)
+            ?: CastToolbarClickLocator.cached(loader, castClick())
+        if (castPoint == null) {
+            // 后台适配尚未完成（或宿主确实没有该入口）：请求补装一次，找不到就保持跳过。
+            requiresAdaptationRetry = CastToolbarClickLocator.applicable(loader)
+            return castUnavailable("missing-native-cast-entry")
+        }
         if (!registrationStarted.compareAndSet(false, true)) return FeatureInstallResult.Skipped("already-registered")
         val speedGetter = Lookup.inheritedMethodOrNull(access.position.declaringClass, "getPlaySpeed", Boolean::class.javaPrimitiveType!!)
             ?.takeIf { it.returnType == Float::class.javaPrimitiveType }
@@ -205,11 +211,16 @@ internal class LanContinuityFeatureInstaller(private val enabled: Boolean,
         fun refresh() { handler.removeCallbacks(tick); if (foreground.get() != null ||
             (network?.running == true && playerActivity.get() != null)) handler.post(tick) }
         var count = 0
-        // The toolbar action owns the click; its cast_screen_icon child is not the clickable View.
-        // Locate the unique static (repository, View) callback, never an arbitrary same-name overload.
-        environment.registrar.exact("lan.native-cast-click", castOwner, castClick.name, *castClick.parameterTypes) {
+        // 工具栏 action 才是可点击对象；cast_screen_icon 子视图不是。
+        // 静态回调直接以 (Repository, View) 定位；合并 lambda 则要求 payload 就是该 Repository，
+        // 否则同类的其他点击分支一律放行给宿主。
+        val clickOwner = castPoint.owner
+        val clickMethod = castPoint.method
+        val clickIsStatic = java.lang.reflect.Modifier.isStatic(clickMethod.modifiers)
+        environment.registrar.exact("lan.native-cast-click", clickOwner, clickMethod.name, *clickMethod.parameterTypes) {
             before {
-                val view = argOrNull(1) as? View ?: return@before
+                if (!CastToolbarClickLocator.matches(instance, castPoint)) return@before
+                val view = (if (clickIsStatic) argOrNull(1) else argOrNull(0)) as? View ?: return@before
                 val activity = view.context.hostActivity ?: foreground.get()?.takeIf { it.window.decorView === view.rootView } ?: return@before
                 if (!view.isAttachedToWindow || !view.isShown || activity.isFinishing) return@before
                 result = null

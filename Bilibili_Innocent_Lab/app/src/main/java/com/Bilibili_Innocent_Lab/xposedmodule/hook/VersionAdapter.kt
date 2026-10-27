@@ -14,6 +14,8 @@ import android.view.MenuInflater
 import android.view.View
 import android.widget.TextView
 import android.widget.Toast
+import com.Bilibili_Innocent_Lab.xposedmodule.hook.adapter.CastToolbarClickLocator
+import com.Bilibili_Innocent_Lab.xposedmodule.hook.adapter.CastToolbarClickPoint
 import com.Bilibili_Innocent_Lab.xposedmodule.hook.adapter.SponsorPlayerClasses
 import com.Bilibili_Innocent_Lab.xposedmodule.hook.adapter.SponsorPlayerLocator
 import com.Bilibili_Innocent_Lab.xposedmodule.hook.adapter.CommentClassicStyleLocator
@@ -1856,6 +1858,8 @@ object VersionAdapter {
         /** 宿主全部 classes*.dex 的中央目录内容指纹；不包含安装路径。 */
         val dexSourceFingerprint: String = DEX_SOURCE_UNAVAILABLE,
         val sponsorPlayer: SponsorPlayerClasses? = null,
+        /** 原生投屏按钮的点击边界；静态回调或合并 lambda，两种形态都在运行时复核。 */
+        val castClick: CastToolbarClickPoint? = null,
         val commentClassicStyle: CommentClassicStylePoints? = null,
         val playerPopupPromotion: PlayerPopupPromotionPoints? = null,
         val brandSplashDecoder: HookPoint? = null,
@@ -1899,6 +1903,7 @@ object VersionAdapter {
             commentSection?.let { put("comment_section", it.toJson()) }
             splashAds?.let { put("splash_ads", it.toJson()) }
             sponsorPlayer?.let { put("sponsor_player", it.toJson()) }
+            castClick?.let { put("cast_click", it.toJson()) }
             commentClassicStyle?.let { put("comment_classic", it.toJson()) }
             playerPopupPromotion?.let { put("player_popup_promotion", it.toJson()) }
             brandSplashDecoder?.let { put("brand_splash_decoder", it.toJson()) }
@@ -2293,6 +2298,7 @@ object VersionAdapter {
                     diagnostics = diagnostics,
                     dexSourceFingerprint = o.getString("dex_fp"),
                     sponsorPlayer = o.optJSONObject("sponsor_player")?.let(SponsorPlayerClasses::fromJson),
+                    castClick = o.optJSONObject("cast_click")?.let(CastToolbarClickPoint::fromJson),
                     commentClassicStyle = if (o.has("comment_classic"))
                         CommentClassicStylePoints.fromJson(o.getJSONObject("comment_classic")) ?: return null else null,
                     playerPopupPromotion = if (o.has("player_popup_promotion"))
@@ -3032,6 +3038,7 @@ object VersionAdapter {
             diagnostics = mergedDiagnostics,
             dexSourceFingerprint = cached.dexSourceFingerprint,
             sponsorPlayer = runtime.sponsorPlayer ?: cached.sponsorPlayer,
+            castClick = runtime.castClick ?: cached.castClick,
             commentClassicStyle = CommentClassicStyleLocator.merge(runtime.commentClassicStyle, cached.commentClassicStyle),
             playerPopupPromotion = PlayerPopupPromotionAdapter.merge(runtime.playerPopupPromotion, cached.playerPopupPromotion),
             brandSplashDecoder = runtime.brandSplashDecoder ?: cached.brandSplashDecoder,
@@ -3154,9 +3161,10 @@ object VersionAdapter {
         playerEndPageRecommendEnabled: Boolean = false,
         homeChromeEnabled: Boolean = false,
         homeChromeIconOnly: Boolean = false,
-        homeTopTabCenteringEnabled: Boolean = false
+        homeTopTabCenteringEnabled: Boolean = false,
+        lanContinuityEnabled: Boolean = false
     ) = ensureAdapted(
-        context, classLoader, resetTimestamp, callback, readStartupCache(context, resetTimestamp), kotlinDefaultWordsEnabled, sponsorBlockEnabled, commentClassicStyleEnabled, playerPopupPromotionEnabled, brandSplashCustomEnabled, followFeedStyleEnabled, playerQualityEnabled, playerSpeedMenuEnabled, searchHomeRecommendEnabled, playerEndPageRecommendEnabled, homeChromeEnabled, homeChromeIconOnly, homeTopTabCenteringEnabled
+        context, classLoader, resetTimestamp, callback, readStartupCache(context, resetTimestamp), kotlinDefaultWordsEnabled, sponsorBlockEnabled, commentClassicStyleEnabled, playerPopupPromotionEnabled, brandSplashCustomEnabled, followFeedStyleEnabled, playerQualityEnabled, playerSpeedMenuEnabled, searchHomeRecommendEnabled, playerEndPageRecommendEnabled, homeChromeEnabled, homeChromeIconOnly, homeTopTabCenteringEnabled, lanContinuityEnabled
     )
 
     internal fun ensureAdapted(
@@ -3177,7 +3185,8 @@ object VersionAdapter {
         playerEndPageRecommendEnabled: Boolean = false,
         homeChromeEnabled: Boolean = false,
         homeChromeIconOnly: Boolean = false,
-        homeTopTabCenteringEnabled: Boolean = false
+        homeTopTabCenteringEnabled: Boolean = false,
+        lanContinuityEnabled: Boolean = false
     ) {
         // reset 不同意味着不是同一次安装快照，必须重新读取而不能复用已缓存的 null/旧结果。
         val startup = if (startupCache.resetTimestamp == resetTimestamp.coerceAtLeast(0L)) {
@@ -3293,7 +3302,8 @@ object VersionAdapter {
                         playerSpeedMenuEnabled, previousSpeedMenu, speedMenuAttempted,
                         searchHomeRecommendEnabled, playerEndPageRecommendEnabled, previousPages, pageAttempted,
                         homeChromeEnabled, previousChrome, chromeAttempted, homeChromeIconOnly,
-                        previousChromeSemantics, semanticsAttempted, homeTopTabCenteringEnabled) }.getOrNull()
+                        previousChromeSemantics, semanticsAttempted, homeTopTabCenteringEnabled,
+                        lanContinuityEnabled) }.getOrNull()
                     result?.let { adapted ->
                         // 写文件缓存（loadApp 快路径载体）；校验后原子替换，旧缓存不会被半截 JSON 覆盖。
                         if (!writeCache(adapted)) {
@@ -3487,7 +3497,7 @@ object VersionAdapter {
                       homeChromeEnabled: Boolean, previousChrome: Map<String, HookPoint>,
                       chromeAttempted: Set<DexAssistQuery>, homeChromeIconOnly: Boolean,
                       previousChromeSemantics: HomeChromeSemanticsPoint?, semanticsAttempted: Boolean,
-                      homeTopTabCenteringEnabled: Boolean): AdaptResult? {
+                      homeTopTabCenteringEnabled: Boolean, lanContinuityEnabled: Boolean): AdaptResult? {
         val vc = biliVersionCode(context)
         val dexSource = runCatching {
             context.packageManager.getPackageInfo("tv.danmaku.bili", 0).applicationInfo
@@ -3515,6 +3525,8 @@ object VersionAdapter {
         val chromePlanned = HomeChromeAdapter.planned(loader, previousChrome, homeChromeEnabled, chromeAttempted, homeChromeIconOnly, homeTopTabCenteringEnabled)
         val semanticsPlanned = HomeChromeAdapter.semanticsNeedsQuery(loader, previousChromeSemantics,
             homeChromeEnabled, semanticsAttempted, homeChromeIconOnly)
+        val directCastClick = if (lanContinuityEnabled) CastToolbarClickLocator.direct(loader) else null
+        val castClickPlanned = CastToolbarClickLocator.needsQuery(loader, lanContinuityEnabled, directCastClick != null)
         val directBlockUpdate = locateBlockUpdate(loader)
         val directPlayerQuality = locateDefaultVideoQuality(loader)
         val directTopologyOutcome = locateCommentTopologyWithDiagnostic(loader)
@@ -3540,6 +3552,7 @@ object VersionAdapter {
                     if (directTopologyOutcome.points == null) add(DexAssistQuery.COMMENT_REPLY_MAPPER)
                     if (defaultWordsNeedsAssist) add(DexAssistQuery.SEARCH_DEFAULT_WORDS_KOTLIN)
                     if (sponsorNeedsAssist) addAll(SponsorPlayerLocator.queries)
+                    if (castClickPlanned) add(CastToolbarClickLocator.query)
                     classicMissing.forEach { add(it.query) }
                     popupPlanned.forEach { add(it.query) }
                     if (brandPlanned) add(BrandSplashDecoderAdapter.query)
@@ -3605,6 +3618,8 @@ object VersionAdapter {
             })
         }
         val sponsor = directSponsor ?: if (sponsorNeedsAssist) SponsorPlayerLocator.assisted(loader, dexAssist) else null
+        val castClick = directCastClick
+            ?: if (castClickPlanned) CastToolbarClickLocator.assisted(loader, dexAssist) else null
         val speedMenu = PlayerSpeedMenuAdapter.locate(loader, dexAssist, previousSpeedMenu, playerSpeedMenuEnabled, speedMenuPlanned)
         val speedMenuComplete = playerSpeedMenuEnabled && PlayerSpeedMenuAdapter.complete(loader, PlayerSpeedMenuAdapter.resolve(loader, speedMenu))
         val speedMenuDiagnostic = AdaptDiagnostic(PlayerSpeedMenuAdapter.DIAGNOSTIC,
@@ -3863,6 +3878,7 @@ object VersionAdapter {
                 topologyAssist.diagnostic + playerQualityAssist.diagnostic + defaultWordsAssist.diagnostic + sponsorDiagnostic + classicDiagnostic + popupDiagnostics + brandDiagnostic + followDiagnostic + storyQualityDiagnostic + speedMenuDiagnostic + pageDiagnostics + chromeDiagnostics + semanticsDiagnostic,
             dexSourceFingerprint = dexSource?.value ?: DEX_SOURCE_UNAVAILABLE,
             sponsorPlayer = sponsor?.classes,
+            castClick = castClick?.let { CastToolbarClickPoint(it.owner.name, it is CastToolbarClickLocator.LambdaListener) },
             commentClassicStyle = classic,
             playerPopupPromotion = popup,
             brandSplashDecoder = brand,

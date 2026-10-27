@@ -29,6 +29,8 @@
 
 这些边界意味着本分支目前属于实验实现，不能称为需求全部完成，也不能仅凭构建和 JVM 测试宣称电视播放或无缝接力验收通过。
 
+宿主结构覆盖已按归档样本逐版核对并补齐：8.84.0–8.96.0 走 Repository 内静态回调，8.97.0–9.17.0 走合并 lambda 的 `onClick(View)`，清晰度读取在 8.98.0 起改读 `getCurVideoId`。原始缺口记录见「2026-10-27 全版本宿主结构核查（无设备阶段）」，实现与复核见「2026-10-27 全版本适配（结构层）」。
+
 ## 信任与网络纪律
 
 1. DNS-SD 只公开随机设备标识、协议类型与端口，SSDP 只搜索电视。不广播 BV/CID、标题、进度、倍速、账号 UID 或令牌。
@@ -209,3 +211,237 @@ Debug APK 与测试 APK 构建完成；最终全量 JVM 检查共 4,018 项、1 
 用户要求按方案评估先完成第 1、2 步，且不得使用测试机。本轮没有执行 ADB、设备搜索或投送。实现细节与边界见 [实施进度](lan-cast-realtime-options.md#2026-10-26-实施进度第-12-步无设备阶段)。默认投屏仍为完整 MP4，界面暂无流式入口，因此现有用户路径不变。完整 MP4 合成改为经过 `CastMuxerSink` 与共用选轨；输出参数与零起点的帧/音频处理保持原样，但这次重构没有在手机上复测。
 
 同一轮 `assembleDebug assembleDebugAndroidTest testDebugUnitTest lintFast --offline --no-daemon` 通过：4,039 项 JVM 测试，1 项原有跳过、0 失败；快速 Lint 273 个警告、0 个未过滤错误，3 项错误 baseline 未改。新增 4 个警告均为 `UsableSpace`，保留与完整准备相同的保守空间预算，不驱逐宿主其他缓存。没有运行完整 Lint。已执行 `--stop`，未发现残留 Gradle / Kotlin 守护进程。未 commit、未 push。
+
+### 2026-10-27 全版本宿主结构核查（无设备阶段）
+
+本轮只做云端静态核查，没有使用任何手机，没有改动功能代码、依赖或构建配置。目标是确认投屏依赖的宿主结构是否覆盖项目归档的全部准确 APK。
+
+#### 判定口径
+
+该分支没有按宿主版本号分支的逻辑，投屏是否可用完全取决于安装期还能否按结构定位到下列成员。
+
+| 依赖点 | 代码位置 | 核对内容 |
+| --- | --- | --- |
+| 原生投屏点击接管 | `LanContinuityFeatureInstaller` | `…page.toolbar.actionview.projection.ToolbarCastScreenRepository` 中唯一非 synthetic 静态 `(Repository, View)V` |
+| 当前媒体读取 | `LanHostMedia`、`PlayerBufferLocator` | `IjkMediaPlayerItem` 的 `getCid`/`getCurQn`/`getScheme` 与 `mContext`/`mMediaAsset`/`mVodType`/`mIsStop`/`mIsReleased`/`mIjkMediaConfigParams`/`mCurAudioId`/`mVideoCodecType`；`IjkMediaConfigParams.mUserAgent`/`mReferer`；`IjkMediaAsset`、`…$MediaAssetStream`、`…$MediaAssertSegment` 的轨道与分段方法 |
+| 播放器与接力 | `SponsorPlayerAccess`、`HostAgentRouter` | `IPlayerCoreService` 的 `getCurrentMediaItem`/`seekTo(IZ)`/`getPlaySpeed(Z)`/`setPlaySpeed(F)`/`play` 等运行 ABI，以及 `BLRouter.routeTo` 静态入口 |
+
+#### 输入与证据
+
+- 版本矩阵 `f8ca1825fae74b1eb232501fe46b1dc0`（`execution_policy=adaptive`，4 个物理 runner 组作业 40476328914 / 40476333195 / 40476338305 / 40476342183）。
+- 38 个样本，覆盖 8.84.0–9.17.0，同版本不同构建分别核对；样本 revision `1c744580ec53f13d57339e162246945e5004e577`，分析工具提交 `8782f43d537c442905123e35af325c412caa5188`，请求定义 SHA-256 `135cc1f0f1d810390128a4641b2b7d2ce5094e484f1d272779b86105482ff1fe`。
+- 全部成员结果 `complete`，`collection_errors` 为空；每项绑定准确 APK SHA-256，没有把截断、跳过或失败当作通过。
+- 判定脚本、逐版本结果与原始产物保留在本机 `runtime/hostlab/`，未随代码提交。
+
+#### 结论
+
+| 版本组 | 样本数 | 结果 |
+| --- | ---: | --- |
+| 8.84.0、8.86.0、8.87.0、8.88.0、8.89.0、8.90.2、8.91.0、8.92.1、8.93.0、8.94.0、8.95.0、8.96.0 | 12 | 全部锚点满足：静态 `(Repository, View)V` 唯一命中（`f`，flags `0x1a`），媒体字段与分段方法、`getCurQn`、core 播放接口、`BLRouter` 均通过 |
+| 8.97.0 | 1 | 入口失效：Repository 只剩 `<init>` 与 `c`/`d`/`e`/`f`/`g` 六个方法，没有任何 `(Repository, View)V`；媒体链仍完整 |
+| 8.98.0、8.99.0、9.1.0、9.1.1、9.2.0、9.3.0、9.4.0、9.5.0、9.6.0、9.7.0、9.8.0、9.9.0、9.10.0、9.11.0（两个构建）、9.12.0、9.13.0、9.14.0（两个构建）、9.15.0（三个构建）、9.16.0、9.16.1、9.17.0 | 25 | 入口同样失效，且 `IjkMediaPlayerItem.getCurQn()I` 不再存在，`LanHostMedia.resolve` 返回空，读不到当前清晰度与媒体地址 |
+
+#### 三个断裂点
+
+1. 8.97.0 起，原生 TV 按钮的点击回调不再是 Repository 上的静态方法，而是同包 `projection.b#onClick(android.view.View)V`（实例 `OnClickListener`）。8.84.0–8.96.0 的形态是 Repository 内一个非 synthetic 静态 `(Repository, View)V` 加一个 synthetic 转发方法，本分支只按前者定位。
+2. 8.98.0 起，`IjkMediaPlayerItem.getCurQn()I` 从宿主消失（全样本范围内同名方法只剩无关的 `LiveRtcReporter$ReportHLSSWInfo#getCurQn()`），因此当前清晰度无从读取，媒体读取路径在入口修好后仍会失败。
+3. 9.17.0 的 `projection` 包内已不存在任何 `(Landroid/view/View;)V` 方法，`projection.b` 也变成 `FrameLayout` 子类；点击入口已离开该包，不能靠放宽签名或改名候选修复。
+
+#### 影响与边界
+
+- 8.97.0 及以上：`install()` 在注册任何 Hook 之前返回 `Skipped("ambiguous-native-cast-entry")`，宿主保持原生行为、不会崩溃；代价是投屏面板永远不会出现，日志只会在主进程安装记录里体现。
+- 媒体断点当前被入口失败掩盖；只修入口不足以让 8.98+ 可用。
+- 其余锚点在 38/38 样本均满足：媒体字段、asset 与 segment 方法、`IjkMediaConfigParams` 的 UA/Referer、`IPlayerCoreService` 的播放/跳转/倍速 API、`BLRouter.routeTo` 静态入口。
+- 以上全部是静态结构证据，不代表运行期 Hook、电视画面或接力续播验收；本分支现有真机记录仍只覆盖 8.90.2（属通过组）。本轮没有构建、没有运行测试、没有连接任何设备。
+- README 中「已验证客户端 8.84.0–9.14.0」指模块整体历史实机范围，不构成投屏特性的版本覆盖结论。
+
+#### 后续可选方向（均未实施）
+
+- 入口：在静态方法之外接受同包 `OnClickListener#onClick(View)`，并回证其与该 Repository 的绑定关系；9.x 需要重新定位点击入口，不能只放宽签名条件。
+- 媒体：为 8.98+ 寻找替代清晰度来源（当前 asset/stream 选择或新版 core 接口），保留现有 CID 与资源实例双读校验。
+- 在 `install()` 日志里区分「宿主结构不支持」与「适配失败」，避免把模块整体支持范围误当成投屏支持范围。
+
+### 2026-10-27 全版本适配（结构层）
+
+承接上一条核查，本轮把投屏的两处版本断点补齐。没有可用测试机，仍然只用云端静态证据与本地构建/测试；未连接、未安装、未启动任何设备。
+
+#### 改动
+
+| 位置 | 改动 |
+| --- | --- |
+| `LanHostMedia` | 当前视频质量改为 `getCurQn()I` → `getCurVideoId()I` 回退。两版方法体逐字相同（native 属性 `0x4f1a`，回退字段 `mCurVideoId`），因此可互换读取；两者都不存在时明确失败，不回退到"猜一个清晰度" |
+| `CastToolbarClickLocator`（新增） | 统一投屏入口定位：直连静态回调（8.84.0–8.96.0）与合并 lambda（8.97.0 起）两种形态；缓存只保存 owner 名称，使用前重新验真 |
+| `DexAssistQuery.CAST_TOOLBAR_CLICK`（新增） | 只在直连缺失且投屏启用时并入既有后台适配批次；判据只有"返回 void + 方法体包含 `player.player.screencast.click.player`"，owner 名不参与定位 |
+| `VersionAdapter` / `HookEntry` | 适配结果新增可选键 `cast_click`（owner + 是否 lambda）；投屏启用时参与计划、合并与后台补装，投屏关闭时不查询 |
+| `LanContinuityFeatureInstaller` | 使用统一入口；合并 lambda 在 `before` 里先验 payload 是否为该 Repository 实例，不是就放行给宿主，避免拦截同类里的其它点击分支 |
+
+payload 判据按实际宿主形态分两种，都只在字段实值确实是 Repository 实例时才拦截：合并分支是 `Object` 字段加 `int` 选择子（8.97.0、9.17.0 等），单用途 lambda 直接捕获 Repository 类型（8.99.0、9.12.0）。
+
+#### 复核
+
+矩阵 `dd86888825f04d7aa175d77a14d28bd2`（38 个样本 8.84.0–9.17.0，样本 revision `1c744580…`，工具提交 `8782f43d…`，4 个 runner 组作业，`collection_errors` 为空）按**生产规则本身**重算，而不是只查类是否存在：
+
+- 入口：静态形态要求 Repository 内唯一的非 synthetic 静态 `(Repository, View)V`；lambda 形态要求 `onClick(Landroid/view/View;)V` 非静态、非 synthetic、owner 实现 `View.OnClickListener` 且持有可容纳 Repository 的实例字段。**38/38 唯一命中**：8.84.0–8.96.0 为 `static`，8.97.0–9.17.0 为 `lambda`。
+- 清晰度：`getCurQn()I` 与 `getCurVideoId()I` 恰好存在其一，**38/38** 通过。
+- 这两条规则由新增的 8 项 JVM 测试锁住（静态唯一/歧义拒绝、两种 lambda 形态、payload 身份判别、缓存复核、JSON 往返）。
+
+本地门禁：`assembleDebug testDebugUnitTest lintFast --offline --no-daemon` 通过，4,047 项 JVM 测试（1 项原有跳过、0 失败、0 错误），快速 Lint 273 个警告、0 个未过滤错误，既有 3 条错误基线未改；随后执行 `--stop`，结束时无 Gradle / Kotlin 守护进程。未运行完整 Lint。
+
+#### 仍未覆盖
+
+- 本轮的适配是**静态结构层**结论：没有真机验证，DexKit 查询在真实宿主上的实际命中、Hook 注册与面板交互都未执行；现有真机记录仍只有 8.90.2。
+- 9.17.0 另有一套 `com.bilibili.ship.theseus2` 页面架构（`ToolbarCastScreenRepository$action$1`、`VertexContext`），其播放器绑定与投屏入口都不在本模块的经典页适配范围内，本轮没有把它算作已适配。
+- 合并 lambda 的 payload 判别只保证"拦截到投屏分支"，不保证宿主在同类里没有其它持有同一 Repository 实例的分支；出现时表现为多拦一次面板打开，需要真机确认后再收紧。
+- 新清晰的恢复路径没有改变既有拒绝边界：HDR、旋转源、分段媒体、DRM 仍然按原样拒绝。
+
+### 2026-10-27 全版本适配复核：清晰度语义与新页面栈边界
+
+继续在无设备条件下核对上一条适配的两处假设，并把归档范围重新对齐一次。
+
+#### 清晰度访问器不是简单改名
+
+逐版解码方法体后发现了比"改名"更细的差别：
+
+| 版本 | `getCurQn()` / `getCurVideoId()` 方法体 |
+| --- | --- |
+| 8.90.2（已实机验证） | 只读 `mCurVideoId` 字段 |
+| 8.97.0 | 先读 native 属性 `0x4f1a`，大于 0 就返回，否则读 `mCurVideoId` |
+| 9.17.0 `getCurVideoId()` | 与 8.97.0 的 `getCurQn()` 逐字相同 |
+
+因此"直接换成 `getCurVideoId()`"并不保证与已实机验证的语义一致：属性值未必等于清晰度编号。现在的规则是**两个值都只用于唯一选中同编码的视频轨道**——先用访问器的值，选不中再退回 `mCurVideoId` 字段，两者都选不中才失败，绝不把属性值直接当成清晰度。矩阵 `2854327d97354c56a68380781296a6ae` 确认 `mCurVideoId`、`mCurAudioId`、`mVideoCodecType` 三个字段与"每版恰好一个质量访问器"在 38/38 样本全部成立。
+
+#### 归档范围没有新增
+
+重新拉取样本清单：仍是 revision `1c744580ec53f13d57339e162246945e5004e577`、38 个 APK，最高 9.17.0。没有需要补适配的新版本，本轮结论覆盖归档全集。
+
+#### 入口判定只保留可全量复核的特征
+
+合并 lambda 的形态判定最初还要求 owner 实现 `View.OnClickListener`。本轮尝试逐版取证该接口归属时，宿主索引里的 `class_interfaces` 无法与类定义稳定关联（多表关联在该后端直接报错），只能逐样例确认 8.97.0 与 9.17.0。与其保留一条无法在全部样本上复核的硬条件，不如把它去掉：判定只保留三条都能全量验证的特征——方法体埋点常量、`onClick(Landroid/view/View;)V` 完整 ABI、以及能被 Repository 填充的捕获字段。宿主会不会真的把它当作点击回调调用，本来就取决于点击链路自身；多要求一层接口归属只会把可用宿主误判成缺失，而且运行时 payload 身份复核仍然是拦截前的最后一道门。
+
+去掉该条件后按生产规则重算同一批证据：仍为 38/38 唯一命中，没有因为放宽而出现歧义候选。
+
+#### 9.17.0 的 theseus2 新页面栈（明确不在范围内）
+
+9.17.0 里出现的 `com.bilibili.ship.theseus2.*` 不是投屏入口改名，而是一套并行的完整页面架构：`adaption`（含 `AndroidKmpTheseusAdaptionModule`）、`cheese` 播放域、独立的 `ToolbarRepository` / `ToolbarCastScreenRepository`（构造参数是 `kntr.common.trio.vertex.VertexContext`），以及独立的点击入口 `ToolbarCastScreenRepository$action$1#invoke()V`。它在本归档里只出现于 9.17.0，而同一版本的经典 `ship.theseus` 工具栏与解析器仍然完整存在。
+
+本模块的播放器绑定（`SponsorPlayerAccess` 的 `TheseusKeelPlayer$runPlayable$1`、`playercontainer` 等）只针对经典栈，因此 theseus2 的投屏入口即使接上也无法工作。本轮按"另一套页面架构"处理，不把它计入已适配；真要支持需要先补齐 theseus2 的播放器与页面绑定，属于独立议题。宿主的实验分流决定用户实际进入哪套页面，静态分析无法观测，这点同样不能由本轮的静态证据替代。
+
+#### 本轮门禁
+
+`assembleDebug testDebugUnitTest lintFast --offline --no-daemon` 通过：4,047 项 JVM 测试（1 项原有跳过、0 失败、0 错误），快速 Lint 273 个警告、0 个未过滤错误，既有 3 条错误基线未改。已执行 `--stop`，结束时无 Gradle / Kotlin 守护进程。仍未连接任何设备。
+
+### 2026-10-27 全量依赖面核对（含播放器绑定）
+
+前两轮只逐版证过"入口 + 清晰度"两处断点，投屏依赖的其余宿主成员（播放器绑定、观察者接口、容器、续体字段）一直只有类注释里的历史结论。本轮把它们一并按生产判据核对。
+
+#### 核对面
+
+| 组 | 判据 | 结果 |
+| --- | --- | --- |
+| 绑定类 | 20 个必需类（续体、params、核心服务、包装器、容器作用域、四个观察者接口、播放处理器、资产类族等） | 38/38 存在 |
+| 观察者 ABI | `onPlayerProgressChange(II)V`、`onSeekStart(J)V`、`onSeekComplete(J)V`、`onPlayerStateChanged(I)V`、`onPlayerWillRelease()V` | 38/38 |
+| 核心注册链 | `registerPlayerProgressObserver` / `unregister…` / `registerSeekObserver` / `unregister…` / `registerState(…,[I)` / `unregisterState` / `addPlayerReleaseObserver` / `remove…` | 38/38 |
+| params 链 | `getBizType`（返回枚举）在 params 类或其父类 `Video$PlayableParams` 上、`getBvId/getCid/getAvid`、枚举上的静态 `UGC` | 38/38 |
+| 容器 | `getPlayerCoreService()IPlayerCoreService` | 38/38 |
+| 续体 | `label:I` 与 `this$0` 捕获字段 | 38/38 |
+| 包装器构造 | 同时含核心服务、owner、`CoroutineScope`（9.12.0 的参数顺序为 owner/scope/core，判据不看顺序） | 38/38 |
+| 执行边界 | owner 上唯一的非静态 `(playable, Continuation|ContinuationImpl) -> Object`；owner 的 0 参 getter 返回该 playable；playable 声明 `GeminiCommonPlayableParams` 的 0 参 getter | 38/38 |
+
+矩阵：`d1926e9752124d85810fd258722f9e61`、`4b839384e52d4c49aaf3492e7f9feda5`、`b0d1ce337b1144abb08b224d340447e3`、`777357d937f44a7fac66153088064881`（38 样本，`collection_errors` 全空）。
+
+#### 两个容易判错的细节
+
+- **续体形参有两种**：8.84.0–8.96.0 的执行边界是 `(playable, kotlin.coroutines.Continuation)`，8.97.0 起变成 `(playable, kotlin.coroutines.jvm.internal.ContinuationImpl)`（8.97.0 实测 `h.q(keel.player.j, ContinuationImpl)`）。只按 `Continuation)` 匹配会把 8.97+ 全部误判成"缺少执行边界"，这也是我本轮第一版核对脚本 38/38 报错的原因；模块自身的判据本来就同时接受两种续体。
+- **owner 被混淆但结构不变**：8.84.0–8.96.0 的 owner 是 `TheseusKeelPlayer`，8.97.0 起变成 `keel.player.h`；playable 接口仍是 `keel.player.j`，而 `tangram.basic.*` 只是内部实现接口。模块从续体的 `this$0` 推导 owner，所以不受混淆影响；但若有人把 `keel.player` 前缀判据放宽成"任意接口"，反而会把 `tangram` 的实现接口误选进来。
+
+#### 结论
+
+投屏依赖的宿主面在本归档 38 个样本上全部成立：入口（静态/合并 lambda）、当前清晰度、媒体轨道链、播放器绑定、观察者注册链、路由、容器。本轮没有发现需要再改代码的版本，也没有新增改动；上一轮的构建与测试结论对应当前源码仍然有效（本轮未改源码，未重跑门禁）。
+
+边界不变：全部为静态结构证据，没有真机；9.17.0 的 `theseus2` 并行页面栈不在范围内。
+
+### 2026-10-27 编码枚举与选轨兜底
+
+继续核查媒体侧最后一类"字符串/数字常量"依赖。
+
+#### 宿主枚举常量（38/38 稳定）
+
+矩阵 `b7bf8ab7f4084b02b61d315d8d6c36c2`：`IjkMediaAsset$StreamType` 始终是 `DASH_VIDEO`/`NORMAL`/`DASH_AUDIO`，`IjkMediaAsset$VideoCodecType` 始终是 `H264`/`H265`/`AV1`（另有 `H266`/`UNKNOWN`）。模块按名字比较、再按名字挑轨道，全版本成立。
+
+#### 选轨不再硬依赖编码数字
+
+`mVideoCodecType` 的 7/12/13 是 DASH 协议里的 codecid（AVC/HEVC/AV1），不是可逐版静态取证的宿主结构；8.90.2 的 `<clinit>` 已被 R8 拆分，逐版读常量值也不现实。原先"认不出的编码值直接失败"会把这些不确定性放大成整条链路不可用，现在的规则是：
+
+1. 先按"清晰度 + 编码名"精确匹配；
+2. 认不出编码，或该清晰度在该编码下没有唯一轨道时，退回"该清晰度下的唯一视频轨道"；
+3. 仍然多于一条就继续失败（`current-video-track-ambiguous`），不猜。
+
+也就是把"不知道编码"从硬错误降级为"只要没有歧义就继续"，歧义依旧拒绝。这不会让模块凭空选择别的清晰度：兜底只在同一清晰度内发生。
+
+#### 门禁
+
+`assembleDebug testDebugUnitTest lintFast --offline --no-daemon` 通过：4,047 项 JVM 测试（1 项原有跳过、0 失败、0 错误），快速 Lint 273 个警告、0 个未过滤错误，既有 3 条错误基线未改；已 `--stop`。仍未连接任何设备，选轨兜底没有真机用例。
+
+### 2026-10-27 可复用的全量校验脚本
+
+前几轮的判定分散在多个一次性脚本里，宿主再出新版本时无法直接复用。现在合并为 `runtime/hostlab/verify_lan_cast.py`（本机脚本，不随代码提交）：
+
+```text
+python tools/hostlab/.venv-remote/Scripts/python.exe runtime/hostlab/verify_lan_cast.py <manifest.json>
+```
+
+manifest 是一组 hostlab 结果 `result.txt` 路径（可混合多个矩阵）。脚本按 `version_code` 合并证据，缺任务时跳过该项而不是判失败，最后逐版本输出：
+
+- 入口形态（静态回调 / 合并 lambda）与当前清晰度访问器名；
+- `mCurVideoId`/`mCurAudioId`/`mVideoCodecType` 字段、`StreamType`/`VideoCodecType` 常量名；
+- 20 个绑定类、item/player/bundle 代理/包装器/处理器成员、asset/stream/segment 成员、core 播放成员、路由静态入口；
+- 观察者 ABI 与核心注册链；
+- 续体 `label`/`this$0`、唯一的执行边界、`active` getter、playable 的 params getter、包装器与作用域构造。
+
+本轮用 8 个矩阵共 304 份样本结果跑过一遍：
+
+```text
+versions=38 fail=0
+8.84.0–8.96.0  entry=static quality=getCurQn
+8.97.0         entry=lambda quality=getCurQn
+8.98.0–9.17.0  entry=lambda quality=getCurVideoId
+```
+
+宿主再发新版本时的流程固定为：更新 `runtime/hostlab/inventory.json` → 对新增样本跑 entry/quality/media/binding 四类查询 → `verify_lan_cast.py` 出结论。新版本若只在"清晰度访问器"或"执行边界"上改名，通常无需改代码；若入口或绑定结构变化，脚本会直接指出缺哪一项。
+
+### 2026-10-27 9.17.0 双栈并存的边界（静态证据）
+
+9.17.0 同时存在两套投屏入口，需要说清"经典栈已适配"到什么程度：
+
+| 证据 | 含义 |
+| --- | --- |
+| `com.bilibili.ship.theseus.united.page.toolbar.actionview.projection.ToolbarCastScreenRepository`（经典）仍有完整点击链路：合并 lambda `Bc/c#onClick` 持有它并上报 `player.player.screencast.click.player` | 经典工具栏在 9.17 仍然存活，模块的 lambda 定位在 9.17 有效 |
+| `com.bilibili.ship.theseus2.united.page.toolbar.actionview.projection.ToolbarCastScreenRepository` 与 `…$action$1#invoke()V` 同时存在 | 新页面栈有自己的投屏入口 |
+| `theseus2` 下有 `adaption.AndroidNativePageModule`、`uistyle.TheseusPageUIStyleRepository`、`cheese`、`ogv` 等，**没有** `TheseusIntroductionFragment` 或独立 Activity | `theseus2` 不是独立详情页，而是装在同一个 `UnitedBizDetailsActivity` 里的 Compose 页面模块 |
+| `UnitedBizDetailsActivity` 仍由 BRouter 路由进入（`…detail/a;->onContextAvailable` 等） | 详情页外壳没变，变的是页面内容与工具栏实现 |
+
+因此 9.17.0 上用户实际拿到哪套工具栏取决于宿主的页面实现分流，静态分析无法判定；模块目前只接管经典栈。若把 `theseus2` 的 `action$1#invoke()` 也挂上，需要先解决两件事，都不能靠静态证据拍板：
+
+1. `invoke()` 没有 View 参数，也没有 payload、Activity 只能取自模块自己的前台 Activity 记录，无法像经典栈那样用"点击的 View 属于哪个 Activity"复核，存在误开面板的风险；
+2. `theseus2` 页面的播放器是否仍走 `keel.player` 绑定未知，若不走，面板即使打开也读不到当前媒体。
+
+结论保持不变：经典栈在归档全部 38 个版本上结构可适配；`theseus2` 是新页面栈，需要真机确认后再决定是否接入，不在本轮范围。
+
+#### 审计留档
+
+重新对 8 个矩阵、304 份样本结果跑 `verify_lan_cast.py`：`versions=38 fail=0`，与前几轮一致（本轮未改源码）。
+
+### 2026-10-27 theseus2 属于独立播放栈（结论性证据）
+
+上一节只说"不清楚 theseus2 的播放器归属"，本轮补上了决定性数据：
+
+| 证据 | 结论 |
+| --- | --- |
+| `…theseus2…ToolbarCastScreenRepository$action$1#invoke()V` 的方法体是 `CallableReference.receiver` 取出 theseus2 仓库后，读 `h:HashSet`（已发现设备）→ 有设备走提示、否则发出流并上报 | `action` 就是点击动作本身，不是重组副作用；要接只能挂它 |
+| theseus2 的方法里对 `Ltv/danmaku/biliplayerv2/service/IPlayerCoreService;` 的引用数为 **0** | 模块的播放器绑定（`IPlayerCoreService` + `keel.player` owner/续体）在 theseus2 页面不成立 |
+| theseus2 的方法里对 `Lcom/bilibili/app/gemini/base/player/GeminiCommonPlayableParams;` 的引用数为 **0** | 同上，读不到 BV/CID/进度 |
+| theseus2 的方法里对 `Lcom/bilibili/ship/theseus/keel/player/*` 的引用数为 **0**；`theseus2/united/player/` 自带 823 个类 | theseus2 是自带播放域的独立页面栈 |
+
+因此 theseus2 不是"漏了一个版本"，而是**另一套播放器与页面实现**：接它需要新的播放器访问层（BV/CID/进度/倍速/轨道），不是给现有定位器加一个候选类就能解决。该栈只出现在归档的 9.17.0 一个样本上。
+
+这也解释了为什么不能只挂 `action$1#invoke()`：没有 View 可复核、Activity 只能取前台记录，且即便挂上，面板也没有可用的播放器读取路径——误开面板的概率大于收益。结论：在模块继续以 `biliplayerv2` + `keel.player` 为播放边界的阶段，theseus2 明确不在支持范围，需要真机确认分流后再立项。

@@ -1,5 +1,6 @@
 package com.Bilibili_Innocent_Lab.xposedmodule.hook.adapter.dex
 
+import com.Bilibili_Innocent_Lab.xposedmodule.hook.adapter.CastToolbarClickLocator
 import com.Bilibili_Innocent_Lab.xposedmodule.hook.adapter.SearchHomeRecommendLocator
 import com.Bilibili_Innocent_Lab.xposedmodule.hook.feature.PlayerEndPageRecommendLocator
 import com.Bilibili_Innocent_Lab.xposedmodule.hook.adapter.HostCardSemanticAdapter
@@ -409,6 +410,14 @@ internal object DexKitAssistEngine : DexAssistEngine {
                     declaredClass = "kotlin.coroutines.jvm.internal.SuspendLambda"; name = "<init>"
                     paramTypes("int", "kotlin.coroutines.Continuation")
                 }
+            }
+        }
+        // owner 每版都被 R8 合并到不同类，只保留"返回 void + 方法体带投屏点击埋点"两个版本无关特征；
+        // 命中里还有一个无关的 story 点击，由 CastToolbarClickLocator 用完整 ABI 与 payload 身份剔除。
+        DexAssistQuery.CAST_TOOLBAR_CLICK -> bridge.findMethod {
+            matcher {
+                returnType = "void"
+                usingStrings(listOf(CastToolbarClickLocator.CLICK_MARK), StringMatchType.Contains)
             }
         }
         DexAssistQuery.BLOCK_UPDATE -> bridge.findMethod {
