@@ -3471,7 +3471,22 @@ class HookEntry : XposedModule() {
                         readAudioRescueConfig(prefs), debugTrace = com.Bilibili_Innocent_Lab.xposedmodule.BuildConfig.DEBUG,
                         moduleApk = runCatching { java.io.File(moduleApplicationInfo.sourceDir) }.getOrNull(),
                         hostCodeCache = attachedContext.codeCacheDir,
-                        remoteFile = { name -> android.os.ParcelFileDescriptor.AutoCloseInputStream(openRemoteFile(name)) }
+                        // Framework Remote first; module provider fallback for LSPatch, which does not
+                        // expose that service. Only fixed, verified assets are served by the provider.
+                        remoteFile = { name ->
+                            runCatching { openRemoteFile(name) }.getOrNull()?.let {
+                                android.os.ParcelFileDescriptor.AutoCloseInputStream(it)
+                            } ?: runCatching {
+                                val uri = com.Bilibili_Innocent_Lab.xposedmodule.provider.RoamingCompatProvider.AUDIO_ASSET_URI
+                                    .buildUpon()
+                                    .appendQueryParameter(
+                                        com.Bilibili_Innocent_Lab.xposedmodule.provider.RoamingCompatProvider.AUDIO_ASSET_NAME,
+                                        name
+                                    )
+                                    .build()
+                                attachedContext.contentResolver.openInputStream(uri)
+                            }.getOrNull()
+                        }
                     ),
                     PlayerCodecForceFeatureInstaller(
                         codecPreferenceValue = prefs.getInt(

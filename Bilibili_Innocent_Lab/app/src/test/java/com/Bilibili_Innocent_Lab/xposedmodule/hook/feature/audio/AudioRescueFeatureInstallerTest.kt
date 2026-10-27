@@ -27,15 +27,17 @@ class AudioRescueFeatureInstallerTest {
     }
     @Test fun `main process video backend registers the same PCM and lifecycle hooks`() {
         val registrar = Registrar()
-        assertEquals(FeatureInstallResult.Installed(9), AudioRescueFeatureInstaller(AudioRescueConfig(true))
+        assertEquals(FeatureInstallResult.Installed(10), AudioRescueFeatureInstaller(AudioRescueConfig(true))
             .install(environment(registrar, "tv.danmaku.bili")))
-        assertEquals(6, registrar.methods.count { it.startsWith("write:") })
+        assertEquals(7, registrar.methods.count { it.startsWith("write:") })
+        assertTrue(registrar.methods.contains("write:ByteBuffer, int, int, long"))
         assertTrue(registrar.methods.containsAll(listOf("flush:", "stop:", "release:")))
     }
-    @Test fun `dedicated service registers six write forms and all reset paths`() {
+    @Test fun `dedicated service registers seven write forms and all reset paths`() {
         val registrar = Registrar()
-        assertEquals(FeatureInstallResult.Installed(9), AudioRescueFeatureInstaller(AudioRescueConfig(true)).install(environment(registrar)))
-        assertEquals(6, registrar.methods.count { it.startsWith("write:") })
+        assertEquals(FeatureInstallResult.Installed(10), AudioRescueFeatureInstaller(AudioRescueConfig(true)).install(environment(registrar)))
+        assertEquals(7, registrar.methods.count { it.startsWith("write:") })
+        assertTrue(registrar.methods.contains("write:ByteBuffer, int, int, long"))
         assertTrue(registrar.methods.containsAll(listOf("flush:", "stop:", "release:")))
         assertTrue(registrar.methods.none { it.startsWith("setVolume:") || it.startsWith("setPlaybackParams:") })
     }

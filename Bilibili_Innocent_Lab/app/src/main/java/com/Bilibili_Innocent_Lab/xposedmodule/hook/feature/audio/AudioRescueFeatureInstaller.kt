@@ -41,9 +41,9 @@ internal class AudioRescueFeatureInstaller(
         var evidenceCaptured = false
         fun reset() { writer = AudioRescueWrite(processor(), encoding) }
     }
-    private data class InFlight(val session: Session, val writer: AudioRescueWrite, val pending: AudioRescueWrite.Pending, val generation: Int)
+    private data class InFlight(val session: Session, val writer: AudioRescueWrite, val pending: AudioRescueWrite.Pending, val generation: Int, val entry: Int)
     private val tracks = Collections.synchronizedMap(WeakHashMap<AudioTrack, Session>())
-    // AudioTrack's three-argument overload may delegate to a four-argument overload.
+    // Overloads may delegate to each other; nested writes must not process the buffer twice.
     private val inWrite = ThreadLocal<Boolean>()
     private val ready = AtomicBoolean(false)
 
@@ -54,10 +54,14 @@ internal class AudioRescueFeatureInstaller(
         if ((config.noiseReduction || config.voiceFocus) && moduleApk != null && hostCodeCache != null && remoteFile != null)
             AudioRescueModel.prepare(moduleApk, hostCodeCache, remoteFile, environment.logInfo)
         val int = Int::class.javaPrimitiveType!!
+        val long = Long::class.javaPrimitiveType!!
+        // Every public PCM write entry of AudioTrack, including the timestamped ByteBuffer
+        // overload that media3 ExoPlayer calls directly instead of delegating to write(buffer,int,int).
         val signatures = listOf(
             arrayOf(ByteArray::class.java, int, int), arrayOf(ByteArray::class.java, int, int, int),
             arrayOf(ShortArray::class.java, int, int), arrayOf(ShortArray::class.java, int, int, int),
-            arrayOf(FloatArray::class.java, int, int, int), arrayOf(ByteBuffer::class.java, int, int)
+            arrayOf(FloatArray::class.java, int, int, int), arrayOf(ByteBuffer::class.java, int, int),
+            arrayOf(ByteBuffer::class.java, int, int, long)
         )
         var installed = 0
         for ((index, signature) in signatures.withIndex()) {
@@ -81,7 +85,7 @@ internal class AudioRescueFeatureInstaller(
                             val offset = if (buffer) 0 else argOrNull(1) as? Int ?: return@before
                             val writer = session.writer
                             val pending = writer.prepare(argOrNull(0), offset, count) ?: return@before
-                            setObjectExtra(TRANSACTION, InFlight(session, writer, pending, generation))
+                            setObjectExtra(TRANSACTION, InFlight(session, writer, pending, generation, index))
                             args[0] = pending.data
                             if (!buffer) args[1] = 0
                             inWrite.set(true)
@@ -101,7 +105,7 @@ internal class AudioRescueFeatureInstaller(
                                 // One aggregate per process via logInfo's existing once-key; no waveform,
                                 // content identifier or PCM buffer is recorded. Diagnostics cannot fail a write.
                                 runCatching { environment.logInfo("$id.pcm", "[BIL] audio_rescue PCM " +
-                                    "rate=${transaction.session.rate} channels=${transaction.session.channels} encoding=${transaction.session.encoding} frames=${evidence.frames} neural=${transaction.session.speechReady} " +
+                                    "entry=${transaction.entry} rate=${transaction.session.rate} channels=${transaction.session.channels} encoding=${transaction.session.encoding} frames=${evidence.frames} neural=${transaction.session.speechReady} " +
                                     "inPeakPpm=${(evidence.inputPeak * 1_000_000).toInt()} outPeakPpm=${(evidence.outputPeak * 1_000_000).toInt()} " +
                                     "inStereoPpm=${(evidence.inputStereoDifference * 1_000_000).toInt()} outStereoPpm=${(evidence.outputStereoDifference * 1_000_000).toInt()} " +
                                     "inRmsPpm=${(evidence.inputRms * 1_000_000).toInt()} outRmsPpm=${(evidence.outputRms * 1_000_000).toInt()}") }

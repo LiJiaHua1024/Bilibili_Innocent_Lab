@@ -22,11 +22,11 @@
 ## 接入范围与写入契约
 
 - 在 `tv.danmaku.bili` 主进程及 `tv.danmaku.bili:ijkservice` 拦截 `AudioTrack.write`；要求初始化完成、音量流类型 `STREAM_MUSIC`、8–192 kHz、单/双声道及 PCM 8 bit / 16 bit / float。使用 API 3 起的 `getStreamType()`，避免 API 29 才提供的 `getAudioAttributes()` 越过项目 minSdk 27。2026-10-24 一加上的 B 站 9.13.0 实测视频 AudioTrack 在主进程中创建，原来的仅播放器服务范围没有覆盖它，因此补充主进程媒体音轨。主进程中的媒体预览和广告音轨也在此范围；其它进程、系统提示音流、多声道及压缩直通保留宿主行为。
-- 覆盖 byte[]、short[]、float[] 和 ByteBuffer 的六种基础写入形式。时间戳重载不直接注册；只有它继续调用已覆盖的基础写入方法时才会处理。
+- 覆盖 byte[]、short[]、float[] 和 ByteBuffer 的七种公开 PCM 写入形式，包括 8.87.0 起宿主实际调用的时间戳重载 `write(ByteBuffer,int,int,long)`。重载之间可能互相委托，线程内重入保护避免同一缓冲区被处理两次。
 - 使用私有副本，不改变调用方数组、ByteBuffer 内容或 limit；ByteBuffer 只按实际成功写入的字节数推进 position，PCM 使用本机字节序。数组偏移只在副本上归零。
 - 保留 Android 返回的原始计数及错误，部分写入只提交已接收前缀的 DSP 状态；零写入、异常或错误码回滚。PCM 算法为因果处理，因此回滚再重放前缀与一次处理实际接收前缀一致。
 - 重载委托有线程内重入保护。每条轨道的写入串行化；flush/stop/release 使用代际失效，不等待阻塞写入锁，避免与用于解除阻塞的宿主操作死锁。轨道使用弱键，值不引用轨道或 Activity。
-- 九个必需的写入/生命周期 Hook 全部注册后才启用；注册不完整时已注册回调保持旁路。无效范围、非整帧写入或超过 1,048,576 个原始写入单位的单次请求旁路，不把错误输入重新解释成 PCM。
+- 十个必需的写入/生命周期 Hook 全部注册后才启用；注册不完整时已注册回调保持旁路。无效范围、非整帧写入或超过 1,048,576 个原始写入单位的单次请求旁路，不把错误输入重新解释成 PCM。
 - 主进程诊断记录自身的 Hook 安装结果，不能据此证明另一个播放服务已启动。Debug 构建在完整日志档位另外记录一次实际成功写入 PCM 前缀的格式、采样率、帧数、输入/输出峰值、RMS 与左右声道差值；不记录原始 PCM、波形或视频标识，日志异常不能影响音频写入。该记录用于区分注册和实际处理，不代表主观听感验收。
 
 Android 写入计数、部分写入和 ByteBuffer position 的依据：[AudioTrack 官方 API 文档](https://developer.android.com/reference/android/media/AudioTrack)。
@@ -51,7 +51,7 @@ Android 写入计数、部分写入和 ByteBuffer position 的依据：[AudioTra
 
 DSP 与 PCM 写入事务使用确定性合成信号进行 JVM 测试：首样本尖峰、持续强声、保持与恢复、双耳联动、缺声方向、普通立体声、反相信号、50/60 Hz 及谐波、语音频段、低幅宽带噪声、分块等价性、各采样率、非有限值、堆/直接/只读 ByteBuffer、字节序、原始缓冲区复用，以及部分写入重试。
 
-安装器测试检查默认禁用、进程范围、六种写入入口、生命周期入口及注册失败时的整体旁路。配置测试检查独立启用、非法值归一和备份目录映射。
+安装器测试检查默认禁用、进程范围、七种写入入口、生命周期入口及注册失败时的整体旁路。配置测试检查独立启用、非法值归一和备份目录映射。
 
 首轮按要求不连接手机；HostLab 静态分析不能代替运行时验证。2026-10-24 用户提供空闲的有线一加后，补充了下述 LSPatch 实机检查。
 
@@ -87,3 +87,35 @@ APK 位于独立 worktree 的 `Bilibili_Innocent_Lab/app/build/outputs/apk/debug
 最终留机配置为峰值保护 + 自动补齐缺失声道，底噪抑制和人声增强关闭；手机停留在测试视频暂停页，可自行调节音量试听。原始证据、设置截图及回退 APK 均位于本 worktree 已忽略的 `captures/audio-device-20261024/`；主要日志为 `mainfix-mono-playing.log`、`combo-cold-start.log`、`combo-video-playing.log` 和 `final-guard-auto-*.log`。
 
 修复后的本地检查：`:app:assembleDebug`、`:app:testDebugUnitTest`、`:app:lintFast` 同次调用通过（6 分 31 秒）。共 3984 项 JVM 测试，3983 通过、1 项既有跳过、0 失败，其中 33 项音频测试全部通过；快速 Lint 为 260 条警告、0 个未基线化错误，原有 3 项错误基线未改。没有运行完整 Lint。构建日志为 `build-main-audio-fix.log`。
+
+## 2026-10-27 全版本宿主音频链路核查
+
+用 `tools/hostlab` 远程 DexSQL 对 inventory 中全部 38 个宿主样本（8.84.0 / 8840200 至 9.17.0 / 9170100）逐版检查 `AudioTrack` 写入调用点、`AudioTrack` 构造点、media3 / ExoPlayer 音频类、直播与 `BiliAudioPlayOutput` 构造者、IJK 类及进程字符串。样本 revision `1c744580ec53f13d57339e162246945e5004e577`，runner revision `8782f43d537c442905123e35af325c412caa5188`。只提交只读查询，没有上传模块源码；证据保存在本 worktree 已忽略的 `captures/hostlab-full-version/`。
+
+- 音频链路矩阵 `b8f3acf330364e13bfda8c32d8be46f9`：38 版全部 `complete`，4 个 Actions 作业 [40475570358](https://github.com/jichuo1/innocent-lab-host-analysis/actions/runs/40475570358)、[40475574175](https://github.com/jichuo1/innocent-lab-host-analysis/actions/runs/40475574175)、[40475579281](https://github.com/jichuo1/innocent-lab-host-analysis/actions/runs/40475579281)、[40475584435](https://github.com/jichuo1/innocent-lab-host-analysis/actions/runs/40475584435)。
+- 播放器结构矩阵 `9ddc7052448f46258e9410639d9e77e9`：38 版全部 `complete`，4 个作业 [40477030145](https://github.com/jichuo1/innocent-lab-host-analysis/actions/runs/40477030145)、[40477033331](https://github.com/jichuo1/innocent-lab-host-analysis/actions/runs/40477033331)、[40477036628](https://github.com/jichuo1/innocent-lab-host-analysis/actions/runs/40477036628)、[40477040179](https://github.com/jichuo1/innocent-lab-host-analysis/actions/runs/40477040179)。
+- 关键版本补充矩阵 `4b027f3e42d142e4a37dbcca934c2c1a`（8.84.0、8.90.2、9.13.0、9.17.0）：4 版全部 `complete`，作业 [40477552709](https://github.com/jichuo1/innocent-lab-host-analysis/actions/runs/40477552709)、[40477557422](https://github.com/jichuo1/innocent-lab-host-analysis/actions/runs/40477557422)、[40477562552](https://github.com/jichuo1/innocent-lab-host-analysis/actions/runs/40477562552)、[40477567095](https://github.com/jichuo1/innocent-lab-host-analysis/actions/runs/40477567095)。
+
+逐版结果：
+
+| 样本 | media3 ExoPlayer 音频类 | 宿主 Java `AudioTrack.write` 调用点 | 结论 |
+| --- | --- | --- | --- |
+| 8.84.0 / 8.86.0 | 0 | 仅直播、RTC、WebRTC、音频编辑等；无视频音频 Java 调用点 | 未发现 media3 音频输出，视频路径由 IJK 承载；同族 9.13.0 库通过 JNI 调用 Java AudioTrack，但这两版的 `.so` 未逐版抽取 |
+| 8.87.0–8.96.0 | 59 | media3 `AudioTrackAudioOutput` 调用 `write(ByteBuffer,II)` 与 `write(ByteBuffer,IIJ)`；另有直播、WebRTC 等 | 多一条 media3 视频音频路径；时间戳重载必须直接 Hook |
+| 8.97.0–9.17.0 | 12–13 | media3 混淆 sink（`d` / `e`）同样调用两种 ByteBuffer 写入；另有直播、Laya、WebRTC 等 | 同上；9.17.0 的 DRM 播放会构造 `ExoPlayerImpl` |
+| 全部 38 版 | — | 没有任何宿主 DEX 调用 `short[]` / `float[]` 写入；`byte[]` 三参在所有版本出现，四参不出现在 DEX 调用点、但由 IJK JNI 运行期使用；ByteBuffer 三参在 8.84.0 起、时间戳四参在 8.87.0 起出现 | 七种公开 PCM 写入形式覆盖 DEX 与已观测 JNI 调用 |
+
+原实现漏掉了时间戳重载 `write(ByteBuffer,int,int,long)`，并假设它总会委托给三参重载；8.87.0 起每个样本都存在该重载的静态调用点，不能由静态证据支持这个假设。现在七种写入全部注册，必需 Hook 从九个增加到十个；任一注册失败仍整体旁路，嵌套委托由线程内重入保护避免二次处理。9.13.0 的 `libijk.so` / `libijksdl.so` 明确包含 `J4AC_android_media_AudioTrack__write`、`write_non_block`、`([BII)I`、`([BIII)I` 与 “Android backend selected: AudioTrack”，说明 IJK 原生解码通过 JNI 调用 Java AudioTrack，Java Hook 能拦截该路径；9.13.0 实机日志中的 `entry=1`（即 `write(byte[],int,int,int)`）与之一致。
+
+进程范围仍是 `tv.danmaku.bili` 与 `tv.danmaku.bili:ijkservice`；38 版中 `:ijkservice` 字符串引用为 1–2 个。`info` 不返回组件 process 属性，本轮没有逐版枚举 manifest 进程；模块仍只覆盖这两个已知媒体进程。8.84.0/8.86.0 未包含 media3 音频输出类，但 IJK 路径仍由同一 Hook 覆盖；8.90.2 与 9.13.0 的 `libijksdl.so` 都包含 `J4AC_android_media_AudioTrack__write`、`([BII)I`、`([BIII)I` 与 `write_mode`，这两版的 IJK JNI 路径已实测抽取；8.84.0/8.86.0 的 `.so` 未逐版抽取。
+
+实机复测（2026-10-27，同一有线一加 `13a7a291`，宿主 9.13.0 / 9130500，LSPatch Manager 模式，模块 1.2.1 / 22 Debug）：覆盖安装后需要在模块“兼容 → 兼容模式”允许宿主直接读取配置，LSPatch 授权才成功。模型下载完成后，LSPatch 不提供框架 Remote 文件服务，宿主原本无法取得模型；本轮新增模块 ContentProvider 只读回退，冷启动后得到 `audio_assets stage=ready abi=arm64-v8a attempt=0`。最终配置（峰值保护 + 自动补耳 + 人声增强）播放 `BV1vFnB6JEje` 的主进程日志为
+
+```text
+[BIL] audio_rescue PCM entry=1 rate=48000 channels=2 encoding=2 frames=960 neural=true
+inPeakPpm=515106 outPeakPpm=313598 inStereoPpm=823 outStereoPpm=61 inRmsPpm=219927 outRmsPpm=141644
+```
+
+峰值与 RMS 均发生变化，证明写入确实进入处理链；`entry=1` 对应 IJK 的四参 `byte[]` 写入，`neural=true` 表示模型实际加载并参与处理。单独启用“语音降噪”也得到 `neural=true` 和 `inRmsPpm=133979 → outRmsPpm=67117`，说明两条神经路径都可用；模型下载、宿主缓存落地与 provider 回退均在同一台机器上实测。`ready` 要求十个 Hook 全部注册，能进入处理链也反证时间戳重载注册成功；但 9.13.0 本次播放走 IJK 路径，没有触发 media3 时间戳写入，因此时间戳分支仍只有静态证据。其它 37 个版本没有实机播放验证；8.84.0/8.86.0 的 IJK 原生库未逐版抽取，不能外推为所有版本已逐一实机验收。
+
+本地检查：`assembleDebug testDebugUnitTest lintFast --offline --no-daemon` 通过，共 4022 项 JVM 测试（0 失败、2 项既有跳过），快速 Lint 266 条警告、原有 3 项错误基线未改；未运行完整 Lint。APK 为 24,293,048 字节，SHA-256 `30A00C62D245FD3B0A57CDB5F40B850435756AC7F48382B404C56B7E12C2E151`。构建日志为 `captures/hostlab-full-version/build-final-verification.log`。

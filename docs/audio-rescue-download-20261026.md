@@ -85,3 +85,19 @@ Gradle 在 Debug/Release assemble 后检查实际 APK：禁止权重或 ORT 原�
 - 运行后已执行 Gradle `--stop`，最终进程检查未留下本轮 Java 构建或 Kotlin 守护进程。
 
 忽略目录中的证据：`captures/audio-download-20261026/build3.log`、主备源原文件、`device-assets/`、`offline-import/`。当前 APK 位于 `Bilibili_Innocent_Lab/app/build/outputs/apk/debug/app-debug.apk`。本轮未修改语音算法参数或既有 A/B 回归音频，不把历史真机结果当作新下载链路验收。
+
+## 2026-10-27 LSPatch 回退与实机验收
+
+LSPatch Manager 模式不提供框架 Remote 文件服务，下载完成后的本地校验会成功，但发布阶段报 `framework_disconnected`，宿主无法取得模型。本轮新增模块 ContentProvider 只读回退：
+
+- `RoamingCompatProvider` 新增 `audio_asset` 路径，仅接受目标宿主（`tv.danmaku.bili`）、root、shell 或模块自身，按固定 `remoteName` 读取 `noBackupFilesDir` 中已校验的模型/ORT 文件；每次打开重新执行大小与 SHA-256 校验，不提供目录列表或任意路径。
+- 宿主优先使用框架 `openRemoteFile`；不可用时通过同一 provider 的 `content://com.Bilibili_Innocent_Lab.xposedmodule.roaming/audio_asset?name=...` 读取。宿主仍复制到自己的 codeCache 并再次校验，不直接使用模块文件播放。
+- provider 与宿主缓存逻辑不依赖宿主版本或框架 Remote 能力，适用于 LSPatch、LSPosed 和 NPatch。
+
+2026-10-27 同一有线一加 `13a7a291`（宿主 9.13.0 / 9130500，LSPatch Manager，模块 1.2.1 / 22 Debug）实测：
+
+- 设置页“下载 / 继续下载”完成两份源文件与 ARM64 两个原生库的解包，`BILAudioAssets` 无 `hash_mismatch`/`network_timeout`；发布阶段仍如实报 `framework_disconnected local_verified=true`，本地已验证副本保留。
+- 冷启动宿主后，回退 provider 使 `audio_assets stage=ready abi=arm64-v8a attempt=0`，主进程日志出现 `audio_rescue PCM entry=1 ... neural=true`。分别启用“人声清晰度增强”和单独“语音降噪”，两者均进入模型路径且输出 RMS/峰值发生变化（例如降噪单独测试 `inRmsPpm=133979 → outRmsPpm=67117`）。
+- 最终配置恢复为用户原有的峰值保护 + 自动补齐缺失声道 + 人声清晰度增强，三项均开启；手机留在测试视频暂停页。
+
+未覆盖：离线文件选择器的系统交互、断网/取消/续传、`:ijkservice` 进程的模型加载、冷启动离线复用仍需其它宿主进程场景复测；本次只验证主进程和 LSPatch 回退。其它 37 个宿主版本未逐版实机安装，模型回退本身与宿主版本无关。
