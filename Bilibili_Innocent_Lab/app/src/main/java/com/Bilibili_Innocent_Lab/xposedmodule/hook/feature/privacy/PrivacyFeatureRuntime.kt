@@ -111,7 +111,13 @@ internal class PrivacyFeatureRuntime(
                     playbackHooks.kmpViewObserver(env, host))
                 val hooks = onboarding + GuestLibraryHostHooks(library, guest, history).install(env) + playback +
                     kmpHooks + installMineOverlayGuard(env, guest) + GuestMineOverlayHooks(guest).install(env) +
-                    GuestMineMenuHooks(guest).install(env) + GuestVideoFavoriteHooks(GuestVideoFavoriteHooks.storeFor(library), guest).install(env)
+                    GuestMineMenuHooks(guest).install(env) + GuestVideoFavoriteHooks(GuestVideoFavoriteHooks.storeFor(library), guest).install(env) +
+                    GuestIgnetLibraryResponses(guest, { path, params ->
+                        library.nativeBlocking {
+                            if (NativeWatchLaterProtocol.handles(path)) NativeWatchLaterProtocol.respond(path, params, it) { aid -> library.videoMetadata(aid, 0) }
+                            else NativeFavoriteProtocol.respond(path, params, it)
+                        }
+                    }).install(env)
                 FeatureInstallResult.Installed(hooks + ((prompts as? FeatureInstallResult.Installed)?.hookCount ?: 0), complete = false)
             }
         }
