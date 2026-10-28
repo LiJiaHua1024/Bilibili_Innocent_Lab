@@ -22,12 +22,18 @@ internal class GuestLibraryHostHooks(
             if (section in setOf("history", "favorites", "follows", "watchLater")) { openNative(activity, section); true } else false
         }
         var installed = 0
-        fun attempt(action: () -> Unit) {
-            runCatching(action).onSuccess { installed++ }.onFailure {
-                env.logError("guest_library_entry", "[BIL] Local library entry unavailable")
+        // Each entry reports its own outcome: the log channel keeps only the first line per key, so one shared key
+        // hid which of these host-version-bound entries were actually missing. Status carries the failure kind only.
+        fun attempt(name: String, action: () -> Unit) {
+            runCatching(action).onSuccess {
+                installed++
+                env.reportStatus("guest_library_$name", "installed")
+            }.onFailure {
+                env.logError("guest_library_entry_$name", "[BIL] Local library entry unavailable: $name")
+                env.reportStatus("guest_library_$name", "missing:${it.javaClass.simpleName}")
             }
         }
-        attempt {
+        attempt("mine_menu") {
             val manager = requireNotNull(Lookup.classOrNull(loader, MINE_MANAGER))
             val item = requireNotNull(Lookup.classOrNull(loader, MINE_ITEM))
             val uri = requireNotNull(Lookup.fieldOrNull(item, "uri"))
@@ -60,7 +66,7 @@ internal class GuestLibraryHostHooks(
         }
         // These verified providers perform the login check inside MinePageManager's redirect
         // coroutine. Intercept the providers too, including host paths that bypass manager.h().
-        for ((providerName, section) in listOf("b" to "favorites", "r" to "watchLater")) attempt {
+        for ((providerName, section) in listOf("b" to "favorites", "r" to "watchLater")) attempt("provider_$section") {
             val provider = requireNotNull(Lookup.classOrNull(loader,
                 "tv.danmaku.bili.ui.main2.mine.provider.$providerName\$a"))
             val item = requireNotNull(Lookup.classOrNull(loader, MINE_ITEM))
@@ -80,7 +86,7 @@ internal class GuestLibraryHostHooks(
             }
         }
         val fragment = Lookup.classOrNull(loader, MINE_FRAGMENT)
-        if (fragment != null) attempt {
+        if (fragment != null) attempt("follow_count") {
             val number = requireNotNull(Lookup.fieldOrNull(fragment, "p0"))
             val numbers = java.util.WeakHashMap<TextView, Unit>()
             fun update(state: LocalVirtualLibrary.Collections) {
@@ -102,7 +108,7 @@ internal class GuestLibraryHostHooks(
             }
         }
         if (fragment != null) {
-            attempt {
+            attempt("follow_list") {
                 val getActivity = requireNotNull(Lookup.inheritedMethodOrNull(fragment, "getActivity"))
                 env.registrar.exact("guest.library.follows", fragment, "Ur") {
                     before {
@@ -113,7 +119,7 @@ internal class GuestLibraryHostHooks(
                     }
                 }
             }
-            attempt {
+            attempt("mine_header") {
                 env.registrar.exact("guest.library.mine_header", fragment, "onViewCreated", classOf<View>(), classOf<Bundle>()) {
                     after {
                         if (!isGuest() || hasThrowable) return@after
@@ -123,7 +129,7 @@ internal class GuestLibraryHostHooks(
                 }
             }
         }
-        if (fragment != null) attempt {
+        if (fragment != null) attempt("mine_header_update") {
             val account = requireNotNull(Lookup.classOrNull(loader, "tv.danmaku.bili.ui.main2.api.AccountMine"))
             val getView = requireNotNull(Lookup.inheritedMethodOrNull(fragment, "getView"))
             // lr(AccountMine) reassigns the avatar/header listeners after account updates.
@@ -134,14 +140,14 @@ internal class GuestLibraryHostHooks(
                 }
             }
         }
-        attempt { GuestNativeFavoriteHooks(library, isGuest).install(env) }
-        attempt { GuestNativeFollowListHooks(library, isGuest).install(env) }
-        attempt { history.install(env) }
-        attempt { GuestNativeWatchLaterHooks(library, isGuest).install(env) }
-        attempt { GuestNativeWatchLaterAddHooks(library, isGuest).install(env) }
-        attempt { GuestNativeListHttpHooks(library, isGuest).install(env) }
+        attempt("native_favorite") { GuestNativeFavoriteHooks(library, isGuest).install(env) }
+        attempt("native_follow_list") { GuestNativeFollowListHooks(library, isGuest).install(env) }
+        attempt("native_history") { history.install(env) }
+        attempt("native_watch_later") { GuestNativeWatchLaterHooks(library, isGuest).install(env) }
+        attempt("native_watch_later_add") { GuestNativeWatchLaterAddHooks(library, isGuest).install(env) }
+        attempt("native_list_http") { GuestNativeListHttpHooks(library, isGuest).install(env) }
 
-        attempt {
+        attempt("follow_button") {
             val access = PrivacyHostAccess(loader)
             val helper = access.type("com.bilibili.relation.utils.FollowFlowHelper")
             val mid = requireNotNull(Lookup.fieldOrNull(helper, "c")).also { require(it.type == classOf<Long>()) }
@@ -175,7 +181,7 @@ internal class GuestLibraryHostHooks(
                 }
             }
         }
-        attempt {
+        attempt("video_menu_watch_later") {
             val access = PrivacyHostAccess(loader)
             val menu = access.type("com.bilibili.ship.theseus.united.page.toolbar.MenuService")
             val activity = requireNotNull(Lookup.fieldOrNull(menu, "b")).also {
