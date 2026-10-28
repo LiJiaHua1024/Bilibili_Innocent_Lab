@@ -1,8 +1,31 @@
 # 集成模式内测构建（embedded test build）
 
-面向内测群的构建流程：在独立的构建仓库 [Bilibili_Innocent_Builds](https://github.com/LiJiaHua1024/Bilibili_Innocent_Builds) 里产出**与正式 Release 同形态、同固定签名**、仅包名不同且已打开集成模式门控的模块 APK。它不是 Release，不创建标签、不发布说明、不发送通知；产物只以 Actions artifact 形式提供。
+面向内测群的构建流程。**CI 不在本源码仓库**：Fork 分支只提供 `embedded` 构建变体；实际构建、隔离签名与产物全部在 [Bilibili_Innocent_Builds](https://github.com/LiJiaHua1024/Bilibili_Innocent_Builds) 的 `Build signed embedded APK` 工作流完成。
 
-源码仓库（Fork）只提供 `embedded` buildType 与相关代码，不保存、也不使用长期签名私钥。
+> 给后续维护者 / AI 会话
+> - 不要在本仓库找或推送构建工作流，也不要期待源码分支 push 触发构建。
+> - 触发、等待、取回 APK 只有下面三组命令；`source_branch` 是 Fork 分支名，不是构建仓库分支。
+> - 默认只产生一个 artifact，里面只有 APK；不需要下载 `intermediate-` 或 `symbols-`。
+
+## 产物与取回（默认只有 APK）
+
+- artifact 名：`BIL-embedded-<branch>-<sha12>`，保留 30 天；zip 解压后只有一个 APK。
+- `intermediate-` 用于构建与签名两段之间传递，签名成功后自动删除。
+- R8 符号默认不生成；排查崩溃时用 `-f keep_symbols=true` 重跑，额外生成 `symbols-<branch>-<sha12>`，保留 14 天。
+- 构建元数据（源码 commit、包名、版本、证书与 APK 的 SHA-256）在运行的 job summary 中，不在 artifact 里。
+
+```powershell
+# 1. 触发
+gh workflow run embedded-build.yml --repo LiJiaHua1024/Bilibili_Innocent_Builds --ref main `
+  -f source_branch=feat/npatch-compat
+
+# 2. 查运行
+gh run list --repo LiJiaHua1024/Bilibili_Innocent_Builds --workflow embedded-build.yml --limit 3
+
+# 3. 取回（gh 自动解压，目录内直接是 APK）
+gh run download <run-id> --repo LiJiaHua1024/Bilibili_Innocent_Builds `
+  -n BIL-embedded-feat_npatch-compat-<sha12> -D .\embedded
+```
 
 ## 与正式 Release 的差异
 
@@ -19,23 +42,12 @@
 
 ## 构建流程与安全边界
 
-构建仓库的工作流 `Build signed embedded APK` 分两段：
+构建仓库的工作流分两段：
 
 1. **构建任务**：check out `LiJiaHua1024/Bilibili_Innocent_Lab` 的指定分支，用一次性密钥运行 `:app:assembleEmbedded`，只上传中间 APK；不接触长期私钥。
-2. **签名任务**：在全新 runner 上通过 artifact ID 取回中间 APK，用 `alpha-release` 环境里的固定证书重签，校验证书指纹、单一签名者、非 debuggable、包名 `com.Bilibili_Innocent_Lab.xposedmodule.embedded`，再上传最终产物。
+2. **签名任务**：在全新 runner 上通过 artifact ID 取回中间 APK，用 `alpha-release` 环境里的固定证书重签，校验证书指纹、单一签名者、非 debuggable、包名 `com.Bilibili_Innocent_Lab.xposedmodule.embedded`，再上传只含 APK 的最终产物。
 
 分支代码从不在持有长期签名私钥的 runner 上执行。
-
-## 触发
-
-在构建仓库的 Actions 页面选择 **Build signed embedded APK**，`source_branch` 填 `feat/npatch-compat`（或任意已推送的 Fork 分支）：
-
-```powershell
-gh workflow run embedded-build.yml --repo LiJiaHua1024/Bilibili_Innocent_Builds --ref main -f source_branch=feat/npatch-compat
-gh run list --repo LiJiaHua1024/Bilibili_Innocent_Builds --workflow embedded-build.yml
-```
-
-产物 artifact 以 `EMBEDDED-` 开头，保留 30 天；R8 符号表单独保留 14 天。artifact 内包含 APK、`build-info.txt`、`apk-info.txt`、`signature.txt`、`SHA256SUMS` 与不稳定性说明。
 
 ## 本地构建
 
