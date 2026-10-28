@@ -239,7 +239,7 @@ class MainActivity : SkinnedActivity() {
         ENGLISH("en", R.string.app_language_english)
     }
 
-    private val homeComponent by lazy { ComponentName(packageName, "${BuildConfig.APPLICATION_ID}.Home") } 
+    private val homeComponent by lazy { ComponentName(packageName, "${BuildConfig.MODULE_CLASS_PACKAGE}.Home") }
 
     private var pendingNoRootRelaunch = false
     private val noRootDetailsLauncher = registerForActivityResult(

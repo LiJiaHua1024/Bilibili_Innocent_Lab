@@ -115,7 +115,7 @@ x86_64:  7933cae217a3f0183d15fee01674d682d4d8eb6a6f227d208cf6bbbc356ca5d1
 
 ## embed 同签名产物
 
-`NewPatchedApk.ps1` 是 Manager/embed 共用的产物与签名入口；`NewEmbeddedApk.ps1` 保留原调用方式并固定选择 embed。两者固定上述 **Java 与 native 均已修复**的 833 patcher、普通 entry-hook 和签名等级 2，不启用 `injectdex`。拒绝已修补输入、已有输出目录和未知 patcher；验证原版宿主、双 ABI loader 与 embed 模块字节，Manager 产物必须不含内嵌模块。模块必须是已签名、应用 ID/Modern 入口正确的 APK，Debug 和已签名 Release 均可；版本与模块证书进入 `verified.json`。输出宿主证书必须与参照 APK 一致，任何失败均不生成通过记录。脚本不安装 APK、不导出私钥。
+`NewPatchedApk.ps1` 是 Manager/embed 共用的产物与签名入口；`NewEmbeddedApk.ps1` 保留原调用方式并固定选择 embed。两者固定上述 **Java 与 native 均已修复**的 833 patcher、普通 entry-hook 和签名等级 2，不启用 `injectdex`。拒绝已修补输入、已有输出目录和未知 patcher；验证原版宿主、双 ABI loader 与 embed 模块字节，Manager 产物必须不含内嵌模块。模块必须是已签名、应用 ID/Modern 入口正确的 APK，Debug 和已签名 Release 均可；模块包名从 APK 自身读取，因此 `com.Bilibili_Innocent_Lab.xposedmodule.embedded` 之类的内测变体也可直接传入；版本与模块证书进入 `verified.json`。输出宿主证书必须与参照 APK 一致，任何失败均不生成通过记录。脚本不安装 APK、不导出私钥。
 
 ```powershell
 $env:JAVA_HOME = 'C:/Program Files/Java/jdk-17' # apksigner 使用

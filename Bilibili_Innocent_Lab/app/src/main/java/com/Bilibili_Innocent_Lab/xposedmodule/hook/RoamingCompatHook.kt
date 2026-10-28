@@ -8,6 +8,7 @@ import android.content.pm.PackageInfo
 import android.net.Uri
 import android.view.View
 import androidx.core.content.ContextCompat
+import com.Bilibili_Innocent_Lab.xposedmodule.BuildConfig
 import com.Bilibili_Innocent_Lab.xposedmodule.provider.RoamingCompatProvider
 import com.Bilibili_Innocent_Lab.xposedmodule.runtime.CrossAppBroadcastCompat
 import com.Bilibili_Innocent_Lab.xposedmodule.runtime.HostThreadGuard
@@ -197,10 +198,10 @@ object RoamingCompatHook {
     const val PREF_FILE = "innocent_lab_roaming_compat"
 
     /** 模块 App 暴露开关的 ContentProvider（跨进程可靠读取，见 RoamingCompatProvider） */
-    const val PROVIDER_AUTHORITY = "com.Bilibili_Innocent_Lab.xposedmodule.roaming"
+    const val PROVIDER_AUTHORITY = "${BuildConfig.APPLICATION_ID}.roaming"
 
     /** 模块 App 开关变化时向 B 站发送的显式广播（B 站进程内由 HookEntry 注册接收） */
-    const val ACTION_SET_ROAMING_COMPAT = "com.Bilibili_Innocent_Lab.xposedmodule.SET_ROAMING_COMPAT"
+    const val ACTION_SET_ROAMING_COMPAT = "${BuildConfig.APPLICATION_ID}.SET_ROAMING_COMPAT"
 
     /** 广播 extra：新的开关值 */
     const val EXTRA_ENABLED = "enabled"
@@ -210,7 +211,7 @@ object RoamingCompatHook {
      * 因而模块 App 的设置页可以发送，任意第三方 App 则不能篡改本地漫游状态。
      */
     const val PERMISSION_SET_ROAMING_COMPAT =
-        "com.Bilibili_Innocent_Lab.xposedmodule.permission.SET_ROAMING_COMPAT"
+        "${BuildConfig.APPLICATION_ID}.permission.SET_ROAMING_COMPAT"
 
     /** hookinfo.pb 中校验相关字段号（protobuf，与 BiliRoaming 反编译产物一致） */
     private const val PB_FIELD_LAST_UPDATE_TIME = 1L

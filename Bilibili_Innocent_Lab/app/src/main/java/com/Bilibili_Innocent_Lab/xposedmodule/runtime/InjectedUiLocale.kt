@@ -9,6 +9,7 @@ import android.content.res.Resources
 import androidx.core.content.edit
 import androidx.core.content.ContextCompat
 import androidx.core.net.toUri
+import com.Bilibili_Innocent_Lab.xposedmodule.BuildConfig
 import com.highcapable.betterandroid.system.extension.utils.AndroidVersion
 import com.highcapable.kavaref.extension.classOf
 import java.util.Locale
@@ -79,16 +80,16 @@ internal object InjectedUiLocale {
     const val TAG_TRADITIONAL_CHINESE = "zh-Hant"
 
     const val ACTION_SET_UI_LOCALE =
-        "com.Bilibili_Innocent_Lab.xposedmodule.SET_UI_LOCALE"
+        "${BuildConfig.APPLICATION_ID}.SET_UI_LOCALE"
     const val EXTRA_LOCALE_TAG = "locale_tag"
     const val PERMISSION_SET_UI_LOCALE =
-        "com.Bilibili_Innocent_Lab.xposedmodule.permission.SET_UI_LOCALE"
+        "${BuildConfig.APPLICATION_ID}.permission.SET_UI_LOCALE"
 
     const val PROVIDER_PATH = "ui_locale"
     const val PROVIDER_COLUMN = "locale_tag"
 
     private const val TARGET_PACKAGE = "tv.danmaku.bili"
-    private const val PROVIDER_AUTHORITY = "com.Bilibili_Innocent_Lab.xposedmodule.roaming"
+    private const val PROVIDER_AUTHORITY = "${BuildConfig.APPLICATION_ID}.roaming"
     private const val HOST_PREF_FILE = "innocent_lab_injected_ui_locale"
     private const val HOST_PREF_SELECTION_TAG = "selection_tag"
 

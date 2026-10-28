@@ -23,7 +23,6 @@ $expectedLibraries = [ordered]@{
     'arm64-v8a' = 'ceac8f206404b5b2267ca70b0d6eb5b0f3738bc11d60e61738ccaa6af4e05a0f'
     'x86_64' = '7933cae217a3f0183d15fee01674d682d4d8eb6a6f227d208cf6bbbc356ca5d1'
 }
-$modulePackage = 'com.Bilibili_Innocent_Lab.xposedmodule'
 if ($RoamingModuleApk -and $Mode -ne 'embedded') {
     throw 'RoamingModuleApk is only for embedded mode; configure the Manager scope separately.'
 }
@@ -85,11 +84,16 @@ $moduleSigner = Get-Signer $ModuleApk
 $badging = & $Aapt2 dump badging $ModuleApk 2>&1
 if ($LASTEXITCODE -ne 0) { throw 'Module manifest inspection failed.' }
 $packageLine = $badging | Where-Object { "$_" -match '^package: ' } | Select-Object -First 1
-if ("$packageLine" -notmatch "^package: name='$([regex]::Escape($modulePackage))' versionCode='([0-9]+)' versionName='([^']*)'") {
-    throw 'Module APK has the wrong application ID or invalid version metadata.'
+# 包名从 APK 本身读取：正式模块与内测 .embedded 变体共用同一份工具，不再写死基础包名。
+if ("$packageLine" -notmatch "^package: name='([A-Za-z0-9_.]+)' versionCode='([0-9]+)' versionName='([^']*)'") {
+    throw 'Module APK has invalid package or version metadata.'
 }
-$moduleVersion = $Matches[1]
-$moduleVersionName = $Matches[2]
+$modulePackage = $Matches[1]
+if ($modulePackage -notmatch '^com\.Bilibili_Innocent_Lab\.xposedmodule(\.|$)') {
+    throw "Unexpected module application ID: $modulePackage"
+}
+$moduleVersion = $Matches[2]
+$moduleVersionName = $Matches[3]
 $moduleArchive = [IO.Compression.ZipFile]::OpenRead($ModuleApk)
 try {
     $moduleEntry = (Read-ZipText $moduleArchive 'META-INF/xposed/java_init.list').Trim()

@@ -145,7 +145,7 @@ internal object RoamingSettingsLauncher {
     internal fun createModuleLaunchToken(context: Context, requestCode: Int): PendingIntent =
         PendingIntent.getActivity(context, requestCode,
             Intent().setComponent(ComponentName(BuildConfig.APPLICATION_ID,
-                "${BuildConfig.APPLICATION_ID}.ui.activity.MainActivity"))
+                "${BuildConfig.MODULE_CLASS_PACKAGE}.ui.activity.MainActivity"))
                 .putExtra(EXTRA_MODULE_SETUP, true)
                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP),
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_ONE_SHOT or PendingIntent.FLAG_CANCEL_CURRENT)

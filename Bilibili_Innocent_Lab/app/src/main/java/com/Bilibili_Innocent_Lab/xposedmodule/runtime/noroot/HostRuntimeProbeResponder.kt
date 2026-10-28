@@ -9,6 +9,7 @@ import android.content.IntentFilter
 import android.util.Log
 import androidx.core.content.ContextCompat
 import androidx.core.content.IntentCompat
+import com.Bilibili_Innocent_Lab.xposedmodule.receiver.RoamingOpenReceiver
 import com.Bilibili_Innocent_Lab.xposedmodule.runtime.CrossAppBroadcastCompat
 import com.highcapable.betterandroid.system.extension.utils.AndroidVersion
 
@@ -82,7 +83,7 @@ internal object HostRuntimeProbeResponder {
             val reply = Intent(HostRuntimeProbeContract.ACTION_REPLY).apply {
                 component = ComponentName(
                     HostRuntimeProbeContract.MODULE_PACKAGE,
-                    "${HostRuntimeProbeContract.MODULE_PACKAGE}.receiver.RoamingOpenReceiver"
+                    RoamingOpenReceiver::class.java.name
                 )
                 putExtra(HostRuntimeProbeContract.EXTRA_NONCE, nonce)
                 putExtra(HostRuntimeProbeContract.EXTRA_HOOKS_INSTALLED, hooksInstalled)

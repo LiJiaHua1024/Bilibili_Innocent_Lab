@@ -380,8 +380,6 @@ class HookEntry : XposedModule() {
                 }
             }
 
-        private const val MODULE_PACKAGE = "com.Bilibili_Innocent_Lab.xposedmodule"
-
         /**
          * 普通模式读取管理器 Remote Preferences 白名单配置，再取得当前模块的启动许可。协议一次性校验目录、
          * 类型、摘要、条款和运行时修订号；失败时不回退到应用私有 prefs，避免把不可读或半更新配置

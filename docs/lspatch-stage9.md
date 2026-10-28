@@ -1,6 +1,6 @@
 # 阶段 9：LSPatch 支持与免 Root 框架盘点
 
-> 当前支持政策（2026-10-24）：仅开放本地（Manager）模式，不支持集成（embedded）模式。NPatch / LSPatch 集成模式共用 `EmbeddedModePolicy.SUPPORTED = false` 门控，以暂时减少内嵌模块宿主的倒卖；实现保留，未来是否恢复另行决定。下文集成模式的专项结果及操作步骤属于门控前的历史验证记录。
+> 当前支持政策（2026-10-28）：正式发布仅开放本地（Manager）模式，不支持集成（embedded）模式。debug/release 构建中 `EmbeddedModePolicy.SUPPORTED` 恒为 `false`；只有 CI 的 `embedded` 变体（见[集成模式内测构建](embedded-test-build.md)）编译为 `true`，产物只供内测群验证，不改变对外支持声明。NPatch / LSPatch 集成模式共用该门控，实现保留，未来是否恢复另行决定。下文集成模式的专项结果及操作步骤属于门控前的历史验证记录。
 
 2026-10-24。对应 [issue #31](https://github.com/jichuo1/Bilibili_Innocent_Lab/issues/31)，当前排期见[实施路线图](npatch-implementation-roadmap.md)。本轮只处理框架加载、配置、授权、运行确认和恢复，不扩大到通用业务适配。
 

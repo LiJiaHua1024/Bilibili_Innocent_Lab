@@ -1,14 +1,15 @@
 package com.Bilibili_Innocent_Lab.xposedmodule.runtime.noroot
 
 import android.content.Context
+import com.Bilibili_Innocent_Lab.xposedmodule.BuildConfig
 import com.Bilibili_Innocent_Lab.xposedmodule.settings.remote.ModernFrameworkStatus
 import com.Bilibili_Innocent_Lab.xposedmodule.settings.remote.RemoteHookConfigStore
 import com.Bilibili_Innocent_Lab.xposedmodule.settings.remote.isLspatch
 import com.Bilibili_Innocent_Lab.xposedmodule.settings.remote.isNpatchConfigChannel
 
 internal object EmbeddedModePolicy {
-    // 暂停支持集成模式，减少将模块内嵌宿主后倒卖的情况；保留实现，未来是否恢复另行决定。
-    const val SUPPORTED = false
+    // 发布构建恒为 false；仅 CI 的 embedded 变体通过 BuildConfig 编译成 true，供内测群验证。
+    val SUPPORTED: Boolean = BuildConfig.EMBEDDED_MODE_SUPPORTED
 
     fun isBlocked(
         nPatchMode: NPatchMode,

@@ -1,5 +1,6 @@
 package com.Bilibili_Innocent_Lab.xposedmodule.runtime.noroot
 
+import com.Bilibili_Innocent_Lab.xposedmodule.BuildConfig
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -18,6 +19,10 @@ class EmbeddedModePolicyTest {
         for (nPatch in NPatchMode.entries) for (lspatch in LspatchMode.entries) {
             assertFalse(EmbeddedModePolicy.isBlocked(nPatch, lspatch, supported = true))
         }
+    }
+
+    @Test fun buildFlagDrivesSupportPolicy() {
+        assertEquals(BuildConfig.EMBEDDED_MODE_SUPPORTED, EmbeddedModePolicy.SUPPORTED)
     }
 
     @Test fun currentBuildDisablesEmbeddedSupportWithoutBlockingManagerOrUnpatchedHosts() {
