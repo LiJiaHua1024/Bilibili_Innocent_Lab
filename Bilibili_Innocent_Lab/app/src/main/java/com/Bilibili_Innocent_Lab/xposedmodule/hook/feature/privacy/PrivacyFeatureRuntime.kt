@@ -111,7 +111,7 @@ internal class PrivacyFeatureRuntime(
                     playbackHooks.kmpViewObserver(env, host))
                 val hooks = onboarding + GuestLibraryHostHooks(library, guest, history).install(env) + playback +
                     kmpHooks + installMineOverlayGuard(env, guest) + GuestMineOverlayHooks(guest).install(env) +
-                    GuestMineMenuHooks(guest).install(env)
+                    GuestMineMenuHooks(guest).install(env) + GuestVideoFavoriteHooks(GuestVideoFavoriteHooks.storeFor(library), guest).install(env)
                 FeatureInstallResult.Installed(hooks + ((prompts as? FeatureInstallResult.Installed)?.hookCount ?: 0), complete = false)
             }
         }
