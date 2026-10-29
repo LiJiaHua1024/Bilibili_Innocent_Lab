@@ -54,8 +54,31 @@ internal class GuestVideoFavoriteHooks(
         }
     },
     /** Asks which folders to save into; null (or a picker that cannot show) means the video goes to the default folder. */
-    private val picker: FolderPicker? = null
+    private val picker: FolderPicker? = null,
+    /** The BLRouter classes the Story player's login request goes through; replaceable because the fixtures have other names. */
+    private val routerNames: RouterNames = RouterNames(),
+    /** Where the Story player's star gets its video from; null means the Story star is not handled. */
+    private val storyStar: StoryStarSource? = null,
+    /** Whether a call stack belongs to the Story player's favorite star; replaceable for the same reason. */
+    private val isStoryStar: (Array<StackTraceElement>) -> Boolean = ::fromStoryFavoriteWidget
 ) {
+    /** Class names of the router pieces the Story player's star login request is built from. */
+    internal data class RouterNames(
+        val router: String = "com.bilibili.lib.blrouter.BLRouter",
+        val request: String = "com.bilibili.lib.blrouter.RouteRequest",
+        val response: String = "com.bilibili.lib.blrouter.RouteResponse",
+        val code: String = "com.bilibili.lib.blrouter.RouteResponse\$Code"
+    )
+
+    /** The video behind the Story star that was just tapped, plus a callback that keeps the Story item's own star state in step. */
+    internal class StoryTap(val context: Context?, val video: LocalVirtualLibrary.Video, val markFavorite: (Boolean) -> Unit)
+
+    internal interface StoryStarSource {
+        /** Installs whatever the source needs from the host; false when this build does not have it. */
+        fun install(env: HookEnvironment, loader: ClassLoader): Boolean
+        /** The tap that is happening now, or null when the video behind it cannot be told. */
+        fun tapped(): StoryTap?
+    }
     /** One local favorite folder and whether the video is already in it. */
     internal data class Folder(val name: String, val checked: Boolean)
 
@@ -105,8 +128,9 @@ internal class GuestVideoFavoriteHooks(
         val picked = AtomicBoolean(false)
 
         /** The local write committed: repaint the star from the result, or say "saved" when there is no star writer. */
-        fun onCommitted(context: Context?, aid: Long, favorited: Boolean) {
+        fun onCommitted(context: Context?, aid: Long, favorited: Boolean, after: (Boolean) -> Unit = {}) {
             if (saved.compareAndSet(false, true)) env.reportStatus("guest_video_favorite_saved", "seen")
+            after(favorited)
             if (stateWriter == null) notify(context, true)
             else runCatching { stateWriter.invoke(null, aid, favorited) }
                 .onSuccess { if (painted.compareAndSet(false, true)) env.reportStatus("guest_video_favorite_repainted", "seen") }
@@ -119,26 +143,33 @@ internal class GuestVideoFavoriteHooks(
             notify(context, false)
         }
 
-        fun toggleDefault(context: Context?, video: LocalVirtualLibrary.Video) =
-            store.toggle(video, { added -> onCommitted(context, video.aid, added) }, { onFailure(context) })
+        fun toggleDefault(context: Context?, video: LocalVirtualLibrary.Video, after: (Boolean) -> Unit) =
+            store.toggle(video, { added -> onCommitted(context, video.aid, added, after) }, { onFailure(context) })
 
         /** Opens the folder choice; a picker that cannot show (no live Activity) hands the tap to the default folder instead. */
-        fun pick(context: Context?, video: LocalVirtualLibrary.Video, folders: List<Folder>) {
+        fun pick(context: Context?, video: LocalVirtualLibrary.Video, folders: List<Folder>, after: (Boolean) -> Unit) {
             val shown = picker?.show(context, folders,
                 { selected ->
-                    store.save(video, selected, { onCommitted(context, video.aid, selected.isNotEmpty()) }, { onFailure(context) })
+                    store.save(video, selected, { onCommitted(context, video.aid, selected.isNotEmpty(), after) }, { onFailure(context) })
                 },
                 { name, selected ->
                     store.createFolder(name, {
                         // Back to the picker with the new folder ticked and the earlier ticks kept.
                         store.folders(video.aid) { fresh ->
-                            pick(context, video, fresh.map { it.copy(checked = it.name in selected || it.name == name) })
+                            pick(context, video, fresh.map { it.copy(checked = it.name in selected || it.name == name) }, after)
                         }
                     }, { onFailure(context) })
                 }) == true
             if (shown) {
                 if (picked.compareAndSet(false, true)) env.reportStatus("guest_video_favorite_picker", "seen")
-            } else toggleDefault(context, video)
+            } else toggleDefault(context, video, after)
+        }
+
+        /** One star tap on a known video: the folder choice when there is a picker, otherwise the default folder. */
+        fun startTap(context: Context?, video: LocalVirtualLibrary.Video, after: (Boolean) -> Unit = {}) {
+            if (applied.compareAndSet(false, true)) env.reportStatus("guest_video_favorite_applied", "seen")
+            if (picker == null) toggleDefault(context, video, after)
+            else store.folders(video.aid) { folders -> pick(context, video, folders, after) }
         }
 
         var hooks = 0
@@ -154,13 +185,12 @@ internal class GuestVideoFavoriteHooks(
                     val aid = favoriteAid(route, scene, extend) ?: return@before
                     val video = store.metadata(aid) ?: return@before
                     result = null
-                    if (applied.compareAndSet(false, true)) env.reportStatus("guest_video_favorite_applied", "seen")
-                    if (picker == null) toggleDefault(context, video)
-                    else store.folders(aid) { folders -> pick(context, video, folders) }
+                    startTap(context, video)
                 }
             }
             hooks++
         }
+        hooks += installStoryStar(env, loader) { tap -> startTap(tap.context, tap.video, tap.markFavorite) }
         env.reportStatus("guest_video_favorite", "installed")
         hooks
     }.getOrElse {
@@ -169,7 +199,54 @@ internal class GuestVideoFavoriteHooks(
         0
     }
 
+    /**
+     * The vertical Story player has its own star, `StoryFavoriteWidget`. Its login gate goes through `BLRouter.routeTo` with a
+     * bare `bilibili://login` that carries no scene and no video, so the request alone cannot say which action it was. What
+     * identifies it is the call stack (the widget's click handler is on it, and the class name is kept on all 38 builds), and
+     * the video comes from the widget that was tapped ([StoryStarSource]). The router call must still return a response, so the
+     * hook answers `RouteResponse(OK, request)` and the login screen is never started. When the video cannot be told, the login
+     * screen stays, so a tap is never swallowed without an effect.
+     */
+    private fun installStoryStar(env: HookEnvironment, loader: ClassLoader, tap: (StoryTap) -> Unit): Int = runCatching {
+        val source = storyStar ?: return@runCatching 0
+        val router = PrivacyStructuralResolver.type(loader, routerNames.router) ?: return@runCatching 0
+        val request = PrivacyStructuralResolver.type(loader, routerNames.request) ?: return@runCatching 0
+        val response = PrivacyStructuralResolver.type(loader, routerNames.response) ?: return@runCatching 0
+        val code = PrivacyStructuralResolver.type(loader, routerNames.code) ?: return@runCatching 0
+        val routeTo = PrivacyStructuralResolver.method(router, "routeTo", request, Context::class.java) ?: return@runCatching 0
+        val getTargetUri = PrivacyStructuralResolver.method(request, "getTargetUri") ?: return@runCatching 0
+        val ok = code.enumConstants?.firstOrNull { (it as? Enum<*>)?.name == "OK" } ?: return@runCatching 0
+        val newResponse = Lookup.constructorOrNull(response, code, request) ?: return@runCatching 0
+        if (!source.install(env, loader)) return@runCatching 0
+        env.registrar.exact("guest.video.favorite.story", router, routeTo.name, *routeTo.parameterTypes) {
+            before {
+                if (!runCatching { isGuest() }.getOrDefault(false)) return@before
+                val routeRequest = argOrNull(0) ?: return@before
+                val uri = runCatching { getTargetUri.invoke(routeRequest)?.toString() }.getOrNull() ?: return@before
+                if (uri.substringBefore('?').trimEnd('/') !in LOGIN_ROUTES) return@before
+                if (!isStoryStar(Throwable().stackTrace)) return@before
+                val tapped = runCatching { source.tapped() }.getOrNull()
+                if (tapped == null) {
+                    env.reportStatus("guest_video_favorite_story_unknown", "seen")
+                    return@before
+                }
+                result = runCatching { newResponse.newInstance(ok, routeRequest) }.getOrNull() ?: return@before
+                env.reportStatus("guest_video_favorite_story", "seen")
+                tap(tapped)
+            }
+        }
+        1
+    }.getOrElse {
+        env.logError("guest_video_favorite_story", "[BIL] Story star hook unavailable: ${it.javaClass.simpleName}")
+        0
+    }
+
     internal companion object {
+        /** The Story player's favorite star widget; its name is kept (not obfuscated) on all 38 builds. */
+        const val STORY_FAVORITE = "com.bilibili.video.story.action.widget.StoryFavoriteWidget"
+
+        fun fromStoryFavoriteWidget(stack: Array<StackTraceElement>): Boolean =
+            stack.any { it.className == STORY_FAVORITE || it.className.startsWith("$STORY_FAVORITE\$") }
         const val PROXY = "com.bilibili.lib.router.Router\$RouterProxy"
         /** The legacy router opens the login screen as `activity://main/login/` (seen on 9.16.1); BLRouter uses `bilibili://login`. */
         val LOGIN_ROUTES = setOf("activity://main/login", "bilibili://login")

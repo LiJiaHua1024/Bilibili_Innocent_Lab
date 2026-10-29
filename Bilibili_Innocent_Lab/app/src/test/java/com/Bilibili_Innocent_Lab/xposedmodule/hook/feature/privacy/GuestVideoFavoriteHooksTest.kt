@@ -64,6 +64,7 @@ class GuestVideoFavoriteHooksTest {
         statuses.clear()
         proxy.opened.clear()
         notified.clear()
+        fixtures.privacy.videofavorite.storyrouter.StoryRouter.routed.clear()
         scene = FAV_SCENE
         extend = """{"oid":"100","sid":"3631785"}"""
     }
@@ -77,8 +78,27 @@ class GuestVideoFavoriteHooksTest {
         guest: () -> Boolean = { true },
         proxyClass: String = GuestVideoFavoriteHooks.PROXY,
         locate: (ClassLoader) -> java.lang.reflect.Method? = { null },
-        picker: GuestVideoFavoriteHooks.FolderPicker? = null
-    ) = GuestVideoFavoriteHooks(store, guest, proxyClass, { scene to extend }, locate, { _, saved -> notified += saved }, picker)
+        picker: GuestVideoFavoriteHooks.FolderPicker? = null,
+        router: GuestVideoFavoriteHooks.RouterNames = NO_ROUTER,
+        story: GuestVideoFavoriteHooks.StoryStarSource? = null,
+        fromStoryStar: Boolean = true
+    ) = GuestVideoFavoriteHooks(store, guest, proxyClass, { scene to extend }, locate, { _, saved -> notified += saved }, picker,
+        router, story) { fromStoryStar }
+
+    /** Stands in for the Story widget lookup: reports a fixed tap (or none) and records the star state it was told to paint. */
+    private class FakeStory(var tap: LocalVirtualLibrary.Video? = LocalVirtualLibrary.Video(555L, 1L, "story video", 1000L, 0L, 1L),
+                            var installs: Boolean = true) : GuestVideoFavoriteHooks.StoryStarSource {
+        val painted = mutableListOf<Boolean>()
+        override fun install(env: HookEnvironment, loader: ClassLoader) = installs
+        override fun tapped() = tap?.let { video -> GuestVideoFavoriteHooks.StoryTap(null, video) { painted += it } }
+    }
+
+    /** Runs `BLRouter.routeTo(request, null)` through the registered Story hook; the fixture router runs only when the hook did not take over. */
+    private fun PlayerPortTestRegistrar.routeTo(uri: String) = fixtures.privacy.videofavorite.storyrouter.StoryRequest(uri).let { request ->
+        invoke("guest.video.favorite.story", null, arrayOf(request, null)) {
+            fixtures.privacy.videofavorite.storyrouter.StoryRouter.routeTo(request, null)
+        } as fixtures.privacy.videofavorite.storyrouter.StoryResponse
+    }
 
     /** Runs `open(route)` through the registered hook; the original (recording) open runs only when the hook did not take over. */
     private fun PlayerPortTestRegistrar.openString(route: String) =
@@ -360,6 +380,119 @@ class GuestVideoFavoriteHooksTest {
         assertEquals(listOf("activity://main/login/"), proxy.opened)
     }
 
+    @Test fun theStoryStarLoginRequestIsAnsweredOkAndOpensTheFolderChoiceForTheTappedVideo() {
+        com.bilibili.community.favorite.e.calls.clear()
+        val store = FakeStore()
+        val picker = FakePicker()
+        val story = FakeStory()
+        val registrar = PlayerPortTestRegistrar()
+        hooks(store, locate = { GuestVideoFavoriteHooks.locateFavoriteState(it) }, picker = picker, router = STORY_ROUTER, story = story)
+            .install(environment(registrar))
+
+        val response = registrar.routeTo("bilibili://login")
+
+        assertEquals(fixtures.privacy.videofavorite.storyrouter.StoryCode.OK, response.code)   // answered, so the caller sees a handled route
+        assertTrue(fixtures.privacy.videofavorite.storyrouter.StoryRouter.routed.isEmpty())    // the login screen was never routed to
+        assertEquals(1, picker.shown.size)
+        assertEquals("seen", statuses["guest_video_favorite_story"])
+        assertEquals("seen", statuses["guest_video_favorite_applied"])
+
+        picker.confirm(setOf("默认收藏夹"))
+        assertEquals(listOf(setOf("默认收藏夹")), store.savedSelections)
+        assertEquals(listOf(true), story.painted)                                                  // the Story item's own star state follows
+    }
+
+    @Test fun unfavoritingFromTheStoryPickerPaintsTheStoryStarOff() {
+        val story = FakeStory()
+        val picker = FakePicker()
+        val registrar = PlayerPortTestRegistrar()
+        hooks(FakeStore(), picker = picker, router = STORY_ROUTER, story = story).install(environment(registrar))
+        registrar.routeTo("bilibili://login")
+
+        picker.confirm(emptySet())
+
+        assertEquals(listOf(false), story.painted)
+    }
+
+    @Test fun aLoginRequestThatDoesNotComeFromTheStoryStarIsLeftAlone() {
+        val picker = FakePicker()
+        val registrar = PlayerPortTestRegistrar()
+        hooks(FakeStore(), picker = picker, router = STORY_ROUTER, story = FakeStory(), fromStoryStar = false).install(environment(registrar))
+
+        val response = registrar.routeTo("bilibili://login")
+
+        assertEquals(fixtures.privacy.videofavorite.storyrouter.StoryCode.FOUND_STUB, response.code)
+        assertEquals(listOf("bilibili://login"), fixtures.privacy.videofavorite.storyrouter.StoryRouter.routed)
+        assertTrue(picker.shown.isEmpty())
+        assertNull(statuses["guest_video_favorite_story"])
+    }
+
+    @Test fun routesOtherThanLoginAreNeverTouchedByTheStoryHook() {
+        val registrar = PlayerPortTestRegistrar()
+        hooks(FakeStore(), picker = FakePicker(), router = STORY_ROUTER, story = FakeStory()).install(environment(registrar))
+
+        val response = registrar.routeTo("bilibili://video/100")
+
+        assertEquals(fixtures.privacy.videofavorite.storyrouter.StoryCode.FOUND_STUB, response.code)
+        assertEquals(listOf("bilibili://video/100"), fixtures.privacy.videofavorite.storyrouter.StoryRouter.routed)
+    }
+
+    @Test fun whenTheTappedVideoCannotBeToldTheStoryLoginScreenStaysSoTheTapIsNeverSwallowed() {
+        val picker = FakePicker()
+        val registrar = PlayerPortTestRegistrar()
+        hooks(FakeStore(), picker = picker, router = STORY_ROUTER, story = FakeStory(tap = null)).install(environment(registrar))
+
+        val response = registrar.routeTo("bilibili://login")
+
+        assertEquals(fixtures.privacy.videofavorite.storyrouter.StoryCode.FOUND_STUB, response.code)
+        assertEquals(listOf("bilibili://login"), fixtures.privacy.videofavorite.storyrouter.StoryRouter.routed)
+        assertTrue(picker.shown.isEmpty())
+        assertEquals("seen", statuses["guest_video_favorite_story_unknown"])
+    }
+
+    @Test fun loggedInUsersKeepTheStoryLoginBehavior() {
+        val registrar = PlayerPortTestRegistrar()
+        hooks(FakeStore(), guest = { false }, picker = FakePicker(), router = STORY_ROUTER, story = FakeStory()).install(environment(registrar))
+
+        val response = registrar.routeTo("bilibili://login")
+
+        assertEquals(fixtures.privacy.videofavorite.storyrouter.StoryCode.FOUND_STUB, response.code)
+        assertNull(statuses["guest_video_favorite_story"])
+    }
+
+    @Test fun theStoryStarWithoutAPickerTogglesTheDefaultFolderOfTheTappedVideo() {
+        val store = FakeStore()
+        val story = FakeStory()
+        val registrar = PlayerPortTestRegistrar()
+        hooks(store, router = STORY_ROUTER, story = story).install(environment(registrar))
+
+        registrar.routeTo("bilibili://login")
+
+        assertEquals(listOf(555L), store.toggled)
+        assertEquals(listOf(true), story.painted)
+    }
+
+    @Test fun aStorySourceThatCannotInstallLeavesTheStoryStarAloneAndTheRestWorking() {
+        val registrar = PlayerPortTestRegistrar()
+        assertEquals(2, hooks(FakeStore(), router = STORY_ROUTER, story = FakeStory(installs = false)).install(environment(registrar)))
+        assertTrue("guest.video.favorite.story" !in registrar.hooks)
+    }
+
+    @Test fun anUnknownRouterInstallsNoStoryHookAndTheRestStillWorks() {
+        val registrar = PlayerPortTestRegistrar()
+        assertEquals(2, hooks(FakeStore(), router = NO_ROUTER, story = FakeStory()).install(environment(registrar)))
+        assertTrue("guest.video.favorite.story" !in registrar.hooks)
+    }
+
+    @Test fun theStoryWidgetIsRecognizedFromAnyFrameOfItsOwnOrItsNestedClasses() {
+        fun frame(cls: String) = StackTraceElement(cls, "m", null, -1)
+        val widget = GuestVideoFavoriteHooks.STORY_FAVORITE
+        assertTrue(GuestVideoFavoriteHooks.fromStoryFavoriteWidget(arrayOf(frame("a.b"), frame(widget))))
+        assertTrue(GuestVideoFavoriteHooks.fromStoryFavoriteWidget(arrayOf(frame("$widget\$a"))))
+        assertTrue(!GuestVideoFavoriteHooks.fromStoryFavoriteWidget(arrayOf(frame("${widget}Like"), frame("a.b"))))
+        assertTrue(!GuestVideoFavoriteHooks.fromStoryFavoriteWidget(emptyArray()))
+    }
+
     @Test fun favoriteAidParsesOnlyAPositiveOidOnTheFavoriteSceneAndALoginRoute() {
         val aid = GuestVideoFavoriteHooks::favoriteAid
         assertEquals(100L, aid("activity://main/login/", FAV_SCENE, """{"oid":"100"}"""))
@@ -378,5 +511,9 @@ class GuestVideoFavoriteHooksTest {
 
     private companion object {
         const val FAV_SCENE = "player.ugc-video-detail.user-action.fav.click"
+        const val STORY_PKG = "fixtures.privacy.videofavorite.storyrouter"
+        val NO_ROUTER = GuestVideoFavoriteHooks.RouterNames("no.such.Router", "no.such.Request", "no.such.Response", "no.such.Code")
+        val STORY_ROUTER = GuestVideoFavoriteHooks.RouterNames(
+            "$STORY_PKG.StoryRouter", "$STORY_PKG.StoryRequest", "$STORY_PKG.StoryResponse", "$STORY_PKG.StoryCode")
     }
 }
