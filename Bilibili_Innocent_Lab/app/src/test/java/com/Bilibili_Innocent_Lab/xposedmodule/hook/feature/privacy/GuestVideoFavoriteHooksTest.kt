@@ -17,14 +17,14 @@ class GuestVideoFavoriteHooksTest {
     private var scene: String? = FAV_SCENE
     private var extend: String? = """{"oid":"100","sid":"3631785"}"""
 
-    private class FakeStore(var known: Set<Long> = setOf(100L), var succeed: Boolean = true) :
+    private class FakeStore(var known: Set<Long> = setOf(100L), var succeed: Boolean = true, var added: Boolean = true) :
         GuestVideoFavoriteHooks.FavoriteStore {
         val toggled = mutableListOf<Long>()
         override fun metadata(aid: Long) =
             if (aid in known) LocalVirtualLibrary.Video(aid, 1L, "t$aid", 1000L, 0L, 1L) else null
-        override fun toggle(video: LocalVirtualLibrary.Video, onSaved: () -> Unit, onFailed: () -> Unit) {
+        override fun toggle(video: LocalVirtualLibrary.Video, onSaved: (Boolean) -> Unit, onFailed: () -> Unit) {
             toggled += video.aid
-            if (succeed) onSaved() else onFailed()
+            if (succeed) onSaved(added) else onFailed()
         }
     }
 
@@ -40,8 +40,12 @@ class GuestVideoFavoriteHooksTest {
         HookEnvironment("tv.danmaku.bili", javaClass.classLoader!!, HookPointRegistry(javaClass.classLoader!!), registrar,
             { _, _ -> }, { _, _ -> }, { key, value -> statuses[key] = value })
 
-    private fun hooks(store: FakeStore, guest: () -> Boolean = { true }, proxyClass: String = GuestVideoFavoriteHooks.PROXY) =
-        GuestVideoFavoriteHooks(store, guest, proxyClass, { scene to extend }, { _, saved -> notified += saved })
+    private fun hooks(
+        store: FakeStore,
+        guest: () -> Boolean = { true },
+        proxyClass: String = GuestVideoFavoriteHooks.PROXY,
+        locate: (ClassLoader) -> java.lang.reflect.Method? = { null }
+    ) = GuestVideoFavoriteHooks(store, guest, proxyClass, { scene to extend }, locate, { _, saved -> notified += saved })
 
     /** Runs `open(route)` through the registered hook; the original (recording) open runs only when the hook did not take over. */
     private fun PlayerPortTestRegistrar.openString(route: String) =
@@ -149,6 +153,54 @@ class GuestVideoFavoriteHooksTest {
         assertEquals(0, hooks(FakeStore(), proxyClass = "fixtures.privacy.videofavorite.IncompleteProxy").install(environment(registrar)))
         assertEquals("absent", statuses["guest_video_favorite"])
         assertTrue(registrar.hooks.isEmpty())
+    }
+
+    @Test fun theStarIsRepaintedFromTheToggleResultAndTheSavedToastIsSkipped() {
+        com.bilibili.community.favorite.e.calls.clear()
+        val store = FakeStore()
+        val registrar = PlayerPortTestRegistrar()
+        hooks(store, locate = { GuestVideoFavoriteHooks.locateFavoriteState(it) }).install(environment(registrar))
+
+        registrar.openString("activity://main/login/")       // added
+        store.added = false
+        registrar.openString("activity://main/login/")       // removed again
+
+        assertEquals(listOf("100:true", "100:false"), com.bilibili.community.favorite.e.calls)
+        assertTrue(notified.isEmpty())                       // the star colour is the feedback, not a toast
+        assertEquals("installed", statuses["guest_video_favorite_state"])
+        assertEquals("seen", statuses["guest_video_favorite_repainted"])
+    }
+
+    @Test fun withoutAStateWriterTheGuestStillGetsTheSavedToast() {
+        val store = FakeStore()
+        val registrar = PlayerPortTestRegistrar()
+        hooks(store).install(environment(registrar))
+
+        registrar.openString("activity://main/login/")
+
+        assertEquals(listOf(true), notified)
+        assertEquals("absent", statuses["guest_video_favorite_state"])
+        assertNull(statuses["guest_video_favorite_repainted"])
+    }
+
+    @Test fun aFailedLocalWriteNeverRepaintsTheStar() {
+        com.bilibili.community.favorite.e.calls.clear()
+        val store = FakeStore(succeed = false)
+        val registrar = PlayerPortTestRegistrar()
+        hooks(store, locate = { GuestVideoFavoriteHooks.locateFavoriteState(it) }).install(environment(registrar))
+
+        registrar.openString("activity://main/login/")
+
+        assertTrue(com.bilibili.community.favorite.e.calls.isEmpty())
+        assertEquals(listOf(false), notified)
+    }
+
+    @Test fun theStateWriterIsLocatedThroughTheCoroutineClassAndAbsentWhenItIsMissing() {
+        val found = GuestVideoFavoriteHooks.locateFavoriteState(javaClass.classLoader!!)
+        assertEquals("c", found?.name)
+        assertEquals(com.bilibili.community.favorite.e::class.java, found?.declaringClass)
+        val empty = object : ClassLoader(null) {}
+        assertNull(GuestVideoFavoriteHooks.locateFavoriteState(empty))
     }
 
     @Test fun favoriteAidParsesOnlyAPositiveOidOnTheFavoriteSceneAndALoginRoute() {

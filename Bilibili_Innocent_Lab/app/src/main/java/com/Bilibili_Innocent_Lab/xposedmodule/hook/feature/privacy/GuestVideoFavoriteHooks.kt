@@ -5,7 +5,10 @@ import android.net.Uri
 import android.os.Bundle
 import android.widget.Toast
 import com.Bilibili_Innocent_Lab.xposedmodule.hook.feature.HookEnvironment
+import com.Bilibili_Innocent_Lab.xposedmodule.runtime.KavaMemberLookup as Lookup
 import org.json.JSONObject
+import java.lang.reflect.Method
+import java.lang.reflect.Modifier
 import java.util.concurrent.atomic.AtomicBoolean
 
 /**
@@ -21,12 +24,18 @@ import java.util.concurrent.atomic.AtomicBoolean
  * favorites instead. Anything else, and any star tap whose video metadata the local library does not know yet, keeps the
  * host's own behavior (the login screen), so a tap is never swallowed without an effect.
  *
- * The host star is not repainted: that needs the relation repository, whose members are obfuscated and differ per build.
- * The guest gets a toast instead. Status keys, kept apart because the channel keeps only the first value per key:
- * `guest_video_favorite` is the install report, `_applied` says a tap was taken over, `_saved` says the local write
- * committed, and `_failed` says it did not.
+ * The host star reads "is this video favorited" from a per-aid cache that the host's own success path writes with
+ * `static void c(long aid, boolean favorited)` on an obfuscated class. That class is derived from the name-preserving
+ * coroutine class `FavorRepository$favor$1` (its constructor takes the cache class first) and the writer is the single public
+ * static `void(long, boolean)` on it, so a tap repaints the star from the toggle result: added turns it on, a second tap
+ * turns it off. When the writer cannot be located the guest gets a "saved" toast instead, since nothing else shows the tap
+ * worked. This is still the short path: the host's folder picker (the KMP favorite dialog) is not opened, so everything goes
+ * to the default folder, and the favorite count is not changed.
+ * Status keys, kept apart because the channel keeps only the first value per key: `guest_video_favorite` is the install
+ * report, `_state` says whether the star writer was located, `_applied` says a tap was taken over, `_saved` says the local
+ * write committed, `_repainted` says the star writer ran, and `_failed` says the write did not commit.
  *
- * Verified on a 9.16.1 device only (`_applied` and `_saved` seen, no login screen).
+ * Verified on a 9.16.1 device only (`_applied`, `_saved` seen; the star turns pink on the first tap and grey on the second).
  */
 internal class GuestVideoFavoriteHooks(
     private val store: FavoriteStore,
@@ -34,6 +43,8 @@ internal class GuestVideoFavoriteHooks(
     private val proxyClass: String = PROXY,
     /** Reads (scene, extend) from the proxy's extras bundle; replaceable because the Android Bundle is a stub in JVM tests. */
     private val readExtras: (Bundle?) -> Pair<String?, String?> = { it?.getString(SCENE_KEY) to it?.getString(EXTEND_KEY) },
+    /** Locates the host's favorite-state writer; replaceable because the test fixtures have no such class. */
+    private val locateState: (ClassLoader) -> Method? = ::locateFavoriteState,
     private val notify: (Context?, Boolean) -> Unit = { context, saved ->
         if (context != null) {
             val strings = GuestLibraryStrings.resolve(context)
@@ -44,7 +55,7 @@ internal class GuestVideoFavoriteHooks(
     /** The two things this hook needs from the local library. */
     internal interface FavoriteStore {
         fun metadata(aid: Long): LocalVirtualLibrary.Video?
-        fun toggle(video: LocalVirtualLibrary.Video, onSaved: () -> Unit, onFailed: () -> Unit)
+        fun toggle(video: LocalVirtualLibrary.Video, onSaved: (added: Boolean) -> Unit, onFailed: () -> Unit)
     }
 
     fun install(env: HookEnvironment): Int = runCatching {
@@ -65,6 +76,10 @@ internal class GuestVideoFavoriteHooks(
         val applied = AtomicBoolean(false)
         val saved = AtomicBoolean(false)
         val failed = AtomicBoolean(false)
+        val painted = AtomicBoolean(false)
+        // The star reads "is favorited" from a per-aid cache the host writes on success; writing it is what repaints the star.
+        val stateWriter = locateState(loader)
+        env.reportStatus("guest_video_favorite_state", if (stateWriter != null) "installed" else "absent")
         var hooks = 0
         for ((method, isUri) in listOfNotNull(openString?.let { it to false }, openUri?.let { it to true })) {
             env.registrar.exact("guest.video.favorite.${if (isUri) "uri" else "string"}", proxy, method.name, *method.parameterTypes) {
@@ -79,9 +94,12 @@ internal class GuestVideoFavoriteHooks(
                     val video = store.metadata(aid) ?: return@before
                     result = null
                     if (applied.compareAndSet(false, true)) env.reportStatus("guest_video_favorite_applied", "seen")
-                    store.toggle(video, {
+                    store.toggle(video, { added ->
                         if (saved.compareAndSet(false, true)) env.reportStatus("guest_video_favorite_saved", "seen")
-                        notify(context, true)
+                        if (stateWriter == null) notify(context, true)
+                        else runCatching { stateWriter.invoke(null, aid, added) }
+                            .onSuccess { if (painted.compareAndSet(false, true)) env.reportStatus("guest_video_favorite_repainted", "seen") }
+                            .onFailure { env.logError("guest_video_favorite_state", "[BIL] Favorite star state not updated: ${it.javaClass.simpleName}") }
                     }, {
                         env.logError("guest_video_favorite_write", "[BIL] Local favorite write failed")
                         if (failed.compareAndSet(false, true)) env.reportStatus("guest_video_favorite_failed", "seen")
@@ -121,8 +139,29 @@ internal class GuestVideoFavoriteHooks(
         /** The production store: the guest library's cached view metadata and its serialized write path. */
         fun storeFor(library: GuestLibraryRuntime): FavoriteStore = object : FavoriteStore {
             override fun metadata(aid: Long) = library.videoMetadata(aid, 0)
-            override fun toggle(video: LocalVirtualLibrary.Video, onSaved: () -> Unit, onFailed: () -> Unit) =
-                library.editCollections({ it.toggleFavorite(video) }, { onSaved() }, { onFailed() })
+            override fun toggle(video: LocalVirtualLibrary.Video, onSaved: (Boolean) -> Unit, onFailed: () -> Unit) {
+                // The mutation runs on the library's IO thread and the callback on another, so the result crosses threads.
+                val added = AtomicBoolean(false)
+                library.editCollections({ added.set(it.toggleFavorite(video)) }, { onSaved(added.get()) }, { onFailed() })
+            }
         }
+
+        /**
+         * The host keeps "is this video favorited" in one per-aid cache that the video page star reads; its success path ends in
+         * `static void c(long aid, boolean favorited)`. The cache class is obfuscated, but the coroutine class of its `favor`
+         * method keeps its name and takes the cache class as its first constructor parameter, so the owner is derived from
+         * that and the writer is the single public static `void(long, boolean)` on it. Anything else returns null.
+         */
+        fun locateFavoriteState(loader: ClassLoader): Method? {
+            val marker = PrivacyStructuralResolver.type(loader, FAVOR_COROUTINE) ?: return null
+            val owner = Lookup.declaredConstructors(marker).singleOrNull()?.parameterTypes?.firstOrNull() ?: return null
+            if (owner.isPrimitive || owner.isInterface || owner.isArray) return null
+            return PrivacyStructuralResolver.uniqueMethod(owner) { method ->
+                Modifier.isStatic(method.modifiers) && Modifier.isPublic(method.modifiers) && method.returnType == Void.TYPE &&
+                    method.parameterTypes.contentEquals(arrayOf<Class<*>>(java.lang.Long.TYPE, java.lang.Boolean.TYPE))
+            }
+        }
+
+        const val FAVOR_COROUTINE = "com.bilibili.community.favorite.FavorRepository\$favor\$1"
     }
 }
