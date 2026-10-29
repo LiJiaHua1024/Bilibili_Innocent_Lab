@@ -20,11 +20,43 @@ class GuestVideoFavoriteHooksTest {
     private class FakeStore(var known: Set<Long> = setOf(100L), var succeed: Boolean = true, var added: Boolean = true) :
         GuestVideoFavoriteHooks.FavoriteStore {
         val toggled = mutableListOf<Long>()
+        val folderChecks = linkedMapOf("默认收藏夹" to false)
+        val savedSelections = mutableListOf<Set<String>>()
+        val created = mutableListOf<String>()
         override fun metadata(aid: Long) =
             if (aid in known) LocalVirtualLibrary.Video(aid, 1L, "t$aid", 1000L, 0L, 1L) else null
         override fun toggle(video: LocalVirtualLibrary.Video, onSaved: (Boolean) -> Unit, onFailed: () -> Unit) {
             toggled += video.aid
             if (succeed) onSaved(added) else onFailed()
+        }
+        override fun folders(aid: Long, callback: (List<GuestVideoFavoriteHooks.Folder>) -> Unit) =
+            callback(folderChecks.map { GuestVideoFavoriteHooks.Folder(it.key, it.value) })
+        override fun save(video: LocalVirtualLibrary.Video, selected: Set<String>, onSaved: () -> Unit, onFailed: () -> Unit) {
+            savedSelections += selected
+            if (succeed) onSaved() else onFailed()
+        }
+        override fun createFolder(name: String, onCreated: () -> Unit, onFailed: () -> Unit) {
+            created += name
+            if (succeed) { folderChecks[name] = false; onCreated() } else onFailed()
+        }
+    }
+
+    /** Stands in for the dialog: remembers what it was shown and lets the test press its buttons. */
+    private class FakePicker(var canShow: Boolean = true) : GuestVideoFavoriteHooks.FolderPicker {
+        val shown = mutableListOf<List<GuestVideoFavoriteHooks.Folder>>()
+        lateinit var confirm: (Set<String>) -> Unit
+        lateinit var create: (String, Set<String>) -> Unit
+        override fun show(
+            context: android.content.Context?,
+            folders: List<GuestVideoFavoriteHooks.Folder>,
+            onConfirm: (Set<String>) -> Unit,
+            onCreate: (String, Set<String>) -> Unit
+        ): Boolean {
+            if (!canShow) return false
+            shown += folders
+            confirm = onConfirm
+            create = onCreate
+            return true
         }
     }
 
@@ -44,8 +76,9 @@ class GuestVideoFavoriteHooksTest {
         store: FakeStore,
         guest: () -> Boolean = { true },
         proxyClass: String = GuestVideoFavoriteHooks.PROXY,
-        locate: (ClassLoader) -> java.lang.reflect.Method? = { null }
-    ) = GuestVideoFavoriteHooks(store, guest, proxyClass, { scene to extend }, locate, { _, saved -> notified += saved })
+        locate: (ClassLoader) -> java.lang.reflect.Method? = { null },
+        picker: GuestVideoFavoriteHooks.FolderPicker? = null
+    ) = GuestVideoFavoriteHooks(store, guest, proxyClass, { scene to extend }, locate, { _, saved -> notified += saved }, picker)
 
     /** Runs `open(route)` through the registered hook; the original (recording) open runs only when the hook did not take over. */
     private fun PlayerPortTestRegistrar.openString(route: String) =
@@ -201,6 +234,130 @@ class GuestVideoFavoriteHooksTest {
         assertEquals(com.bilibili.community.favorite.e::class.java, found?.declaringClass)
         val empty = object : ClassLoader(null) {}
         assertNull(GuestVideoFavoriteHooks.locateFavoriteState(empty))
+    }
+
+    @Test fun withAPickerTheStarTapOpensTheFolderChoiceInsteadOfTogglingTheDefaultFolder() {
+        val store = FakeStore()
+        val picker = FakePicker()
+        val registrar = PlayerPortTestRegistrar()
+        hooks(store, picker = picker).install(environment(registrar))
+
+        registrar.openString("activity://main/login/")
+
+        assertEquals(listOf(listOf(GuestVideoFavoriteHooks.Folder("默认收藏夹", false))), picker.shown)
+        assertTrue(store.toggled.isEmpty())
+        assertTrue(store.savedSelections.isEmpty())          // nothing is written until the guest confirms
+        assertTrue(proxy.opened.isEmpty())                   // the login screen never opened
+        assertEquals("seen", statuses["guest_video_favorite_applied"])
+        assertEquals("seen", statuses["guest_video_favorite_picker"])
+        assertNull(statuses["guest_video_favorite_saved"])
+    }
+
+    @Test fun confirmingSavesExactlyTheTickedFoldersAndRepaintsTheStarOn() {
+        com.bilibili.community.favorite.e.calls.clear()
+        val store = FakeStore().apply { folderChecks["旅行"] = false }
+        val picker = FakePicker()
+        val registrar = PlayerPortTestRegistrar()
+        hooks(store, locate = { GuestVideoFavoriteHooks.locateFavoriteState(it) }, picker = picker).install(environment(registrar))
+        registrar.openString("activity://main/login/")
+
+        picker.confirm(linkedSetOf("默认收藏夹", "旅行"))
+
+        assertEquals(listOf(setOf("默认收藏夹", "旅行")), store.savedSelections)
+        assertEquals(listOf("100:true"), com.bilibili.community.favorite.e.calls)
+        assertTrue(notified.isEmpty())                       // the dialog closing and the star are the feedback
+        assertEquals("seen", statuses["guest_video_favorite_saved"])
+        assertEquals("seen", statuses["guest_video_favorite_repainted"])
+    }
+
+    @Test fun confirmingWithNothingTickedRemovesTheVideoAndRepaintsTheStarOff() {
+        com.bilibili.community.favorite.e.calls.clear()
+        val store = FakeStore().apply { folderChecks["默认收藏夹"] = true }
+        val picker = FakePicker()
+        val registrar = PlayerPortTestRegistrar()
+        hooks(store, locate = { GuestVideoFavoriteHooks.locateFavoriteState(it) }, picker = picker).install(environment(registrar))
+        registrar.openString("activity://main/login/")
+        assertEquals(listOf(listOf(GuestVideoFavoriteHooks.Folder("默认收藏夹", true))), picker.shown)   // already favorited, shown ticked
+
+        picker.confirm(emptySet())
+
+        assertEquals(listOf(emptySet<String>()), store.savedSelections)
+        assertEquals(listOf("100:false"), com.bilibili.community.favorite.e.calls)
+    }
+
+    @Test fun creatingAFolderReopensThePickerWithTheNewFolderTickedAndEarlierTicksKept() {
+        val store = FakeStore()
+        val picker = FakePicker()
+        val registrar = PlayerPortTestRegistrar()
+        hooks(store, picker = picker).install(environment(registrar))
+        registrar.openString("activity://main/login/")
+
+        picker.create("新夹", setOf("默认收藏夹"))
+
+        assertEquals(listOf("新夹"), store.created)
+        assertEquals(2, picker.shown.size)
+        assertEquals(
+            listOf(GuestVideoFavoriteHooks.Folder("默认收藏夹", true), GuestVideoFavoriteHooks.Folder("新夹", true)),
+            picker.shown[1]
+        )
+        assertTrue(store.savedSelections.isEmpty())          // creating a folder alone does not favorite the video
+    }
+
+    @Test fun aPickerThatCannotShowFallsBackToTheDefaultFolderSoTheTapIsNeverLost() {
+        val store = FakeStore()
+        val registrar = PlayerPortTestRegistrar()
+        hooks(store, picker = FakePicker(canShow = false)).install(environment(registrar))
+
+        registrar.openString("activity://main/login/")
+
+        assertEquals(listOf(100L), store.toggled)
+        assertEquals(listOf(true), notified)
+        assertNull(statuses["guest_video_favorite_picker"])
+        assertTrue(proxy.opened.isEmpty())
+    }
+
+    @Test fun aFailedFolderWriteIsReportedAndNeverRepaintsTheStar() {
+        com.bilibili.community.favorite.e.calls.clear()
+        val store = FakeStore()
+        val picker = FakePicker()
+        val registrar = PlayerPortTestRegistrar()
+        hooks(store, locate = { GuestVideoFavoriteHooks.locateFavoriteState(it) }, picker = picker).install(environment(registrar))
+        registrar.openString("activity://main/login/")
+        store.succeed = false
+
+        picker.confirm(setOf("默认收藏夹"))
+
+        assertTrue(com.bilibili.community.favorite.e.calls.isEmpty())
+        assertEquals(listOf(false), notified)
+        assertEquals("seen", statuses["guest_video_favorite_failed"])
+        assertNull(statuses["guest_video_favorite_saved"])
+    }
+
+    @Test fun aFailedFolderCreateIsReportedAndDoesNotReopenThePicker() {
+        val store = FakeStore()
+        val picker = FakePicker()
+        val registrar = PlayerPortTestRegistrar()
+        hooks(store, picker = picker).install(environment(registrar))
+        registrar.openString("activity://main/login/")
+        store.succeed = false
+
+        picker.create("新夹", emptySet())
+
+        assertEquals(1, picker.shown.size)
+        assertEquals(listOf(false), notified)
+        assertEquals("seen", statuses["guest_video_favorite_failed"])
+    }
+
+    @Test fun anUnknownVideoStillKeepsTheLoginScreenEvenWithAPicker() {
+        val store = FakeStore(known = emptySet())
+        val picker = FakePicker()
+        val registrar = PlayerPortTestRegistrar()
+        hooks(store, picker = picker).install(environment(registrar))
+
+        registrar.openString("activity://main/login/")
+
+        assertTrue(picker.shown.isEmpty())
+        assertEquals(listOf("activity://main/login/"), proxy.opened)
     }
 
     @Test fun favoriteAidParsesOnlyAPositiveOidOnTheFavoriteSceneAndALoginRoute() {

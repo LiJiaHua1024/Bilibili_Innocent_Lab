@@ -29,11 +29,13 @@ import java.util.concurrent.atomic.AtomicBoolean
  * coroutine class `FavorRepository$favor$1` (its constructor takes the cache class first) and the writer is the single public
  * static `void(long, boolean)` on it, so a tap repaints the star from the toggle result: added turns it on, a second tap
  * turns it off. When the writer cannot be located the guest gets a "saved" toast instead, since nothing else shows the tap
- * worked. This is still the short path: the host's folder picker (the KMP favorite dialog) is not opened, so everything goes
- * to the default folder, and the favorite count is not changed.
+ * worked. The host's own folder picker (a KMP dialog, obfuscated) is not opened; the module shows its own [FolderPicker] instead,
+ * listing the local folders as checkboxes, and commits the exact selection (an empty selection un-favorites). Without a live
+ * Activity to attach the dialog to, the tap falls back to toggling the default folder. The favorite count is not changed.
  * Status keys, kept apart because the channel keeps only the first value per key: `guest_video_favorite` is the install
- * report, `_state` says whether the star writer was located, `_applied` says a tap was taken over, `_saved` says the local
- * write committed, `_repainted` says the star writer ran, and `_failed` says the write did not commit.
+ * report, `_state` says whether the star writer was located, `_applied` says a tap was taken over, `_picker` says the folder
+ * picker was shown, `_saved` says the local write committed, `_repainted` says the star writer ran, and `_failed` says the
+ * write did not commit.
  *
  * Verified on a 9.16.1 device only (`_applied`, `_saved` seen; the star turns pink on the first tap and grey on the second).
  */
@@ -50,12 +52,32 @@ internal class GuestVideoFavoriteHooks(
             val strings = GuestLibraryStrings.resolve(context)
             Toast.makeText(context, if (saved) strings.saved else strings.failure, Toast.LENGTH_SHORT).show()
         }
-    }
+    },
+    /** Asks which folders to save into; null (or a picker that cannot show) means the video goes to the default folder. */
+    private val picker: FolderPicker? = null
 ) {
-    /** The two things this hook needs from the local library. */
+    /** One local favorite folder and whether the video is already in it. */
+    internal data class Folder(val name: String, val checked: Boolean)
+
+    /** Shows the folder choice. Returns false when it cannot be shown, so the caller falls back to the default folder. */
+    internal interface FolderPicker {
+        fun show(
+            context: Context?,
+            folders: List<Folder>,
+            onConfirm: (selected: Set<String>) -> Unit,
+            onCreate: (name: String, selected: Set<String>) -> Unit
+        ): Boolean
+    }
+
+    /** What this hook needs from the local library. */
     internal interface FavoriteStore {
         fun metadata(aid: Long): LocalVirtualLibrary.Video?
         fun toggle(video: LocalVirtualLibrary.Video, onSaved: (added: Boolean) -> Unit, onFailed: () -> Unit)
+        /** Every local folder, with [Folder.checked] set for the ones that already hold the video. Calls back on the main thread. */
+        fun folders(aid: Long, callback: (List<Folder>) -> Unit)
+        /** Makes [selected] the exact set of folders holding the video; an empty set removes it everywhere. */
+        fun save(video: LocalVirtualLibrary.Video, selected: Set<String>, onSaved: () -> Unit, onFailed: () -> Unit)
+        fun createFolder(name: String, onCreated: () -> Unit, onFailed: () -> Unit)
     }
 
     fun install(env: HookEnvironment): Int = runCatching {
@@ -80,6 +102,45 @@ internal class GuestVideoFavoriteHooks(
         // The star reads "is favorited" from a per-aid cache the host writes on success; writing it is what repaints the star.
         val stateWriter = locateState(loader)
         env.reportStatus("guest_video_favorite_state", if (stateWriter != null) "installed" else "absent")
+        val picked = AtomicBoolean(false)
+
+        /** The local write committed: repaint the star from the result, or say "saved" when there is no star writer. */
+        fun onCommitted(context: Context?, aid: Long, favorited: Boolean) {
+            if (saved.compareAndSet(false, true)) env.reportStatus("guest_video_favorite_saved", "seen")
+            if (stateWriter == null) notify(context, true)
+            else runCatching { stateWriter.invoke(null, aid, favorited) }
+                .onSuccess { if (painted.compareAndSet(false, true)) env.reportStatus("guest_video_favorite_repainted", "seen") }
+                .onFailure { env.logError("guest_video_favorite_state", "[BIL] Favorite star state not updated: ${it.javaClass.simpleName}") }
+        }
+
+        fun onFailure(context: Context?) {
+            env.logError("guest_video_favorite_write", "[BIL] Local favorite write failed")
+            if (failed.compareAndSet(false, true)) env.reportStatus("guest_video_favorite_failed", "seen")
+            notify(context, false)
+        }
+
+        fun toggleDefault(context: Context?, video: LocalVirtualLibrary.Video) =
+            store.toggle(video, { added -> onCommitted(context, video.aid, added) }, { onFailure(context) })
+
+        /** Opens the folder choice; a picker that cannot show (no live Activity) hands the tap to the default folder instead. */
+        fun pick(context: Context?, video: LocalVirtualLibrary.Video, folders: List<Folder>) {
+            val shown = picker?.show(context, folders,
+                { selected ->
+                    store.save(video, selected, { onCommitted(context, video.aid, selected.isNotEmpty()) }, { onFailure(context) })
+                },
+                { name, selected ->
+                    store.createFolder(name, {
+                        // Back to the picker with the new folder ticked and the earlier ticks kept.
+                        store.folders(video.aid) { fresh ->
+                            pick(context, video, fresh.map { it.copy(checked = it.name in selected || it.name == name) })
+                        }
+                    }, { onFailure(context) })
+                }) == true
+            if (shown) {
+                if (picked.compareAndSet(false, true)) env.reportStatus("guest_video_favorite_picker", "seen")
+            } else toggleDefault(context, video)
+        }
+
         var hooks = 0
         for ((method, isUri) in listOfNotNull(openString?.let { it to false }, openUri?.let { it to true })) {
             env.registrar.exact("guest.video.favorite.${if (isUri) "uri" else "string"}", proxy, method.name, *method.parameterTypes) {
@@ -94,17 +155,8 @@ internal class GuestVideoFavoriteHooks(
                     val video = store.metadata(aid) ?: return@before
                     result = null
                     if (applied.compareAndSet(false, true)) env.reportStatus("guest_video_favorite_applied", "seen")
-                    store.toggle(video, { added ->
-                        if (saved.compareAndSet(false, true)) env.reportStatus("guest_video_favorite_saved", "seen")
-                        if (stateWriter == null) notify(context, true)
-                        else runCatching { stateWriter.invoke(null, aid, added) }
-                            .onSuccess { if (painted.compareAndSet(false, true)) env.reportStatus("guest_video_favorite_repainted", "seen") }
-                            .onFailure { env.logError("guest_video_favorite_state", "[BIL] Favorite star state not updated: ${it.javaClass.simpleName}") }
-                    }, {
-                        env.logError("guest_video_favorite_write", "[BIL] Local favorite write failed")
-                        if (failed.compareAndSet(false, true)) env.reportStatus("guest_video_favorite_failed", "seen")
-                        notify(context, false)
-                    })
+                    if (picker == null) toggleDefault(context, video)
+                    else store.folders(aid) { folders -> pick(context, video, folders) }
                 }
             }
             hooks++
@@ -143,6 +195,20 @@ internal class GuestVideoFavoriteHooks(
                 // The mutation runs on the library's IO thread and the callback on another, so the result crosses threads.
                 val added = AtomicBoolean(false)
                 library.editCollections({ added.set(it.toggleFavorite(video)) }, { onSaved(added.get()) }, { onFailed() })
+            }
+
+            override fun folders(aid: Long, callback: (List<Folder>) -> Unit) {
+                library.readCollections { collections ->
+                    callback(collections.favorites.map { (name, videos) -> Folder(name, videos.any { it.aid == aid }) })
+                }
+            }
+
+            override fun save(video: LocalVirtualLibrary.Video, selected: Set<String>, onSaved: () -> Unit, onFailed: () -> Unit) {
+                library.editCollections({ it.setFavoriteFolders(video, selected) }, { onSaved() }, { onFailed() })
+            }
+
+            override fun createFolder(name: String, onCreated: () -> Unit, onFailed: () -> Unit) {
+                library.editCollections({ it.createFavoriteFolder(name) }, { onCreated() }, { onFailed() })
             }
         }
 
