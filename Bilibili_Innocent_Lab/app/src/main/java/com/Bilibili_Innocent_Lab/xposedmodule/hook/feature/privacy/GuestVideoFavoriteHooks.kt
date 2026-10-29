@@ -46,7 +46,7 @@ internal class GuestVideoFavoriteHooks(
     /** Reads (scene, extend) from the proxy's extras bundle; replaceable because the Android Bundle is a stub in JVM tests. */
     private val readExtras: (Bundle?) -> Pair<String?, String?> = { it?.getString(SCENE_KEY) to it?.getString(EXTEND_KEY) },
     /** Locates the host's favorite-state writer; replaceable because the test fixtures have no such class. */
-    private val locateState: (ClassLoader) -> Method? = ::locateFavoriteState,
+    private val locateState: (ClassLoader) -> StateWriter? = ::locateStateWriter,
     private val notify: (Context?, Boolean) -> Unit = { context, saved ->
         if (context != null) {
             val strings = GuestLibraryStrings.resolve(context)
@@ -81,6 +81,13 @@ internal class GuestVideoFavoriteHooks(
     }
     /** One local favorite folder and whether the video is already in it. */
     internal data class Folder(val name: String, val checked: Boolean)
+
+    /** How the video page star state is written: a static method (9.x), or an instance method bound to the host's singleton (8.9x). */
+    internal class StateWriter(private val method: Method, private val receiver: Any?) {
+        fun write(aid: Long, favorited: Boolean) {
+            method.invoke(receiver, aid, favorited)
+        }
+    }
 
     /** Shows the folder choice. Returns false when it cannot be shown, so the caller falls back to the default folder. */
     internal interface FolderPicker {
@@ -132,7 +139,7 @@ internal class GuestVideoFavoriteHooks(
             if (saved.compareAndSet(false, true)) env.reportStatus("guest_video_favorite_saved", "seen")
             after(favorited)
             if (stateWriter == null) notify(context, true)
-            else runCatching { stateWriter.invoke(null, aid, favorited) }
+            else runCatching { stateWriter.write(aid, favorited) }
                 .onSuccess { if (painted.compareAndSet(false, true)) env.reportStatus("guest_video_favorite_repainted", "seen") }
                 .onFailure { env.logError("guest_video_favorite_state", "[BIL] Favorite star state not updated: ${it.javaClass.simpleName}") }
         }
@@ -306,5 +313,28 @@ internal class GuestVideoFavoriteHooks(
         }
 
         const val FAVOR_COROUTINE = "com.bilibili.community.favorite.FavorRepository\$favor\$1"
+
+        /** The static writer when the build has one (8.97 and later), otherwise the singleton's instance writer (8.84 to 8.96). */
+        fun locateStateWriter(loader: ClassLoader): StateWriter? =
+            locateFavoriteState(loader)?.let { StateWriter(it, null) } ?: locateSingletonWriter(loader)
+
+        /**
+         * 8.84 to 8.96: the cache is `FavorRepository` itself, a Kotlin `object` (hostlab q49, q50). Its constructor is private, it
+         * has exactly one static field of its own type (the instance, obfuscated name) and exactly one public instance
+         * `void(long, boolean)` (`e` on 8.84, `l` on 8.86 to 8.96), which updates the state and the count caches together.
+         * Anything else returns null.
+         */
+        fun locateSingletonWriter(loader: ClassLoader, coroutineName: String = FAVOR_COROUTINE): StateWriter? {
+            val marker = PrivacyStructuralResolver.type(loader, coroutineName) ?: return null
+            val owner = Lookup.declaredConstructors(marker).singleOrNull()?.parameterTypes?.firstOrNull() ?: return null
+            if (owner.isPrimitive || owner.isInterface || owner.isArray) return null
+            val field = PrivacyStructuralResolver.uniqueField(owner) { Modifier.isStatic(it.modifiers) && it.type == owner } ?: return null
+            val method = PrivacyStructuralResolver.uniqueMethod(owner) { candidate ->
+                !Modifier.isStatic(candidate.modifiers) && Modifier.isPublic(candidate.modifiers) && candidate.returnType == Void.TYPE &&
+                    candidate.parameterTypes.contentEquals(arrayOf<Class<*>>(java.lang.Long.TYPE, java.lang.Boolean.TYPE))
+            } ?: return null
+            val instance = runCatching { field.get(null) }.getOrNull() ?: return null
+            return StateWriter(method, instance)
+        }
     }
 }

@@ -77,7 +77,7 @@ class GuestVideoFavoriteHooksTest {
         store: FakeStore,
         guest: () -> Boolean = { true },
         proxyClass: String = GuestVideoFavoriteHooks.PROXY,
-        locate: (ClassLoader) -> java.lang.reflect.Method? = { null },
+        locate: (ClassLoader) -> GuestVideoFavoriteHooks.StateWriter? = { null },
         picker: GuestVideoFavoriteHooks.FolderPicker? = null,
         router: GuestVideoFavoriteHooks.RouterNames = NO_ROUTER,
         story: GuestVideoFavoriteHooks.StoryStarSource? = null,
@@ -212,7 +212,7 @@ class GuestVideoFavoriteHooksTest {
         com.bilibili.community.favorite.e.calls.clear()
         val store = FakeStore()
         val registrar = PlayerPortTestRegistrar()
-        hooks(store, locate = { GuestVideoFavoriteHooks.locateFavoriteState(it) }).install(environment(registrar))
+        hooks(store, locate = { GuestVideoFavoriteHooks.locateStateWriter(it) }).install(environment(registrar))
 
         registrar.openString("activity://main/login/")       // added
         store.added = false
@@ -240,7 +240,7 @@ class GuestVideoFavoriteHooksTest {
         com.bilibili.community.favorite.e.calls.clear()
         val store = FakeStore(succeed = false)
         val registrar = PlayerPortTestRegistrar()
-        hooks(store, locate = { GuestVideoFavoriteHooks.locateFavoriteState(it) }).install(environment(registrar))
+        hooks(store, locate = { GuestVideoFavoriteHooks.locateStateWriter(it) }).install(environment(registrar))
 
         registrar.openString("activity://main/login/")
 
@@ -278,7 +278,7 @@ class GuestVideoFavoriteHooksTest {
         val store = FakeStore().apply { folderChecks["旅行"] = false }
         val picker = FakePicker()
         val registrar = PlayerPortTestRegistrar()
-        hooks(store, locate = { GuestVideoFavoriteHooks.locateFavoriteState(it) }, picker = picker).install(environment(registrar))
+        hooks(store, locate = { GuestVideoFavoriteHooks.locateStateWriter(it) }, picker = picker).install(environment(registrar))
         registrar.openString("activity://main/login/")
 
         picker.confirm(linkedSetOf("默认收藏夹", "旅行"))
@@ -295,7 +295,7 @@ class GuestVideoFavoriteHooksTest {
         val store = FakeStore().apply { folderChecks["默认收藏夹"] = true }
         val picker = FakePicker()
         val registrar = PlayerPortTestRegistrar()
-        hooks(store, locate = { GuestVideoFavoriteHooks.locateFavoriteState(it) }, picker = picker).install(environment(registrar))
+        hooks(store, locate = { GuestVideoFavoriteHooks.locateStateWriter(it) }, picker = picker).install(environment(registrar))
         registrar.openString("activity://main/login/")
         assertEquals(listOf(listOf(GuestVideoFavoriteHooks.Folder("默认收藏夹", true))), picker.shown)   // already favorited, shown ticked
 
@@ -341,7 +341,7 @@ class GuestVideoFavoriteHooksTest {
         val store = FakeStore()
         val picker = FakePicker()
         val registrar = PlayerPortTestRegistrar()
-        hooks(store, locate = { GuestVideoFavoriteHooks.locateFavoriteState(it) }, picker = picker).install(environment(registrar))
+        hooks(store, locate = { GuestVideoFavoriteHooks.locateStateWriter(it) }, picker = picker).install(environment(registrar))
         registrar.openString("activity://main/login/")
         store.succeed = false
 
@@ -386,7 +386,7 @@ class GuestVideoFavoriteHooksTest {
         val picker = FakePicker()
         val story = FakeStory()
         val registrar = PlayerPortTestRegistrar()
-        hooks(store, locate = { GuestVideoFavoriteHooks.locateFavoriteState(it) }, picker = picker, router = STORY_ROUTER, story = story)
+        hooks(store, locate = { GuestVideoFavoriteHooks.locateStateWriter(it) }, picker = picker, router = STORY_ROUTER, story = story)
             .install(environment(registrar))
 
         val response = registrar.routeTo("bilibili://login")
@@ -491,6 +491,34 @@ class GuestVideoFavoriteHooksTest {
         assertTrue(GuestVideoFavoriteHooks.fromStoryFavoriteWidget(arrayOf(frame("$widget\$a"))))
         assertTrue(!GuestVideoFavoriteHooks.fromStoryFavoriteWidget(arrayOf(frame("${widget}Like"), frame("a.b"))))
         assertTrue(!GuestVideoFavoriteHooks.fromStoryFavoriteWidget(emptyArray()))
+    }
+
+    @Test fun on884To896BuildsTheStateWriterIsTheSingletonsInstanceMethod() {
+        val pkg = "fixtures.privacy.videofavorite.singleton"
+        fixtures.privacy.videofavorite.singleton.Repo.calls.clear()
+
+        val writer = GuestVideoFavoriteHooks.locateSingletonWriter(javaClass.classLoader!!, "$pkg.RepoCoroutine")
+
+        assertTrue(writer != null)
+        writer!!.write(7L, true)
+        writer.write(7L, false)
+        assertEquals(listOf("7:true", "7:false"), fixtures.privacy.videofavorite.singleton.Repo.calls)
+    }
+
+    @Test fun theSingletonWriterIsNotGuessedWhenTheInstanceFieldIsAmbiguousOrAbsent() {
+        val loader = javaClass.classLoader!!
+        // Two static fields of the repository's own type: which one is the instance cannot be told.
+        assertNull(GuestVideoFavoriteHooks.locateSingletonWriter(loader, "fixtures.privacy.videofavorite.singleton.AmbiguousRepoCoroutine"))
+        // The 9.x cache class has a static writer and no instance field of its own type, so it is not a singleton.
+        assertNull(GuestVideoFavoriteHooks.locateSingletonWriter(loader))
+        assertNull(GuestVideoFavoriteHooks.locateSingletonWriter(object : ClassLoader(null) {}))
+    }
+
+    @Test fun theStaticWriterWinsOverTheSingletonWriterWhenBothCouldApply() {
+        val writer = GuestVideoFavoriteHooks.locateStateWriter(javaClass.classLoader!!)
+        com.bilibili.community.favorite.e.calls.clear()
+        writer!!.write(3L, true)
+        assertEquals(listOf("3:true"), com.bilibili.community.favorite.e.calls)
     }
 
     @Test fun favoriteAidParsesOnlyAPositiveOidOnTheFavoriteSceneAndALoginRoute() {
