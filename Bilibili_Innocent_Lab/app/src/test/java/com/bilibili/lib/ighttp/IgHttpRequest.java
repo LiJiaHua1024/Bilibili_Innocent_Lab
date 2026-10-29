@@ -8,15 +8,27 @@ import java.util.TreeMap;
 public final class IgHttpRequest {
     final String mUrl;
     final String mMethod;
+    final byte[] mBody;
+    final StreamDataProvider mStreamDataProvider;
     final Map<String, String> mHeaders;
     public boolean closed;
     public int executed;
 
+    public interface StreamDataProvider {
+        byte[] onProduceData(int size);
+    }
+
     private IgHttpRequest(Builder builder) {
         mUrl = builder.mUrl;
         mMethod = builder.mMethod;
+        mBody = builder.mBody;
+        mStreamDataProvider = builder.mStreamDataProvider;
         mHeaders = builder.mHeaders;
     }
+
+    public StreamDataProvider streamDataProvider() { return mStreamDataProvider; }
+
+    public byte[] body() { return mBody; }
 
     public IgHttpResponse execute() throws IOException {
         executed++;
@@ -34,7 +46,14 @@ public final class IgHttpRequest {
     public static class Builder {
         private String mUrl;
         private String mMethod = "GET";
+        private byte[] mBody;
+        private StreamDataProvider mStreamDataProvider;
         private final Map<String, String> mHeaders = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
+
+        public Builder streamDataProvider(StreamDataProvider provider) {
+            mStreamDataProvider = provider;
+            return this;
+        }
 
         public Builder url(String url) {
             mUrl = url;
@@ -46,8 +65,11 @@ public final class IgHttpRequest {
             return this;
         }
 
+        public Builder get() { return method("GET", null); }
+
         public Builder method(String method, byte[] body) {
             mMethod = method;
+            mBody = body;
             return this;
         }
 
