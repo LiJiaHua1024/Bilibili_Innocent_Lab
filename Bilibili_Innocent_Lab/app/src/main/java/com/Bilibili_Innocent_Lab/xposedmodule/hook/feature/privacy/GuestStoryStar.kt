@@ -19,6 +19,11 @@ import java.lang.reflect.Method
  * at construction, and the tapped one is the widget with the largest visible area; a tie means it cannot be told, and the
  * caller keeps the login screen.
  *
+ * After a guest favorite the item's own state follows: `RequestUser.setFavorite`, the icon's selected state and the favorite count.
+ * The count is `StoryDetail.getStat()` then `Stat.getFavorite/setFavorite(int)` (same on all 38 builds, hostlab q55), moved by one
+ * only when the star state really changed, and the widget's one `TextView` is nudged only when it shows a plain whole number
+ * (the host abbreviates large counts, which cannot be moved exactly, so those are left as drawn).
+ *
  * Status keys: `guest_video_favorite_story_source` is `installed` or `absent`; `guest_video_favorite_story_why` carries the reason
  * the tapped video could not be told (`no-widget`, `no-data`, `ambiguous`, ...) as counts only, never content.
  */
@@ -33,7 +38,10 @@ internal class GuestStoryStar(
         val getData: Method,
         val aid: Method, val cid: Method, val title: Method, val cover: Method, val duration: Method,
         val owner: Method, val ownerMid: Method, val ownerName: Method, val ownerFace: Method,
-        val requestUser: Method, val setFavorite: Method
+        val requestUser: Method, val setFavorite: Method,
+        /** `RequestUser.getFavorite()`, `StoryDetail.getStat()`, `Stat.getFavorite()/setFavorite(int)` and the count TextView; any of them missing means the count is left alone. */
+        val getFavorite: Method?, val getStat: Method?, val statGet: Method?, val statSet: Method?,
+        val countField: java.lang.reflect.Field?
     )
 
     private val widgets = ArrayList<WeakReference<View>>()
@@ -56,6 +64,8 @@ internal class GuestStoryStar(
             !field.type.isPrimitive && PrivacyStructuralResolver.method(field.type, "getData")?.returnType == detail
         } ?: return@runCatching false
         val icon = PrivacyStructuralResolver.uniqueField(widget) { it.type == android.widget.ImageView::class.java }
+        val count = PrivacyStructuralResolver.uniqueField(widget) { it.type == android.widget.TextView::class.java }
+        val stat = PrivacyStructuralResolver.type(loader, "$detailName\$Stat")
         fun m(owner: Class<*>, name: String, vararg params: Class<*>) = PrivacyStructuralResolver.method(owner, name, *params)
         val read = Reader(
             controller, icon, m(controller.type, "getData") ?: return@runCatching false,
@@ -64,7 +74,12 @@ internal class GuestStoryStar(
             m(detail, "getDuration") ?: return@runCatching false, m(detail, "getOwner") ?: return@runCatching false,
             m(owner, "getMid") ?: return@runCatching false, m(owner, "getName") ?: return@runCatching false,
             m(owner, "getFace") ?: return@runCatching false, m(detail, "getRequestUser") ?: return@runCatching false,
-            m(user, "setFavorite", java.lang.Boolean.TYPE) ?: return@runCatching false
+            m(user, "setFavorite", java.lang.Boolean.TYPE) ?: return@runCatching false,
+            m(user, "getFavorite")?.takeIf { it.returnType == java.lang.Boolean.TYPE },
+            m(detail, "getStat")?.takeIf { stat != null && it.returnType == stat },
+            stat?.let { m(it, "getFavorite")?.takeIf { g -> g.returnType == Integer.TYPE } },
+            stat?.let { m(it, "setFavorite", Integer.TYPE) },
+            count
         )
         val constructors = Lookup.declaredConstructors(widget) { java.lang.reflect.Modifier.isPublic(it.modifiers) && !it.isSynthetic }
         if (constructors.isEmpty()) return@runCatching false
@@ -139,18 +154,55 @@ internal class GuestStoryStar(
             GuestVideoFavoriteHooks.StoryTap(chosen.view.context, chosen.video) { favorited ->
                 // The Story star paints from the item's own request-user state, so keep every copy of this item in step.
                 same.forEach { match ->
-                    runCatching { read.requestUser.invoke(match.detail)?.let { read.setFavorite.invoke(it, favorited) } }
-                    // The icon is painted from the selected state of the widget's ImageView; set it on the UI thread.
+                    val user = runCatching { read.requestUser.invoke(match.detail) }.getOrNull()
+                    // The count moves only when the star state really changes, so a second "done" with the same ticks adds nothing.
+                    val changed = user != null && runCatching { read.getFavorite?.invoke(user) as? Boolean }.getOrNull()?.let { it != favorited } == true
+                    runCatching { user?.let { read.setFavorite.invoke(it, favorited) } }
+                    if (changed) runCatching { shiftCount(read, match.detail, if (favorited) 1 else -1) }
+                    // The icon and the count are painted from the widget's views; set them on the UI thread.
                     match.view.post {
                         runCatching { (read.iconField?.apply { isAccessible = true }?.get(match.view) as? android.widget.ImageView)?.isSelected = favorited }
+                        if (changed) runCatching { nudgeCountText(read, match.view, if (favorited) 1 else -1) }
                     }
                 }
             }
         }.getOrElse { why("read-failed:${it.javaClass.simpleName}") }
     }
 
+    /** Moves the item's own favorite count by [delta] (never below zero). Does nothing when this build lacks the stat members. */
+    private fun shiftCount(read: Reader, detail: Any, delta: Int) {
+        val getStat = read.getStat ?: return
+        val get = read.statGet ?: return
+        val set = read.statSet ?: return
+        val stat = getStat.invoke(detail) ?: return
+        val now = (get.invoke(stat) as? Number)?.toInt() ?: return
+        set.invoke(stat, shifted(now, delta))
+    }
+
+    /**
+     * The widget shows the count as text. The host abbreviates large numbers ("1.2万"), which cannot be nudged without guessing
+     * the rounding, so only a plain whole number is changed; anything else is left as the host drew it.
+     */
+    private fun nudgeCountText(read: Reader, view: View, delta: Int) {
+        val label = read.countField?.apply { isAccessible = true }?.get(view) as? android.widget.TextView ?: return
+        val next = nudged(label.text?.toString(), delta) ?: return
+        label.text = next
+    }
+
     companion object {
         const val WIDGET = "com.bilibili.video.story.action.widget.StoryFavoriteWidget"
         const val DETAIL = "com.bilibili.video.story.StoryDetail"
+
+        /** A count moved by [delta], never below zero. */
+        internal fun shifted(now: Int, delta: Int): Int = (now + delta).coerceAtLeast(0)
+
+        /**
+         * The text of a count moved by [delta], or null when it should be left alone: only a plain whole number can be moved
+         * exactly. An abbreviated count ("1.2万") or an empty or unreadable text is not guessed at.
+         */
+        internal fun nudged(text: String?, delta: Int): String? {
+            val shown = text?.trim()?.takeIf { it.isNotEmpty() && it.all(Char::isDigit) }?.toLongOrNull() ?: return null
+            return (shown + delta).coerceAtLeast(0).toString()
+        }
     }
 }
