@@ -1,16 +1,22 @@
 package com.Bilibili_Innocent_Lab.xposedmodule.hook.feature.privacy
 
 import fixtures.privacy.nativelist.AmbiguousCall
+import fixtures.privacy.nativelist.FakeCache
 import fixtures.privacy.nativelist.NewCall
 import fixtures.privacy.nativelist.OldCall
 import fixtures.privacy.nativelist.Resp
 import fixtures.privacy.nativelist.Result
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.lang.reflect.Type
 
 class GuestNativeListHttpHooksTest {
+    private companion object {
+        const val PKG = "fixtures.privacy.nativelist."
+    }
+
     @Test
     fun theConverterKeepsItsStableNameWhereTheBuildStillHasIt() {
         // 8.84 to 8.96: `p` and a same-shaped private `q`; the name decides, the shape is never consulted.
@@ -45,6 +51,56 @@ class GuestNativeListHttpHooksTest {
     fun theResponseTypeFieldIsNotGuessedWhenTwoFieldsShareTheType() {
         assertNull(GuestNativeListHttpHooks.locateResponseType(WithTwoTypes::class.java))
         assertNull(GuestNativeListHttpHooks.locateResponseType(WithoutType::class.java))
+    }
+
+    @Test
+    fun onlyTheLazyHoldingTheFallbackCacheIsReplaced() {
+        val vm = CacheVm()
+        assertEquals(1, GuestNativeListHttpHooks.dropCacheLazies(vm, PKG))
+        assertNull(vm.cache.value)            // the ViewModel's `if (cache != null)` now skips both read and write
+        assertTrue(vm.cache.isInitialized())
+        assertEquals("key", vm.key.value)     // the key and the switch keep their own values
+        assertEquals(true, vm.switch.value)
+    }
+
+    @Test
+    fun aViewModelWithoutACacheLazyIsLeftAlone() {
+        val vm = NoCacheVm()
+        assertEquals(0, GuestNativeListHttpHooks.dropCacheLazies(vm, PKG))
+        assertEquals("key", vm.key.value)
+    }
+
+    @Test
+    fun aLazyThatThrowsOrYieldsNothingIsSkippedNotFatal() {
+        val vm = BrokenVm()
+        assertEquals(0, GuestNativeListHttpHooks.dropCacheLazies(vm, PKG))
+        assertEquals("key", vm.key.value)
+    }
+
+    @Test
+    fun theDefaultPackageIsTheHostFallbackCache() {
+        assertEquals("com.bilibili.common.fallbackcache.", GuestNativeListHttpHooks.CACHE_PACKAGE)
+        // A fixture cache outside that package is not touched when the default is used.
+        assertEquals(0, GuestNativeListHttpHooks.dropCacheLazies(CacheVm()))
+    }
+
+    @Suppress("unused")
+    private class CacheVm {
+        val cache: Lazy<Any?> = lazy { FakeCache() }
+        val key: Lazy<Any?> = lazy { "key" }
+        val switch: Lazy<Any?> = lazy { true }
+    }
+
+    @Suppress("unused")
+    private class NoCacheVm {
+        val key: Lazy<Any?> = lazy { "key" }
+    }
+
+    @Suppress("unused")
+    private class BrokenVm {
+        val boom: Lazy<Any?> = lazy { error("not ready") }
+        val empty: Lazy<Any?> = lazy { null }
+        val key: Lazy<Any?> = lazy { "key" }
     }
 
     @Suppress("unused")

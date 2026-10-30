@@ -70,10 +70,29 @@ internal class GuestNativeListHttpHooks(private val library: GuestLibraryRuntime
         fun optional(name: String, action: () -> Unit) {
             runCatching(action).onFailure { missing += name }
         }
+        val cacheDropped = java.util.concurrent.atomic.AtomicBoolean(false)
         for ((name, method) in mapOf("FavoritesActivityViewModel" to "P2", "FolderListViewModel" to "Q2", "FavoritesListViewModel" to "Z2")) {
             optional("cache.$name") {
-                env.registrar.exact("guest.native.favorite.cache.$method", host.type("tv.danmaku.bili.ui.favorites.viewmodel.$name"), method) {
-                    before { if (isGuest()) result = null }
+                val viewModel = host.type("tv.danmaku.bili.ui.favorites.viewmodel.$name")
+                if (Lookup.methodOrNull(viewModel, method) != null) {
+                    env.registrar.exact("guest.native.favorite.cache.$method", viewModel, method) {
+                        before { if (isGuest()) result = null }
+                    }
+                } else {
+                    // 8.97+: no getter, the cache sits in a Lazy field that every constructor leaves initialized.
+                    val constructors = Lookup.declaredConstructors(viewModel, makeAccessible = true)
+                    require(constructors.isNotEmpty()) { "${viewModel.name} constructors" }
+                    for (constructor in constructors) {
+                        env.registrar.constructor("guest.native.favorite.cache.$name.${constructor.parameterCount}", constructor) {
+                            after {
+                                if (hasThrowable || !isGuest()) return@after
+                                val created = instance ?: return@after
+                                if (dropCacheLazies(created) > 0 && cacheDropped.compareAndSet(false, true)) {
+                                    env.reportStatus("guest_native_lists_cache_dropped", "seen")
+                                }
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -127,6 +146,44 @@ internal class GuestNativeListHttpHooks(private val library: GuestLibraryRuntime
                     java.lang.reflect.Modifier.isPublic(it.modifiers) && !java.lang.reflect.Modifier.isStatic(it.modifiers) &&
                         it.parameterTypes.singleOrNull() == response && it.returnType == result
                 }
+
+        const val CACHE_PACKAGE = "com.bilibili.common.fallbackcache."
+
+        /**
+         * 8.97 and later keep each favorites ViewModel's disk fallback cache in a `kotlin.Lazy` field instead of behind a
+         * getter (8.90.2's `P2/Q2/Z2`). The Lazy that holds the cache is the one whose value comes from [cachePackage];
+         * it is replaced by a Lazy that yields null, which the ViewModel already treats as "no cache" (`if (cache != null)`
+         * guards both the read and the write). Returns how many Lazies were replaced.
+         *
+         * The Lazies hold static configuration (cache object, key, switch), so evaluating each once is what the first use
+         * would do anyway; one that throws is left alone.
+         */
+        internal fun dropCacheLazies(viewModel: Any, cachePackage: String = CACHE_PACKAGE): Int {
+            var dropped = 0
+            // The field type is the HOST's kotlin.Lazy. The module bundles its own Kotlin runtime in another class loader,
+            // so `Lazy::class.java` would not match: compare by name and replace through a proxy of the field's own type.
+            for (field in Lookup.fields(viewModel.javaClass, includeSuperclasses = true, makeAccessible = true) {
+                !java.lang.reflect.Modifier.isStatic(it.modifiers) && it.type.name == LAZY
+            }) {
+                val lazy = field.get(viewModel) ?: continue
+                val value = runCatching { field.type.getMethod("getValue").invoke(lazy) }.getOrNull() ?: continue
+                if (!value.javaClass.name.startsWith(cachePackage)) continue
+                val empty = java.lang.reflect.Proxy.newProxyInstance(field.type.classLoader, arrayOf(field.type)) { proxy, method, args ->
+                    when (method.name) {
+                        "getValue" -> null
+                        "isInitialized" -> true
+                        "hashCode" -> System.identityHashCode(proxy)
+                        "equals" -> proxy === args?.firstOrNull()
+                        "toString" -> "NoFallbackCache"
+                        else -> null
+                    }
+                }
+                if (runCatching { field.set(viewModel, empty) }.isSuccess) dropped++
+            }
+            return dropped
+        }
+
+        private const val LAZY = "kotlin.Lazy"
 
         /** The call's declared response [java.lang.reflect.Type]; the one field of that type in all 38 builds. */
         internal fun locateResponseType(call: Class<*>): java.lang.reflect.Field? =
