@@ -2,6 +2,7 @@ package com.Bilibili_Innocent_Lab.xposedmodule.hook.feature.privacy
 
 import android.content.Context
 import android.content.Intent
+import androidx.core.net.toUri
 import com.Bilibili_Innocent_Lab.xposedmodule.hook.feature.HookEnvironment
 import com.Bilibili_Innocent_Lab.xposedmodule.hook.modern.ReflectAccess
 import com.Bilibili_Innocent_Lab.xposedmodule.runtime.KavaMemberLookup as Lookup
@@ -26,7 +27,8 @@ internal class GuestFavoritesRouteHooks(
     private val open: (Any?) -> Boolean = { openFavorites(it) },
     private val kntrRegistered: (ClassLoader) -> Boolean = { loader ->
         GuestMineMenuHooks.RouteTable.resolve(loader)?.isRegistered(GuestMineMenuHooks.FAVORITES_TARGET) == true
-    }
+    },
+    private val openFolder: (Any?, String, Long) -> Boolean = { target, uri, id -> Companion.openFolder(target, uri, id) }
 ) {
     fun install(env: HookEnvironment): Int = runCatching {
         val loader = requireNotNull(env.classLoader)
@@ -54,15 +56,76 @@ internal class GuestFavoritesRouteHooks(
             }
         }
         env.reportStatus("guest_favorites_route", "installed")
-        1
+        1 + installFolderRoute(env, loader, router, request, ok, newResponse)
     }.getOrElse {
         env.logError("guest_favorites_route", "[BIL] Guest favorites route unavailable: ${it.javaClass.simpleName}")
         env.reportStatus("guest_favorites_route", "absent")
         0
     }
 
+    /**
+     * A folder card in the favorites page routes `bilibili://music/playlist/detail/<id>` through
+     * `BLRouter.routeTo(request, fragment)`; the router's login rewrite swallows it for a guest. Where `fa6.b` exists
+     * [GuestNativeListHttpHooks] already opens the detail page, so this hook only matters on builds without it (9.0.0).
+     */
+    private fun installFolderRoute(
+        env: HookEnvironment, loader: ClassLoader, router: Class<*>, request: Class<*>, ok: Any,
+        newResponse: java.lang.reflect.Constructor<*>
+    ): Int = runCatching {
+        val fragment = requireNotNull(PrivacyStructuralResolver.type(loader, routerNames.fragment))
+        val routeTo = requireNotNull(PrivacyStructuralResolver.method(router, "routeTo", request, fragment))
+        val getTargetUri = requireNotNull(PrivacyStructuralResolver.method(request, "getTargetUri"))
+        val answered = AtomicBoolean(false)
+        env.registrar.exact("guest.favorites.folder_route", router, routeTo.name, *routeTo.parameterTypes) {
+            before {
+                if (!runCatching { isGuest() }.getOrDefault(false)) return@before
+                val routeRequest = argOrNull(0) ?: return@before
+                val uri = runCatching { getTargetUri.invoke(routeRequest)?.toString() }.getOrNull() ?: return@before
+                val id = folderIdOf(uri) ?: return@before
+                val handled = runCatching { newResponse.newInstance(ok, routeRequest) }.getOrNull() ?: return@before
+                if (!runCatching { openFolder(argOrNull(1), uri, id) }.getOrDefault(false)) return@before
+                result = handled
+                if (answered.compareAndSet(false, true)) env.reportStatus("guest_favorites_folder_route_opened", "seen")
+            }
+        }
+        env.reportStatus("guest_favorites_folder_route", "installed")
+        1
+    }.getOrElse {
+        env.reportStatus("guest_favorites_folder_route", "absent")
+        0
+    }
+
     internal companion object {
         const val ACTIVITY = "tv.danmaku.bili.ui.favorites.FavoritesActivityV2"
+        const val DETAIL_ACTIVITY = "com.bilibili.playset.MultiTypeListDetailActivityV2"
+
+        /** The request code the folder tab passes, so it refreshes when the detail page edits or deletes the folder. */
+        const val FOLDER_REQUEST_CODE = 300
+
+        /** The folder id of `bilibili://music/playlist/detail/<id>[?...]`; null for any other URI. */
+        fun folderIdOf(uri: String?): Long? {
+            val path = uri?.substringBefore('?')?.trimEnd('/') ?: return null
+            val prefix = "bilibili://music/playlist/detail/"
+            if (!path.startsWith(prefix)) return null
+            return path.substring(prefix.length).toLongOrNull()?.takeIf { it > 0 }
+        }
+
+        /**
+         * Start the host's folder detail page for [id], the same intent the host's own route builds (data URI plus the
+         * `playlistId` extra). From a fragment it uses the fragment's own result channel so the tab refreshes afterwards.
+         * [target] is the fragment the router was given, a Context, or null; the host application is the last resort.
+         */
+        fun openFolder(target: Any?, uri: String, id: Long): Boolean {
+            val context = target as? Context ?: runCatching { ReflectAccess.callMethod(target, "getContext") as? Context }.getOrNull()
+                ?: ReflectAccess.currentApplication() ?: return false
+            val intent = Intent().setClassName(context.packageName, DETAIL_ACTIVITY)
+                .setData(uri.toUri()).putExtra("playlistId", id)
+            if (target != null && target !is Context &&
+                runCatching { ReflectAccess.callMethod(target, "startActivityForResult", intent, FOLDER_REQUEST_CODE) }.isSuccess) return true
+            if (context !is android.app.Activity) intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            context.startActivity(intent)
+            return true
+        }
 
         /**
          * Start the host's favorites page. The menu calls `BLRouter.routeTo$default`, which passes no context (seen as null on

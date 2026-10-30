@@ -72,7 +72,8 @@ internal class GuestVideoFavoriteHooks(
         val router: String = "com.bilibili.lib.blrouter.BLRouter",
         val request: String = "com.bilibili.lib.blrouter.RouteRequest",
         val response: String = "com.bilibili.lib.blrouter.RouteResponse",
-        val code: String = "com.bilibili.lib.blrouter.RouteResponse\$Code"
+        val code: String = "com.bilibili.lib.blrouter.RouteResponse\$Code",
+        val fragment: String = "androidx.fragment.app.Fragment"
     )
 
     /** The video behind the Story star that was just tapped, plus a callback that keeps the Story item's own star state in step. */

@@ -4,6 +4,7 @@ import com.Bilibili_Innocent_Lab.xposedmodule.hook.HookPointRegistry
 import com.Bilibili_Innocent_Lab.xposedmodule.hook.feature.HookEnvironment
 import com.Bilibili_Innocent_Lab.xposedmodule.hook.feature.PlayerPortTestRegistrar
 import fixtures.privacy.videofavorite.storyrouter.StoryCode
+import fixtures.privacy.videofavorite.storyrouter.StoryFragment
 import fixtures.privacy.videofavorite.storyrouter.StoryRequest
 import fixtures.privacy.videofavorite.storyrouter.StoryResponse
 import fixtures.privacy.videofavorite.storyrouter.StoryRouter
@@ -20,10 +21,13 @@ class GuestFavoritesRouteHooksTest {
     private var kntr = false
     private var canOpen = true
     private val context = Any()
+    private val fragment = StoryFragment()
+    private val openedFolders = mutableListOf<Triple<Any?, String, Long>>()
 
     @Before fun reset() {
         statuses.clear()
         opened.clear()
+        openedFolders.clear()
         StoryRouter.routed.clear()
         kntr = false
         canOpen = true
@@ -39,8 +43,76 @@ class GuestFavoritesRouteHooksTest {
     /** Runs `BLRouter.routeTo(request, context)` through the hook; the fixture router runs only when the hook did not answer. */
     private fun PlayerPortTestRegistrar.routeTo(uri: String, with: Any? = context) = StoryRequest(uri).let { request ->
         invoke("guest.favorites.route", null, arrayOf(request, with)) {
-            StoryRouter.routeTo(request, null)
+            StoryRouter.routeTo(request, null as android.content.Context?)
         } as StoryResponse
+    }
+
+    /** Runs `BLRouter.routeTo(request, fragment)`, the overload a folder card uses, through the folder hook. */
+    private fun PlayerPortTestRegistrar.routeToFragment(uri: String, with: Any? = fragment) = StoryRequest(uri).let { request ->
+        invoke("guest.favorites.folder_route", null, arrayOf(request, with)) {
+            StoryRouter.routeTo(request, null as StoryFragment?)
+        } as StoryResponse
+    }
+
+    private fun folderHooks(guest: () -> Boolean = { true }, canOpenFolder: Boolean = true) =
+        GuestFavoritesRouteHooks(guest, FRAGMENT_ROUTER, { true }, { kntr }, { target, uri, id ->
+            openedFolders += Triple(target, uri, id); canOpenFolder })
+
+    @Test fun aGuestTappingAFolderCardOpensItsDetailPageAndIsAnsweredAsHandled() {
+        val registrar = PlayerPortTestRegistrar()
+        assertEquals(2, folderHooks().install(environment(registrar)))
+        assertEquals("installed", statuses["guest_favorites_folder_route"])
+        val uri = "bilibili://music/playlist/detail/162385528615728?type=11"
+        val response = registrar.routeToFragment(uri)
+        assertEquals(StoryCode.OK, response.code)
+        assertEquals(listOf(Triple<Any?, String, Long>(fragment, uri, 162385528615728L)), openedFolders)
+        assertTrue(StoryRouter.routed.isEmpty()) // the router, and so the login rewrite, never ran
+        assertEquals("seen", statuses["guest_favorites_folder_route_opened"])
+    }
+
+    @Test fun onlyPlaylistDetailRoutesAreTakenOverByTheFolderHook() {
+        val registrar = PlayerPortTestRegistrar()
+        folderHooks().install(environment(registrar))
+        for (uri in listOf("bilibili://video/100", "bilibili://login", "bilibili://music/playlist/detail/0",
+            "bilibili://music/playlist/detail/abc", "bilibili://music/playlist/detail/", "bilibili://music/other/1",
+            "bilibili://user_center/favourite")) {
+            StoryRouter.routed.clear()
+            assertEquals(uri, StoryCode.FOUND_STUB, registrar.routeToFragment(uri).code)
+            assertEquals(listOf(uri), StoryRouter.routed)
+        }
+        assertTrue(openedFolders.isEmpty())
+    }
+
+    @Test fun aLoggedInUserKeepsTheHostRouteForFolderCards() {
+        val registrar = PlayerPortTestRegistrar()
+        folderHooks(guest = { false }).install(environment(registrar))
+        assertEquals(StoryCode.FOUND_STUB, registrar.routeToFragment("bilibili://music/playlist/detail/5").code)
+        assertTrue(openedFolders.isEmpty())
+        assertNull(statuses["guest_favorites_folder_route_opened"])
+    }
+
+    @Test fun whenTheDetailPageCannotBeOpenedTheHostRouteStillRuns() {
+        val registrar = PlayerPortTestRegistrar()
+        folderHooks(canOpenFolder = false).install(environment(registrar))
+        assertEquals(StoryCode.FOUND_STUB, registrar.routeToFragment("bilibili://music/playlist/detail/5").code)
+        assertEquals(1, openedFolders.size)
+        assertNull(statuses["guest_favorites_folder_route_opened"])
+    }
+
+    @Test fun aBuildWithoutTheFragmentOverloadStillGetsTheFavoritesRoute() {
+        val registrar = PlayerPortTestRegistrar()
+        assertEquals(1, hooks().install(environment(registrar)))
+        assertEquals("absent", statuses["guest_favorites_folder_route"])
+        assertEquals("installed", statuses["guest_favorites_route"])
+    }
+
+    @Test fun folderIdsAreReadFromThePlaylistDetailLink() {
+        assertEquals(7L, GuestFavoritesRouteHooks.folderIdOf("bilibili://music/playlist/detail/7"))
+        assertEquals(7L, GuestFavoritesRouteHooks.folderIdOf("bilibili://music/playlist/detail/7/?type=11"))
+        assertNull(GuestFavoritesRouteHooks.folderIdOf("bilibili://music/playlist/detail/-1"))
+        assertNull(GuestFavoritesRouteHooks.folderIdOf("bilibili://music/playlist/detail/7/8"))
+        assertNull(GuestFavoritesRouteHooks.folderIdOf(null))
+        assertFalse(GuestFavoritesRouteHooks.openFolder(null, "bilibili://music/playlist/detail/7", 7L))
     }
 
     @Test fun aGuestTappingFavoritesOpensTheNativePageAndIsAnsweredAsHandled() {
@@ -117,5 +189,6 @@ class GuestFavoritesRouteHooksTest {
     private companion object {
         const val PKG = "fixtures.privacy.videofavorite.storyrouter"
         val ROUTER = GuestVideoFavoriteHooks.RouterNames("$PKG.StoryRouter", "$PKG.StoryRequest", "$PKG.StoryResponse", "$PKG.StoryCode")
+        val FRAGMENT_ROUTER = ROUTER.copy(fragment = "$PKG.StoryFragment")
     }
 }

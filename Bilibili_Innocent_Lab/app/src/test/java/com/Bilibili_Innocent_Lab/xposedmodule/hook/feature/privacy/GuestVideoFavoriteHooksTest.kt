@@ -110,7 +110,7 @@ class GuestVideoFavoriteHooksTest {
     /** Runs `BLRouter.routeTo(request, null)` through the registered Story hook; the fixture router runs only when the hook did not take over. */
     private fun PlayerPortTestRegistrar.routeTo(uri: String) = fixtures.privacy.videofavorite.storyrouter.StoryRequest(uri).let { request ->
         invoke("guest.video.favorite.story", null, arrayOf(request, null)) {
-            fixtures.privacy.videofavorite.storyrouter.StoryRouter.routeTo(request, null)
+            fixtures.privacy.videofavorite.storyrouter.StoryRouter.routeTo(request, null as android.content.Context?)
         } as fixtures.privacy.videofavorite.storyrouter.StoryResponse
     }
 

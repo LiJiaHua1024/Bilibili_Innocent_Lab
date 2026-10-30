@@ -13,4 +13,10 @@ public final class StoryRouter {
         routed.add(request.getTargetUri());
         return new StoryResponse(StoryCode.FOUND_STUB, request);
     }
+
+    /** The overload the favorites folder card uses: BLRouter.routeTo(RouteRequest, Fragment). */
+    public static final StoryResponse routeTo(StoryRequest request, StoryFragment fragment) {
+        routed.add(request.getTargetUri());
+        return new StoryResponse(StoryCode.FOUND_STUB, request);
+    }
 }
