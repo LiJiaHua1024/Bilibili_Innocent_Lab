@@ -31,10 +31,13 @@ import java.util.concurrent.atomic.AtomicBoolean
  * turns it off. When the writer cannot be located the guest gets a "saved" toast instead, since nothing else shows the tap
  * worked. The host's own folder picker (a KMP dialog, obfuscated) is not opened; the module shows its own [FolderPicker] instead,
  * listing the local folders as checkboxes, and commits the exact selection (an empty selection un-favorites). Without a live
- * Activity to attach the dialog to, the tap falls back to toggling the default folder. The favorite count is not changed.
+ * Activity to attach the dialog to, the tap falls back to toggling the default folder. The favorite count moves too when the
+ * host's page repository for the video can be reached ([PageFavoriteSource]): its own favorite method then changes the count,
+ * writes the star cache and sends the bus message, so the cache writer above is only the fallback.
  * Status keys, kept apart because the channel keeps only the first value per key: `guest_video_favorite` is the install
- * report, `_state` says whether the star writer was located, `_applied` says a tap was taken over, `_picker` says the folder
- * picker was shown, `_saved` says the local write committed, `_repainted` says the star writer ran, and `_failed` says the
+ * report, `_state` says whether the star writer was located, `_page` says whether the page repository was recognised,
+ * `_applied` says a tap was taken over, `_picker` says the folder picker was shown, `_saved` says the local write committed,
+ * `_counted` says the page repository took the new state, `_repainted` says the star writer ran, and `_failed` says the
  * write did not commit.
  *
  * Verified on a 9.16.1 device only (`_applied`, `_saved` seen; the star turns pink on the first tap and grey on the second).
@@ -59,6 +62,8 @@ internal class GuestVideoFavoriteHooks(
     private val routerNames: RouterNames = RouterNames(),
     /** Where the Story player's star gets its video from; null means the Story star is not handled. */
     private val storyStar: StoryStarSource? = null,
+    /** The host's page repository, which moves the favorite count with the star; null means only the star cache is written. */
+    private val pageFavorite: PageFavoriteSource? = null,
     /** Whether a call stack belongs to the Story player's favorite star; replaceable for the same reason. */
     private val isStoryStar: (Array<StackTraceElement>) -> Boolean = ::fromStoryFavoriteWidget
 ) {
@@ -79,6 +84,17 @@ internal class GuestVideoFavoriteHooks(
         /** The tap that is happening now, or null when the video behind it cannot be told. */
         fun tapped(): StoryTap?
     }
+    /** The host's page repository for the video on screen: it changes the favorite count and the star state together. */
+    internal interface PageFavoriteSource {
+        /** Finds what this build needs from the host; false when it does not have the expected shape. */
+        fun install(env: HookEnvironment, loader: ClassLoader): Boolean
+        /**
+         * Gives the new favorite state of [aid] to the repository of that video. False when no such repository is known, so the
+         * caller writes the star cache itself. [onFailed] runs when the scheduled call threw, for the same fallback.
+         */
+        fun apply(aid: Long, favorited: Boolean, onFailed: () -> Unit): Boolean
+    }
+
     /** One local favorite folder and whether the video is already in it. */
     internal data class Folder(val name: String, val checked: Boolean)
 
@@ -133,15 +149,29 @@ internal class GuestVideoFavoriteHooks(
         val stateWriter = locateState(loader)
         env.reportStatus("guest_video_favorite_state", if (stateWriter != null) "installed" else "absent")
         val picked = AtomicBoolean(false)
+        val counted = AtomicBoolean(false)
+        // The page repository changes the count, the star cache and sends the bus message in one call, so it is preferred.
+        val pageReady = pageFavorite?.let { runCatching { it.install(env, loader) }.getOrDefault(false) } == true
+        if (pageFavorite != null) env.reportStatus("guest_video_favorite_page", if (pageReady) "installed" else "absent")
 
-        /** The local write committed: repaint the star from the result, or say "saved" when there is no star writer. */
-        fun onCommitted(context: Context?, aid: Long, favorited: Boolean, after: (Boolean) -> Unit = {}) {
-            if (saved.compareAndSet(false, true)) env.reportStatus("guest_video_favorite_saved", "seen")
-            after(favorited)
+        /** Repaints the star from the result, or says "saved" when there is no star writer. */
+        fun paintStar(context: Context?, aid: Long, favorited: Boolean) {
             if (stateWriter == null) notify(context, true)
             else runCatching { stateWriter.write(aid, favorited) }
                 .onSuccess { if (painted.compareAndSet(false, true)) env.reportStatus("guest_video_favorite_repainted", "seen") }
                 .onFailure { env.logError("guest_video_favorite_state", "[BIL] Favorite star state not updated: ${it.javaClass.simpleName}") }
+        }
+
+        /** The local write committed: let the page repository move the count and the star, or repaint the star alone. */
+        fun onCommitted(context: Context?, aid: Long, favorited: Boolean, after: (Boolean) -> Unit = {}) {
+            if (saved.compareAndSet(false, true)) env.reportStatus("guest_video_favorite_saved", "seen")
+            after(favorited)
+            val handed = pageReady && runCatching {
+                pageFavorite!!.apply(aid, favorited) { paintStar(context, aid, favorited) }
+            }.getOrDefault(false)
+            if (handed) {
+                if (counted.compareAndSet(false, true)) env.reportStatus("guest_video_favorite_counted", "seen")
+            } else paintStar(context, aid, favorited)
         }
 
         fun onFailure(context: Context?) {

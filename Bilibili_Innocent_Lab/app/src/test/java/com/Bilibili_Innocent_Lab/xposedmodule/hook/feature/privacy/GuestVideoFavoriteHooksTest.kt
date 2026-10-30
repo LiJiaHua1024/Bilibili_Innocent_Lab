@@ -81,9 +81,23 @@ class GuestVideoFavoriteHooksTest {
         picker: GuestVideoFavoriteHooks.FolderPicker? = null,
         router: GuestVideoFavoriteHooks.RouterNames = NO_ROUTER,
         story: GuestVideoFavoriteHooks.StoryStarSource? = null,
-        fromStoryStar: Boolean = true
+        fromStoryStar: Boolean = true,
+        page: GuestVideoFavoriteHooks.PageFavoriteSource? = null
     ) = GuestVideoFavoriteHooks(store, guest, proxyClass, { scene to extend }, locate, { _, saved -> notified += saved }, picker,
-        router, story) { fromStoryStar }
+        router, story, page) { fromStoryStar }
+
+    /** Stands in for the host's page repository: records what it was given and answers as the test says. */
+    private class FakePage(var installs: Boolean = true, var takes: Boolean = true, var throwsLater: Boolean = false) :
+        GuestVideoFavoriteHooks.PageFavoriteSource {
+        val given = mutableListOf<String>()
+        override fun install(env: HookEnvironment, loader: ClassLoader) = installs
+        override fun apply(aid: Long, favorited: Boolean, onFailed: () -> Unit): Boolean {
+            if (!takes) return false
+            given += "$aid:$favorited"
+            if (throwsLater) onFailed()
+            return true
+        }
+    }
 
     /** Stands in for the Story widget lookup: reports a fixed tap (or none) and records the star state it was told to paint. */
     private class FakeStory(var tap: LocalVirtualLibrary.Video? = LocalVirtualLibrary.Video(555L, 1L, "story video", 1000L, 0L, 1L),
@@ -222,6 +236,76 @@ class GuestVideoFavoriteHooksTest {
         assertTrue(notified.isEmpty())                       // the star colour is the feedback, not a toast
         assertEquals("installed", statuses["guest_video_favorite_state"])
         assertEquals("seen", statuses["guest_video_favorite_repainted"])
+    }
+
+    @Test fun whenThePageRepositoryTakesTheStateTheCacheWriterAndTheToastAreSkipped() {
+        com.bilibili.community.favorite.e.calls.clear()
+        val store = FakeStore()
+        val page = FakePage()
+        val registrar = PlayerPortTestRegistrar()
+        hooks(store, locate = { GuestVideoFavoriteHooks.locateStateWriter(it) }, page = page).install(environment(registrar))
+
+        registrar.openString("activity://main/login/")
+
+        assertEquals(listOf("100:true"), page.given)
+        assertTrue(com.bilibili.community.favorite.e.calls.isEmpty())   // n() writes the cache itself, and must not find it already set
+        assertTrue(notified.isEmpty())
+        assertEquals("installed", statuses["guest_video_favorite_page"])
+        assertEquals("seen", statuses["guest_video_favorite_counted"])
+        assertNull(statuses["guest_video_favorite_repainted"])
+    }
+
+    @Test fun whenNoPageRepositoryKnowsTheVideoTheStarCacheIsWrittenAlone() {
+        com.bilibili.community.favorite.e.calls.clear()
+        val store = FakeStore()
+        val page = FakePage(takes = false)
+        val registrar = PlayerPortTestRegistrar()
+        hooks(store, locate = { GuestVideoFavoriteHooks.locateStateWriter(it) }, page = page).install(environment(registrar))
+
+        registrar.openString("activity://main/login/")
+
+        assertEquals(listOf("100:true"), com.bilibili.community.favorite.e.calls)
+        assertNull(statuses["guest_video_favorite_counted"])
+        assertEquals("seen", statuses["guest_video_favorite_repainted"])
+    }
+
+    @Test fun aPageRepositoryCallThatFailsLaterFallsBackToTheStarCacheWriter() {
+        com.bilibili.community.favorite.e.calls.clear()
+        val store = FakeStore()
+        val page = FakePage(throwsLater = true)
+        val registrar = PlayerPortTestRegistrar()
+        hooks(store, locate = { GuestVideoFavoriteHooks.locateStateWriter(it) }, page = page).install(environment(registrar))
+
+        registrar.openString("activity://main/login/")
+
+        assertEquals(listOf("100:true"), com.bilibili.community.favorite.e.calls)
+        assertEquals("seen", statuses["guest_video_favorite_repainted"])
+    }
+
+    @Test fun aPageSourceThatCannotInstallIsReportedAbsentAndNeverCalled() {
+        com.bilibili.community.favorite.e.calls.clear()
+        val store = FakeStore()
+        val page = FakePage(installs = false)
+        val registrar = PlayerPortTestRegistrar()
+        hooks(store, locate = { GuestVideoFavoriteHooks.locateStateWriter(it) }, page = page).install(environment(registrar))
+
+        registrar.openString("activity://main/login/")
+
+        assertEquals("absent", statuses["guest_video_favorite_page"])
+        assertTrue(page.given.isEmpty())
+        assertEquals(listOf("100:true"), com.bilibili.community.favorite.e.calls)
+    }
+
+    @Test fun aFailedLocalWriteNeverReachesThePageRepository() {
+        val store = FakeStore(succeed = false)
+        val page = FakePage()
+        val registrar = PlayerPortTestRegistrar()
+        hooks(store, locate = { GuestVideoFavoriteHooks.locateStateWriter(it) }, page = page).install(environment(registrar))
+
+        registrar.openString("activity://main/login/")
+
+        assertTrue(page.given.isEmpty())
+        assertEquals(listOf(false), notified)
     }
 
     @Test fun withoutAStateWriterTheGuestStillGetsTheSavedToast() {
